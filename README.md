@@ -106,12 +106,13 @@ journalctl --user -u claude-voice -f
    for the machine in the Tailscale admin console first):
 
    ```bash
-   tailscale funnel --bg --https=10000 http://127.0.0.1:8811
-   # -> https://<machine>.<tailnet>.ts.net:10000/mcp
+   tailscale funnel --bg --https=443 http://127.0.0.1:8811
+   # -> https://<machine>.<tailnet>.ts.net/mcp
    ```
 
-   `deploy/install.sh` already put `<machine>.<tailnet>.ts.net:10000` in
-   `CLAUDE_VOICE_PUBLIC_HOSTS`. Undo with `tailscale funnel --https=10000 off`.
+   Use port 443. claude.ai could not reach the bridge on port 10000, which
+   ChatGPT could. `deploy/install.sh` already put `<machine>.<tailnet>.ts.net`
+   in `CLAUDE_VOICE_PUBLIC_HOSTS`. Undo with `tailscale funnel --https=443 off`.
 2. Register `https://<host>/mcp` as a private plugin in ChatGPT. On Plus that
    goes through Plugin Creator / ChatGPT Sites.
 

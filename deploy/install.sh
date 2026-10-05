@@ -14,11 +14,11 @@ fi
 
 (cd "$repo" && uv sync --locked -q)
 
-# Tailscale Funnel only serves ports 443, 8443 and 10000; this setup uses 10000.
+# Funnel serves ports 443, 8443 and 10000; use 443, since some clients (claude.ai) cannot reach other ports.
 public="${CLAUDE_VOICE_PUBLIC_HOSTS:-}"
 if [[ -z "$public" ]] && command -v tailscale >/dev/null; then
   dns="$(tailscale status --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))')"
-  public="$dns:10000"
+  public="$dns"
 fi
 
 if [[ ! -f "$conf" ]]; then
