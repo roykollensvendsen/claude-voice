@@ -327,3 +327,49 @@ async def test_attach_refuses_conversations_outside_the_root(tmp_path, root):
         missing = await client.call_tool("attach_conversation", {"claude_session_id": "nope"})
     assert bad.is_error and "under" in bad.content[0].text
     assert missing.is_error and "no claude code conversation" in missing.content[0].text.lower()
+
+
+def live_entry(directory, pid, sid, cwd, name, status="busy", minutes_ago=2):
+    import json
+    import time
+
+    now = time.time() * 1000
+    (directory / f"{pid}.json").write_text(
+        json.dumps(
+            {
+                "pid": pid,
+                "sessionId": sid,
+                "cwd": cwd,
+                "name": name,
+                "status": status,
+                "kind": "interactive",
+                "updatedAt": now - minutes_ago * 60000,
+            }
+        )
+    )
+
+
+async def test_active_sessions_are_the_running_claude_code_processes(tmp_path, root):
+    import os
+
+    live = tmp_path / "live"
+    live.mkdir()
+    live_entry(live, os.getpid(), "c-1", str(root / "app"), "app-fix", "busy")
+    live_entry(live, 2**22 + 12345, "c-2", str(root / "lib"), "dead-one", "idle")
+    (live / "garbage.json").write_text("{not json")
+    convs = FakeConversations([conversation("c-1", str(root / "app"), "Fix")])
+    m = SessionManager(Store(tmp_path / "b.db"), project_root=root, client_factory=FakeClaude())
+    async with Client(build_server(m, conversations=convs, live_dir=live)) as client:
+        active = await call(client, "list_active_sessions")
+        listed = await call(client, "list_claude_conversations")
+
+    assert active["sessions"] == [
+        {
+            "claude_session_id": "c-1",
+            "name": "app-fix",
+            "project": "app",
+            "status": "busy",
+            "minutes_since_update": 2,
+        }
+    ]
+    assert listed["conversations"][0]["open_in_terminal"] is True
