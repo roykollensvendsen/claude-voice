@@ -1,7 +1,7 @@
 import pytest
-from claude_voice.sessions import SessionBusy, SessionClosed, SessionManager
 from fakes import Boom, FakeClaude, Pause, init, result, say, use_tool
 
+from claude_voice.sessions import SessionBusy, SessionClosed, SessionManager
 from claude_voice.store import Store
 
 
