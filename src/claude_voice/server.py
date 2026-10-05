@@ -44,7 +44,7 @@ class Config:
     db: Path
     transport: str
     host: str = "127.0.0.1"
-    port: int = 8765
+    port: int = 8811
     token: str | None = None
     public_hosts: list[str] = field(default_factory=list)
 
@@ -63,7 +63,7 @@ def load_config(env: Mapping[str, str], transport: str) -> Config:
         db=Path(env.get("CLAUDE_VOICE_DB", "~/.local/state/claude-voice/bridge.db")).expanduser(),
         transport=transport,
         host=env.get("CLAUDE_VOICE_HOST", "127.0.0.1"),
-        port=int(env.get("CLAUDE_VOICE_PORT", "8765")),
+        port=int(env.get("CLAUDE_VOICE_PORT", "8811")),
         token=env.get("CLAUDE_VOICE_TOKEN"),
         public_hosts=[h for h in env.get("CLAUDE_VOICE_PUBLIC_HOSTS", "").split(",") if h],
     )
