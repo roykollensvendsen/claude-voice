@@ -263,3 +263,67 @@ async def test_status_tools_are_marked_read_only_so_clients_need_no_confirmation
         assert ann is None or not ann.read_only_hint, name
     assert tools["approve"].annotations.destructive_hint is True
     assert tools["close_session"].annotations.destructive_hint is False
+
+
+class FakeConversations:
+    """Stands in for the SDK's on-disk Claude Code session index."""
+
+    def __init__(self, items):
+        self.items = items
+
+    def __call__(self, directory=None, limit=None):
+        found = [c for c in self.items if directory is None or c.cwd == directory]
+        return found[:limit]
+
+
+def conversation(sid, cwd, title, minutes_ago=1):
+    import time
+
+    from claude_agent_sdk import SDKSessionInfo
+
+    return SDKSessionInfo(
+        session_id=sid,
+        summary=title,
+        last_modified=int((time.time() - minutes_ago * 60) * 1000),
+        cwd=cwd,
+        first_prompt="hi",
+    )
+
+
+async def test_conversations_from_every_project_under_the_root_are_listed(tmp_path, root):
+    convs = FakeConversations(
+        [
+            conversation("t-1", str(root / "app"), "Fix login"),
+            conversation("t-2", str(root / "lib"), "Refactor"),
+            conversation("t-3", "/somewhere/else", "Private"),
+        ]
+    )
+    m = SessionManager(Store(tmp_path / "b.db"), project_root=root, client_factory=FakeClaude())
+    async with Client(build_server(m, conversations=convs)) as client:
+        out = await call(client, "list_claude_conversations")
+    listed = [(c["claude_session_id"], c["project"]) for c in out["conversations"]]
+    assert listed == [("t-1", "app"), ("t-2", "lib")]
+    assert out["conversations"][0]["summary"] == "Fix login"
+    assert out["conversations"][0]["minutes_ago"] == 1
+
+
+async def test_attach_finds_the_project_from_the_conversation(tmp_path, root):
+    convs = FakeConversations([conversation("t-2", str(root / "lib"), "Refactor")])
+    claude = FakeClaude([result("back", "t-2")])
+    m = SessionManager(Store(tmp_path / "b.db"), project_root=root, client_factory=claude)
+    async with Client(build_server(m, conversations=convs)) as client:
+        s = await call(client, "attach_conversation", claude_session_id="t-2")
+        assert s["project_path"] == str(root / "lib")
+        await call(client, "send_task", session_id=s["id"], prompt="where were we?")
+        await m.wait(s["id"])
+    assert claude.clients[0].options.resume == "t-2"
+
+
+async def test_attach_refuses_conversations_outside_the_root(tmp_path, root):
+    convs = FakeConversations([conversation("t-3", "/somewhere/else", "Private")])
+    m = SessionManager(Store(tmp_path / "b.db"), project_root=root, client_factory=FakeClaude())
+    async with Client(build_server(m, conversations=convs)) as client:
+        bad = await client.call_tool("attach_conversation", {"claude_session_id": "t-3"})
+        missing = await client.call_tool("attach_conversation", {"claude_session_id": "nope"})
+    assert bad.is_error and "under" in bad.content[0].text
+    assert missing.is_error and "no claude code conversation" in missing.content[0].text.lower()
