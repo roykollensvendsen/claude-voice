@@ -192,8 +192,9 @@ def build_server(
             return (open_ or adopted)[0]["id"]
         if any(session_id in (d.get("sessionId"), d.get("name")) for d in live_sessions()):
             raise ToolError(
-                f"{session_id} is a Claude Code session running in a terminal, not one this "
-                "bridge started or attached. Use message_active_session to talk to it, or "
+                f"{session_id} is a Claude Code session running on this machine (in a "
+                "terminal or in the background), not one this bridge started or attached. "
+                "Use message_active_session to talk to it, or "
                 "attach_conversation to work on a copy of its conversation."
             )
         raise ToolError(f"No session with id {session_id}")
