@@ -129,3 +129,11 @@ def test_sessions_left_running_by_a_crash_are_marked_interrupted(tmp_path, clock
     reopened = Store(path, clock=clock)
     assert reopened.get_session(s["id"])["status"] == "interrupted"
     assert reopened.events(s["id"])[-1]["kind"] == "interrupted"
+
+
+def test_recent_events_limit_keeps_the_newest(store):
+    s = store.create_session("/src/app")
+    for i in range(5):
+        store.add_event(s["id"], "text", {"i": i})
+
+    assert [e["payload"]["i"] for e in store.recent_events(since=0, limit=2)] == [3, 4]
