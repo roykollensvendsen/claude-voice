@@ -33,8 +33,8 @@ def make(tmp_path, root, claude):
 
 async def call(client, name, **args):
     res = await client.call_tool(name, args)
-    assert not res.isError, res.content
-    return res.structuredContent
+    assert not res.is_error, res.content
+    return res.structured_content
 
 
 async def test_exposes_the_voice_control_tools(tmp_path, root):
@@ -89,16 +89,19 @@ async def test_mistakes_come_back_as_readable_tool_errors(tmp_path, root):
     m, server = make(tmp_path, root, FakeClaude([pause]))
     async with Client(server) as client:
         bad = await client.call_tool("create_session", {"project": "/etc"})
-        assert bad.isError and "under" in bad.content[0].text
+        assert bad.is_error and "under" in bad.content[0].text
 
         s = await call(client, "create_session", project="app")
         await call(client, "send_task", session_id=s["id"], prompt="go")
         await pause.reached.wait()
         busy = await client.call_tool("send_task", {"session_id": s["id"], "prompt": "again"})
-        assert busy.isError and "still working" in busy.content[0].text
+        assert busy.is_error and "still working" in busy.content[0].text
+
+        outside = await client.call_tool("list_sessions", {"project": "/etc"})
+        assert outside.is_error and "under" in outside.content[0].text
 
         unknown = await client.call_tool("session_recap", {"session_id": "nope"})
-        assert unknown.isError and "no session" in unknown.content[0].text.lower()
+        assert unknown.is_error and "no session" in unknown.content[0].text.lower()
 
         await call(client, "cancel", session_id=s["id"])
 
@@ -125,7 +128,7 @@ async def http_server(tmp_path, root):
     config = uvicorn.Config(build_app(server, TOKEN), port=port, log_level="warning")
     uv = uvicorn.Server(config)
     task = asyncio.create_task(uv.serve())
-    while not uv.started:
+    while not uv.started:  # noqa: ASYNC110 - uvicorn exposes no event
         await asyncio.sleep(0.01)
     yield f"http://127.0.0.1:{port}"
     uv.should_exit = True
