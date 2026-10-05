@@ -10,6 +10,7 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.shared._httpx_utils import create_mcp_http_client
 
+from claude_voice.oauth import OAuthProvider
 from claude_voice.server import ConfigError, build_app, build_server, load_config
 from claude_voice.sessions import SessionManager
 from claude_voice.store import Store
@@ -126,9 +127,12 @@ def free_port() -> int:
 
 @pytest.fixture
 async def http_server(tmp_path, root):
-    _, server = make(tmp_path, root, FakeClaude())
     port = free_port()
-    config = uvicorn.Config(build_app(server, TOKEN), port=port, log_level="warning")
+    store = Store(tmp_path / "bridge.db")
+    oauth = OAuthProvider(store, TOKEN, f"http://127.0.0.1:{port}", static_token=TOKEN)
+    m = SessionManager(store, project_root=root, client_factory=FakeClaude())
+    server = build_server(m, oauth=oauth)
+    config = uvicorn.Config(build_app(server), port=port, log_level="warning")
     uv = uvicorn.Server(config)
     task = asyncio.create_task(uv.serve())
     while not uv.started:  # noqa: ASYNC110 - uvicorn exposes no event
