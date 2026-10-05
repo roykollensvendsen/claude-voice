@@ -54,6 +54,9 @@ async def test_exposes_the_voice_control_tools(tmp_path, root):
         "close_session",
         "list_claude_conversations",
         "attach_conversation",
+        "list_pending_approvals",
+        "approve",
+        "deny",
     } <= names
 
 
@@ -188,3 +191,38 @@ def test_http_needs_a_long_token(tmp_path):
 def test_root_must_exist(tmp_path):
     with pytest.raises(ConfigError, match="CLAUDE_VOICE_ROOT"):
         load_config({"CLAUDE_VOICE_ROOT": str(tmp_path / "nope")}, transport="stdio")
+
+
+async def test_approvals_can_be_answered_through_tools(tmp_path, root):
+    from claude_agent_sdk import PermissionResultAllow, ToolPermissionContext
+    from fakes import Call
+
+    from claude_voice.approvals import ApprovalBroker
+
+    outcomes = []
+
+    async def ask(options):
+        outcomes.append(
+            await options.can_use_tool("Bash", {"command": "make"}, ToolPermissionContext())
+        )
+
+    store = Store(tmp_path / "bridge.db")
+    broker = ApprovalBroker(store)
+    claude = FakeClaude([Call(ask), result("built", "c-1")])
+    m = SessionManager(store, project_root=root, client_factory=claude, approvals=broker)
+    async with Client(build_server(m)) as client:
+        s = await call(client, "create_session", project="app")
+        await call(client, "send_task", session_id=s["id"], prompt="build")
+        for _ in range(200):
+            pending = (await call(client, "list_pending_approvals"))["approvals"]
+            if pending:
+                break
+            await asyncio.sleep(0.01)
+        assert pending[0]["tool"] == "Bash"
+
+        bad = await client.call_tool("approve", {"approval_id": "zz"})
+        assert bad.is_error
+
+        await call(client, "approve", approval_id=pending[0]["id"])
+        await m.wait(s["id"])
+    assert isinstance(outcomes[0], PermissionResultAllow)
