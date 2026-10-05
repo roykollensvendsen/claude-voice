@@ -17,6 +17,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from .approvals import ApprovalBroker, ApprovalNotFound
 from .sessions import SessionBusy, SessionClosed, SessionManager
 from .store import SessionNotFound, Store
 
@@ -28,6 +29,8 @@ usually speaking, often while driving, so keep what you read back short.
 Typical flow: list_projects -> create_session -> send_task -> poll
 session_recap until status is no longer "running" -> tell the user the result.
 send_task returns immediately; Claude may work for minutes.
+When a recap shows pending_approvals, read the tool and its input to the user
+and call approve only if they clearly say yes; otherwise call deny.
 """
 
 
@@ -190,6 +193,31 @@ def build_server(manager: SessionManager) -> MCPServer:
         except ValueError as exc:
             raise ToolError(str(exc)) from None
 
+    @mcp.tool()
+    def list_pending_approvals(session_id: str | None = None) -> dict[str, Any]:
+        """Tool calls Claude is waiting to be allowed to make. Read each one to the user."""
+        if manager.approvals is None:
+            return {"approvals": []}
+        return {"approvals": manager.approvals.pending(session_id)}
+
+    @mcp.tool()
+    def approve(approval_id: str) -> dict[str, Any]:
+        """Allow one pending tool call. Only after the user has clearly said yes to it."""
+        return _answer(lambda b: b.approve(approval_id))
+
+    @mcp.tool()
+    def deny(approval_id: str, reason: str | None = None) -> dict[str, Any]:
+        """Refuse one pending tool call; the reason is passed on to Claude."""
+        return _answer(lambda b: b.deny(approval_id, reason))
+
+    def _answer(fn) -> dict[str, Any]:
+        if manager.approvals is None:
+            raise ToolError("Approvals are not enabled on this bridge")
+        try:
+            return fn(manager.approvals)
+        except ApprovalNotFound:
+            raise ToolError("No such pending approval; it may have expired") from None
+
     return mcp
 
 
@@ -249,7 +277,8 @@ def main(argv: list[str] | None = None) -> None:
     except ConfigError as exc:
         sys.exit(f"claude-voice: {exc}")
 
-    manager = SessionManager(Store(cfg.db), project_root=cfg.root)
+    store = Store(cfg.db)
+    manager = SessionManager(store, project_root=cfg.root, approvals=ApprovalBroker(store))
     server = build_server(manager)
     if cfg.transport == "stdio":
         server.run("stdio")

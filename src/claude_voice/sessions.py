@@ -14,7 +14,7 @@ import time
 from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -28,11 +28,13 @@ from claude_agent_sdk import (
 
 from .store import Store
 
+if TYPE_CHECKING:
+    from .approvals import ApprovalBroker
+
 CANCEL_GRACE_SECONDS = 10.0
 MAX_FIELD_CHARS = 300
 
 ClientFactory = Callable[[ClaudeAgentOptions], Any]
-OptionsHook = Callable[[str, ClaudeAgentOptions], ClaudeAgentOptions]
 
 
 class SessionBusy(RuntimeError):
@@ -50,13 +52,13 @@ class SessionManager:
         project_root: str | Path,
         client_factory: ClientFactory = ClaudeSDKClient,
         clock: Callable[[], float] = time.time,
-        options_hook: OptionsHook | None = None,
+        approvals: ApprovalBroker | None = None,
     ) -> None:
         self.store = store
         self.root = Path(project_root).expanduser().resolve()
         self.client_factory = client_factory
         self.clock = clock
-        self.options_hook = options_hook
+        self.approvals = approvals
         self._tasks: dict[str, asyncio.Task] = {}
         self._clients: dict[str, Any] = {}
         self._cancelling: set[str] = set()
@@ -128,6 +130,8 @@ class SessionManager:
             return {"session_id": session_id, "cancelled": False, "reason": "nothing running"}
 
         self._cancelling.add(session_id)
+        if self.approvals is not None:
+            self.approvals.withdraw(session_id)
         client = self._clients.get(session_id)
         if client is not None:
             with contextlib.suppress(Exception):
@@ -149,8 +153,8 @@ class SessionManager:
             setting_sources=["user", "project", "local"],
             permission_mode="default",
         )
-        if self.options_hook is not None:
-            opts = self.options_hook(session_id, opts)
+        if self.approvals is not None:
+            opts.can_use_tool = self.approvals.callback(session_id)
         return opts
 
     async def _run(self, session_id: str, prompt: str) -> None:
@@ -191,7 +195,7 @@ class SessionManager:
                     self.store.add_event(sid, "text", {"text": block.text})
                 elif isinstance(block, ToolUseBlock):
                     self.store.add_event(
-                        sid, "tool_use", {"name": block.name, "input": _brief(block.input)}
+                        sid, "tool_use", {"name": block.name, "input": brief(block.input)}
                     )
         elif isinstance(msg, ResultMessage):
             if msg.session_id:
@@ -237,6 +241,7 @@ class SessionManager:
                 Counter(e["payload"]["name"] for e in turn if e["kind"] == "tool_use")
             ),
             "last_error": s["last_error"],
+            "pending_approvals": self.approvals.pending(session_id) if self.approvals else [],
             "updated_at": s["updated_at"],
         }
 
@@ -249,12 +254,12 @@ class SessionManager:
         }
 
 
-def _brief(value: Any) -> Any:
+def brief(value: Any) -> Any:
     """Shrink tool inputs (a whole file for Write, say) to something worth reading aloud."""
     if isinstance(value, dict):
-        return {k: _brief(v) for k, v in value.items()}
+        return {k: brief(v) for k, v in value.items()}
     if isinstance(value, list):
-        return [_brief(v) for v in value[:20]]
+        return [brief(v) for v in value[:20]]
     if isinstance(value, str) and len(value) > MAX_FIELD_CHARS:
         return value[:MAX_FIELD_CHARS] + f"… ({len(value)} chars)"
     return value
