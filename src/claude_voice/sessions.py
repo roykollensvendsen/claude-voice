@@ -80,11 +80,23 @@ class SessionManager:
         path = self.resolve_project(project)
         return self.store.create_session(str(path), label)
 
-    def attach(self, claude_session_id: str, project: str, label: str | None = None) -> dict:
-        """Adopt a Claude conversation started elsewhere, e.g. in a terminal."""
+    def attach(
+        self,
+        claude_session_id: str,
+        project: str,
+        label: str | None = None,
+        history: list[dict[str, Any]] | None = None,
+    ) -> dict:
+        """Adopt a Claude conversation started elsewhere, e.g. in a terminal.
+
+        `history` (recent turns from its transcript) is journalled so recaps and
+        the event log show what happened before the bridge got involved.
+        """
         s = self.create(project, label)
         self.store.update_session(s["id"], claude_session_id=claude_session_id)
         self.store.add_event(s["id"], "attached", {"claude_session_id": claude_session_id})
+        for turn in history or []:
+            self.store.add_event(s["id"], "history", turn)
         return self.store.get_session(s["id"])
 
     def close(self, session_id: str) -> dict[str, Any]:
@@ -212,6 +224,12 @@ class SessionManager:
             )
             if msg.is_error:
                 return "error", msg.result or msg.subtype
+            if msg.num_turns == 0 and not (msg.result or "").strip():
+                # Seen when resuming a conversation that is open in a terminal.
+                return "error", (
+                    "Claude did nothing; the conversation may be open in another "
+                    "Claude Code window. Use message_active_session to reach it there."
+                )
             return "idle", None
         return None
 
@@ -229,13 +247,23 @@ class SessionManager:
         def last(kind: str, key: str = "text") -> Any:
             return next((e["payload"].get(key) for e in reversed(turn) if e["kind"] == kind), None)
 
+        def last_history(role: str) -> Any:
+            return next(
+                (
+                    e["payload"]["text"]
+                    for e in reversed(events)
+                    if e["kind"] == "history" and e["payload"].get("role") == role
+                ),
+                None,
+            )
+
         return {
             "session_id": s["id"],
             "label": s["label"],
             "project_path": s["project_path"],
             "status": s["status"],
-            "last_prompt": turn[0]["payload"]["text"] if turn else None,
-            "latest_text": last("text"),
+            "last_prompt": turn[0]["payload"]["text"] if turn else last_history("user"),
+            "latest_text": last("text") if turn else last_history("assistant"),
             "last_result": last("result"),
             "tools_used": dict(
                 Counter(e["payload"]["name"] for e in turn if e["kind"] == "tool_use")

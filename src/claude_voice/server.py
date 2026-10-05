@@ -7,7 +7,7 @@ import json
 import logging
 import os
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -21,6 +21,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from starlette.types import ASGIApp
 
+from . import transcripts
 from .approvals import ApprovalBroker, ApprovalNotFound
 from .oauth import SCOPE, OAuthProvider, PublicClientMetadata
 from .sessions import SessionBusy, SessionClosed, SessionManager
@@ -116,6 +117,8 @@ def build_server(
     oauth: OAuthProvider | None = None,
     conversations: Callable[..., list[SDKSessionInfo]] = list_claude_sessions,
     live_dir: Path = LIVE_DIR,
+    deliver: Callable[[str, str], Awaitable[dict[str, Any]]] = transcripts.deliver,
+    read_transcript: Callable[[str, str | None], list[Any]] = transcripts.read_transcript,
 ) -> MCPServer:
     auth = None
     if oauth is not None:
@@ -311,17 +314,61 @@ def build_server(
         """Continue an existing Claude Code conversation (from list_claude_conversations).
         If it is still open in a terminal, both copies will carry on separately."""
         if project is None:
-            match = next(
-                (c for c in conversations(limit=1000) if c.session_id == claude_session_id), None
+            live = next(
+                (d for d in live_sessions() if d.get("sessionId") == claude_session_id), None
             )
-            if match is None:
-                raise ToolError(f"No Claude Code conversation with id {claude_session_id}")
-            project = match.cwd or ""
-            label = label or match.custom_title or match.summary
+            match = None
+            if live is None:
+                match = next(
+                    (c for c in conversations(limit=1000) if c.session_id == claude_session_id),
+                    None,
+                )
+                if match is None:
+                    raise ToolError(f"No Claude Code conversation with id {claude_session_id}")
+            project = (live or {}).get("cwd") or (match.cwd if match else "") or ""
+            label = (
+                label
+                or (live or {}).get("name")
+                or (match and (match.custom_title or match.summary))
+            )
         try:
-            return manager.attach(claude_session_id, project, label)
+            path = str(manager.resolve_project(project))
         except ValueError as exc:
             raise ToolError(str(exc)) from None
+        try:
+            history = transcripts.recent_turns(read_transcript(claude_session_id, path), limit=10)
+        except Exception:
+            history = []
+        return manager.attach(claude_session_id, path, label, history=history)
+
+    def find_live(session: str) -> dict[str, Any]:
+        for d in live_sessions():
+            if session in (d.get("name"), d.get("sessionId")) and under_root(d.get("cwd")):
+                return d
+        raise ToolError(f"No running session called {session!r}; see list_active_sessions")
+
+    @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+    async def message_active_session(session: str, message: str) -> dict[str, Any]:
+        """Send a message into a Claude Code session that is open right now (e.g. in a
+        terminal), by its name or id from list_active_sessions. It arrives in that very
+        window. Read its answer later with read_session_output."""
+        target = find_live(session)
+        out = await deliver(target["name"], message)
+        if not out.get("delivered"):
+            raise ToolError(f"Could not deliver: {out.get('detail') or 'unknown reason'}")
+        return {"session": target["name"], **out}
+
+    @mcp.tool(annotations=READ_ONLY)
+    def read_session_output(session: str, limit: int = 6) -> dict[str, Any]:
+        """The latest prompts and replies of a running Claude Code session (name or id from
+        list_active_sessions), read from its own transcript."""
+        target = find_live(session)
+        msgs = read_transcript(target["sessionId"], target.get("cwd"))
+        return {
+            "session": target["name"],
+            "status": target.get("status"),
+            "turns": transcripts.recent_turns(msgs, limit=min(max(limit, 1), 30)),
+        }
 
     @mcp.tool(annotations=READ_ONLY)
     def list_pending_approvals(session_id: str | None = None) -> dict[str, Any]:
