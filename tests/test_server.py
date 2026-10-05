@@ -254,6 +254,7 @@ async def test_status_tools_are_marked_read_only_so_clients_need_no_confirmation
         "fleet_recap",
         "list_claude_conversations",
         "list_pending_approvals",
+        "list_active_sessions",
     }
     for name in read_only:
         ann = tools[name].annotations
@@ -373,3 +374,16 @@ async def test_active_sessions_are_the_running_claude_code_processes(tmp_path, r
         }
     ]
     assert listed["conversations"][0]["open_in_terminal"] is True
+
+
+async def test_tool_calls_are_logged_by_name(tmp_path, root, caplog):
+    import logging
+
+    _, server = make(tmp_path, root, FakeClaude())
+    with caplog.at_level(logging.INFO, logger="claude_voice"):
+        async with Client(server) as client:
+            await call(client, "list_projects")
+            await client.call_tool("session_recap", {"session_id": "nope"})
+    lines = [r.getMessage() for r in caplog.records if r.name == "claude_voice"]
+    assert "mcp tools/call list_projects -> ok" in lines
+    assert "mcp tools/call session_recap -> error" in lines

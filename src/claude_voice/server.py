@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+import logging
 import os
 import sys
 from collections.abc import Callable, Mapping
@@ -26,6 +28,8 @@ from .store import SessionNotFound, Store
 
 MIN_TOKEN_CHARS = 32
 READ_ONLY = ToolAnnotations(read_only_hint=True)
+# Claude Code keeps one JSON file per running session here.
+LIVE_DIR = Path("~/.claude/sessions").expanduser()
 
 INSTRUCTIONS = """\
 Controls Claude Code sessions running on the user's own machine. The user is
@@ -83,10 +87,33 @@ def load_config(env: Mapping[str, str], transport: str) -> Config:
     return cfg
 
 
+log = logging.getLogger("claude_voice")
+
+
+async def log_requests(ctx, call_next):
+    """Log each MCP method (and tool name) so the journal shows what a client asked for."""
+    params = ctx.params if isinstance(ctx.params, dict) else {}
+    what = f"{ctx.method} {params.get('name', '')}".rstrip()
+    try:
+        result = await call_next(ctx)
+    except Exception as exc:
+        log.info("mcp %s -> %s", what, type(exc).__name__)
+        raise
+    if ctx.method == "tools/call":
+        failed = getattr(result, "is_error", None) or (
+            isinstance(result, dict) and result.get("isError")
+        )
+        log.info("mcp %s -> %s", what, "error" if failed else "ok")
+    elif ctx.request_id is not None:
+        log.info("mcp %s", what)
+    return result
+
+
 def build_server(
     manager: SessionManager,
     oauth: OAuthProvider | None = None,
     conversations: Callable[..., list[SDKSessionInfo]] = list_claude_sessions,
+    live_dir: Path = LIVE_DIR,
 ) -> MCPServer:
     auth = None
     if oauth is not None:
@@ -101,7 +128,11 @@ def build_server(
             validate_token_resource=False,
         )
     mcp = MCPServer(
-        "claude-voice", instructions=INSTRUCTIONS, auth_server_provider=oauth, auth=auth
+        "claude-voice",
+        instructions=INSTRUCTIONS,
+        auth_server_provider=oauth,
+        auth=auth,
+        middleware=[log_requests],
     )
     if oauth is not None:
         mcp.custom_route("/oauth/consent", methods=["GET"])(oauth.consent_page)
@@ -200,6 +231,39 @@ def build_server(
         except ValueError:
             return None
 
+    def live_sessions() -> list[dict[str, Any]]:
+        out = []
+        for f in sorted(live_dir.glob("*.json")) if live_dir.is_dir() else []:
+            try:
+                d = json.loads(f.read_text())
+                os.kill(int(d["pid"]), 0)
+            except (ValueError, KeyError, TypeError, OSError):
+                continue  # unreadable, or the process is gone
+            out.append(d)
+        return out
+
+    @mcp.tool(annotations=READ_ONLY)
+    def list_active_sessions() -> dict[str, Any]:
+        """Claude Code sessions running on this machine right now (e.g. open in a terminal),
+        with whether each is busy or waiting for input."""
+        now_ms = manager.clock() * 1000
+        sessions = []
+        for d in live_sessions():
+            name = under_root(d.get("cwd"))
+            if name is None:
+                continue
+            sessions.append(
+                {
+                    "claude_session_id": d.get("sessionId"),
+                    "name": d.get("name"),
+                    "project": name,
+                    "status": d.get("status"),
+                    "minutes_since_update": round((now_ms - d.get("updatedAt", now_ms)) / 60000),
+                }
+            )
+        sessions.sort(key=lambda s: s["minutes_since_update"])
+        return {"sessions": sessions}
+
     @mcp.tool(annotations=READ_ONLY)
     def list_claude_conversations(project: str | None = None, limit: int = 10) -> dict[str, Any]:
         """Recent Claude Code conversations on this machine, newest first, including ones
@@ -212,6 +276,7 @@ def build_server(
                 raise ToolError(str(exc)) from None
         limit = min(max(limit, 1), 50)
         now_ms = manager.clock() * 1000
+        open_ids = {d.get("sessionId") for d in live_sessions()}
         listed = []
         for c in conversations(directory=directory, limit=limit * 5):
             name = under_root(c.cwd)
@@ -225,6 +290,7 @@ def build_server(
                     "first_prompt": c.first_prompt,
                     "git_branch": c.git_branch,
                     "minutes_ago": round((now_ms - c.last_modified) / 60000),
+                    "open_in_terminal": c.session_id in open_ids,
                 }
             )
             if len(listed) == limit:
@@ -318,4 +384,5 @@ def main(argv: list[str] | None = None) -> None:
     # static bearer token for local MCP clients.
     oauth = OAuthProvider(store, login_secret=token, public_url=cfg.public_url, static_token=token)
     app = build_app(build_server(manager, oauth=oauth), cfg.public_hosts)
+    logging.basicConfig(level=logging.INFO, format="%(name)s: %(message)s")
     uvicorn.run(app, host=cfg.host, port=cfg.port, log_level="info")
