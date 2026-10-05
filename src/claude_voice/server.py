@@ -371,6 +371,18 @@ def build_server(
         }
 
     @mcp.tool(annotations=READ_ONLY)
+    def search_session_history(session: str, query: str, limit: int = 5) -> dict[str, Any]:
+        """Search the whole conversation of a running Claude Code session (name or id from
+        list_active_sessions) for keywords; returns only the most relevant excerpts.
+        Use instead of reading long output when looking for something said earlier."""
+        target = find_live(session)
+        turns = transcripts.recent_turns(
+            read_transcript(target["sessionId"], target.get("cwd")), None
+        )
+        matches = transcripts.search_turns(turns, query, limit=min(max(limit, 1), 20))
+        return {"session": target["name"], "total_turns": len(turns), "matches": matches}
+
+    @mcp.tool(annotations=READ_ONLY)
     def list_pending_approvals(session_id: str | None = None) -> dict[str, Any]:
         """Tool calls Claude is waiting to be allowed to make. Read each one to the user."""
         if manager.approvals is None:

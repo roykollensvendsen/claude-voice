@@ -8,6 +8,7 @@ itself rather than in a copy of its conversation.
 
 from __future__ import annotations
 
+import re
 import tempfile
 from collections.abc import Iterable
 from typing import Any
@@ -26,7 +27,7 @@ from claude_agent_sdk import (
 MESSAGING_TOOLS = frozenset({"ListAgents", "SendMessage", "ToolSearch"})
 
 
-def recent_turns(messages: Iterable[Any], limit: int = 10) -> list[dict[str, Any]]:
+def recent_turns(messages: Iterable[Any], limit: int | None = 10) -> list[dict[str, Any]]:
     """What a person would read: prompts and Claude's text, with tool names folded in."""
     turns: list[dict[str, Any]] = []
     pending_tools: list[str] = []
@@ -48,7 +49,44 @@ def recent_turns(messages: Iterable[Any], limit: int = 10) -> list[dict[str, Any
                 elif b.get("type") == "text" and b.get("text", "").strip():
                     turns.append({"role": "assistant", "text": b["text"], "tools": pending_tools})
                     pending_tools = []
-    return turns[-limit:]
+    return turns if limit is None else turns[-limit:]
+
+
+def search_turns(
+    turns: list[dict[str, Any]], query: str, limit: int = 5, context_chars: int = 200
+) -> list[dict[str, Any]]:
+    """Turns matching the query's words, most relevant first, each cut to a snippet.
+
+    Relevance: how many distinct query words a turn contains, then how often
+    they occur; ties go to the newer turn. `turn` is the index in `turns`.
+    """
+    terms = {w for w in re.findall(r"\w+", query.lower()) if len(w) > 1}
+    scored = []
+    for i, turn in enumerate(turns):
+        text = turn["text"].lower()
+        present = [w for w in terms if w in text]
+        if present:
+            hits = sum(text.count(w) for w in present)
+            scored.append((len(present), hits, i))
+    scored.sort(reverse=True)
+    out = []
+    for _, _, i in scored[:limit]:
+        turn = turns[i]
+        out.append(
+            {
+                "turn": i,
+                "role": turn["role"],
+                "text": _snippet(turn["text"], terms, context_chars),
+            }
+        )
+    return out
+
+
+def _snippet(text: str, terms: set[str], context: int) -> str:
+    lower = text.lower()
+    pos, length = min(((lower.find(w), len(w)) for w in terms if w in lower), default=(0, 0))
+    start, end = max(0, pos - context), min(len(text), pos + length + context)
+    return ("…" if start else "") + text[start:end].strip() + ("…" if end < len(text) else "")
 
 
 def read_transcript(session_id: str, directory: str | None) -> list[Any]:

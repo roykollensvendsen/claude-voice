@@ -188,7 +188,7 @@ def test_search_returns_only_matching_turns_best_first():
 
 def test_search_is_case_insensitive_and_ignores_unmatched_words():
     hits = search_turns(recent_turns(LONG, limit=None), "OAUTH banana", limit=5)
-    assert [h["turn"] for h in hits] == [0, 1]
+    assert [h["turn"] for h in hits] == [1, 0]  # equal relevance: newest first
 
 
 def test_long_turns_are_cut_to_a_snippet_around_the_match():
