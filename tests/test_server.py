@@ -387,3 +387,16 @@ async def test_tool_calls_are_logged_by_name(tmp_path, root, caplog):
     lines = [r.getMessage() for r in caplog.records if r.name == "claude_voice"]
     assert "mcp tools/call list_projects -> ok" in lines
     assert "mcp tools/call session_recap -> error" in lines
+
+
+async def test_list_sessions_also_shows_running_claude_code_sessions(tmp_path, root):
+    import os
+
+    live = tmp_path / "live"
+    live.mkdir()
+    live_entry(live, os.getpid(), "c-1", str(root / "app"), "app-fix", "idle")
+    m = SessionManager(Store(tmp_path / "b.db"), project_root=root, client_factory=FakeClaude())
+    async with Client(build_server(m, conversations=FakeConversations([]), live_dir=live)) as c:
+        out = await call(c, "list_sessions")
+    assert out["sessions"] == []
+    assert [s["name"] for s in out["running_claude_code_sessions"]] == ["app-fix"]
