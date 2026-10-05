@@ -15,6 +15,7 @@ from mcp.server import MCPServer
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
+from mcp.types import ToolAnnotations
 from starlette.types import ASGIApp
 
 from .approvals import ApprovalBroker, ApprovalNotFound
@@ -23,6 +24,7 @@ from .sessions import SessionBusy, SessionClosed, SessionManager
 from .store import SessionNotFound, Store
 
 MIN_TOKEN_CHARS = 32
+READ_ONLY = ToolAnnotations(read_only_hint=True)
 
 INSTRUCTIONS = """\
 Controls Claude Code sessions running on the user's own machine. The user is
@@ -107,7 +109,7 @@ def build_server(manager: SessionManager, oauth: OAuthProvider | None = None) ->
         except SessionNotFound:
             raise ToolError(f"No session with id {session_id}") from None
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     def list_projects() -> dict[str, Any]:
         """List the project directories Claude can be started in."""
         names = sorted(
@@ -115,7 +117,7 @@ def build_server(manager: SessionManager, oauth: OAuthProvider | None = None) ->
         )
         return {"root": str(manager.root), "projects": names}
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
     def create_session(project: str, label: str | None = None) -> dict[str, Any]:
         """Start a new Claude Code session in a project (a name from list_projects)."""
         try:
@@ -123,7 +125,7 @@ def build_server(manager: SessionManager, oauth: OAuthProvider | None = None) ->
         except ValueError as exc:
             raise ToolError(str(exc)) from None
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     def list_sessions(
         status: str | None = None, project: str | None = None, limit: int = 20
     ) -> dict[str, Any]:
@@ -135,7 +137,7 @@ def build_server(manager: SessionManager, oauth: OAuthProvider | None = None) ->
         rows = store.list_sessions(project_path, status, min(max(limit, 1), 100))
         return {"sessions": rows}
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
     async def send_task(session_id: str, prompt: str) -> dict[str, Any]:
         """Give Claude a task or follow-up. Returns at once; poll session_recap for progress."""
         known(session_id)
@@ -145,37 +147,37 @@ def build_server(manager: SessionManager, oauth: OAuthProvider | None = None) ->
             msg = str(exc) if not isinstance(exc, SessionClosed) else "That session is closed."
             raise ToolError(msg) from None
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     def session_recap(session_id: str) -> dict[str, Any]:
         """Short status of one session: running or not, last prompt, latest words, result."""
         known(session_id)
         return manager.recap(session_id)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     def get_messages(session_id: str, after: int = 0, limit: int = 50) -> dict[str, Any]:
         """Detailed event log of a session. Pass next_after back as `after` to page on."""
         known(session_id)
         events = store.events(session_id, after=max(after, 0), limit=min(max(limit, 1), 200))
         return {"events": events, "next_after": events[-1]["seq"] if events else after}
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     def recent_activity(since_minutes: int = 1440, limit: int = 100) -> dict[str, Any]:
         """Everything that happened across all sessions in the last N minutes."""
         since = manager.clock() - max(since_minutes, 1) * 60
         return {"events": store.recent_events(since, limit=min(max(limit, 1), 500))}
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     def fleet_recap(since_minutes: int = 1440) -> dict[str, Any]:
         """One recap per session active in the last N minutes: 'what have my agents done?'"""
         return manager.fleet_recap(max(since_minutes, 1))
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
     async def cancel(session_id: str) -> dict[str, Any]:
         """Stop what Claude is doing in a session. The session can be used again afterwards."""
         known(session_id)
         return await manager.cancel(session_id)
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
     def close_session(session_id: str) -> dict[str, Any]:
         """Retire a session. Its history is kept."""
         known(session_id)
@@ -184,7 +186,7 @@ def build_server(manager: SessionManager, oauth: OAuthProvider | None = None) ->
         except SessionBusy as exc:
             raise ToolError(str(exc)) from None
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     def list_claude_conversations(project: str, limit: int = 10) -> dict[str, Any]:
         """Claude Code conversations on this machine for a project, including terminal ones."""
         try:
@@ -205,7 +207,7 @@ def build_server(manager: SessionManager, oauth: OAuthProvider | None = None) ->
             ]
         }
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
     def attach_conversation(
         claude_session_id: str, project: str, label: str | None = None
     ) -> dict[str, Any]:
@@ -215,19 +217,19 @@ def build_server(manager: SessionManager, oauth: OAuthProvider | None = None) ->
         except ValueError as exc:
             raise ToolError(str(exc)) from None
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     def list_pending_approvals(session_id: str | None = None) -> dict[str, Any]:
         """Tool calls Claude is waiting to be allowed to make. Read each one to the user."""
         if manager.approvals is None:
             return {"approvals": []}
         return {"approvals": manager.approvals.pending(session_id)}
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
     def approve(approval_id: str) -> dict[str, Any]:
         """Allow one pending tool call. Only after the user has clearly said yes to it."""
         return _answer(lambda b: b.approve(approval_id))
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
     def deny(approval_id: str, reason: str | None = None) -> dict[str, Any]:
         """Refuse one pending tool call; the reason is passed on to Claude."""
         return _answer(lambda b: b.deny(approval_id, reason))
