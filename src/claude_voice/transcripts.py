@@ -61,13 +61,13 @@ def search_turns(
     they occur; ties go to the newer turn. `turn` is the index in `turns`.
     """
     terms = {w for w in re.findall(r"\w+", query.lower()) if len(w) > 1}
+    patterns = {w: re.compile(rf"\b{re.escape(w)}", re.IGNORECASE) for w in terms}
     scored = []
     for i, turn in enumerate(turns):
-        text = turn["text"].lower()
-        present = [w for w in terms if w in text]
+        counts = {w: len(p.findall(turn["text"])) for w, p in patterns.items()}
+        present = [w for w, n in counts.items() if n]
         if present:
-            hits = sum(text.count(w) for w in present)
-            scored.append((len(present), hits, i))
+            scored.append((len(present), sum(counts.values()), i))
     scored.sort(reverse=True)
     out = []
     for _, _, i in scored[:limit]:
@@ -76,15 +76,16 @@ def search_turns(
             {
                 "turn": i,
                 "role": turn["role"],
-                "text": _snippet(turn["text"], terms, context_chars),
+                "text": _snippet(turn["text"], list(patterns.values()), context_chars),
             }
         )
     return out
 
 
-def _snippet(text: str, terms: set[str], context: int) -> str:
-    lower = text.lower()
-    pos, length = min(((lower.find(w), len(w)) for w in terms if w in lower), default=(0, 0))
+def _snippet(text: str, patterns: list[re.Pattern], context: int) -> str:
+    found = [m for p in patterns if (m := p.search(text))]
+    first = min(found, key=lambda m: m.start(), default=None)
+    pos, length = (first.start(), len(first.group())) if first else (0, 0)
     start, end = max(0, pos - context), min(len(text), pos + length + context)
     return ("…" if start else "") + text[start:end].strip() + ("…" if end < len(text) else "")
 

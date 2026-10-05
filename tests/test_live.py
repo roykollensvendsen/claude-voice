@@ -215,5 +215,8 @@ async def test_search_tool_reads_the_whole_transcript(tmp_path, root, live):
 
 
 def test_words_match_at_word_starts_only():
-    turns = [{"role": "user", "text": "Skriv en rapport"}, {"role": "user", "text": "Porten er 443"}]
+    turns = [
+        {"role": "user", "text": "Skriv en rapport"},
+        {"role": "user", "text": "Porten er 443"},
+    ]
     assert [h["turn"] for h in search_turns(turns, "port")] == [1]
