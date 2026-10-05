@@ -162,9 +162,13 @@ async def test_publishes_oauth_metadata(bridge):
     assert meta["registration_endpoint"] == f"{base}/register"
     assert "S256" in meta["code_challenge_methods_supported"]
 
+    assert meta["scopes_supported"] == ["claude"]
+    assert "none" in meta["token_endpoint_auth_methods_supported"]
+
     prm = await bridge.get("/.well-known/oauth-protected-resource/mcp")
     assert prm.status_code == 200
     assert prm.json()["resource"].rstrip("/") == f"{base}/mcp"
+    assert prm.json()["scopes_supported"] == ["claude"]
 
 
 async def test_mcp_without_a_token_points_the_client_at_oauth(bridge):
@@ -177,6 +181,7 @@ async def test_full_login_gives_tokens_that_open_mcp(bridge):
     _, tokens = await login(bridge)
     assert tokens["token_type"].lower() == "bearer"
     assert tokens["refresh_token"]
+    assert tokens["scope"] == "claude"
     r = await mcp_initialize(bridge, tokens["access_token"])
     assert r.status_code == 200, r.text
 
