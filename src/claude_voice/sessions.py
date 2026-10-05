@@ -70,6 +70,7 @@ class SessionManager:
         if not path.is_absolute():
             path = self.root / path
         path = path.resolve()
+        # RULE: a project outside the root is refused
         if path != self.root and self.root not in path.parents:
             raise ValueError(f"project must be under {self.root}")
         if not path.is_dir():
@@ -124,9 +125,7 @@ class SessionManager:
 
         self.store.update_session(session_id, status="running", last_error=None)
         self.store.add_event(session_id, "prompt", {"text": prompt})
-        self._tasks[session_id] = asyncio.create_task(
-            self._run(session_id, prompt), name=f"claude-turn:{session_id}"
-        )
+        self._tasks[session_id] = asyncio.create_task(self._run(session_id, prompt), name=f"claude-turn:{session_id}")
         return {"session_id": session_id, "status": "running"}
 
     async def wait(self, session_id: str) -> None:
@@ -206,9 +205,7 @@ class SessionManager:
                 if isinstance(block, TextBlock) and block.text.strip():
                     self.store.add_event(sid, "text", {"text": block.text})
                 elif isinstance(block, ToolUseBlock):
-                    self.store.add_event(
-                        sid, "tool_use", {"name": block.name, "input": brief(block.input)}
-                    )
+                    self.store.add_event(sid, "tool_use", {"name": block.name, "input": brief(block.input)})
         elif isinstance(msg, ResultMessage):
             if msg.session_id:
                 self.store.update_session(sid, claude_session_id=msg.session_id)
@@ -239,9 +236,7 @@ class SessionManager:
         """A deterministic, voice-sized summary of where a session stands."""
         s = self.store.get_session(session_id)
         events = self.store.tail(session_id, 200)
-        last_prompt_at = max(
-            (i for i, e in enumerate(events) if e["kind"] == "prompt"), default=None
-        )
+        last_prompt_at = max((i for i, e in enumerate(events) if e["kind"] == "prompt"), default=None)
         turn = events[last_prompt_at:] if last_prompt_at is not None else []
 
         def last(kind: str, key: str = "text") -> Any:
@@ -265,9 +260,7 @@ class SessionManager:
             "last_prompt": turn[0]["payload"]["text"] if turn else last_history("user"),
             "latest_text": last("text") if turn else last_history("assistant"),
             "last_result": last("result"),
-            "tools_used": dict(
-                Counter(e["payload"]["name"] for e in turn if e["kind"] == "tool_use")
-            ),
+            "tools_used": dict(Counter(e["payload"]["name"] for e in turn if e["kind"] == "tool_use")),
             "last_error": s["last_error"],
             "pending_approvals": self.approvals.pending(session_id) if self.approvals else [],
             "updated_at": s["updated_at"],

@@ -32,9 +32,7 @@ def store(tmp_path, clock):
 
 
 def manager(store, root, claude, clock=None):
-    return SessionManager(
-        store, project_root=root, client_factory=claude, clock=clock or store.clock
-    )
+    return SessionManager(store, project_root=root, client_factory=claude, clock=clock or store.clock)
 
 
 def kinds(store, sid):

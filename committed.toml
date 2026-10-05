@@ -1,0 +1,26 @@
+# Conventional Commits, enforced in CI by crate-ci/committed.
+# Same rules as the monorepo this began in, so one habit serves both.
+style = "conventional"
+subject_length = 72
+line_length = 100
+subject_capitalized = true
+subject_not_punctuated = true
+# committed 1.1.11 has this setting and flags nothing, so it records the
+# intent and scripts/imperative.py is what enforces it.
+imperative_subject = true
+merge_commit = false
+no_fixup = true
+no_wip = true
+allowed_types = [
+  "build",
+  "chore",
+  "ci",
+  "docs",
+  "feat",
+  "fix",
+  "perf",
+  "refactor",
+  "revert",
+  "style",
+  "test",
+]

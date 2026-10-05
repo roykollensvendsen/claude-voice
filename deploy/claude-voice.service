@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=%h/claude-voice
-ExecStart=%h/claude-voice/.venv/bin/claude-voice --transport http
+ExecStart=%h/claude-voice/.venv/bin/claude-voice serve --transport http
 EnvironmentFile=%h/.config/claude-voice/env
 Restart=on-failure
 RestartSec=5

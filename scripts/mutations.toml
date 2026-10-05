@@ -1,0 +1,34 @@
+# Every rule this project enforces, and the one line that carries it.
+#
+# A rule nothing catches is a rule nothing protects. `scripts/mutate.py` turns
+# each of these off in turn and runs the suite; a rule whose removal breaks no
+# test has no test. Add a test of your own that counts the rules in the source
+# against the rows here, so this list cannot fall behind.
+#
+# `find` is a regular expression matching the single line to replace; `replace`
+# is what replaces it, keeping the file valid. The line's own indentation is
+# kept, so do not write indentation here.
+#
+# [[rule]]
+# name = "what the rule says, in words"
+# file = "src/claude_voice/somewhere.py"
+# find = 'if limit_exceeded:'
+# replace = 'if False:'
+
+[[rule]]
+name = "an api key in the environment stops the bridge from starting"
+file = "src/claude_voice/server.py"
+find = 'if env.get\("ANTHROPIC_API_KEY"\) and env.get\("CLAUDE_VOICE_ALLOW_API_KEY"\) != "1":'
+replace = 'if False:'
+
+[[rule]]
+name = "a project outside the root is refused"
+file = "src/claude_voice/sessions.py"
+find = 'if path != self.root and self.root not in path.parents:'
+replace = 'if False:'
+
+[[rule]]
+name = "an approval nobody answers is refused"
+file = "src/claude_voice/approvals.py"
+find = 'return PermissionResultDeny\(message="Not approved in time; the user did not answer."\)'
+replace = 'return PermissionResultAllow()'

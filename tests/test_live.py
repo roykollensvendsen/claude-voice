@@ -87,9 +87,7 @@ class Recorder:
 
 
 def server_for(tmp_path, root, live, deliver=None, read=None, claude=None):
-    m = SessionManager(
-        Store(tmp_path / "b.db"), project_root=root, client_factory=claude or FakeClaude()
-    )
+    m = SessionManager(Store(tmp_path / "b.db"), project_root=root, client_factory=claude or FakeClaude())
     srv = build_server(
         m,
         conversations=lambda directory=None, limit=None: [],

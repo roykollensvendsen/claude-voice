@@ -80,14 +80,12 @@ class Store:
         fields["updated_at"] = self.clock()
         cols = ", ".join(f"{k}=?" for k in fields)
         with self.db:
-            self.db.execute(
-                f"UPDATE sessions SET {cols} WHERE id=?", (*fields.values(), session_id)
-            )
+            self.db.execute(f"UPDATE sessions SET {cols} WHERE id=?", (*fields.values(), session_id))
 
     def list_sessions(
         self, project_path: str | None = None, status: str | None = None, limit: int = 50
     ) -> list[dict[str, Any]]:
-        q, args = "SELECT * FROM sessions WHERE 1=1", []
+        q, args = "SELECT * FROM sessions WHERE 1=1", list[Any]()
         if project_path:
             q += " AND project_path=?"
             args.append(project_path)
@@ -105,27 +103,24 @@ class Store:
                 "INSERT INTO events(session_id, ts, kind, payload) VALUES(?,?,?,?)",
                 (session_id, self.clock(), kind, json.dumps(payload, default=str)),
             )
+        assert cur.lastrowid is not None  # always set after an INSERT
         return cur.lastrowid
 
     def events(self, session_id: str, after: int = 0, limit: int = 50) -> list[dict[str, Any]]:
         rows = self.db.execute(
-            "SELECT seq, session_id, ts, kind, payload FROM events"
-            " WHERE session_id=? AND seq>? ORDER BY seq LIMIT ?",
+            "SELECT seq, session_id, ts, kind, payload FROM events WHERE session_id=? AND seq>? ORDER BY seq LIMIT ?",
             (session_id, after, limit),
         )
         return [_decode(r) for r in rows]
 
     def tail(self, session_id: str, limit: int = 30) -> list[dict[str, Any]]:
         rows = self.db.execute(
-            "SELECT seq, session_id, ts, kind, payload FROM events"
-            " WHERE session_id=? ORDER BY seq DESC LIMIT ?",
+            "SELECT seq, session_id, ts, kind, payload FROM events WHERE session_id=? ORDER BY seq DESC LIMIT ?",
             (session_id, limit),
         ).fetchall()
         return [_decode(r) for r in reversed(rows)]
 
-    def recent_events(
-        self, since: float, project_path: str | None = None, limit: int = 100
-    ) -> list[dict[str, Any]]:
+    def recent_events(self, since: float, project_path: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
         q = (
             "SELECT e.seq, e.session_id, e.ts, e.kind, e.payload, s.project_path, s.label"
             " FROM events e JOIN sessions s ON s.id=e.session_id WHERE e.ts>=?"

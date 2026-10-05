@@ -66,16 +66,13 @@ class ApprovalBroker:
             return await asyncio.wait_for(asyncio.shield(future), self.timeout)
         except TimeoutError:
             self.store.add_event(session_id, "approval_expired", {"id": req["id"]})
+            # RULE: an approval nobody answers is refused
             return PermissionResultDeny(message="Not approved in time; the user did not answer.")
         finally:
             self._pending.pop(req["id"], None)
 
     def pending(self, session_id: str | None = None) -> list[dict[str, Any]]:
-        return [
-            req
-            for req, _ in self._pending.values()
-            if session_id is None or req["session_id"] == session_id
-        ]
+        return [req for req, _ in self._pending.values() if session_id is None or req["session_id"] == session_id]
 
     def _settle(self, approval_id: str, outcome: PermissionResultAllow | PermissionResultDeny):
         entry = self._pending.pop(approval_id, None)
@@ -93,9 +90,7 @@ class ApprovalBroker:
     def deny(self, approval_id: str, reason: str | None = None) -> dict[str, Any]:
         message = reason or "The user said no."
         req = self._settle(approval_id, PermissionResultDeny(message=message))
-        self.store.add_event(
-            req["session_id"], "approval_denied", {"id": approval_id, "reason": message}
-        )
+        self.store.add_event(req["session_id"], "approval_denied", {"id": approval_id, "reason": message})
         return req
 
     def withdraw(self, session_id: str) -> None:

@@ -88,9 +88,7 @@ class OAuthProvider:
     # -- clients -------------------------------------------------------------
 
     async def get_client(self, client_id: str) -> OAuthClientInformationFull | None:
-        row = self.db.execute(
-            "SELECT info FROM oauth_clients WHERE client_id=?", (client_id,)
-        ).fetchone()
+        row = self.db.execute("SELECT info FROM oauth_clients WHERE client_id=?", (client_id,)).fetchone()
         return OAuthClientInformationFull.model_validate_json(row[0]) if row else None
 
     async def register_client(self, client_info: OAuthClientInformationFull) -> None:
@@ -102,9 +100,7 @@ class OAuthProvider:
 
     # -- authorization -------------------------------------------------------
 
-    async def authorize(
-        self, client: OAuthClientInformationFull, params: AuthorizationParams
-    ) -> str:
+    async def authorize(self, client: OAuthClientInformationFull, params: AuthorizationParams) -> str:
         self._expire()
         request_id = secrets.token_urlsafe(24)
         self._consents[request_id] = _PendingConsent(client, params, self.clock() + CONSENT_TTL)
@@ -137,20 +133,14 @@ class OAuthProvider:
         if form.get("action") == "deny":
             del self._consents[request_id]
             return RedirectResponse(
-                construct_redirect_uri(
-                    str(params.redirect_uri), error="access_denied", state=params.state
-                ),
+                construct_redirect_uri(str(params.redirect_uri), error="access_denied", state=params.state),
                 302,
             )
 
-        if not hmac.compare_digest(
-            str(form.get("secret", "")).encode(), self.login_secret.encode()
-        ):
+        if not hmac.compare_digest(str(form.get("secret", "")).encode(), self.login_secret.encode()):
             pending.attempts += 1
             left = MAX_SECRET_ATTEMPTS - pending.attempts
-            return HTMLResponse(
-                _consent_form(request_id, pending, error=f"Wrong secret. {left} tries left."), 401
-            )
+            return HTMLResponse(_consent_form(request_id, pending, error=f"Wrong secret. {left} tries left."), 401)
 
         del self._consents[request_id]
         code = secrets.token_urlsafe(32)
@@ -165,9 +155,7 @@ class OAuthProvider:
             resource=params.resource,
             subject="owner",
         )
-        return RedirectResponse(
-            construct_redirect_uri(str(params.redirect_uri), code=code, state=params.state), 302
-        )
+        return RedirectResponse(construct_redirect_uri(str(params.redirect_uri), code=code, state=params.state), 302)
 
     async def load_authorization_code(
         self, client: OAuthClientInformationFull, authorization_code: str
@@ -183,9 +171,7 @@ class OAuthProvider:
     ) -> OAuthToken:
         if self._codes.pop(authorization_code.code, None) is None:
             raise TokenError("invalid_grant", "authorization code already used")
-        return await self.issue_tokens(
-            client.client_id, authorization_code.scopes, authorization_code.resource
-        )
+        return await self.issue_tokens(client.client_id, authorization_code.scopes, authorization_code.resource)
 
     # -- tokens --------------------------------------------------------------
 
@@ -227,8 +213,7 @@ class OAuthProvider:
 
     def _load(self, token: str, kind: str):
         row = self.db.execute(
-            "SELECT client_id, scopes, resource, expires_at, family FROM oauth_tokens"
-            " WHERE hash=? AND kind=?",
+            "SELECT client_id, scopes, resource, expires_at, family FROM oauth_tokens WHERE hash=? AND kind=?",
             (_hash(token), kind),
         ).fetchone()
         if row is None or row[3] < self.clock():
@@ -237,9 +222,7 @@ class OAuthProvider:
 
     async def load_access_token(self, token: str) -> AccessToken | None:
         if self.static_token and hmac.compare_digest(token.encode(), self.static_token.encode()):
-            return AccessToken(
-                token=token, client_id="static-token", scopes=[SCOPE], subject="owner"
-            )
+            return AccessToken(token=token, client_id="static-token", scopes=[SCOPE], subject="owner")
         row = self._load(token, "access")
         if row is None:
             return None
@@ -253,9 +236,7 @@ class OAuthProvider:
             subject="owner",
         )
 
-    async def load_refresh_token(
-        self, client: OAuthClientInformationFull, refresh_token: str
-    ) -> RefreshToken | None:
+    async def load_refresh_token(self, client: OAuthClientInformationFull, refresh_token: str) -> RefreshToken | None:
         row = self._load(refresh_token, "refresh")
         if row is None or row[0] != client.client_id:
             return None
@@ -277,14 +258,10 @@ class OAuthProvider:
         with self.db:
             # Rotation: the presented refresh token is spent.
             self.db.execute("DELETE FROM oauth_tokens WHERE hash=?", (_hash(refresh_token.token),))
-        return await self.issue_tokens(
-            client.client_id, scopes or refresh_token.scopes, refresh_token.resource, family
-        )
+        return await self.issue_tokens(client.client_id, scopes or refresh_token.scopes, refresh_token.resource, family)
 
     async def revoke_token(self, token: AccessToken | RefreshToken) -> None:
-        row = self.db.execute(
-            "SELECT family FROM oauth_tokens WHERE hash=?", (_hash(token.token),)
-        ).fetchone()
+        row = self.db.execute("SELECT family FROM oauth_tokens WHERE hash=?", (_hash(token.token),)).fetchone()
         if row:
             with self.db:
                 self.db.execute("DELETE FROM oauth_tokens WHERE family=?", (row[0],))

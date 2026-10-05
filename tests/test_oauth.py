@@ -105,9 +105,7 @@ async def start_authorize(http, client_id, challenge, state="st-1"):
 
 async def consent(http, consent_url, secret=SECRET, action="allow"):
     request_id = parse_qs(urlparse(consent_url).query)["request"][0]
-    return await http.post(
-        "/oauth/consent", data={"request": request_id, "secret": secret, "action": action}
-    )
+    return await http.post("/oauth/consent", data={"request": request_id, "secret": secret, "action": action})
 
 
 async def token(http, **form):
@@ -231,9 +229,7 @@ async def test_code_needs_the_right_verifier_and_works_once(bridge):
     verifier, challenge = pkce()
     url = await start_authorize(bridge, client_id, challenge)
     code = parse_qs(urlparse((await consent(bridge, url)).headers["location"]).query)["code"][0]
-    form = dict(
-        grant_type="authorization_code", code=code, redirect_uri=REDIRECT, client_id=client_id
-    )
+    form = dict(grant_type="authorization_code", code=code, redirect_uri=REDIRECT, client_id=client_id)
 
     assert (await token(bridge, **form, code_verifier="wrong" * 10)).status_code == 400
     assert (await token(bridge, **form, code_verifier=verifier)).status_code == 200

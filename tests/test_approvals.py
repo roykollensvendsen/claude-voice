@@ -45,9 +45,7 @@ async def until_pending(broker, n=1):
 
 async def test_read_only_tools_are_allowed_without_asking(store, root):
     outcomes = []
-    m, broker = setup(
-        store, root, [ask("Read", {"file_path": "a.py"}, outcomes), result("ok", "c")]
-    )
+    m, broker = setup(store, root, [ask("Read", {"file_path": "a.py"}, outcomes), result("ok", "c")])
     s = m.create("app")
     await m.send(s["id"], "look")
     await m.wait(s["id"])

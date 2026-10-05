@@ -83,9 +83,7 @@ class LiveWatcher:
             if project is not None and d.get("name"):
                 now[d["name"]] = (d.get("status"), d.get("sessionId"), project)
 
-        before = {
-            r[0]: (r[1], r[2]) for r in self.db.execute("SELECT * FROM live_snapshot").fetchall()
-        }
+        before = {r[0]: (r[1], r[2]) for r in self.db.execute("SELECT * FROM live_snapshot").fetchall()}
         baselined = self.db.execute("SELECT 1 FROM meta WHERE key='baselined'").fetchone()
 
         changes: list[tuple[str, str, str | None, str | None]] = []
@@ -108,25 +106,21 @@ class LiveWatcher:
                 [(n, s, sid) for n, (s, sid, _) in now.items()],
             )
             self.db.execute("INSERT OR IGNORE INTO meta VALUES('baselined','1')")
-            seqs = []
+            seqs: list[int] = []
             for name, kind, status, project in changes:
                 cur = self.db.execute(
                     "INSERT INTO feed(ts, session, kind, text, project) VALUES(?,?,?,?,?)",
                     (ts, name, kind, status, project),
                 )
-                seqs.append(cur.lastrowid)
+                seqs.append(cur.lastrowid or 0)
         return self.feed_after(min(seqs) - 1) if seqs else []
 
     def feed_after(self, seq: int, limit: int = 200) -> list[dict[str, Any]]:
         rows = self.db.execute(
-            "SELECT seq, ts, session, kind, text, project FROM feed"
-            " WHERE seq>? ORDER BY seq LIMIT ?",
+            "SELECT seq, ts, session, kind, text, project FROM feed WHERE seq>? ORDER BY seq LIMIT ?",
             (seq, limit),
         ).fetchall()
-        return [
-            {"seq": r[0], "ts": r[1], "session": r[2], "kind": r[3], "text": r[4], "project": r[5]}
-            for r in rows
-        ]
+        return [{"seq": r[0], "ts": r[1], "session": r[2], "kind": r[3], "text": r[4], "project": r[5]} for r in rows]
 
     def last_seq(self) -> int:
         return self.db.execute("SELECT COALESCE(MAX(seq), 0) FROM feed").fetchone()[0]

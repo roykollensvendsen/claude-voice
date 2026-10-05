@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import argparse
 import asyncio
 import contextlib
 import logging
-import os
-import sys
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,6 +17,7 @@ from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, Re
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
+from pydantic import AnyHttpUrl
 from starlette.types import ASGIApp
 
 from . import events, transcripts
@@ -64,6 +62,7 @@ class Config:
 
 
 def load_config(env: Mapping[str, str], transport: str) -> Config:
+    # RULE: an api key in the environment stops the bridge from starting
     if env.get("ANTHROPIC_API_KEY") and env.get("CLAUDE_VOICE_ALLOW_API_KEY") != "1":
         raise ConfigError(
             "ANTHROPIC_API_KEY is set, so Claude would bill the API instead of your "
@@ -113,9 +112,7 @@ async def log_requests(ctx, call_next):
         log.info("mcp %s -> %s", what, type(exc).__name__)
         raise
     if ctx.method == "tools/call":
-        failed = getattr(result, "is_error", None) or (
-            isinstance(result, dict) and result.get("isError")
-        )
+        failed = getattr(result, "is_error", None) or (isinstance(result, dict) and result.get("isError"))
         log.info("mcp %s -> %s", what, "error" if failed else "ok")
     elif ctx.request_id is not None:
         log.info("mcp %s", what)
@@ -134,8 +131,8 @@ def build_server(
     auth = None
     if oauth is not None:
         auth = AuthSettings(
-            issuer_url=oauth.public_url,
-            resource_server_url=f"{oauth.public_url}/mcp",
+            issuer_url=AnyHttpUrl(oauth.public_url),
+            resource_server_url=AnyHttpUrl(f"{oauth.public_url}/mcp"),
             client_registration_options=ClientRegistrationOptions(
                 enabled=True, valid_scopes=[SCOPE], default_scopes=[SCOPE]
             ),
@@ -184,9 +181,7 @@ def build_server(
             return store.get_session(session_id)["id"]
         except SessionNotFound:
             pass
-        adopted = [
-            s for s in store.list_sessions(limit=1000) if s["claude_session_id"] == session_id
-        ]
+        adopted = [s for s in store.list_sessions(limit=1000) if s["claude_session_id"] == session_id]
         if adopted:
             open_ = [s for s in adopted if s["status"] != "closed"]
             return (open_ or adopted)[0]["id"]
@@ -202,9 +197,7 @@ def build_server(
     @mcp.tool(annotations=READ_ONLY)
     def list_projects() -> dict[str, Any]:
         """List the project directories Claude can be started in."""
-        names = sorted(
-            p.name for p in manager.root.iterdir() if p.is_dir() and not p.name.startswith(".")
-        )
+        names = sorted(p.name for p in manager.root.iterdir() if p.is_dir() and not p.name.startswith("."))
         return {"root": str(manager.root), "projects": names}
 
     @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
@@ -216,9 +209,7 @@ def build_server(
             raise ToolError(str(exc)) from None
 
     @mcp.tool(annotations=READ_ONLY)
-    def list_sessions(
-        status: str | None = None, project: str | None = None, limit: int = 20
-    ) -> dict[str, Any]:
+    def list_sessions(status: str | None = None, project: str | None = None, limit: int = 20) -> dict[str, Any]:
         """List sessions: `sessions` are those started through this bridge;
         `running_claude_code_sessions` are all Claude Code sessions running on the machine
         right now (also those opened in a terminal)."""
@@ -363,9 +354,7 @@ def build_server(
         """Continue an existing Claude Code conversation (from list_claude_conversations).
         If it is still open in a terminal, both copies will carry on separately."""
         if project is None:
-            live = next(
-                (d for d in live_sessions() if d.get("sessionId") == claude_session_id), None
-            )
+            live = next((d for d in live_sessions() if d.get("sessionId") == claude_session_id), None)
             match = None
             if live is None:
                 match = next(
@@ -375,11 +364,7 @@ def build_server(
                 if match is None:
                     raise ToolError(f"No Claude Code conversation with id {claude_session_id}")
             project = (live or {}).get("cwd") or (match.cwd if match else "") or ""
-            label = (
-                label
-                or (live or {}).get("name")
-                or (match and (match.custom_title or match.summary))
-            )
+            label = label or (live or {}).get("name") or (match.custom_title or match.summary if match else None)
         try:
             path = str(manager.resolve_project(project))
         except ValueError as exc:
@@ -425,9 +410,7 @@ def build_server(
         list_active_sessions) for keywords; returns only the most relevant excerpts.
         Use instead of reading long output when looking for something said earlier."""
         target = find_live(session)
-        turns = transcripts.recent_turns(
-            read_transcript(target["sessionId"], target.get("cwd")), None
-        )
+        turns = transcripts.recent_turns(read_transcript(target["sessionId"], target.get("cwd")), None)
         matches = transcripts.search_turns(turns, query, limit=min(max(limit, 1), 20))
         return {"session": target["name"], "total_turns": len(turns), "matches": matches}
 
@@ -441,7 +424,7 @@ def build_server(
         latest_b, latest_f = events.last_bridge_seq(manager.store), watcher.last_seq()
         items: list[dict[str, Any]] = []
         if b is not None:
-            items = events.bridge_events(manager.store, b) + watcher.feed_after(f)
+            items = events.bridge_events(manager.store, b) + watcher.feed_after(f or 0)
             items.sort(key=lambda e: e["ts"])
         nb, nf = max(b or 0, latest_b), max(f or 0, latest_f)
         return {
@@ -489,21 +472,13 @@ def build_app(server: MCPServer, public_hosts: list[str] | None = None) -> ASGIA
     security = TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
         allowed_hosts=hosts,
-        allowed_origins=[f"https://{h}" for h in public_hosts or []]
-        + ["http://127.0.0.1:*", "http://localhost:*"],
+        allowed_origins=[f"https://{h}" for h in public_hosts or []] + ["http://127.0.0.1:*", "http://localhost:*"],
     )
     return PublicClientMetadata(server.streamable_http_app(transport_security=security))
 
 
-def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="claude-voice", description=__doc__)
-    parser.add_argument("--transport", choices=["stdio", "http"], default="stdio")
-    args = parser.parse_args(argv)
-    try:
-        cfg = load_config(os.environ, args.transport)
-    except ConfigError as exc:
-        sys.exit(f"claude-voice: {exc}")
-
+def serve_forever(cfg: Config) -> None:
+    """Run the bridge with a checked configuration until stopped."""
     store = Store(cfg.db)
     manager = SessionManager(store, project_root=cfg.root, approvals=ApprovalBroker(store))
     if cfg.transport == "stdio":

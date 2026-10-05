@@ -105,9 +105,7 @@ def test_baseline_survives_a_restart(store, live, root, tmp_path):
 
 def server(store, live, root, *scripts, approvals=True):
     broker = ApprovalBroker(store) if approvals else None
-    m = SessionManager(
-        store, project_root=root, client_factory=FakeClaude(*scripts), approvals=broker
-    )
+    m = SessionManager(store, project_root=root, client_factory=FakeClaude(*scripts), approvals=broker)
     return m, broker, build_server(m, conversations=lambda **k: [], live_dir=live)
 
 

@@ -1,0 +1,27 @@
+#!/bin/sh
+# Refuse a message the gates would refuse later, while it is still being
+# written. This is a convenience, not the gate: git's --no-verify skips it and
+# continuous integration is what actually blocks. Turn it on for a clone with
+#
+#     git config core.hooksPath .githooks
+#
+set -e
+
+if command -v committed >/dev/null 2>&1; then
+    committed --commit-file "$1" || exit 1
+else
+    echo "commit-msg: committed is not installed; the convention is unchecked here" >&2
+fi
+
+# The linter's own imperative rule fires only on a lowercase first word, and
+# the same configuration requires a capital, so this is what covers it.
+root="$(git rev-parse --show-toplevel)"
+python3 "$root/scripts/imperative.py" --file "$1" >/dev/null || {
+    python3 "$root/scripts/imperative.py" --file "$1" >&2
+    exit 1
+}
+
+# Readability only ever warns. How long a sentence needs to be is a
+# judgement, and a gate that refuses a message nobody can shorten teaches
+# people to pass --no-verify.
+python3 "$root/scripts/readable.py" --file "$1" >&2 || true

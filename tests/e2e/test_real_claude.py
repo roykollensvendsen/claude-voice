@@ -14,9 +14,7 @@ from claude_voice.store import Store
 
 pytestmark = [
     pytest.mark.e2e,
-    pytest.mark.skipif(
-        bool(os.environ.get("ANTHROPIC_API_KEY")), reason="would bill the API, not the subscription"
-    ),
+    pytest.mark.skipif(bool(os.environ.get("ANTHROPIC_API_KEY")), reason="would bill the API, not the subscription"),
 ]
 
 

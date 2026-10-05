@@ -121,9 +121,7 @@ async def deliver(name: str, text: str) -> dict[str, Any]:
             await client.query(f"Session name: {name}\nMessage:\n{text}")
             async for m in client.receive_response():
                 if isinstance(m, AssistantMessage):
-                    sent = sent or any(
-                        isinstance(b, ToolUseBlock) and b.name == "SendMessage" for b in m.content
-                    )
+                    sent = sent or any(isinstance(b, ToolUseBlock) and b.name == "SendMessage" for b in m.content)
                 elif isinstance(m, ResultMessage):
                     detail = (m.result or m.subtype or "").strip()
     delivered = sent and detail.upper().startswith("DELIVERED")

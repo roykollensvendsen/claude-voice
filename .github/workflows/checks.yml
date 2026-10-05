@@ -1,0 +1,95 @@
+name: checks
+
+# pull_request covers every pull request; push:main covers a direct push to main.
+# A commit cannot be both, so the pair never runs the same commit twice.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# One run per ref: a new push cancels the run it superseded.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Nothing here writes to the repository, its issues or its packages.
+permissions:
+  contents: read
+
+jobs:
+  # Conventional Commits, over the commits this pull request adds.
+  commits:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Dependabot writes a body line carrying two full commit hashes, which no
+    # length rule survives, and its messages are not a person's to fix.
+    # A direct push to main was linted by nothing: the range below only exists
+    # on a pull request, so the job skipped itself and the local hook, which
+    # --no-verify bypasses, was the only check. The range is now worked out for
+    # both events. Dependabot writes a body line carrying two full commit
+    # hashes, which no length rule survives, and its messages are not a
+    # person's to fix.
+    if: github.actor != 'dependabot[bot]'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0       # committed reads a range, so it needs both ends
+      - name: The range this event added
+        id: range
+        # A branch's first push reports an all-zero "before", and there is
+        # nothing to compare against, so fall back to the one commit.
+        run: |
+          before='${{ github.event.before }}'
+          if [ -n "${{ github.event.pull_request.base.sha }}" ]; then
+            echo "range=${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+          elif [ -n "$before" ] && [ "$before" != "0000000000000000000000000000000000000000" ] \
+               && git cat-file -e "$before^{commit}" 2>/dev/null; then
+            echo "range=$before..${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          elif git rev-parse -q --verify "${{ github.sha }}^" >/dev/null; then
+            # A branch's first push reports an all-zero predecessor, and a force
+            # push reports one that no longer exists. Either way there is
+            # nothing to compare against, so check the one commit.
+            echo "range=${{ github.sha }}~1..${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            # The very first commit in a repository has no parent, so no
+            # range can name it. Both the linter and the imperative check
+            # take a single commit, and that commit is the one most likely
+            # to have been written without care.
+            echo "range=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: crate-ci/committed@faeed42f2e10c244533a01525f13c4d8b6ce383f # v1.1.11
+        with:
+          args: --no-merge-commit
+          commits: ${{ steps.range.outputs.range }}
+      # committed's own imperative rule flags nothing, so this is what does.
+      - name: Subjects in the imperative
+        run: python scripts/imperative.py ${{ steps.range.outputs.range }}
+
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10          # the default is 360; this job takes under a minute
+    strategy:
+      fail-fast: false           # one version failing should not hide another
+      matrix:                    # every version pyproject.toml claims to support
+        python: ["3.12", "3.13"]
+    steps:
+      # Actions are pinned to a commit, not a tag, as GitHub's own hardening guide asks.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0         # the last-checked rule reads each page's commit date
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          enable-cache: true     # setup-python's own cache covers pip, not uv
+          version: "0.12.13"     # pin uv itself
+          python-version: ${{ matrix.python }}
+      # From the lock file, so a new release of a tool cannot turn CI red on its
+      # own; Dependabot moves the lock deliberately instead.
+      - run: uv sync --locked --all-extras
+      - name: Lint and format
+        run: uv run ruff check . && uv run ruff format --check .
+      - name: Types
+        run: uv run mypy src
+      - name: The rules that guard the rules
+        # Coverage is measured and printed, with no threshold yet: a number
+        # picked before there is data is a guess with a gate on it.
+        run: uv run pytest -q -p no:cacheprovider --strict-markers --cov

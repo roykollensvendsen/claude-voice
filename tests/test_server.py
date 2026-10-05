@@ -69,9 +69,7 @@ async def test_list_projects_shows_visible_directories_under_the_root(tmp_path, 
 
 
 async def test_a_voice_round_trip(tmp_path, root):
-    m, server = make(
-        tmp_path, root, FakeClaude([init("c-1"), say("On it."), result("Done.", "c-1")])
-    )
+    m, server = make(tmp_path, root, FakeClaude([init("c-1"), say("On it."), result("Done.", "c-1")]))
     async with Client(server) as client:
         s = await call(client, "create_session", project="app", label="demo")
         sent = await call(client, "send_task", session_id=s["id"], prompt="do it")
@@ -206,9 +204,7 @@ async def test_approvals_can_be_answered_through_tools(tmp_path, root):
     outcomes = []
 
     async def ask(options):
-        outcomes.append(
-            await options.can_use_tool("Bash", {"command": "make"}, ToolPermissionContext())
-        )
+        outcomes.append(await options.can_use_tool("Bash", {"command": "make"}, ToolPermissionContext()))
 
     store = Store(tmp_path / "bridge.db")
     broker = ApprovalBroker(store)

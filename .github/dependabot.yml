@@ -1,0 +1,16 @@
+# Actions are pinned to a commit so they cannot change under us; this is what
+# moves the pins deliberately, as GitHub's hardening guide asks.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci        # the commit convention this repository enforces
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: build

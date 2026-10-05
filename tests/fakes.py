@@ -29,9 +29,7 @@ def say(text: str) -> AssistantMessage:
 
 
 def use_tool(name: str, tool_input: dict[str, Any], tool_id: str = "tu_1") -> AssistantMessage:
-    return AssistantMessage(
-        content=[ToolUseBlock(id=tool_id, name=name, input=tool_input)], model="fake"
-    )
+    return AssistantMessage(content=[ToolUseBlock(id=tool_id, name=name, input=tool_input)], model="fake")
 
 
 def result(text: str, session_id: str, is_error: bool = False, num_turns: int = 1) -> ResultMessage:
