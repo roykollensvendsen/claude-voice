@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import hmac
 import os
 import sys
 from collections.abc import Mapping
@@ -13,11 +12,13 @@ from typing import Any
 
 from claude_agent_sdk import list_sessions as list_claude_sessions
 from mcp.server import MCPServer
+from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.types import ASGIApp
 
 from .approvals import ApprovalBroker, ApprovalNotFound
+from .oauth import OAuthProvider
 from .sessions import SessionBusy, SessionClosed, SessionManager
 from .store import SessionNotFound, Store
 
@@ -47,6 +48,7 @@ class Config:
     port: int = 8811
     token: str | None = None
     public_hosts: list[str] = field(default_factory=list)
+    public_url: str = ""
 
 
 def load_config(env: Mapping[str, str], transport: str) -> Config:
@@ -67,6 +69,9 @@ def load_config(env: Mapping[str, str], transport: str) -> Config:
         token=env.get("CLAUDE_VOICE_TOKEN"),
         public_hosts=[h for h in env.get("CLAUDE_VOICE_PUBLIC_HOSTS", "").split(",") if h],
     )
+    cfg.public_url = env.get("CLAUDE_VOICE_PUBLIC_URL", "").rstrip("/") or (
+        f"https://{cfg.public_hosts[0]}" if cfg.public_hosts else f"http://127.0.0.1:{cfg.port}"
+    )
     if transport == "http":
         if not cfg.token:
             raise ConfigError("CLAUDE_VOICE_TOKEN must be set to serve over HTTP")
@@ -75,8 +80,22 @@ def load_config(env: Mapping[str, str], transport: str) -> Config:
     return cfg
 
 
-def build_server(manager: SessionManager) -> MCPServer:
-    mcp = MCPServer("claude-voice", instructions=INSTRUCTIONS)
+def build_server(manager: SessionManager, oauth: OAuthProvider | None = None) -> MCPServer:
+    auth = None
+    if oauth is not None:
+        auth = AuthSettings(
+            issuer_url=oauth.public_url,
+            resource_server_url=f"{oauth.public_url}/mcp",
+            client_registration_options=ClientRegistrationOptions(enabled=True),
+            revocation_options=RevocationOptions(enabled=True),
+            validate_token_resource=False,
+        )
+    mcp = MCPServer(
+        "claude-voice", instructions=INSTRUCTIONS, auth_server_provider=oauth, auth=auth
+    )
+    if oauth is not None:
+        mcp.custom_route("/oauth/consent", methods=["GET"])(oauth.consent_page)
+        mcp.custom_route("/oauth/consent", methods=["POST"])(oauth.consent_submit)
     store = manager.store
 
     def known(session_id: str) -> None:
@@ -221,36 +240,8 @@ def build_server(manager: SessionManager) -> MCPServer:
     return mcp
 
 
-class BearerAuth:
-    """Reject every HTTP request that lacks `Authorization: Bearer <token>`."""
-
-    def __init__(self, app: ASGIApp, token: str, open_paths: frozenset[str]) -> None:
-        self.app = app
-        self.expected = f"Bearer {token}".encode()
-        self.open_paths = open_paths
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or scope["path"] in self.open_paths:
-            await self.app(scope, receive, send)
-            return
-        given = dict(scope["headers"]).get(b"authorization", b"")
-        if not hmac.compare_digest(given, self.expected):
-            await send(
-                {
-                    "type": "http.response.start",
-                    "status": 401,
-                    "headers": [
-                        (b"www-authenticate", b'Bearer realm="claude-voice"'),
-                        (b"content-type", b"text/plain"),
-                    ],
-                }
-            )
-            await send({"type": "http.response.body", "body": b"unauthorized"})
-            return
-        await self.app(scope, receive, send)
-
-
-def build_app(server: MCPServer, token: str, public_hosts: list[str] | None = None) -> ASGIApp:
+def build_app(server: MCPServer, public_hosts: list[str] | None = None) -> ASGIApp:
+    """HTTP app. Auth (OAuth plus the static token) comes from the server's provider."""
     from starlette.responses import PlainTextResponse
 
     @server.custom_route("/healthz", methods=["GET"])
@@ -264,8 +255,7 @@ def build_app(server: MCPServer, token: str, public_hosts: list[str] | None = No
         allowed_origins=[f"https://{h}" for h in public_hosts or []]
         + ["http://127.0.0.1:*", "http://localhost:*"],
     )
-    app = server.streamable_http_app(transport_security=security)
-    return BearerAuth(app, token, open_paths=frozenset({"/healthz"}))
+    return server.streamable_http_app(transport_security=security)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -279,12 +269,15 @@ def main(argv: list[str] | None = None) -> None:
 
     store = Store(cfg.db)
     manager = SessionManager(store, project_root=cfg.root, approvals=ApprovalBroker(store))
-    server = build_server(manager)
     if cfg.transport == "stdio":
-        server.run("stdio")
+        build_server(manager).run("stdio")
         return
 
     import uvicorn
 
-    app = build_app(server, cfg.token or "", cfg.public_hosts)
+    token = cfg.token or ""
+    # The token doubles as the login secret on the OAuth consent page and as a
+    # static bearer token for local MCP clients.
+    oauth = OAuthProvider(store, login_secret=token, public_url=cfg.public_url, static_token=token)
+    app = build_app(build_server(manager, oauth=oauth), cfg.public_hosts)
     uvicorn.run(app, host=cfg.host, port=cfg.port, log_level="info")

@@ -230,3 +230,12 @@ async def test_approvals_can_be_answered_through_tools(tmp_path, root):
         await call(client, "approve", approval_id=pending[0]["id"])
         await m.wait(s["id"])
     assert isinstance(outcomes[0], PermissionResultAllow)
+
+
+def test_public_url_comes_from_the_tunnel_host(tmp_path):
+    env = {"CLAUDE_VOICE_ROOT": str(tmp_path), "CLAUDE_VOICE_TOKEN": "x" * 32}
+    assert load_config(env, "http").public_url == "http://127.0.0.1:8811"
+    hosts = {**env, "CLAUDE_VOICE_PUBLIC_HOSTS": "me.ts.net:10000"}
+    assert load_config(hosts, "http").public_url == "https://me.ts.net:10000"
+    explicit = {**hosts, "CLAUDE_VOICE_PUBLIC_URL": "https://voice.example/"}
+    assert load_config(explicit, "http").public_url == "https://voice.example"

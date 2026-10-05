@@ -3,6 +3,7 @@ import base64
 import hashlib
 import secrets
 import socket
+import time
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -21,7 +22,8 @@ REDIRECT = "https://chatgpt.example/connector/oauth/callback"
 
 class Clock:
     def __init__(self) -> None:
-        self.t = 1_000_000.0
+        # The SDK also checks expiry against the wall clock, so start from it.
+        self.t = time.time()
 
     def __call__(self) -> float:
         return self.t
