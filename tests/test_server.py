@@ -239,3 +239,27 @@ def test_public_url_comes_from_the_tunnel_host(tmp_path):
     assert load_config(hosts, "http").public_url == "https://me.ts.net:10000"
     explicit = {**hosts, "CLAUDE_VOICE_PUBLIC_URL": "https://voice.example/"}
     assert load_config(explicit, "http").public_url == "https://voice.example"
+
+
+async def test_status_tools_are_marked_read_only_so_clients_need_no_confirmation(tmp_path, root):
+    _, server = make(tmp_path, root, FakeClaude())
+    async with Client(server) as client:
+        tools = {t.name: t for t in (await client.list_tools()).tools}
+    read_only = {
+        "list_projects",
+        "list_sessions",
+        "session_recap",
+        "get_messages",
+        "recent_activity",
+        "fleet_recap",
+        "list_claude_conversations",
+        "list_pending_approvals",
+    }
+    for name in read_only:
+        ann = tools[name].annotations
+        assert ann is not None and ann.read_only_hint is True, name
+    for name in set(tools) - read_only:
+        ann = tools[name].annotations
+        assert ann is None or not ann.read_only_hint, name
+    assert tools["approve"].annotations.destructive_hint is True
+    assert tools["close_session"].annotations.destructive_hint is False
