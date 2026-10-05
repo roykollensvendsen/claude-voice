@@ -220,3 +220,38 @@ def test_words_match_at_word_starts_only():
         {"role": "user", "text": "Porten er 443"},
     ]
     assert [h["turn"] for h in search_turns(turns, "port")] == [1]
+
+
+# -- ids: bridge session ids and Claude session ids --------------------------------
+
+
+async def test_session_tools_accept_the_claude_session_id(tmp_path, root, live):
+    _, srv = server_for(tmp_path, root, live)
+    async with Client(srv) as c:
+        s = await call(c, "attach_conversation", claude_session_id="current-id")
+        recap = await call(c, "session_recap", session_id="current-id")
+        closed = await call(c, "close_session", session_id="current-id")
+    assert recap["session_id"] == s["id"]
+    assert closed["id"] == s["id"] and closed["status"] == "closed"
+
+
+async def test_a_terminal_session_unknown_to_the_bridge_gets_a_clear_error(tmp_path, root, live):
+    _, srv = server_for(tmp_path, root, live)
+    async with Client(srv) as c:
+        by_id = await c.call_tool("close_session", {"session_id": "current-id"})
+        by_name = await c.call_tool("session_recap", {"session_id": "billing-ab"})
+        missing = await c.call_tool("close_session", {"session_id": "nope"})
+    assert by_id.is_error and "terminal" in by_id.content[0].text
+    assert "message_active_session" in by_id.content[0].text
+    assert by_name.is_error and "terminal" in by_name.content[0].text
+    assert missing.is_error and "no session" in missing.content[0].text.lower()
+
+
+async def test_active_sessions_say_whether_the_bridge_manages_them(tmp_path, root, live):
+    _, srv = server_for(tmp_path, root, live)
+    async with Client(srv) as c:
+        before = await call(c, "list_active_sessions")
+        await call(c, "attach_conversation", claude_session_id="current-id")
+        after = await call(c, "list_active_sessions")
+    assert before["sessions"][0]["managed_by_bridge"] is False
+    assert after["sessions"][0]["managed_by_bridge"] is True
