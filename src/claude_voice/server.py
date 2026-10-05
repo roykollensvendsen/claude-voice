@@ -18,7 +18,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from starlette.types import ASGIApp
 
 from .approvals import ApprovalBroker, ApprovalNotFound
-from .oauth import OAuthProvider
+from .oauth import SCOPE, OAuthProvider, PublicClientMetadata
 from .sessions import SessionBusy, SessionClosed, SessionManager
 from .store import SessionNotFound, Store
 
@@ -86,7 +86,10 @@ def build_server(manager: SessionManager, oauth: OAuthProvider | None = None) ->
         auth = AuthSettings(
             issuer_url=oauth.public_url,
             resource_server_url=f"{oauth.public_url}/mcp",
-            client_registration_options=ClientRegistrationOptions(enabled=True),
+            client_registration_options=ClientRegistrationOptions(
+                enabled=True, valid_scopes=[SCOPE], default_scopes=[SCOPE]
+            ),
+            required_scopes=[SCOPE],
             revocation_options=RevocationOptions(enabled=True),
             validate_token_resource=False,
         )
@@ -255,7 +258,7 @@ def build_app(server: MCPServer, public_hosts: list[str] | None = None) -> ASGIA
         allowed_origins=[f"https://{h}" for h in public_hosts or []]
         + ["http://127.0.0.1:*", "http://localhost:*"],
     )
-    return server.streamable_http_app(transport_security=security)
+    return PublicClientMetadata(server.streamable_http_app(transport_security=security))
 
 
 def main(argv: list[str] | None = None) -> None:

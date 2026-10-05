@@ -29,6 +29,7 @@ from mcp.server.auth.provider import (
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse, Response
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .store import Store
 
@@ -37,6 +38,8 @@ REFRESH_TTL = 90 * 24 * 3600
 CODE_TTL = 300
 CONSENT_TTL = 600
 MAX_SECRET_ATTEMPTS = 5
+SCOPE = "claude"
+METADATA_PATH = "/.well-known/oauth-authorization-server"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS oauth_clients(client_id TEXT PRIMARY KEY, info TEXT NOT NULL);
@@ -153,7 +156,7 @@ class OAuthProvider:
         code = secrets.token_urlsafe(32)
         self._codes[code] = AuthorizationCode(
             code=code,
-            scopes=params.scopes or [],
+            scopes=params.scopes or [SCOPE],
             expires_at=self.clock() + CODE_TTL,
             client_id=pending.client.client_id,
             code_challenge=params.code_challenge,
@@ -234,7 +237,9 @@ class OAuthProvider:
 
     async def load_access_token(self, token: str) -> AccessToken | None:
         if self.static_token and hmac.compare_digest(token.encode(), self.static_token.encode()):
-            return AccessToken(token=token, client_id="static-token", scopes=[], subject="owner")
+            return AccessToken(
+                token=token, client_id="static-token", scopes=[SCOPE], subject="owner"
+            )
         row = self._load(token, "access")
         if row is None:
             return None
@@ -286,6 +291,43 @@ class OAuthProvider:
 
     async def exchange_identity_assertion(self, *args, **kwargs):  # pragma: no cover
         raise NotImplementedError
+
+
+class PublicClientMetadata:
+    """Advertise `none` (PKCE-only public clients) in the server metadata.
+
+    The SDK registers such clients fine but lists only secret-based methods,
+    which can make a client like ChatGPT give up before registering.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope["path"] != METADATA_PATH:
+            await self.app(scope, receive, send)
+            return
+        start: Message = {}
+        body = b""
+
+        async def capture(message: Message) -> None:
+            nonlocal start, body
+            if message["type"] == "http.response.start":
+                start = message
+            else:
+                body += message.get("body", b"")
+
+        await self.app(scope, receive, capture)
+        if start.get("status") == 200:
+            meta = json.loads(body)
+            methods = meta.setdefault("token_endpoint_auth_methods_supported", [])
+            if "none" not in methods:
+                methods.append("none")
+            body = json.dumps(meta).encode()
+            headers = [(k, v) for k, v in start["headers"] if k.lower() != b"content-length"]
+            start = {**start, "headers": [*headers, (b"content-length", str(len(body)).encode())]}
+        await send(start)
+        await send({"type": "http.response.body", "body": body})
 
 
 def _page(body: str) -> str:
