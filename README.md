@@ -82,10 +82,25 @@ uv run claude-voice --transport http      # http://127.0.0.1:8811/mcp
 `GET /healthz` answers without a token. Everything else requires
 `Authorization: Bearer $CLAUDE_VOICE_TOKEN`.
 
+## Install as a service
+
+```bash
+deploy/install.sh     # systemd user service; token in ~/.config/claude-voice/env (mode 600)
+journalctl --user -u claude-voice -f
+```
+
 ## Reaching it from the phone
 
-1. Expose `127.0.0.1:8811` through an HTTPS tunnel and add the tunnel's
-   hostname to `CLAUDE_VOICE_PUBLIC_HOSTS`.
+1. Make it reachable over public HTTPS. With Tailscale Funnel (enable Funnel
+   for the machine in the Tailscale admin console first):
+
+   ```bash
+   tailscale funnel --bg --https=10000 http://127.0.0.1:8811
+   # -> https://<machine>.<tailnet>.ts.net:10000/mcp
+   ```
+
+   `deploy/install.sh` already put `<machine>.<tailnet>.ts.net:10000` in
+   `CLAUDE_VOICE_PUBLIC_HOSTS`. Undo with `tailscale funnel --https=10000 off`.
 2. Register `https://<host>/mcp` as a private plugin in ChatGPT. On Plus that
    goes through Plugin Creator / ChatGPT Sites.
 

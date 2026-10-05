@@ -1,0 +1,15 @@
+[Unit]
+Description=claude-voice: MCP bridge for driving Claude Code by voice
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/claude-voice
+ExecStart=%h/claude-voice/.venv/bin/claude-voice --transport http
+EnvironmentFile=%h/.config/claude-voice/env
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
