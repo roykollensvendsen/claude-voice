@@ -374,6 +374,7 @@ async def test_active_sessions_are_the_running_claude_code_processes(tmp_path, r
             "project": "app",
             "status": "busy",
             "kind": "interactive",
+            "managed_by_bridge": False,
             "minutes_since_update": 2,
         }
     ]

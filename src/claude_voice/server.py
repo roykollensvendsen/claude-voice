@@ -177,11 +177,26 @@ def build_server(
         mcp.custom_route("/oauth/consent", methods=["POST"])(oauth.consent_submit)
     store = manager.store
 
-    def known(session_id: str) -> None:
+    def known(session_id: str) -> str:
+        """Resolve a bridge session id, or a Claude session id the bridge has adopted,
+        to the bridge's id. Explain when it is a terminal session the bridge never saw."""
         try:
-            store.get_session(session_id)
+            return store.get_session(session_id)["id"]
         except SessionNotFound:
-            raise ToolError(f"No session with id {session_id}") from None
+            pass
+        adopted = [
+            s for s in store.list_sessions(limit=1000) if s["claude_session_id"] == session_id
+        ]
+        if adopted:
+            open_ = [s for s in adopted if s["status"] != "closed"]
+            return (open_ or adopted)[0]["id"]
+        if any(session_id in (d.get("sessionId"), d.get("name")) for d in live_sessions()):
+            raise ToolError(
+                f"{session_id} is a Claude Code session running in a terminal, not one this "
+                "bridge started or attached. Use message_active_session to talk to it, or "
+                "attach_conversation to work on a copy of its conversation."
+            )
+        raise ToolError(f"No session with id {session_id}")
 
     @mcp.tool(annotations=READ_ONLY)
     def list_projects() -> dict[str, Any]:
@@ -216,7 +231,7 @@ def build_server(
     @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
     async def send_task(session_id: str, prompt: str) -> dict[str, Any]:
         """Give Claude a task or follow-up. Returns at once; poll session_recap for progress."""
-        known(session_id)
+        session_id = known(session_id)
         try:
             return await manager.send(session_id, prompt)
         except (SessionBusy, SessionClosed, ValueError) as exc:
@@ -226,13 +241,13 @@ def build_server(
     @mcp.tool(annotations=READ_ONLY)
     def session_recap(session_id: str) -> dict[str, Any]:
         """Short status of one session: running or not, last prompt, latest words, result."""
-        known(session_id)
+        session_id = known(session_id)
         return manager.recap(session_id)
 
     @mcp.tool(annotations=READ_ONLY)
     def get_messages(session_id: str, after: int = 0, limit: int = 50) -> dict[str, Any]:
         """Detailed event log of a session. Pass next_after back as `after` to page on."""
-        known(session_id)
+        session_id = known(session_id)
         events = store.events(session_id, after=max(after, 0), limit=min(max(limit, 1), 200))
         return {"events": events, "next_after": events[-1]["seq"] if events else after}
 
@@ -250,13 +265,13 @@ def build_server(
     @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
     async def cancel(session_id: str) -> dict[str, Any]:
         """Stop what Claude is doing in a session. The session can be used again afterwards."""
-        known(session_id)
+        session_id = known(session_id)
         return await manager.cancel(session_id)
 
     @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
     def close_session(session_id: str) -> dict[str, Any]:
         """Retire a session. Its history is kept."""
-        known(session_id)
+        session_id = known(session_id)
         try:
             return manager.close(session_id)
         except SessionBusy as exc:
@@ -282,6 +297,11 @@ def build_server(
         return {"sessions": running()}
 
     def running() -> list[dict[str, Any]]:
+        managed = {
+            s["claude_session_id"]
+            for s in store.list_sessions(limit=1000)
+            if s["claude_session_id"] and s["status"] != "closed"
+        }
         now_ms = manager.clock() * 1000
         sessions = []
         for d in live_sessions():
@@ -295,6 +315,7 @@ def build_server(
                     "project": name,
                     "status": d.get("status"),
                     "kind": d.get("kind"),
+                    "managed_by_bridge": d.get("sessionId") in managed,
                     "minutes_since_update": round((now_ms - d.get("updatedAt", now_ms)) / 60000),
                 }
             )
