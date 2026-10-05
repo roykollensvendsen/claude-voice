@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import argparse
-import json
+import asyncio
+import contextlib
 import logging
 import os
 import sys
@@ -21,7 +22,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from starlette.types import ASGIApp
 
-from . import transcripts
+from . import events, transcripts
 from .approvals import ApprovalBroker, ApprovalNotFound
 from .oauth import SCOPE, OAuthProvider, PublicClientMetadata
 from .sessions import SessionBusy, SessionClosed, SessionManager
@@ -35,6 +36,7 @@ LIVE_DIR = Path("~/.claude/sessions").expanduser()
 INSTRUCTIONS = """\
 Controls Claude Code sessions running on the user's own machine. The user is
 usually speaking, often while driving, so keep what you read back short.
+Poll whats_new (pass back its cursor) for news; it is cheap.
 Typical flow: list_projects -> create_session -> send_task -> poll
 session_recap until status is no longer "running" -> tell the user the result.
 send_task returns immediately; Claude may work for minutes.
@@ -93,6 +95,14 @@ def load_config(env: Mapping[str, str], transport: str) -> Config:
 log = logging.getLogger("claude_voice")
 
 
+def _parse_cursor(cursor: str | None) -> tuple[int | None, int | None]:
+    try:
+        b, f = (cursor or "").split(".")
+        return int(b.removeprefix("b")), int(f.removeprefix("f"))
+    except ValueError:
+        return None, None
+
+
 async def log_requests(ctx, call_next):
     """Log each MCP method (and tool name) so the journal shows what a client asked for."""
     params = ctx.params if isinstance(ctx.params, dict) else {}
@@ -119,6 +129,7 @@ def build_server(
     live_dir: Path = LIVE_DIR,
     deliver: Callable[[str, str], Awaitable[dict[str, Any]]] = transcripts.deliver,
     read_transcript: Callable[[str, str | None], list[Any]] = transcripts.read_transcript,
+    watch_interval: float | None = None,
 ) -> MCPServer:
     auth = None
     if oauth is not None:
@@ -132,12 +143,34 @@ def build_server(
             revocation_options=RevocationOptions(enabled=True),
             validate_token_resource=False,
         )
+    watcher = events.LiveWatcher(manager.store, live_dir, manager.root, clock=manager.clock)
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_server):
+        # Watch running sessions between polls, so short-lived states are not missed.
+        task = None
+        if watch_interval:
+
+            async def watch():
+                while True:
+                    with contextlib.suppress(Exception):
+                        watcher.check()
+                    await asyncio.sleep(watch_interval)
+
+            task = asyncio.create_task(watch())
+        try:
+            yield {}
+        finally:
+            if task:
+                task.cancel()
+
     mcp = MCPServer(
         "claude-voice",
         instructions=INSTRUCTIONS,
         auth_server_provider=oauth,
         auth=auth,
         middleware=[log_requests],
+        lifespan=lifespan,
     )
     if oauth is not None:
         mcp.custom_route("/oauth/consent", methods=["GET"])(oauth.consent_page)
@@ -239,15 +272,7 @@ def build_server(
             return None
 
     def live_sessions() -> list[dict[str, Any]]:
-        out = []
-        for f in sorted(live_dir.glob("*.json")) if live_dir.is_dir() else []:
-            try:
-                d = json.loads(f.read_text())
-                os.kill(int(d["pid"]), 0)
-            except (ValueError, KeyError, TypeError, OSError):
-                continue  # unreadable, or the process is gone
-            out.append(d)
-        return out
+        return events.read_live(live_dir)
 
     @mcp.tool(annotations=READ_ONLY)
     def list_active_sessions() -> dict[str, Any]:
@@ -383,6 +408,24 @@ def build_server(
         return {"session": target["name"], "total_turns": len(turns), "matches": matches}
 
     @mcp.tool(annotations=READ_ONLY)
+    def whats_new(cursor: str | None = None) -> dict[str, Any]:
+        """Has anything happened since I last asked? Returns only new events (a session
+        finished, failed, needs approval or input, started, ended) and a cursor to pass
+        next time. Call without a cursor first; cheap enough to poll."""
+        watcher.check()
+        b, f = _parse_cursor(cursor)
+        latest_b, latest_f = events.last_bridge_seq(manager.store), watcher.last_seq()
+        items: list[dict[str, Any]] = []
+        if b is not None:
+            items = events.bridge_events(manager.store, b) + watcher.feed_after(f)
+            items.sort(key=lambda e: e["ts"])
+        nb, nf = max(b or 0, latest_b), max(f or 0, latest_f)
+        return {
+            "cursor": f"b{nb}.f{nf}",
+            "events": [{k: v for k, v in e.items() if k not in ("seq",)} for e in items],
+        }
+
+    @mcp.tool(annotations=READ_ONLY)
     def list_pending_approvals(session_id: str | None = None) -> dict[str, Any]:
         """Tool calls Claude is waiting to be allowed to make. Read each one to the user."""
         if manager.approvals is None:
@@ -449,6 +492,6 @@ def main(argv: list[str] | None = None) -> None:
     # The token doubles as the login secret on the OAuth consent page and as a
     # static bearer token for local MCP clients.
     oauth = OAuthProvider(store, login_secret=token, public_url=cfg.public_url, static_token=token)
-    app = build_app(build_server(manager, oauth=oauth), cfg.public_hosts)
+    app = build_app(build_server(manager, oauth=oauth, watch_interval=5.0), cfg.public_hosts)
     logging.basicConfig(level=logging.INFO, format="%(name)s: %(message)s")
     uvicorn.run(app, host=cfg.host, port=cfg.port, log_level="info")
