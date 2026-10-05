@@ -34,13 +34,13 @@ def use_tool(name: str, tool_input: dict[str, Any], tool_id: str = "tu_1") -> As
     )
 
 
-def result(text: str, session_id: str, is_error: bool = False) -> ResultMessage:
+def result(text: str, session_id: str, is_error: bool = False, num_turns: int = 1) -> ResultMessage:
     return ResultMessage(
         subtype="error" if is_error else "success",
         duration_ms=1,
         duration_api_ms=1,
         is_error=is_error,
-        num_turns=1,
+        num_turns=num_turns,
         session_id=session_id,
         result=text,
         total_cost_usd=0.01,
