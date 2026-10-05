@@ -1,0 +1,40 @@
+[project]
+name = "claude-voice"
+version = "0.1.0"
+description = "MCP bridge that lets a voice assistant drive local Claude Code sessions"
+readme = "README.md"
+authors = [
+    { name = "Roy Kollen Svendsen", email = "roykollensvendsen@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "claude-agent-sdk>=0.2.163",
+    "mcp>=2.3.0",
+]
+
+[project.scripts]
+claude-voice = "claude_voice.server:main"
+
+[build-system]
+requires = ["uv_build>=0.10.2,<0.11.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.16.10",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = ["e2e: needs a real logged-in Claude Code; never run in CI"]
+addopts = "-m 'not e2e'"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC"]
