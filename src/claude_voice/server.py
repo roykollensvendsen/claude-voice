@@ -5,11 +5,12 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from claude_agent_sdk import SDKSessionInfo
 from claude_agent_sdk import list_sessions as list_claude_sessions
 from mcp.server import MCPServer
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
@@ -82,7 +83,11 @@ def load_config(env: Mapping[str, str], transport: str) -> Config:
     return cfg
 
 
-def build_server(manager: SessionManager, oauth: OAuthProvider | None = None) -> MCPServer:
+def build_server(
+    manager: SessionManager,
+    oauth: OAuthProvider | None = None,
+    conversations: Callable[..., list[SDKSessionInfo]] = list_claude_sessions,
+) -> MCPServer:
     auth = None
     if oauth is not None:
         auth = AuthSettings(
@@ -186,32 +191,60 @@ def build_server(manager: SessionManager, oauth: OAuthProvider | None = None) ->
         except SessionBusy as exc:
             raise ToolError(str(exc)) from None
 
-    @mcp.tool(annotations=READ_ONLY)
-    def list_claude_conversations(project: str, limit: int = 10) -> dict[str, Any]:
-        """Claude Code conversations on this machine for a project, including terminal ones."""
+    def under_root(cwd: str | None) -> str | None:
+        """Project name relative to the root, or None if the folder is outside it."""
+        if not cwd:
+            return None
         try:
-            path = manager.resolve_project(project)
-        except ValueError as exc:
-            raise ToolError(str(exc)) from None
-        found = list_claude_sessions(directory=str(path), limit=min(max(limit, 1), 50))
-        return {
-            "conversations": [
+            return str(manager.resolve_project(cwd).relative_to(manager.root))
+        except ValueError:
+            return None
+
+    @mcp.tool(annotations=READ_ONLY)
+    def list_claude_conversations(project: str | None = None, limit: int = 10) -> dict[str, Any]:
+        """Recent Claude Code conversations on this machine, newest first, including ones
+        started in a terminal. Optionally only for one project."""
+        directory = None
+        if project:
+            try:
+                directory = str(manager.resolve_project(project))
+            except ValueError as exc:
+                raise ToolError(str(exc)) from None
+        limit = min(max(limit, 1), 50)
+        now_ms = manager.clock() * 1000
+        listed = []
+        for c in conversations(directory=directory, limit=limit * 5):
+            name = under_root(c.cwd)
+            if name is None:
+                continue
+            listed.append(
                 {
                     "claude_session_id": c.session_id,
+                    "project": name,
                     "summary": c.custom_title or c.summary,
                     "first_prompt": c.first_prompt,
                     "git_branch": c.git_branch,
-                    "last_modified": c.last_modified,
+                    "minutes_ago": round((now_ms - c.last_modified) / 60000),
                 }
-                for c in found
-            ]
-        }
+            )
+            if len(listed) == limit:
+                break
+        return {"conversations": listed}
 
     @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
     def attach_conversation(
-        claude_session_id: str, project: str, label: str | None = None
+        claude_session_id: str, project: str | None = None, label: str | None = None
     ) -> dict[str, Any]:
-        """Continue an existing Claude Code conversation (from list_claude_conversations)."""
+        """Continue an existing Claude Code conversation (from list_claude_conversations).
+        If it is still open in a terminal, both copies will carry on separately."""
+        if project is None:
+            match = next(
+                (c for c in conversations(limit=1000) if c.session_id == claude_session_id), None
+            )
+            if match is None:
+                raise ToolError(f"No Claude Code conversation with id {claude_session_id}")
+            project = match.cwd or ""
+            label = label or match.custom_title or match.summary
         try:
             return manager.attach(claude_session_id, project, label)
         except ValueError as exc:
