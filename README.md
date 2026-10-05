@@ -11,7 +11,7 @@ ChatGPT Voice (phone)
    ▼
 HTTPS tunnel (Cloudflare Tunnel, Tailscale Funnel, …)
    ▼
-claude-voice  ── bearer token, DNS-rebinding guard
+claude-voice  ── OAuth 2.1 (or static token), DNS-rebinding guard
    │  SessionManager + SQLite journal + ApprovalBroker
    ▼
 Claude Agent SDK  ──►  Claude Code in ~/src/<project>
@@ -74,13 +74,24 @@ uv run claude-voice --transport http      # http://127.0.0.1:8811/mcp
 | Variable | Default | |
 | --- | --- | --- |
 | `CLAUDE_VOICE_ROOT` | `~/src` | projects live directly under here |
-| `CLAUDE_VOICE_TOKEN` | — | required for HTTP, at least 32 characters |
+| `CLAUDE_VOICE_TOKEN` | — | required for HTTP, at least 32 characters; also the OAuth login secret |
+| `CLAUDE_VOICE_PUBLIC_URL` | `https://<first public host>` | OAuth issuer; the address clients see |
 | `CLAUDE_VOICE_HOST` / `_PORT` | `127.0.0.1` / `8811` | keep it on loopback and tunnel in |
 | `CLAUDE_VOICE_PUBLIC_HOSTS` | — | comma-separated hostnames the tunnel serves, e.g. `voice.example.com` |
 | `CLAUDE_VOICE_DB` | `~/.local/state/claude-voice/bridge.db` | session journal |
 
-`GET /healthz` answers without a token. Everything else requires
-`Authorization: Bearer $CLAUDE_VOICE_TOKEN`.
+`GET /healthz` answers without a token. `/mcp` accepts either:
+
+- an **OAuth access token**, which is how ChatGPT connects; or
+- the **static token** `CLAUDE_VOICE_TOKEN`, as `Authorization: Bearer …`, for local clients.
+
+The OAuth flow:
+
+- The client registers itself, then sends you to `/oauth/consent`.
+- On that page you type `CLAUDE_VOICE_TOKEN` as the login secret. Each sign-in
+  request allows five tries.
+- Access tokens last an hour. Refresh tokens last 90 days and rotate on use.
+- Tokens are stored only as hashes.
 
 ## Install as a service
 
@@ -104,10 +115,8 @@ journalctl --user -u claude-voice -f
 2. Register `https://<host>/mcp` as a private plugin in ChatGPT. On Plus that
    goes through Plugin Creator / ChatGPT Sites.
 
-**Not yet verified:** whether a ChatGPT private plugin can send a static bearer
-token, or whether it insists on OAuth. If it needs OAuth, the next step is an
-OAuth resource-server front (the `mcp` package has `token_verifier` /
-`AuthSettings` for this).
+ChatGPT plugins authenticate with OAuth only, which the bridge provides. When
+ChatGPT connects, it opens the consent page. Paste the login secret there once.
 
 ## Develop
 
