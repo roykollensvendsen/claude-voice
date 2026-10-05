@@ -276,8 +276,9 @@ def build_server(
 
     @mcp.tool(annotations=READ_ONLY)
     def list_active_sessions() -> dict[str, Any]:
-        """Claude Code sessions running on this machine right now (e.g. open in a terminal),
-        with whether each is busy or waiting for input."""
+        """Claude Code sessions running on this machine right now, with whether each is
+        busy or waiting for input. kind: "interactive" is a terminal window the user
+        types in; "bg" is a background or remote-controlled session."""
         return {"sessions": running()}
 
     def running() -> list[dict[str, Any]]:
@@ -293,6 +294,7 @@ def build_server(
                     "name": d.get("name"),
                     "project": name,
                     "status": d.get("status"),
+                    "kind": d.get("kind"),
                     "minutes_since_update": round((now_ms - d.get("updatedAt", now_ms)) / 60000),
                 }
             )
