@@ -37,6 +37,8 @@ usually speaking, often while driving, so keep what you read back short.
 Typical flow: list_projects -> create_session -> send_task -> poll
 session_recap until status is no longer "running" -> tell the user the result.
 send_task returns immediately; Claude may work for minutes.
+To see what is running on the machine (including terminal sessions), call
+list_active_sessions; to continue one, attach_conversation with its id.
 When a recap shows pending_approvals, read the tool and its input to the user
 and call approve only if they clearly say yes; otherwise call deny.
 """
@@ -165,13 +167,15 @@ def build_server(
     def list_sessions(
         status: str | None = None, project: str | None = None, limit: int = 20
     ) -> dict[str, Any]:
-        """List bridge sessions, most recently active first."""
+        """List sessions: `sessions` are those started through this bridge;
+        `running_claude_code_sessions` are all Claude Code sessions running on the machine
+        right now (also those opened in a terminal)."""
         try:
             project_path = str(manager.resolve_project(project)) if project else None
         except ValueError as exc:
             raise ToolError(str(exc)) from None
         rows = store.list_sessions(project_path, status, min(max(limit, 1), 100))
-        return {"sessions": rows}
+        return {"sessions": rows, "running_claude_code_sessions": running()}
 
     @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
     async def send_task(session_id: str, prompt: str) -> dict[str, Any]:
@@ -246,6 +250,9 @@ def build_server(
     def list_active_sessions() -> dict[str, Any]:
         """Claude Code sessions running on this machine right now (e.g. open in a terminal),
         with whether each is busy or waiting for input."""
+        return {"sessions": running()}
+
+    def running() -> list[dict[str, Any]]:
         now_ms = manager.clock() * 1000
         sessions = []
         for d in live_sessions():
@@ -262,7 +269,7 @@ def build_server(
                 }
             )
         sessions.sort(key=lambda s: s["minutes_since_update"])
-        return {"sessions": sessions}
+        return sessions
 
     @mcp.tool(annotations=READ_ONLY)
     def list_claude_conversations(project: str | None = None, limit: int = 10) -> dict[str, Any]:
