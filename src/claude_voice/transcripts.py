@@ -14,6 +14,7 @@ import json
 import re
 import tempfile
 from collections.abc import Callable, Iterable
+from pathlib import Path
 from typing import Any
 
 from claude_agent_sdk import (
@@ -25,6 +26,7 @@ from claude_agent_sdk import (
     ResultMessage,
     ToolUseBlock,
     get_session_messages,
+    project_key_for_directory,
 )
 
 MESSAGING_TOOLS = frozenset({"ListAgents", "SendMessage", "ToolSearch"})
@@ -102,6 +104,36 @@ def clip(text: str, max_chars: int) -> str:
     if space > max_chars // 2:
         cut = cut[:space]
     return cut.rstrip() + "…"
+
+
+PROJECTS_DIR = Path("~/.claude/projects").expanduser()
+
+
+def continued_in(session_id: str, cwd: str, projects_dir: Path = PROJECTS_DIR) -> str | None:
+    """The session a conversation was continued in, if that is the last thing it did.
+
+    Claude Code can carry a conversation on in a new session while the old
+    process stays alive. The old transcript then ends with a continued-in line,
+    and nothing sent to the old process reaches the conversation any more.
+    """
+    path = projects_dir / project_key_for_directory(cwd) / f"{session_id}.jsonl"
+    try:
+        with path.open("rb") as f:
+            f.seek(0, 2)
+            f.seek(max(f.tell() - 16384, 0))
+            tail = f.read().decode(errors="replace").splitlines()
+    except OSError:
+        return None
+    for line in reversed(tail):
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if entry.get("type") == "continued-in":
+            return str(entry.get("continuedInSessionId") or "") or None
+        if entry.get("type") in ("user", "assistant"):
+            return None  # the conversation went on here after any hand-over
+    return None
 
 
 def read_transcript(session_id: str, directory: str | None) -> list[Any]:

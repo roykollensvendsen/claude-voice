@@ -24,12 +24,12 @@ from typing import Any
 from claude_agent_sdk import list_subagents, project_key_for_directory
 
 from .store import Store
+from .transcripts import PROJECTS_DIR
 
 BRIDGE_NODE = "claude-voice"
 COURIER_PREFIX = "claude-voice-msg-"
 WINDOW_SECONDS = 24 * 3600
 SUBAGENT_SECONDS = 3600
-PROJECTS_DIR = Path("~/.claude/projects").expanduser()
 MESSAGE = re.compile(r'<cross-session-message from="(?P<address>[^"]*)" from-name="(?P<name>[^"]*)"')
 SOCKET_PID = re.compile(r"/(\d+)\.sock$")
 
@@ -76,6 +76,7 @@ class _Transcript:
         self.offset = 0
         self.rest = b""
         self.seen: list[tuple[float | None, str, str, str]] = []
+        self.moved_to: str | None = None  # set by a continued-in line, cleared by later talk
 
     def update(self) -> None:
         try:
@@ -91,6 +92,10 @@ class _Transcript:
                 entry = json.loads(line)
             except ValueError:
                 continue
+            if entry.get("type") == "continued-in":
+                self.moved_to = str(entry.get("continuedInSessionId") or "") or None
+            elif entry.get("type") in ("user", "assistant"):
+                self.moved_to = None
             when = _timestamp(entry)
             self.seen.extend((when, kind, who, address) for kind, who, address in _messages(entry))
 
@@ -226,7 +231,11 @@ class SessionTree:
 
         for d in live:
             sid = str(d["sessionId"])
-            for when, kind, who, address in self._transcript(sid, str(d.get("cwd"))).seen:
+            transcript = self._transcript(sid, str(d.get("cwd")))
+            if transcript.moved_to:
+                nodes[sid]["status"] = "moved"
+                nodes[sid]["moved_to"] = transcript.moved_to
+            for when, kind, who, address in transcript.seen:
                 if when is not None and when < cutoff:
                     continue
                 other = resolve(who, address)
