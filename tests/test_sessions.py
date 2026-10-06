@@ -276,3 +276,15 @@ async def test_fleet_recap_covers_only_recently_active_sessions(store, root, clo
 
     fleet = m.fleet_recap(since_minutes=60)
     assert [r["label"] for r in fleet["sessions"]] == ["new"]
+
+
+async def test_bridge_sessions_do_not_load_the_users_claude_ai_connectors(store, root):
+    import json
+
+    claude = FakeClaude([result("ok", "c-1")])
+    m = manager(store, root, claude)
+    s = m.create("app")
+    await m.send(s["id"], "go")
+    await m.wait(s["id"])
+
+    assert json.loads(claude.clients[0].options.settings) == {"disableClaudeAiConnectors": True}
