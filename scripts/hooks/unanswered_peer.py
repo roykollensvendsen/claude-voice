@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import pathlib
 import re
 import sys
@@ -26,6 +27,7 @@ from typing import IO, Any
 
 STATE_DIR = pathlib.Path("~/.local/state/claude-voice/unanswered-peer").expanduser()
 SESSIONS_DIR = pathlib.Path("~/.claude/sessions").expanduser()
+ENV_FILE = pathlib.Path("~/.config/claude-voice/env").expanduser()
 SOCKET_PID = re.compile(r"/(\d+)\.sock$")
 COURIERS = ("claude-voice-msg-", "tmp-")
 MESSAGE = re.compile(
@@ -60,9 +62,27 @@ def _replies(entry: dict[str, Any]) -> list[str]:
     ]
 
 
+def _courier_name() -> str | None:
+    """The sender name the bridge gives its courier, from its settings, if any."""
+    name = os.environ.get("CLAUDE_VOICE_COURIER_NAME")
+    if name:
+        return name.strip()
+    try:
+        for line in ENV_FILE.read_text().splitlines():
+            if line.startswith("CLAUDE_VOICE_COURIER_NAME="):
+                return line.split("=", 1)[1].strip() or None
+    except OSError:
+        pass
+    return None
+
+
 def _is_courier(name: str, address: str) -> bool:
-    """A courier by its name, or by its working folder, whatever name the owner gave it."""
-    if name.startswith(COURIERS):
+    """A courier by its name, the name the owner gave it, or its working folder.
+
+    The folder only works while that courier runs; after the bridge restarts,
+    its old messages are still recognised by the configured name.
+    """
+    if name.startswith(COURIERS) or name == _courier_name():
         return True
     pid = SOCKET_PID.search(address)
     if not pid:
