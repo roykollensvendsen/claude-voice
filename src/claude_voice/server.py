@@ -427,11 +427,14 @@ def build_server(
                 status = "session_ended"
                 break
             target = now
+            # A quick turn can start and end between two looks, so a new reply
+            # counts as much as having seen the session busy.
             seen_busy = seen_busy or now.get("status") in ("busy", "shell")
-            if seen_busy and now.get("status") == "idle":
+            replied = seen_busy or any(t["role"] == "assistant" for t in numbered_turns(now)[before:])
+            if replied and now.get("status") == "idle":
                 status = "answered"
                 break
-            if seen_busy and now.get("status") == "waiting":
+            if replied and now.get("status") == "waiting":
                 status = "needs_input"
                 break
             if asyncio.get_running_loop().time() >= deadline:
