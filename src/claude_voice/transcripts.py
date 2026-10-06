@@ -8,9 +8,12 @@ itself rather than in a copy of its conversation.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import json
 import re
 import tempfile
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 from claude_agent_sdk import (
@@ -105,35 +108,101 @@ def read_transcript(session_id: str, directory: str | None) -> list[Any]:
     return get_session_messages(session_id, directory=directory)
 
 
-async def deliver(name: str, text: str) -> dict[str, Any]:
-    """Send `text` into the running session called `name` via SendMessage."""
+COURIER_PROMPT = (
+    "You are a message courier. For each request, deliver only the message in that request, "
+    "verbatim, with SendMessage to the named session (load SendMessage with ToolSearch if needed; "
+    "use ListAgents if unsure of the name). Never resend an earlier message. Do nothing else. "
+    "Reply in one line: DELIVERED or FAILED plus the reason."
+)
 
-    async def only_messaging(tool, tool_input, context):
-        if tool in MESSAGING_TOOLS:
-            return PermissionResultAllow()
-        return PermissionResultDeny(message="This helper may only send messages.")
 
-    sent = False
-    detail = ""
-    with tempfile.TemporaryDirectory(prefix="claude-voice-msg-") as cwd:
+async def _only_messaging(tool: str, tool_input: dict[str, Any], context: Any) -> Any:
+    if tool in MESSAGING_TOOLS:
+        return PermissionResultAllow()
+    return PermissionResultDeny(message="This helper may only send messages.")
+
+
+class Courier:
+    """Carries messages into running sessions through one helper session kept ready.
+
+    Starting a helper per message cost six to seven seconds; a warm one on a small
+    model takes about two. Messages go one at a time. A helper that breaks is
+    replaced and the message tried once more; after `fresh_after` messages the
+    helper is replaced anyway, so its conversation never grows long.
+    """
+
+    def __init__(
+        self,
+        client_factory: Callable[[ClaudeAgentOptions], Any] = ClaudeSDKClient,
+        model: str = "haiku",
+        fresh_after: int = 20,
+    ) -> None:
+        self.client_factory = client_factory
+        self.model = model
+        self.fresh_after = fresh_after
+        self._lock = asyncio.Lock()
+        self._client: Any = None
+        self._cwd: tempfile.TemporaryDirectory[str] | None = None
+        self._carried = 0
+
+    async def _open(self) -> Any:
+        self._cwd = tempfile.TemporaryDirectory(prefix="claude-voice-msg-")
         opts = ClaudeAgentOptions(
-            cwd=cwd,
-            can_use_tool=only_messaging,
+            cwd=self._cwd.name,
+            model=self.model,
+            can_use_tool=_only_messaging,
             setting_sources=[],
             allowed_tools=[],
             max_turns=6,
-            system_prompt=(
-                "You are a message courier. Deliver the user's message verbatim with "
-                "SendMessage to the named session (use ListAgents if unsure of the name). "
-                "Do nothing else. Reply in one line: DELIVERED or FAILED plus the reason."
-            ),
+            settings=json.dumps({"disableClaudeAiConnectors": True}),
+            system_prompt=COURIER_PROMPT,
         )
-        async with ClaudeSDKClient(opts) as client:
-            await client.query(f"Session name: {name}\nMessage:\n{text}")
-            async for m in client.receive_response():
-                if isinstance(m, AssistantMessage):
-                    sent = sent or any(isinstance(b, ToolUseBlock) and b.name == "SendMessage" for b in m.content)
-                elif isinstance(m, ResultMessage):
-                    detail = (m.result or m.subtype or "").strip()
-    delivered = sent and detail.upper().startswith("DELIVERED")
-    return {"delivered": delivered, "detail": detail}
+        client = self.client_factory(opts)
+        await client.__aenter__()
+        self._client, self._carried = client, 0
+        return client
+
+    async def _drop(self) -> None:
+        client, self._client = self._client, None
+        if client is not None:
+            with contextlib.suppress(Exception):
+                await client.__aexit__(None, None, None)
+        if self._cwd is not None:
+            self._cwd.cleanup()
+            self._cwd = None
+
+    async def _carry(self, name: str, text: str) -> dict[str, Any]:
+        if self._client is None or self._carried >= self.fresh_after:
+            await self._drop()
+            await self._open()
+        client = self._client
+        self._carried += 1
+        sent, detail = False, ""
+        await client.query(f"Session name: {name}\nMessage:\n{text}")
+        async for m in client.receive_response():
+            if isinstance(m, AssistantMessage):
+                sent = sent or any(isinstance(b, ToolUseBlock) and b.name == "SendMessage" for b in m.content)
+            elif isinstance(m, ResultMessage):
+                detail = (m.result or m.subtype or "").strip()
+        return {"delivered": sent and detail.upper().startswith("DELIVERED"), "detail": detail}
+
+    async def deliver(self, name: str, text: str) -> dict[str, Any]:
+        """Send `text` into the running session called `name` via SendMessage."""
+        async with self._lock:
+            try:
+                return await self._carry(name, text)
+            except Exception:
+                await self._drop()
+                return await self._carry(name, text)
+
+    async def close(self) -> None:
+        async with self._lock:
+            await self._drop()
+
+
+_courier = Courier()
+
+
+async def deliver(name: str, text: str) -> dict[str, Any]:
+    """Send `text` into the running session called `name`, with the shared warm courier."""
+    return await _courier.deliver(name, text)
