@@ -145,7 +145,7 @@ async def test_a_message_counts_as_delivered_only_if_its_exact_text_was_sent_to_
 
 
 async def test_a_failed_delivery_is_tried_once_more_with_a_fresh_courier():
-    factory = Factory([[done("pong")]], [sent_text("billing", "Reply with pong"), done("DELIVERED")])
+    factory = Factory([[done("pong")]], [[sent_text("billing", "Reply with pong"), done("DELIVERED")]])
     courier = Courier(client_factory=factory)
     assert (await courier.deliver("billing", "Reply with pong"))["delivered"] is True
     assert len(factory.clients) == 2 and factory.clients[0].closed
