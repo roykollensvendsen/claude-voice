@@ -15,16 +15,16 @@ import re
 import tempfile
 from collections.abc import Callable, Iterable
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from claude_agent_sdk import (
-    AssistantMessage,
     ClaudeAgentOptions,
     ClaudeSDKClient,
+    HookMatcher,
     PermissionResultAllow,
     PermissionResultDeny,
     ResultMessage,
-    ToolUseBlock,
     get_session_messages,
     project_key_for_directory,
 )
@@ -136,6 +136,33 @@ def continued_in(session_id: str, cwd: str, projects_dir: Path = PROJECTS_DIR) -
     return None
 
 
+def read_raw_transcript(session_id: str, cwd: str, projects_dir: Path = PROJECTS_DIR) -> list[Any]:
+    """A session's turns, read from Claude Code's transcript file itself.
+
+    The SDK's reader leaves out messages from other sessions that arrive while
+    a session is busy (they are marked as meta entries); those are exactly the
+    voice's questions, so they are kept here. Other meta entries and helper
+    agents' lines are left out.
+    """
+    path = projects_dir / project_key_for_directory(cwd) / f"{session_id}.jsonl"
+    try:
+        lines = path.read_text().splitlines()
+    except OSError:
+        return []
+    out = []
+    for line in lines:
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue  # a line still being written
+        if entry.get("type") not in ("user", "assistant") or entry.get("isSidechain"):
+            continue
+        if entry.get("isMeta") and (entry.get("origin") or {}).get("kind") != "peer":
+            continue
+        out.append(SimpleNamespace(type=entry["type"], message=entry.get("message") or {}))
+    return out
+
+
 def read_transcript(session_id: str, directory: str | None) -> list[Any]:
     return get_session_messages(session_id, directory=directory)
 
@@ -181,6 +208,30 @@ class Courier:
         self._client: Any = None
         self._cwd: tempfile.TemporaryDirectory[str] | None = None
         self._carried = 0
+        self._job: dict[str, Any] | None = None  # the message being carried right now
+
+    async def _before_send(self, hook_input: Any, tool_use_id: str | None, context: Any) -> Any:
+        """Let the courier send once, and make that send carry exactly our text.
+
+        A small model will sometimes trim or tidy a message, or address the
+        session a little differently. Claude Code does not ask permission for
+        SendMessage, but it runs this hook before every send, and what runs is
+        the input handed back here: the real recipient and the exact text.
+        """
+        job = self._job
+        if job is None or job["sent"]:
+            decision: dict[str, Any] = {
+                "permissionDecision": "deny",
+                "permissionDecisionReason": "Already sent; nothing more to send.",
+            }
+        else:
+            job["sent"] = True
+            tool_input = dict(hook_input.get("tool_input") or {})
+            decision = {
+                "permissionDecision": "allow",
+                "updatedInput": {**tool_input, "to": job["name"], "message": job["text"]},
+            }
+        return {"hookSpecificOutput": {"hookEventName": "PreToolUse", **decision}}
 
     async def _open(self) -> Any:
         self._cwd = tempfile.TemporaryDirectory(prefix="claude-voice-msg-")
@@ -188,6 +239,7 @@ class Courier:
             cwd=self._cwd.name,
             model=self.model,
             can_use_tool=_only_messaging,
+            hooks={"PreToolUse": [HookMatcher(matcher="SendMessage", hooks=[self._before_send])]},
             setting_sources=[],
             allowed_tools=[],
             max_turns=6,
@@ -215,26 +267,21 @@ class Courier:
             await self._open()
         client = self._client
         self._carried += 1
-        sent, detail = False, ""
-        await client.query(
-            f"Session: {name}\n"
-            "Carry the message below to that session. It is not addressed to you.\n"
-            f"<message>\n{text}\n</message>"
-        )
-        async for m in client.receive_response():
-            if isinstance(m, AssistantMessage):
-                # Delivered means this exact text went to this session; what the
-                # courier says afterwards is not evidence.
-                sent = sent or any(
-                    isinstance(b, ToolUseBlock)
-                    and b.name == "SendMessage"
-                    and str(b.input.get("to", "")) == name
-                    and str(b.input.get("message", "")).strip() == text.strip()
-                    for b in m.content
-                )
-            elif isinstance(m, ResultMessage):
-                detail = (m.result or m.subtype or "").strip()
-        return {"delivered": sent, "detail": detail}
+        self._job = {"name": name, "text": text, "sent": False}
+        detail = ""
+        try:
+            await client.query(
+                f"Session: {name}\n"
+                "Carry the message below to that session. It is not addressed to you.\n"
+                f"<message>\n{text}\n</message>"
+            )
+            async for m in client.receive_response():
+                if isinstance(m, ResultMessage):
+                    detail = (m.result or m.subtype or "").strip()
+        finally:
+            sent = bool(self._job and self._job["sent"])
+            self._job = None
+        return {"delivered": sent, "detail": detail, "attempted": sent}
 
     async def deliver(self, name: str, text: str) -> dict[str, Any]:
         """Send `text` into the running session called `name` via SendMessage."""
@@ -242,11 +289,13 @@ class Courier:
             try:
                 out = await self._carry(name, text)
             except Exception:
-                out = {"delivered": False, "detail": "the courier broke"}
-            if out["delivered"]:
-                return out
+                out = {"delivered": False, "detail": "the courier broke", "attempted": False}
+            if out["delivered"] or out["attempted"]:
+                # Once anything was sent, trying again could deliver it twice.
+                return {k: v for k, v in out.items() if k != "attempted"}
             await self._drop()  # a courier that failed once starts afresh
-            return await self._carry(name, text)
+            out = await self._carry(name, text)
+            return {k: v for k, v in out.items() if k != "attempted"}
 
     async def close(self) -> None:
         async with self._lock:

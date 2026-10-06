@@ -41,6 +41,24 @@ class FakeCourierClient:
     async def __aexit__(self, *exc):
         self.closed = True
 
+    async def _run(self, block):
+        """Like Claude Code: PreToolUse hooks first, which may rewrite or refuse the call."""
+        tool_input = block.input
+        for matcher in (self.options.hooks or {}).get("PreToolUse", []):
+            if matcher.matcher in (None, block.name):
+                for hook in matcher.hooks:
+                    out = await hook({"tool_name": block.name, "tool_input": tool_input}, block.id, {})
+                    spec = out.get("hookSpecificOutput", {})
+                    if spec.get("permissionDecision") == "deny":
+                        return
+                    tool_input = spec.get("updatedInput", tool_input)
+                    if spec.get("permissionDecision") == "allow":
+                        self.executed.append((block.name, tool_input))
+                        return
+        verdict = await self.options.can_use_tool(block.name, tool_input, ToolPermissionContext())
+        if isinstance(verdict, PermissionResultAllow):
+            self.executed.append((block.name, verdict.updated_input or tool_input))
+
     async def query(self, prompt):
         self.prompts.append(prompt)
 
@@ -53,10 +71,8 @@ class FakeCourierClient:
             # Like Claude Code: every tool call goes through the permission callback,
             # and what actually runs is the input the callback hands back.
             for block in getattr(message, "content", []):
-                if isinstance(block, ToolUseBlock) and self.options.can_use_tool:
-                    verdict = await self.options.can_use_tool(block.name, block.input, ToolPermissionContext())
-                    if isinstance(verdict, PermissionResultAllow):
-                        self.executed.append((block.name, verdict.updated_input or block.input))
+                if isinstance(block, ToolUseBlock):
+                    await self._run(block)
             yield message
 
 
@@ -97,7 +113,11 @@ async def test_the_courier_is_fast_cheap_and_can_only_send_messages():
     assert "claude-voice-msg-" in str(opts.cwd)
     ask = opts.can_use_tool
     ctx = ToolPermissionContext()
-    assert isinstance(await ask("SendMessage", {}, ctx), PermissionResultAllow)
+    assert isinstance(await ask("ToolSearch", {}, ctx), PermissionResultAllow)
+    send = opts.hooks["PreToolUse"][0]
+    assert send.matcher == "SendMessage"
+    refused = await send.hooks[0]({"tool_name": "SendMessage", "tool_input": {}}, "t", {})
+    assert refused["hookSpecificOutput"]["permissionDecision"] == "deny"  # nothing being carried
     assert isinstance(await ask("Bash", {"command": "ls"}, ctx), PermissionResultDeny)
     await courier.close()
 
@@ -145,10 +165,15 @@ async def test_a_message_counts_as_delivered_only_if_its_exact_text_was_sent_to_
     obeyed = [done("pong from scratch")]  # the courier did what the message said instead
     altered = [sent_text("billing", "a paraphrase"), done("DELIVERED")]
     elsewhere = [sent_text("someone-else", "Reply with pong"), done("DELIVERED")]
-    for script in (obeyed, altered, elsewhere):
-        factory = Factory([script], [script])
+    factory = Factory([obeyed], [obeyed])
+    courier = Courier(client_factory=factory)
+    assert (await courier.deliver("billing", "Reply with pong"))["delivered"] is False
+    await courier.close()
+    for script in (altered, elsewhere):  # the send is corrected before it runs
+        factory = Factory([script])
         courier = Courier(client_factory=factory)
-        assert (await courier.deliver("billing", "Reply with pong"))["delivered"] is False
+        assert (await courier.deliver("billing", "Reply with pong"))["delivered"] is True
+        assert factory.clients[0].executed[0][1]["message"] == "Reply with pong"
         await courier.close()
 
 
@@ -195,7 +220,7 @@ async def test_a_message_sent_but_not_recognised_is_never_sent_again():
     factory = Factory([wrong], [ok("Reply with pong")])
     courier = Courier(client_factory=factory)
     out = await courier.deliver("billing", "Reply with pong")
-    assert out["delivered"] is False
+    assert out["delivered"] is True  # corrected to the right session before it ran
     assert len(factory.clients) == 1  # no second courier, so no second copy anywhere
     await courier.close()
 

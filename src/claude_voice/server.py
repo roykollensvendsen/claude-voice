@@ -129,7 +129,7 @@ def build_server(
     conversations: Callable[..., list[SDKSessionInfo]] = list_claude_sessions,
     live_dir: Path = LIVE_DIR,
     deliver: Callable[[str, str], Awaitable[dict[str, Any]]] = transcripts.deliver,
-    read_transcript: Callable[[str, str | None], list[Any]] = transcripts.read_transcript,
+    read_transcript: Callable[[str, str | None], list[Any]] | None = None,
     watch_interval: float | None = None,
     poll_seconds: float = 1.0,
     receive_seconds: float = 15.0,
@@ -147,6 +147,11 @@ def build_server(
             revocation_options=RevocationOptions(enabled=True),
             validate_token_resource=False,
         )
+    if read_transcript is None:
+
+        def read_transcript(sid: str, directory: str | None) -> list[Any]:
+            return transcripts.read_raw_transcript(sid, directory or "", projects_dir)
+
     watcher = events.LiveWatcher(manager.store, live_dir, manager.root, clock=manager.clock)
     tree = SessionTree(manager.store, live_dir, manager.root, projects_dir=projects_dir, clock=manager.clock)
     tree_version: list[str] = []  # the last shape seen, so a change can be reported
@@ -457,6 +462,7 @@ def build_server(
                 "next_after": -1,
             }
         before = len(numbered_turns(target))
+        was_busy = target.get("status") in ("busy", "shell")
         out = await deliver(target["name"], message)
         if not out.get("delivered"):
             raise ToolError(f"Could not deliver: {out.get('detail') or 'unknown reason'}")
@@ -475,6 +481,16 @@ def build_server(
             # counts as much as having seen the session busy.
             seen_busy = seen_busy or now.get("status") in ("busy", "shell")
             new_turns = numbered_turns(now)[before:]
+            anchor_at = next((t["index"] for t in new_turns if t["role"] == "user" and probe in t["text"]), None)
+            if (
+                was_busy
+                and anchor_at is not None
+                and any(t["role"] == "assistant" and t["index"] > anchor_at for t in new_turns)
+            ):
+                # Asked mid-work: its first words after our question are the answer; the
+                # rest of its turn belongs to whatever it was doing.
+                status = "answered"
+                break
             replied = seen_busy or any(t["role"] == "assistant" for t in new_turns)
             arrived = replied or any(t["role"] == "user" and probe in t["text"] for t in new_turns)
             if not arrived and asyncio.get_running_loop().time() - started >= receive_seconds:
@@ -498,6 +514,8 @@ def build_server(
         new = [t for t in fresh if t["role"] == "assistant" and t["index"] > start]
         if anchor is None and status != "still_working":
             new = new[-1:]  # the message is not in view: only the session's final words
+        elif anchor is not None and was_busy and new:
+            new = new[:1]
         for turn in new:
             turn["text"] = transcripts.clip(turn["text"], max(max_chars, 20))
         return {
