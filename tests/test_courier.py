@@ -33,6 +33,7 @@ class FakeCourierClient:
         self.replies = replies
         self.prompts = []
         self.closed = False
+        self.executed = []
 
     async def __aenter__(self):
         return self
@@ -49,6 +50,13 @@ class FakeCourierClient:
             raise reply
         for message in reply:
             await asyncio.sleep(0)
+            # Like Claude Code: every tool call goes through the permission callback,
+            # and what actually runs is the input the callback hands back.
+            for block in getattr(message, "content", []):
+                if isinstance(block, ToolUseBlock) and self.options.can_use_tool:
+                    verdict = await self.options.can_use_tool(block.name, block.input, ToolPermissionContext())
+                    if isinstance(verdict, PermissionResultAllow):
+                        self.executed.append((block.name, verdict.updated_input or block.input))
             yield message
 
 
@@ -189,4 +197,25 @@ async def test_a_message_sent_but_not_recognised_is_never_sent_again():
     out = await courier.deliver("billing", "Reply with pong")
     assert out["delivered"] is False
     assert len(factory.clients) == 1  # no second courier, so no second copy anywhere
+    await courier.close()
+
+
+async def test_whatever_the_courier_writes_exactly_our_text_goes_to_exactly_our_session():
+    paraphrased = [sent_text("billing [4849b2]", "only the quoted part"), done("DELIVERED")]
+    factory = Factory([paraphrased])
+    courier = Courier(client_factory=factory)
+    out = await courier.deliver("billing", "Frame. Roy sier: «only the quoted part»")
+    assert out["delivered"] is True
+    assert factory.clients[0].executed == [
+        ("SendMessage", {"to": "billing", "message": "Frame. Roy sier: «only the quoted part»"})
+    ]
+    await courier.close()
+
+
+async def test_a_courier_may_send_only_once_per_message():
+    twice = [sent_text("billing", "a"), sent_text("billing", "a"), done("DELIVERED")]
+    factory = Factory([twice])
+    courier = Courier(client_factory=factory)
+    await courier.deliver("billing", "a")
+    assert [name for name, _ in factory.clients[0].executed] == ["SendMessage"]
     await courier.close()
