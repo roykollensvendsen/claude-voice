@@ -231,10 +231,15 @@ def build_server(
             raise ToolError(msg) from None
 
     @mcp.tool(annotations=READ_ONLY)
-    def session_recap(session_id: str) -> dict[str, Any]:
-        """Short status of one session: running or not, last prompt, latest words, result."""
+    def session_recap(session_id: str, max_chars: int = 400) -> dict[str, Any]:
+        """Short status of one session: running or not, last prompt, latest words, result.
+        Texts are cut to max_chars each."""
         session_id = known(session_id)
-        return manager.recap(session_id)
+        recap = manager.recap(session_id)
+        for key in ("last_prompt", "latest_text", "last_result", "last_error"):
+            if isinstance(recap.get(key), str):
+                recap[key] = transcripts.clip(recap[key], max(max_chars, 20))
+        return recap
 
     @mcp.tool(annotations=READ_ONLY)
     def get_messages(session_id: str, after: int = 0, limit: int = 50) -> dict[str, Any]:
@@ -393,25 +398,27 @@ def build_server(
         return {"session": target["name"], **out}
 
     @mcp.tool(annotations=READ_ONLY)
-    def read_session_output(session: str, limit: int = 6) -> dict[str, Any]:
+    def read_session_output(session: str, limit: int = 6, max_chars: int = 600) -> dict[str, Any]:
         """The latest prompts and replies of a running Claude Code session (name or id from
-        list_active_sessions), read from its own transcript."""
+        list_active_sessions), read from its own transcript. Each is cut to max_chars."""
         target = find_live(session)
         msgs = read_transcript(target["sessionId"], target.get("cwd"))
-        return {
-            "session": target["name"],
-            "status": target.get("status"),
-            "turns": transcripts.recent_turns(msgs, limit=min(max(limit, 1), 30)),
-        }
+        turns = transcripts.recent_turns(msgs, limit=min(max(limit, 1), 30))
+        for turn in turns:
+            turn["text"] = transcripts.clip(turn["text"], max(max_chars, 20))
+        return {"session": target["name"], "status": target.get("status"), "turns": turns}
 
     @mcp.tool(annotations=READ_ONLY)
-    def search_session_history(session: str, query: str, limit: int = 5) -> dict[str, Any]:
+    def search_session_history(session: str, query: str, limit: int = 5, max_chars: int = 300) -> dict[str, Any]:
         """Search the whole conversation of a running Claude Code session (name or id from
         list_active_sessions) for keywords; returns only the most relevant excerpts.
         Use instead of reading long output when looking for something said earlier."""
         target = find_live(session)
         turns = transcripts.recent_turns(read_transcript(target["sessionId"], target.get("cwd")), None)
-        matches = transcripts.search_turns(turns, query, limit=min(max(limit, 1), 20))
+        size = max(max_chars, 40)
+        matches = transcripts.search_turns(turns, query, limit=min(max(limit, 1), 20), context_chars=size // 2 - 10)
+        for match in matches:
+            match["text"] = transcripts.clip(match["text"], size)
         return {"session": target["name"], "total_turns": len(turns), "matches": matches}
 
     @mcp.tool(annotations=READ_ONLY)

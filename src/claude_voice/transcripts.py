@@ -90,6 +90,17 @@ def _snippet(text: str, patterns: list[re.Pattern], context: int) -> str:
     return ("…" if start else "") + text[start:end].strip() + ("…" if end < len(text) else "")
 
 
+def clip(text: str, max_chars: int) -> str:
+    """Cut text to at most max_chars, at a word where possible, marking the cut."""
+    if len(text) <= max_chars:
+        return text
+    cut = text[: max(max_chars - 1, 0)]
+    space = cut.rfind(" ")
+    if space > max_chars // 2:
+        cut = cut[:space]
+    return cut.rstrip() + "…"
+
+
 def read_transcript(session_id: str, directory: str | None) -> list[Any]:
     return get_session_messages(session_id, directory=directory)
 
