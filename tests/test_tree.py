@@ -181,3 +181,27 @@ def test_the_version_changes_with_the_shape_and_not_with_a_status(world):
     assert tree.build()["version"] == first
     world.transcript(a, a_cwd, [send("beta")])
     assert tree.build()["version"] != first
+
+
+# -- through the bridge ----------------------------------------------------------
+
+
+async def test_the_bridge_offers_the_tree_and_says_when_its_shape_changes(world):
+    from fakes import FakeClaude
+    from mcp.client import Client
+
+    from claude_voice.server import build_server
+    from claude_voice.sessions import SessionManager
+
+    world.session("alpha", pid=PID)
+    m = SessionManager(world.store, project_root=world.root, client_factory=FakeClaude())
+    srv = build_server(m, conversations=lambda **k: [], live_dir=world.live, projects_dir=world.projects)
+    async with Client(srv) as c:
+        tree = (await c.call_tool("session_tree", {})).structured_content
+        assert "sid-alpha" in {n["id"] for n in tree["nodes"]}
+        start = (await c.call_tool("whats_new", {})).structured_content
+        world.session("beta", pid=PID)
+        news = (await c.call_tool("whats_new", {"cursor": start["cursor"]})).structured_content
+    changed = [e for e in news["events"] if e["kind"] == "tree_changed"]
+    assert len(changed) == 1
+    assert changed[0]["text"] != tree["version"]  # carries the new version
