@@ -43,7 +43,7 @@ class Target:
         self.transcript.append(msg("assistant", [{"type": "text", "text": text}]))
 
 
-def bridge(tmp_path, root, live, target, deliver):
+def bridge(tmp_path, root, live, target, deliver, receive_seconds=15.0):
     m = SessionManager(Store(tmp_path / "b.db"), project_root=root, client_factory=FakeClaude())
     return build_server(
         m,
@@ -52,7 +52,22 @@ def bridge(tmp_path, root, live, target, deliver):
         deliver=deliver,
         read_transcript=lambda sid, directory: list(target.transcript),
         poll_seconds=0.01,
+        receive_seconds=receive_seconds,
+        projects_dir=tmp_path / "projects",
     )
+
+
+def continued(tmp_path, cwd, sid, new_sid):
+    """Write the raw transcript of a conversation that Claude Code continued elsewhere."""
+    from claude_agent_sdk import project_key_for_directory
+
+    path = tmp_path / "projects" / project_key_for_directory(cwd) / f"{sid}.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        {"type": "assistant", "message": {"content": [{"type": "text", "text": "last words"}]}},
+        {"type": "continued-in", "sessionId": sid, "continuedInSessionId": new_sid},
+    ]
+    path.write_text("".join(json.dumps(x) + "\n" for x in lines))
 
 
 @pytest.fixture
@@ -172,3 +187,31 @@ async def test_an_idle_session_with_no_reply_yet_is_waited_for(tmp_path, root, l
         out = await call(c, "ask_active_session", session="billing-ab", message="ping", wait_seconds=5)
     assert out["status"] == "answered"
     assert out["reply"] == "late pong"
+
+
+async def test_a_message_that_never_arrives_is_reported_instead_of_waited_out(tmp_path, root, live):
+    target = Target(live, str(root / "billing"))
+
+    async def deliver(name, text):
+        return {"delivered": True, "detail": "DELIVERED"}  # handed over, but never shows up
+
+    async with Client(bridge(tmp_path, root, live, target, deliver, receive_seconds=0.1)) as c:
+        out = await call(c, "ask_active_session", session="billing-ab", message="hello?", wait_seconds=30)
+    assert out["status"] == "not_received"
+
+
+async def test_a_session_continued_elsewhere_is_shown_as_moved_and_not_asked(tmp_path, root, live):
+    target = Target(live, str(root / "billing"))  # sid-1
+    continued(tmp_path, str(root / "billing"), "sid-1", "sid-2")
+
+    async def deliver(name, text):
+        raise AssertionError("a moved session must not be messaged")
+
+    async with Client(bridge(tmp_path, root, live, target, deliver)) as c:
+        listed = await call(c, "list_active_sessions")
+        asked = await call(c, "ask_active_session", session="billing-ab", message="hi")
+        sent = await call(c, "message_active_session", session="billing-ab", message="hi")
+    row = listed["sessions"][0]
+    assert row["status"] == "moved" and row["moved_to"] == {"id": "sid-2", "name": None}
+    assert asked["status"] == "moved" and asked["moved_to"]["id"] == "sid-2"
+    assert sent["status"] == "moved" and sent["delivered"] is False

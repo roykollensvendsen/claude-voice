@@ -216,3 +216,13 @@ async def test_the_bridge_offers_the_tree_and_says_when_its_shape_changes(world)
     changed = [e for e in news["events"] if e["kind"] == "tree_changed"]
     assert len(changed) == 1
     assert changed[0]["text"] != tree["version"]  # carries the new version
+
+
+def test_a_session_continued_elsewhere_is_marked_moved(world):
+    a, a_cwd = world.session("alpha")
+    b, _ = world.session("beta")
+    world.transcript(a, a_cwd, [{"type": "continued-in", "sessionId": a, "continuedInSessionId": b}])
+    nodes = by_id(world.tree().build())
+    assert nodes[a]["status"] == "moved"
+    assert nodes[a]["moved_to"] == b
+    assert "moved_to" not in nodes[b] or nodes[b]["moved_to"] is None
