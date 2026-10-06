@@ -182,10 +182,11 @@ def bridge_events(store: Store, after: int, limit: int = 200) -> list[dict[str, 
             text = f"{name} failed: {clip(str(p.get('error')), 300)}"
         elif kind == "approval_requested":
             kind = "needs_approval"
-            text = f"{name} wants to {_describe(p.get('tool'), p.get('input'))}. Approval {p.get('id')}: yes or no?"
+            text = f"{name} wants to {_describe(p.get('tool'), p.get('input'))}. Yes or no?"
             extra = {"approval_id": p.get("id"), "tool": p.get("tool"), "input": p.get("input")}
         elif kind == "approval_expired":
-            text = f"Approval {p.get('id')} for {name} expired and was refused."
+            extra = {"approval_id": p.get("id")}
+            text = f"An approval for {name} expired and was refused."
         elif kind == "cancelled":
             text = f"{name} was stopped."
         else:
