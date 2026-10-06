@@ -119,6 +119,7 @@ class SessionTree:
         self.subagents = subagents
         self.alive = alive
         self._transcripts: dict[Path, _Transcript] = {}
+        self._couriers: tuple[set[int], set[str]] = (set(), set())  # pids, names
 
     def _project(self, cwd: str | None) -> str | None:
         if not cwd:
@@ -130,16 +131,25 @@ class SessionTree:
 
     def _live(self) -> list[dict[str, Any]]:
         out = []
+        pids: set[int] = set()
+        names: set[str] = set()
         for f in sorted(self.live_dir.glob("*.json")) if self.live_dir.is_dir() else []:
             try:
                 d = json.loads(f.read_text())
-                if not self.alive(int(d["pid"])):
-                    continue
+                pid = int(d["pid"])
             except (ValueError, KeyError, TypeError, OSError):
                 continue
-            if str(d.get("name", "")).startswith(COURIER_PREFIX) or self._project(d.get("cwd")) is None:
+            # A courier is known by its working folder; its name is whatever the owner chose.
+            if Path(str(d.get("cwd"))).name.startswith(COURIER_PREFIX) or str(d.get("name", "")).startswith(
+                COURIER_PREFIX
+            ):
+                pids.add(pid)
+                names.add(str(d.get("name", "")))
+                continue
+            if not self.alive(pid) or self._project(d.get("cwd")) is None:
                 continue
             out.append(d)
+        self._couriers = (pids, names)
         return out
 
     def _transcript(self, sid: str, cwd: str) -> _Transcript:
@@ -217,8 +227,15 @@ class SessionTree:
                 "talks_to": set(),
             }
 
+        courier_pids, courier_names = self._couriers
+
         def resolve(who: str, address: str = "") -> str | None:
-            if who.startswith(COURIER_PREFIX):
+            pid_match = SOCKET_PID.search(address)
+            if (
+                who.startswith(COURIER_PREFIX)
+                or who in courier_names
+                or (pid_match is not None and int(pid_match.group(1)) in courier_pids)
+            ):
                 return BRIDGE_NODE
             name = re.sub(r"\s*\[[0-9a-f]+\]$", "", who)
             if name in by_name:

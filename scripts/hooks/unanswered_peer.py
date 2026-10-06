@@ -25,6 +25,8 @@ import sys
 from typing import IO, Any
 
 STATE_DIR = pathlib.Path("~/.local/state/claude-voice/unanswered-peer").expanduser()
+SESSIONS_DIR = pathlib.Path("~/.claude/sessions").expanduser()
+SOCKET_PID = re.compile(r"/(\d+)\.sock$")
 COURIERS = ("claude-voice-msg-", "tmp-")
 MESSAGE = re.compile(
     r'<cross-session-message from="(?P<address>[^"]*)" from-name="(?P<name>[^"]*)"[^>]*>'
@@ -58,6 +60,20 @@ def _replies(entry: dict[str, Any]) -> list[str]:
     ]
 
 
+def _is_courier(name: str, address: str) -> bool:
+    """A courier by its name, or by its working folder, whatever name the owner gave it."""
+    if name.startswith(COURIERS):
+        return True
+    pid = SOCKET_PID.search(address)
+    if not pid:
+        return False
+    try:
+        cwd = json.loads((SESSIONS_DIR / f"{pid.group(1)}.json").read_text()).get("cwd", "")
+    except (OSError, ValueError, AttributeError):
+        return False
+    return pathlib.Path(str(cwd)).name.startswith(COURIERS)
+
+
 def unanswered(entries: list[dict[str, Any]]) -> list[dict[str, str]]:
     """Peer messages with no SendMessage to their sender after them, oldest first."""
     pending: dict[str, dict[str, str]] = {}
@@ -68,7 +84,7 @@ def unanswered(entries: list[dict[str, Any]]) -> list[dict[str, str]]:
         for text in _texts(entry):
             for match in MESSAGE.finditer(text):
                 message = {k: match.group(k).strip() for k in ("address", "name", "text")}
-                if message["name"].startswith(COURIERS):
+                if _is_courier(message["name"], message["address"]):
                     continue
                 key = hashlib.sha256(json.dumps(message, sort_keys=True).encode()).hexdigest()
                 pending.setdefault(key, {**message, "key": key})
