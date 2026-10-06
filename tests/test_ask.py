@@ -142,3 +142,33 @@ async def test_read_session_output_numbers_turns_so_a_reader_can_continue(tmp_pa
         first = await call(c, "read_session_output", session="billing-ab")
     assert [t["index"] for t in first["turns"]] == [0, 1]
     assert first["next_after"] == 1
+
+
+async def test_a_reply_too_quick_to_be_seen_busy_still_counts_as_answered(tmp_path, root, live):
+    target = Target(live, str(root / "billing"))
+
+    async def deliver(name, text):
+        target.says("pong")  # the whole turn happened between two looks at the registry
+        return {"delivered": True, "detail": "DELIVERED"}
+
+    async with Client(bridge(tmp_path, root, live, target, deliver)) as c:
+        out = await call(c, "ask_active_session", session="billing-ab", message="ping", wait_seconds=5)
+    assert out["status"] == "answered"
+    assert out["reply"] == "pong"
+
+
+async def test_an_idle_session_with_no_reply_yet_is_waited_for(tmp_path, root, live):
+    target = Target(live, str(root / "billing"))
+
+    async def deliver(name, text):
+        async def later():
+            await asyncio.sleep(0.1)
+            target.says("late pong")
+
+        asyncio.get_running_loop().create_task(later())
+        return {"delivered": True, "detail": "DELIVERED"}
+
+    async with Client(bridge(tmp_path, root, live, target, deliver)) as c:
+        out = await call(c, "ask_active_session", session="billing-ab", message="ping", wait_seconds=5)
+    assert out["status"] == "answered"
+    assert out["reply"] == "late pong"
