@@ -160,3 +160,15 @@ async def test_the_message_is_framed_as_something_to_carry_not_to_obey():
     assert "<message>\nReply with pong\n</message>" in prompt
     assert "not addressed to you" in prompt
     await courier.close()
+
+
+async def test_the_courier_carries_a_name_the_receiver_can_read():
+    factory = Factory([ok("hi")], [ok("hi")])
+    named = Courier(client_factory=factory, name="Roy via stemmen")
+    await named.deliver("billing", "hi")
+    assert factory.clients[0].options.extra_args == {"name": "Roy via stemmen"}
+    await named.close()
+    default = Courier(client_factory=factory)
+    await default.deliver("billing", "hi")
+    assert factory.clients[1].options.extra_args == {"name": "Owner via claude-voice"}
+    await default.close()

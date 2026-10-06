@@ -402,3 +402,10 @@ async def test_list_sessions_also_shows_running_claude_code_sessions(tmp_path, r
         out = await call(c, "list_sessions")
     assert out["sessions"] == []
     assert [s["name"] for s in out["running_claude_code_sessions"]] == ["app-fix"]
+
+
+def test_the_courier_name_comes_from_the_environment(tmp_path):
+    env = {"CLAUDE_VOICE_ROOT": str(tmp_path)}
+    assert load_config(env, "stdio").courier_name == "Owner via claude-voice"
+    named = {**env, "CLAUDE_VOICE_COURIER_NAME": "Roy via stemmen"}
+    assert load_config(named, "stdio").courier_name == "Roy via stemmen"

@@ -110,3 +110,20 @@ def test_a_missing_or_broken_transcript_never_blocks(tmp_path, state):
     out = io.StringIO()
     hook.main(io.StringIO("not json"), out)
     assert out.getvalue().strip() == ""
+
+
+def test_a_courier_known_by_its_folder_is_ignored_whatever_its_name(tmp_path, state):
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    (sessions / "4242.json").write_text(
+        json.dumps({"pid": 4242, "cwd": "/tmp/claude-voice-msg-abc", "name": "Roy via stemmen"})
+    )
+    hook = _hook()
+    state.setattr(hook, "SESSIONS_DIR", sessions)
+    entry = peer("Roy via stemmen", "hva skjer?", address="uds:/run/user/1000/cc-socks/4242.sock")
+    transcript = tmp_path / "t.jsonl"
+    transcript.write_text(json.dumps(entry) + "\n")
+    state.setattr(hook, "STATE_DIR", tmp_path / "state")
+    out = io.StringIO()
+    hook.main(io.StringIO(json.dumps({"session_id": "s", "transcript_path": str(transcript)})), out)
+    assert out.getvalue().strip() == ""
