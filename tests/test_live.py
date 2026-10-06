@@ -253,3 +253,44 @@ async def test_active_sessions_say_whether_the_bridge_manages_them(tmp_path, roo
         after = await call(c, "list_active_sessions")
     assert before["sessions"][0]["managed_by_bridge"] is False
     assert after["sessions"][0]["managed_by_bridge"] is True
+
+
+# -- answers sized for speech ------------------------------------------------------------
+
+from claude_voice.transcripts import clip  # noqa: E402
+
+
+def test_clip_cuts_at_a_word_and_marks_the_cut():
+    assert clip("short", 20) == "short"
+    assert clip("one two three four five", 12) == "one two…"
+    assert len(clip("x" * 1000, 50)) <= 50
+
+
+async def test_read_session_output_is_cut_to_max_chars(tmp_path, root, live):
+    long = [msg("assistant", [{"type": "text", "text": "word " * 400}])]
+    _, srv = server_for(tmp_path, root, live, read=lambda sid, directory: long)
+    async with Client(srv) as c:
+        out = await call(c, "read_session_output", session="billing-ab", max_chars=100)
+        default = await call(c, "read_session_output", session="billing-ab")
+    assert len(out["turns"][0]["text"]) <= 100
+    assert len(default["turns"][0]["text"]) <= 600
+
+
+async def test_search_excerpts_follow_max_chars(tmp_path, root, live):
+    long = [msg("assistant", [{"type": "text", "text": "a " * 300 + "needle " + "b " * 300}])]
+    _, srv = server_for(tmp_path, root, live, read=lambda sid, directory: long)
+    async with Client(srv) as c:
+        out = await call(c, "search_session_history", session="billing-ab", query="needle", max_chars=80)
+    assert "needle" in out["matches"][0]["text"]
+    assert len(out["matches"][0]["text"]) <= 80
+
+
+async def test_recap_texts_are_cut_to_max_chars(tmp_path, root, live):
+    claude = FakeClaude([result("z " * 500, "c-1")])
+    m, srv = server_for(tmp_path, root, live, claude=claude)
+    async with Client(srv) as c:
+        s = await call(c, "create_session", project="billing")
+        await call(c, "send_task", session_id=s["id"], prompt="go")
+        await m.wait(s["id"])
+        recap = await call(c, "session_recap", session_id=s["id"], max_chars=60)
+    assert len(recap["last_result"]) <= 60

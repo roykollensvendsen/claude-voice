@@ -132,7 +132,9 @@ async def test_whats_new_returns_only_the_delta_since_the_cursor(store, live, ro
         assert ("bugfix", "finished") in got
         assert ("term-1", "finished") in got
         finished = next(e for e in second["events"] if e["session"] == "bugfix")
-        assert finished["text"] == "Done: fixed."
+        assert finished["text"] == "bugfix finished. Done: fixed."
+        term = next(e for e in second["events"] if e["session"] == "term-1")
+        assert term["text"] == "term-1 has finished and is waiting."
 
         third = await call(c, "whats_new", cursor=second["cursor"])
         assert third["events"] == []
@@ -158,7 +160,9 @@ async def test_whats_new_flags_approvals_and_errors(store, live, root):
         out = await call(c, "whats_new", cursor=start["cursor"])
         needs = next(e for e in out["events"] if e["kind"] == "needs_approval")
         assert needs["session"] == "build"
-        assert "Bash" in needs["text"]
+        assert needs["text"] == f"build wants to run Bash: make. Approval {needs['approval_id']}: yes or no?"
+        assert needs["tool"] == "Bash"
+        assert needs["input"] == {"command": "make"}
         await call(c, "cancel", session_id=s["id"])
 
 
