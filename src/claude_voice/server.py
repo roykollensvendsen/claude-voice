@@ -490,20 +490,23 @@ def build_server(
                 break
             await asyncio.sleep(poll_seconds)
 
-        new = (
-            [t for t in numbered_turns(target)[before:] if t["role"] == "assistant"]
-            if status != "session_ended"
-            else []
-        )
+        fresh = numbered_turns(target)[before:] if status != "session_ended" else []
+        # Only what answers our message counts: what the session wrote after it. Its
+        # last words are the reply; the rest of its turn is how it got there.
+        anchor = next((t for t in fresh if t["role"] == "user" and probe in t["text"]), None)
+        start = anchor["index"] if anchor else before - 1
+        new = [t for t in fresh if t["role"] == "assistant" and t["index"] > start]
+        if anchor is None and status != "still_working":
+            new = new[-1:]  # the message is not in view: only the session's final words
         for turn in new:
             turn["text"] = transcripts.clip(turn["text"], max(max_chars, 20))
         return {
             "session": target["name"],
             "status": status,
             "session_ended": status == "session_ended",
-            "reply": "\n".join(t["text"] for t in new),
+            "reply": new[-1]["text"] if new else "",
             "turns": new,
-            "next_after": new[-1]["index"] if new else before - 1,
+            "next_after": new[-1]["index"] if new else start,
         }
 
     @mcp.tool(annotations=READ_ONLY)
