@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/unanswered_peer.py",
+            "timeout": 10,
+            "statusMessage": "Checking for unanswered messages from other sessions"
+          }
+        ]
+      }
+    ]
+  }
+}
