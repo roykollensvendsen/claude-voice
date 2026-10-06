@@ -160,7 +160,8 @@ async def test_whats_new_flags_approvals_and_errors(store, live, root):
         out = await call(c, "whats_new", cursor=start["cursor"])
         needs = next(e for e in out["events"] if e["kind"] == "needs_approval")
         assert needs["session"] == "build"
-        assert needs["text"] == f"build wants to run Bash: make. Approval {needs['approval_id']}: yes or no?"
+        assert needs["text"] == "build wants to run Bash: make. Yes or no?"
+        assert needs["approval_id"]
         assert needs["tool"] == "Bash"
         assert needs["input"] == {"command": "make"}
         await call(c, "cancel", session_id=s["id"])
@@ -171,3 +172,14 @@ async def test_a_bad_cursor_starts_over(store, live, root):
     async with Client(srv) as c:
         out = await call(c, "whats_new", cursor="garbage")
     assert "cursor" in out
+
+
+def test_spoken_texts_never_carry_an_approval_number(store, live, root):
+    from claude_voice.events import bridge_events
+
+    s = store.create_session(str(root / "app"), label="build")
+    store.add_event(s["id"], "approval_requested", {"id": "7", "tool": "Bash", "input": {"command": "ls"}})
+    store.add_event(s["id"], "approval_expired", {"id": "7"})
+    texts = [e["text"] for e in bridge_events(store, 0)]
+    assert texts == ["build wants to run Bash: ls. Yes or no?", "An approval for build expired and was refused."]
+    assert not any("7" in text for text in texts)
