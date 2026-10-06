@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from .store import Store
+from .transcripts import clip
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS live_snapshot(name TEXT PRIMARY KEY, status TEXT, session_id TEXT);
@@ -107,10 +108,10 @@ class LiveWatcher:
             )
             self.db.execute("INSERT OR IGNORE INTO meta VALUES('baselined','1')")
             seqs: list[int] = []
-            for name, kind, status, project in changes:
+            for name, kind, _status, project in changes:
                 cur = self.db.execute(
                     "INSERT INTO feed(ts, session, kind, text, project) VALUES(?,?,?,?,?)",
-                    (ts, name, kind, status, project),
+                    (ts, name, kind, _live_sentence(name, kind, project), project),
                 )
                 seqs.append(cur.lastrowid or 0)
         return self.feed_after(min(seqs) - 1) if seqs else []
@@ -124,6 +125,28 @@ class LiveWatcher:
 
     def last_seq(self) -> int:
         return self.db.execute("SELECT COALESCE(MAX(seq), 0) FROM feed").fetchone()[0]
+
+
+def _live_sentence(name: str, kind: str, project: str | None) -> str:
+    return {
+        "finished": f"{name} has finished and is waiting.",
+        "needs_input": f"{name} needs your input.",
+        "working": f"{name} is working.",
+        "started": f"{name} started in {project}.",
+        "ended": f"{name} has ended.",
+    }.get(kind, f"{name}: {kind}.")
+
+
+def _describe(tool: str, tool_input: Any) -> str:
+    """'run Bash: make', 'use Edit on a.py': a tool request in a few spoken words."""
+    if not isinstance(tool_input, dict):
+        return f"use {tool}"
+    if tool == "Bash" and tool_input.get("command"):
+        return f"run Bash: {clip(str(tool_input['command']), 120)}"
+    path = tool_input.get("file_path") or tool_input.get("path")
+    if path:
+        return f"use {tool} on {Path(str(path)).name}"
+    return f"use {tool}"
 
 
 def _transition(old: str | None, new: str | None) -> str | None:
@@ -149,16 +172,25 @@ def bridge_events(store: Store, after: int, limit: int = 200) -> list[dict[str, 
     for seq, ts, kind, payload, label, project_path in rows:
         p = json.loads(payload)
         name = label or Path(project_path).name
+        extra: dict[str, Any] = {}
         if kind == "result":
-            kind, text = ("error" if p.get("is_error") else "finished"), p.get("text")
+            failed = p.get("is_error")
+            kind = "error" if failed else "finished"
+            result = clip(str(p.get("text") or ""), 300)
+            text = f"{name} failed: {result}" if failed else f"{name} finished. {result}".rstrip()
         elif kind == "error":
-            text = p.get("error")
+            text = f"{name} failed: {clip(str(p.get('error')), 300)}"
         elif kind == "approval_requested":
             kind = "needs_approval"
-            text = f"#{p.get('id')} {p.get('tool')}: {json.dumps(p.get('input'))[:200]}"
+            text = f"{name} wants to {_describe(p.get('tool'), p.get('input'))}. Approval {p.get('id')}: yes or no?"
+            extra = {"approval_id": p.get("id"), "tool": p.get("tool"), "input": p.get("input")}
+        elif kind == "approval_expired":
+            text = f"Approval {p.get('id')} for {name} expired and was refused."
+        elif kind == "cancelled":
+            text = f"{name} was stopped."
         else:
-            text = None
-        out.append({"seq": seq, "ts": ts, "session": name, "kind": kind, "text": text})
+            text = f"{name} was interrupted when the bridge restarted."
+        out.append({"seq": seq, "ts": ts, "session": name, "kind": kind, "text": text, **extra})
     return out
 
 
