@@ -103,7 +103,7 @@ async def test_ask_waits_for_the_session_to_answer_and_returns_only_the_new_repl
         out = await call(c, "ask_active_session", session="billing-ab", message="Is the export fixed?", wait_seconds=5)
     assert out["status"] == "answered"
     assert out["session_ended"] is False
-    assert out["reply"] == "Looking.\nThe export is fixed."
+    assert out["reply"] == "The export is fixed."
     assert [t["text"] for t in out["turns"]] == ["Looking.", "The export is fixed."]
 
 
