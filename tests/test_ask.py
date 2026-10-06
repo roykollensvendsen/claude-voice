@@ -310,7 +310,7 @@ def open_question(tmp_path, cwd, sid, answered=False):
         lines.append({"type": "user", "message": {"content": [result]}})
     path = tmp_path / "projects" / project_key_for_directory(cwd) / f"{sid}.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("".join(json.dumps(x) + "\\n" for x in lines))
+    path.write_text("".join(json.dumps(x) + "\n" for x in lines))
 
 
 async def test_a_session_waiting_on_a_question_is_not_sent_anything_and_the_question_comes_back(tmp_path, root, live):
