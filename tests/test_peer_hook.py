@@ -127,3 +127,18 @@ def test_a_courier_known_by_its_folder_is_ignored_whatever_its_name(tmp_path, st
     out = io.StringIO()
     hook.main(io.StringIO(json.dumps({"session_id": "s", "transcript_path": str(transcript)})), out)
     assert out.getvalue().strip() == ""
+
+
+def test_the_configured_courier_name_is_ignored_even_after_the_courier_is_gone(tmp_path, state):
+    env = tmp_path / "env"
+    env.write_text("CLAUDE_VOICE_TOKEN=secret\nCLAUDE_VOICE_COURIER_NAME=Roy via stemmen\n")
+    hook = _hook()
+    state.setattr(hook, "ENV_FILE", env)
+    state.setattr(hook, "SESSIONS_DIR", tmp_path / "no-such-dir")  # the courier's process is gone
+    state.setattr(hook, "STATE_DIR", tmp_path / "state")
+    transcript = tmp_path / "t.jsonl"
+    entry = peer("Roy via stemmen", "hva skjer?", address="uds:/run/user/1000/cc-socks/999.sock")
+    transcript.write_text(json.dumps(entry) + "\n")
+    out = io.StringIO()
+    hook.main(io.StringIO(json.dumps({"session_id": "s", "transcript_path": str(transcript)})), out)
+    assert out.getvalue().strip() == ""
