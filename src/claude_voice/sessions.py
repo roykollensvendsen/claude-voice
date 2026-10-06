@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import time
 from collections import Counter
 from collections.abc import Callable
@@ -163,6 +164,9 @@ class SessionManager:
             # and permission rules apply, and nothing is silently pre-approved.
             setting_sources=["user", "project", "local"],
             permission_mode="default",
+            # The owner's claude.ai connectors (Calendar, Drive, ...) are not the
+            # task's business, and their sign-in notes would be read aloud.
+            settings=json.dumps({"disableClaudeAiConnectors": True}),
         )
         if self.approvals is not None:
             opts.can_use_tool = self.approvals.callback(session_id)
