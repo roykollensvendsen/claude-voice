@@ -283,3 +283,75 @@ async def test_a_busy_session_is_answered_by_its_first_words_after_our_message(t
         out = await call(c, "ask_active_session", session="billing-ab", message="Which folder?", wait_seconds=5)
     assert out["status"] == "answered"  # without waiting for the session to go idle
     assert out["reply"] == "The folder is billing."
+
+
+def open_question(tmp_path, cwd, sid, answered=False):
+    """Write a raw transcript whose last act is a multiple-choice question to the user."""
+    from claude_agent_sdk import project_key_for_directory
+
+    ask = {
+        "type": "tool_use",
+        "id": "toolu_q1",
+        "name": "AskUserQuestion",
+        "input": {
+            "questions": [
+                {
+                    "question": "Skal jeg kjøre en gjennomgang først?",
+                    "header": "Gjennomgang",
+                    "multiSelect": False,
+                    "options": [{"label": "Ja", "description": "..."}, {"label": "Nei", "description": "..."}],
+                }
+            ]
+        },
+    }
+    lines = [{"type": "assistant", "message": {"content": [ask]}}]
+    if answered:
+        result = {"type": "tool_result", "tool_use_id": "toolu_q1", "content": "answered"}
+        lines.append({"type": "user", "message": {"content": [result]}})
+    path = tmp_path / "projects" / project_key_for_directory(cwd) / f"{sid}.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(x) + "\\n" for x in lines))
+
+
+async def test_a_session_waiting_on_a_question_is_not_sent_anything_and_the_question_comes_back(tmp_path, root, live):
+    target = Target(live, str(root / "billing"), status="waiting")
+    open_question(tmp_path, str(root / "billing"), "sid-1")
+
+    async def deliver(name, text):
+        raise AssertionError("a message would only queue behind the open question")
+
+    async with Client(bridge(tmp_path, root, live, target, deliver)) as c:
+        out = await call(c, "ask_active_session", session="billing-ab", message="ja")
+        listed = await call(c, "list_active_sessions")
+    assert out["status"] == "needs_choice"
+    assert out["question"] == {"text": "Skal jeg kjøre en gjennomgang først?", "options": ["Ja", "Nei"]}
+    assert listed["sessions"][0]["question"]["options"] == ["Ja", "Nei"]
+
+
+async def test_a_session_waiting_on_something_else_reports_needs_input(tmp_path, root, live):
+    target = Target(live, str(root / "billing"), status="waiting")
+    open_question(tmp_path, str(root / "billing"), "sid-1", answered=True)  # no open question
+
+    async def deliver(name, text):
+        raise AssertionError("must not deliver while it waits for its user")
+
+    async with Client(bridge(tmp_path, root, live, target, deliver)) as c:
+        out = await call(c, "ask_active_session", session="billing-ab", message="hi")
+    assert out["status"] == "needs_input"
+    assert out.get("question") is None
+
+
+async def test_a_question_opened_while_answering_us_is_reported(tmp_path, root, live):
+    target = Target(live, str(root / "billing"))
+
+    async def deliver(name, text):
+        target.set("busy")
+        target.transcript.append(msg("user", text))
+        open_question(tmp_path, str(root / "billing"), "sid-1")
+        target.set("waiting")
+        return {"delivered": True, "detail": "DELIVERED"}
+
+    async with Client(bridge(tmp_path, root, live, target, deliver)) as c:
+        out = await call(c, "ask_active_session", session="billing-ab", message="review it?", wait_seconds=5)
+    assert out["status"] == "needs_choice"
+    assert out["question"]["text"] == "Skal jeg kjøre en gjennomgang først?"
