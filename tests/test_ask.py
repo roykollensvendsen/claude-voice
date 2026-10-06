@@ -215,3 +215,55 @@ async def test_a_session_continued_elsewhere_is_shown_as_moved_and_not_asked(tmp
     assert row["status"] == "moved" and row["moved_to"] == {"id": "sid-2", "name": None}
     assert asked["status"] == "moved" and asked["moved_to"]["id"] == "sid-2"
     assert sent["status"] == "moved" and sent["delivered"] is False
+
+
+async def test_the_reply_is_only_what_follows_our_message_and_only_its_last_words(tmp_path, root, live):
+    target = Target(live, str(root / "billing"))
+
+    async def deliver(name, text):
+        target.set("busy")
+        target.says("Still busy with the export work: | a | table |")  # other work, before our turn
+        target.transcript.append(msg("user", f"Another session sent a message:\n{text}"))
+        target.says("Let me check.")
+        target.says("I am fixing the export.")
+        target.set("idle")
+        return {"delivered": True, "detail": "DELIVERED"}
+
+    async with Client(bridge(tmp_path, root, live, target, deliver)) as c:
+        out = await call(c, "ask_active_session", session="billing-ab", message="What are you doing?", wait_seconds=5)
+    assert out["status"] == "answered"
+    assert out["reply"] == "I am fixing the export."
+    assert [t["text"] for t in out["turns"]] == ["Let me check.", "I am fixing the export."]
+
+
+async def test_while_still_working_the_cursor_points_at_our_own_message(tmp_path, root, live):
+    target = Target(live, str(root / "billing"))
+
+    async def deliver(name, text):
+        target.set("busy")
+        target.says("unrelated earlier work")
+        target.transcript.append(msg("user", text))
+        return {"delivered": True, "detail": "DELIVERED"}
+
+    async with Client(bridge(tmp_path, root, live, target, deliver)) as c:
+        out = await call(c, "ask_active_session", session="billing-ab", message="status?", wait_seconds=0.2)
+        assert out["status"] == "still_working"
+        assert out["reply"] == ""
+        target.says("All good.")
+        later = await call(c, "read_session_output", session="billing-ab", after=out["next_after"])
+    assert [t["text"] for t in later["turns"]] == ["All good."]
+
+
+async def test_without_our_message_in_view_only_the_last_words_are_returned(tmp_path, root, live):
+    target = Target(live, str(root / "billing"))
+
+    async def deliver(name, text):  # queued inside a busy turn: no separate user turn shows
+        target.set("busy")
+        target.says("long unrelated work log")
+        target.says("Short answer.")
+        target.set("idle")
+        return {"delivered": True, "detail": "DELIVERED"}
+
+    async with Client(bridge(tmp_path, root, live, target, deliver)) as c:
+        out = await call(c, "ask_active_session", session="billing-ab", message="hi", wait_seconds=5)
+    assert out["reply"] == "Short answer."
