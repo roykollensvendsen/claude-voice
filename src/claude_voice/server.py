@@ -347,6 +347,11 @@ def build_server(
             moved = moved_to(d)
             if moved:
                 row["status"], row["moved_to"] = "moved", moved
+            elif d.get("status") == "waiting":
+                row["waiting_for"] = d.get("waitingFor")
+                question = transcripts.open_question(str(d.get("sessionId")), str(d.get("cwd")), projects_dir)
+                if question:
+                    row["question"] = question
             sessions.append(row)
         sessions.sort(key=lambda s: s["minutes_since_update"])
         return sessions
@@ -448,7 +453,9 @@ def build_server(
         status: "answered", "needs_input" (it waits for its user), "still_working" (the
         wait ran out; continue with read_session_output(after=next_after)),
         "session_ended" (it exited meanwhile), "not_received" (the message never reached
-        its conversation) or "moved" (the conversation now lives in moved_to; nothing sent)."""
+        its conversation), "moved" (the conversation now lives in moved_to; nothing sent),
+        or "needs_choice" (it waits for its user to pick one of question.options; answer
+        at the screen) - "needs_input" before sending means nothing was sent."""
         target = find_live(session)
         moved = moved_to(target)
         if moved:
@@ -456,6 +463,25 @@ def build_server(
                 "session": target["name"],
                 "status": "moved",
                 "moved_to": moved,
+                "session_ended": False,
+                "reply": "",
+                "turns": [],
+                "next_after": -1,
+            }
+
+        def waiting(d: dict[str, Any]) -> dict[str, Any] | None:
+            """Why a session can take nothing in right now: an open question, or other input."""
+            if d.get("status") != "waiting":
+                return None
+            question = transcripts.open_question(str(d.get("sessionId")), str(d.get("cwd")), projects_dir)
+            return {"status": "needs_choice", "question": question} if question else {"status": "needs_input"}
+
+        blocked = waiting(target)
+        if blocked:
+            # A message would only queue behind what it waits for; send nothing.
+            return {
+                "session": target["name"],
+                **blocked,
                 "session_ended": False,
                 "reply": "",
                 "turns": [],
@@ -499,8 +525,9 @@ def build_server(
             if replied and now.get("status") == "idle":
                 status = "answered"
                 break
-            if replied and now.get("status") == "waiting":
-                status = "needs_input"
+            if now.get("status") == "waiting" and (seen_busy or replied or arrived):
+                blocked = waiting(now)
+                status = blocked["status"] if blocked else "needs_input"
                 break
             if asyncio.get_running_loop().time() >= deadline:
                 break
@@ -525,6 +552,7 @@ def build_server(
             "reply": new[-1]["text"] if new else "",
             "turns": new,
             "next_after": new[-1]["index"] if new else start,
+            **({"question": blocked["question"]} if status == "needs_choice" and blocked else {}),
         }
 
     @mcp.tool(annotations=READ_ONLY)

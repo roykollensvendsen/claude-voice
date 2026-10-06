@@ -136,6 +136,43 @@ def continued_in(session_id: str, cwd: str, projects_dir: Path = PROJECTS_DIR) -
     return None
 
 
+def open_question(session_id: str, cwd: str, projects_dir: Path = PROJECTS_DIR) -> dict[str, Any] | None:
+    """The multiple-choice question a session is waiting on its user to answer, if any.
+
+    Claude Code asks with an AskUserQuestion tool call; the answer comes back as
+    its tool result. A call with no result after it is still open.
+    """
+    path = projects_dir / project_key_for_directory(cwd) / f"{session_id}.jsonl"
+    try:
+        with path.open("rb") as f:
+            f.seek(0, 2)
+            f.seek(max(f.tell() - 262144, 0))
+            tail = f.read().decode(errors="replace").splitlines()
+    except OSError:
+        return None
+    asked: dict[str, Any] = {}
+    for line in tail:
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        for block in (entry.get("message") or {}).get("content") or []:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "tool_use" and block.get("name") == "AskUserQuestion":
+                asked[str(block.get("id"))] = block.get("input") or {}
+            elif block.get("type") == "tool_result":
+                asked.pop(str(block.get("tool_use_id")), None)
+    if not asked:
+        return None
+    questions = list(asked.values())[-1].get("questions") or [{}]
+    first = questions[0] if isinstance(questions[0], dict) else {}
+    return {
+        "text": str(first.get("question", "")),
+        "options": [str(o.get("label", "")) for o in first.get("options") or [] if isinstance(o, dict)],
+    }
+
+
 def read_raw_transcript(session_id: str, cwd: str, projects_dir: Path = PROJECTS_DIR) -> list[Any]:
     """A session's turns, read from Claude Code's transcript file itself.
 
