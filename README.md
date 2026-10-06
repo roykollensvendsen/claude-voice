@@ -42,6 +42,7 @@ claude-voice on your computer
 | `list_sessions`, `get_messages` | browse sessions and their full event log |
 | `list_active_sessions` | every Claude Code session running on the computer now, terminal or background |
 | `message_active_session` | send a message into a session that is open in a terminal |
+| `ask_active_session` | ask such a session something and wait for its answer, as if talking to it directly |
 | `read_session_output`, `search_session_history` | read what such a session said lately, or search everything it said |
 | `list_claude_conversations`, `attach_conversation` | continue an earlier conversation, as a copy run by the bridge |
 

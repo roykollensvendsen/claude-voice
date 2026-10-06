@@ -28,6 +28,7 @@ from .store import SessionNotFound, Store
 
 MIN_TOKEN_CHARS = 32
 READ_ONLY = ToolAnnotations(read_only_hint=True)
+COURIER_PREFIX = "claude-voice-msg-"
 # Claude Code keeps one JSON file per running session here.
 LIVE_DIR = Path("~/.claude/sessions").expanduser()
 
@@ -127,6 +128,7 @@ def build_server(
     deliver: Callable[[str, str], Awaitable[dict[str, Any]]] = transcripts.deliver,
     read_transcript: Callable[[str, str | None], list[Any]] = transcripts.read_transcript,
     watch_interval: float | None = None,
+    poll_seconds: float = 1.0,
 ) -> MCPServer:
     auth = None
     if oauth is not None:
@@ -382,6 +384,8 @@ def build_server(
 
     def find_live(session: str) -> dict[str, Any]:
         for d in live_sessions():
+            if str(d.get("name", "")).startswith(COURIER_PREFIX):
+                continue  # the bridge's own messengers, gone as soon as they deliver
             if session in (d.get("name"), d.get("sessionId")) and under_root(d.get("cwd")):
                 return d
         raise ToolError(f"No running session called {session!r}; see list_active_sessions")
@@ -397,16 +401,76 @@ def build_server(
             raise ToolError(f"Could not deliver: {out.get('detail') or 'unknown reason'}")
         return {"session": target["name"], **out}
 
-    @mcp.tool(annotations=READ_ONLY)
-    def read_session_output(session: str, limit: int = 6, max_chars: int = 600) -> dict[str, Any]:
-        """The latest prompts and replies of a running Claude Code session (name or id from
-        list_active_sessions), read from its own transcript. Each is cut to max_chars."""
-        target = find_live(session)
+    def numbered_turns(target: dict[str, Any]) -> list[dict[str, Any]]:
         msgs = read_transcript(target["sessionId"], target.get("cwd"))
-        turns = transcripts.recent_turns(msgs, limit=min(max(limit, 1), 30))
+        return [{"index": i, **turn} for i, turn in enumerate(transcripts.recent_turns(msgs, None))]
+
+    @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+    async def ask_active_session(
+        session: str, message: str, wait_seconds: float = 60, max_chars: int = 600
+    ) -> dict[str, Any]:
+        """Ask a Claude Code session that is open right now, and wait for its answer.
+        status: "answered", "needs_input" (it waits for its user), "still_working" (the
+        wait ran out; continue with read_session_output(after=next_after)), or
+        "session_ended" (it exited meanwhile)."""
+        target = find_live(session)
+        before = len(numbered_turns(target))
+        out = await deliver(target["name"], message)
+        if not out.get("delivered"):
+            raise ToolError(f"Could not deliver: {out.get('detail') or 'unknown reason'}")
+
+        pid, status, seen_busy = target.get("pid"), "still_working", False
+        deadline = asyncio.get_running_loop().time() + max(min(wait_seconds, 300), 0)
+        while True:
+            now = next((d for d in live_sessions() if d.get("pid") == pid), None)
+            if now is None:
+                status = "session_ended"
+                break
+            target = now
+            seen_busy = seen_busy or now.get("status") in ("busy", "shell")
+            if seen_busy and now.get("status") == "idle":
+                status = "answered"
+                break
+            if seen_busy and now.get("status") == "waiting":
+                status = "needs_input"
+                break
+            if asyncio.get_running_loop().time() >= deadline:
+                break
+            await asyncio.sleep(poll_seconds)
+
+        new = (
+            [t for t in numbered_turns(target)[before:] if t["role"] == "assistant"]
+            if status != "session_ended"
+            else []
+        )
+        for turn in new:
+            turn["text"] = transcripts.clip(turn["text"], max(max_chars, 20))
+        return {
+            "session": target["name"],
+            "status": status,
+            "session_ended": status == "session_ended",
+            "reply": "\n".join(t["text"] for t in new),
+            "turns": new,
+            "next_after": new[-1]["index"] if new else before - 1,
+        }
+
+    @mcp.tool(annotations=READ_ONLY)
+    def read_session_output(
+        session: str, limit: int = 6, max_chars: int = 600, after: int | None = None
+    ) -> dict[str, Any]:
+        """The latest prompts and replies of a running Claude Code session (name or id from
+        list_active_sessions), read from its own transcript. Each is cut to max_chars.
+        Turns are numbered; pass next_after back as `after` to get only what is new."""
+        target = find_live(session)
+        turns = numbered_turns(target)
+        if after is None:
+            turns = turns[-min(max(limit, 1), 30) :]
+        else:
+            turns = [t for t in turns if t["index"] > after][: min(max(limit, 1), 30)]
         for turn in turns:
             turn["text"] = transcripts.clip(turn["text"], max(max_chars, 20))
-        return {"session": target["name"], "status": target.get("status"), "turns": turns}
+        next_after = turns[-1]["index"] if turns else (after if after is not None else -1)
+        return {"session": target["name"], "status": target.get("status"), "turns": turns, "next_after": next_after}
 
     @mcp.tool(annotations=READ_ONLY)
     def search_session_history(session: str, query: str, limit: int = 5, max_chars: int = 300) -> dict[str, Any]:
