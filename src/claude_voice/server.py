@@ -61,6 +61,7 @@ class Config:
     token: str | None = None
     public_hosts: list[str] = field(default_factory=list)
     public_url: str = ""
+    courier_name: str = transcripts.COURIER_NAME
 
 
 def load_config(env: Mapping[str, str], transport: str) -> Config:
@@ -82,6 +83,7 @@ def load_config(env: Mapping[str, str], transport: str) -> Config:
         token=env.get("CLAUDE_VOICE_TOKEN"),
         public_hosts=[h for h in env.get("CLAUDE_VOICE_PUBLIC_HOSTS", "").split(",") if h],
     )
+    cfg.courier_name = env.get("CLAUDE_VOICE_COURIER_NAME", "").strip() or transcripts.COURIER_NAME
     cfg.public_url = env.get("CLAUDE_VOICE_PUBLIC_URL", "").rstrip("/") or (
         f"https://{cfg.public_hosts[0]}" if cfg.public_hosts else f"http://127.0.0.1:{cfg.port}"
     )
@@ -407,7 +409,9 @@ def build_server(
 
     def find_live(session: str) -> dict[str, Any]:
         for d in live_sessions():
-            if str(d.get("name", "")).startswith(COURIER_PREFIX):
+            if str(d.get("name", "")).startswith(COURIER_PREFIX) or Path(str(d.get("cwd"))).name.startswith(
+                COURIER_PREFIX
+            ):
                 continue  # the bridge's own messengers, gone as soon as they deliver
             if session in (d.get("name"), d.get("sessionId")) and under_root(d.get("cwd")):
                 return d
@@ -606,6 +610,7 @@ def build_app(server: MCPServer, public_hosts: list[str] | None = None) -> ASGIA
 
 def serve_forever(cfg: Config) -> None:
     """Run the bridge with a checked configuration until stopped."""
+    transcripts.configure_courier(cfg.courier_name)
     store = Store(cfg.db)
     manager = SessionManager(store, project_root=cfg.root, approvals=ApprovalBroker(store))
     if cfg.transport == "stdio":
