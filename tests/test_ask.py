@@ -1,0 +1,144 @@
+"""Asking a session that is open elsewhere, and reading its answer as it comes."""
+
+import asyncio
+import json
+import os
+
+import pytest
+from fakes import FakeClaude
+from mcp.client import Client
+from test_live import msg
+
+from claude_voice.server import build_server
+from claude_voice.sessions import SessionManager
+from claude_voice.store import Store
+
+PID = os.getpid()
+
+
+@pytest.fixture
+def root(tmp_path):
+    (tmp_path / "src" / "billing").mkdir(parents=True)
+    return tmp_path / "src"
+
+
+class Target:
+    """A running session: its registry file and its growing transcript."""
+
+    def __init__(self, live, cwd, name="billing-ab", status="idle"):
+        self.file = live / f"{PID}.json"
+        self.name, self.cwd = name, cwd
+        self.transcript = [
+            msg("user", "earlier question"),
+            msg("assistant", [{"type": "text", "text": "earlier answer"}]),
+        ]
+        self.set(status)
+
+    def set(self, status):
+        self.file.write_text(
+            json.dumps({"pid": PID, "sessionId": "sid-1", "cwd": self.cwd, "name": self.name, "status": status})
+        )
+
+    def says(self, text):
+        self.transcript.append(msg("assistant", [{"type": "text", "text": text}]))
+
+
+def bridge(tmp_path, root, live, target, deliver):
+    m = SessionManager(Store(tmp_path / "b.db"), project_root=root, client_factory=FakeClaude())
+    return build_server(
+        m,
+        conversations=lambda directory=None, limit=None: [],
+        live_dir=live,
+        deliver=deliver,
+        read_transcript=lambda sid, directory: list(target.transcript),
+        poll_seconds=0.01,
+    )
+
+
+@pytest.fixture
+def live(tmp_path):
+    d = tmp_path / "live"
+    d.mkdir()
+    return d
+
+
+async def call(client, name, **args):
+    res = await client.call_tool(name, args)
+    assert not res.is_error, res.content
+    return res.structured_content
+
+
+async def test_ask_waits_for_the_session_to_answer_and_returns_only_the_new_reply(tmp_path, root, live):
+    target = Target(live, str(root / "billing"))
+
+    async def deliver(name, text):
+        async def work():
+            await asyncio.sleep(0.05)
+            target.set("busy")
+            target.transcript.append(msg("user", text))
+            target.says("Looking.")
+            await asyncio.sleep(0.05)
+            target.says("The export is fixed.")
+            target.set("idle")
+
+        asyncio.get_running_loop().create_task(work())
+        return {"delivered": True, "detail": "DELIVERED"}
+
+    async with Client(bridge(tmp_path, root, live, target, deliver)) as c:
+        out = await call(c, "ask_active_session", session="billing-ab", message="Is the export fixed?", wait_seconds=5)
+    assert out["status"] == "answered"
+    assert out["session_ended"] is False
+    assert out["reply"] == "Looking.\nThe export is fixed."
+    assert [t["text"] for t in out["turns"]] == ["Looking.", "The export is fixed."]
+
+
+async def test_a_session_still_working_when_the_wait_ends_gives_a_cursor(tmp_path, root, live):
+    target = Target(live, str(root / "billing"))
+
+    async def deliver(name, text):
+        target.set("busy")
+        target.says("Starting on it.")
+        return {"delivered": True, "detail": "DELIVERED"}
+
+    async with Client(bridge(tmp_path, root, live, target, deliver)) as c:
+        out = await call(c, "ask_active_session", session="billing-ab", message="go", wait_seconds=0.2)
+        assert out["status"] == "still_working"
+        assert out["reply"] == "Starting on it."
+        target.says("Done now.")
+        later = await call(c, "read_session_output", session="billing-ab", after=out["next_after"])
+    assert [t["text"] for t in later["turns"]] == ["Done now."]
+    assert later["next_after"] == out["next_after"] + 1
+
+
+async def test_a_session_that_exits_during_the_wait_is_reported_at_once(tmp_path, root, live):
+    target = Target(live, str(root / "billing"))
+
+    async def deliver(name, text):
+        target.set("busy")
+        target.file.unlink()
+        return {"delivered": True, "detail": "DELIVERED"}
+
+    async with Client(bridge(tmp_path, root, live, target, deliver)) as c:
+        out = await call(c, "ask_active_session", session="billing-ab", message="go", wait_seconds=5)
+    assert out["status"] == "session_ended"
+    assert out["session_ended"] is True
+
+
+async def test_couriers_cannot_be_asked_or_messaged(tmp_path, root, live):
+    target = Target(live, str(root / "billing"), name="claude-voice-msg-ab12-cd")
+
+    async def deliver(name, text):
+        raise AssertionError("must not deliver")
+
+    async with Client(bridge(tmp_path, root, live, target, deliver)) as c:
+        asked = await c.call_tool("ask_active_session", {"session": "claude-voice-msg-ab12-cd", "message": "hi"})
+        sent = await c.call_tool("message_active_session", {"session": "claude-voice-msg-ab12-cd", "message": "hi"})
+    assert asked.is_error and sent.is_error
+
+
+async def test_read_session_output_numbers_turns_so_a_reader_can_continue(tmp_path, root, live):
+    target = Target(live, str(root / "billing"))
+    async with Client(bridge(tmp_path, root, live, target, None)) as c:
+        first = await call(c, "read_session_output", session="billing-ab")
+    assert [t["index"] for t in first["turns"]] == [0, 1]
+    assert first["next_after"] == 1
