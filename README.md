@@ -40,6 +40,7 @@ claude-voice on your computer
 | `list_pending_approvals`, `approve`, `deny` | answer Claude's requests to edit files, run commands and so on |
 | `cancel`, `close_session` | stop a turn, retire a session |
 | `list_sessions`, `get_messages` | browse sessions and their full event log |
+| `session_tree` | the sessions as a tree, including which ones have been messaging each other |
 | `list_active_sessions` | every Claude Code session running on the computer now, terminal or background |
 | `message_active_session` | send a message into a session that is open in a terminal |
 | `ask_active_session` | ask such a session something and wait for its answer, as if talking to it directly |

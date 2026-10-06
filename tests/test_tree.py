@@ -164,12 +164,23 @@ def test_new_lines_in_a_transcript_are_picked_up(world):
     assert by_id(tree.build())[a]["talks_to"] == [b]
 
 
-def test_subagents_hang_under_their_session(world):
-    a, _ = world.session("alpha")
-    world.subagents[a] = ["agent-7"]
+def subagent_file(world, sid, cwd, agent, minutes_ago):
+    path = world.projects / project_key_for_directory(cwd) / sid / "subagents" / f"agent-{agent}.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{}\n")
+    when = NOW.timestamp() - minutes_ago * 60
+    os.utime(path, (when, when))
+
+
+def test_subagents_at_work_in_the_last_hour_hang_under_their_session(world):
+    a, cwd = world.session("alpha")
+    world.subagents[a] = ["a7", "a8"]
+    subagent_file(world, a, cwd, "a7", minutes_ago=5)
+    subagent_file(world, a, cwd, "a8", minutes_ago=300)  # long finished
     nodes = by_id(world.tree().build())
-    assert nodes[f"{a}/agent-7"]["kind"] == "subagent"
-    assert nodes[f"{a}/agent-7"]["parent_id"] == a
+    assert nodes[f"{a}/a7"]["kind"] == "subagent"
+    assert nodes[f"{a}/a7"]["parent_id"] == a
+    assert f"{a}/a8" not in nodes
 
 
 def test_the_version_changes_with_the_shape_and_not_with_a_status(world):
