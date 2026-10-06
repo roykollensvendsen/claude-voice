@@ -130,6 +130,7 @@ def build_server(
     read_transcript: Callable[[str, str | None], list[Any]] = transcripts.read_transcript,
     watch_interval: float | None = None,
     poll_seconds: float = 1.0,
+    receive_seconds: float = 15.0,
     projects_dir: Path = PROJECTS_DIR,
 ) -> MCPServer:
     auth = None
@@ -307,6 +308,14 @@ def build_server(
         types in; "bg" is a background or remote-controlled session."""
         return {"sessions": running()}
 
+    def moved_to(d: dict[str, Any]) -> dict[str, Any] | None:
+        """Where a running session's conversation went, if Claude Code continued it elsewhere."""
+        new = transcripts.continued_in(str(d.get("sessionId")), str(d.get("cwd")), projects_dir)
+        if not new:
+            return None
+        name = next((x.get("name") for x in live_sessions() if x.get("sessionId") == new), None)
+        return {"id": new, "name": name}
+
     def running() -> list[dict[str, Any]]:
         managed = {
             s["claude_session_id"]
@@ -319,17 +328,19 @@ def build_server(
             name = under_root(d.get("cwd"))
             if name is None:
                 continue
-            sessions.append(
-                {
-                    "claude_session_id": d.get("sessionId"),
-                    "name": d.get("name"),
-                    "project": name,
-                    "status": d.get("status"),
-                    "kind": d.get("kind"),
-                    "managed_by_bridge": d.get("sessionId") in managed,
-                    "minutes_since_update": round((now_ms - d.get("updatedAt", now_ms)) / 60000),
-                }
-            )
+            row = {
+                "claude_session_id": d.get("sessionId"),
+                "name": d.get("name"),
+                "project": name,
+                "status": d.get("status"),
+                "kind": d.get("kind"),
+                "managed_by_bridge": d.get("sessionId") in managed,
+                "minutes_since_update": round((now_ms - d.get("updatedAt", now_ms)) / 60000),
+            }
+            moved = moved_to(d)
+            if moved:
+                row["status"], row["moved_to"] = "moved", moved
+            sessions.append(row)
         sessions.sort(key=lambda s: s["minutes_since_update"])
         return sessions
 
@@ -408,10 +419,13 @@ def build_server(
         terminal), by its name or id from list_active_sessions. It arrives in that very
         window. Read its answer later with read_session_output."""
         target = find_live(session)
+        moved = moved_to(target)
+        if moved:
+            return {"session": target["name"], "delivered": False, "status": "moved", "moved_to": moved}
         out = await deliver(target["name"], message)
         if not out.get("delivered"):
             raise ToolError(f"Could not deliver: {out.get('detail') or 'unknown reason'}")
-        return {"session": target["name"], **out}
+        return {"session": target["name"], "status": "delivered", **out}
 
     def numbered_turns(target: dict[str, Any]) -> list[dict[str, Any]]:
         msgs = read_transcript(target["sessionId"], target.get("cwd"))
@@ -423,16 +437,30 @@ def build_server(
     ) -> dict[str, Any]:
         """Ask a Claude Code session that is open right now, and wait for its answer.
         status: "answered", "needs_input" (it waits for its user), "still_working" (the
-        wait ran out; continue with read_session_output(after=next_after)), or
-        "session_ended" (it exited meanwhile)."""
+        wait ran out; continue with read_session_output(after=next_after)),
+        "session_ended" (it exited meanwhile), "not_received" (the message never reached
+        its conversation) or "moved" (the conversation now lives in moved_to; nothing sent)."""
         target = find_live(session)
+        moved = moved_to(target)
+        if moved:
+            return {
+                "session": target["name"],
+                "status": "moved",
+                "moved_to": moved,
+                "session_ended": False,
+                "reply": "",
+                "turns": [],
+                "next_after": -1,
+            }
         before = len(numbered_turns(target))
         out = await deliver(target["name"], message)
         if not out.get("delivered"):
             raise ToolError(f"Could not deliver: {out.get('detail') or 'unknown reason'}")
 
         pid, status, seen_busy = target.get("pid"), "still_working", False
-        deadline = asyncio.get_running_loop().time() + max(min(wait_seconds, 300), 0)
+        started = asyncio.get_running_loop().time()
+        deadline = started + max(min(wait_seconds, 300), 0)
+        probe = message.strip()[:80]
         while True:
             now = next((d for d in live_sessions() if d.get("pid") == pid), None)
             if now is None:
@@ -442,7 +470,12 @@ def build_server(
             # A quick turn can start and end between two looks, so a new reply
             # counts as much as having seen the session busy.
             seen_busy = seen_busy or now.get("status") in ("busy", "shell")
-            replied = seen_busy or any(t["role"] == "assistant" for t in numbered_turns(now)[before:])
+            new_turns = numbered_turns(now)[before:]
+            replied = seen_busy or any(t["role"] == "assistant" for t in new_turns)
+            arrived = replied or any(t["role"] == "user" and probe in t["text"] for t in new_turns)
+            if not arrived and asyncio.get_running_loop().time() - started >= receive_seconds:
+                status = "not_received"  # handed over, yet never reached the conversation
+                break
             if replied and now.get("status") == "idle":
                 status = "answered"
                 break
