@@ -25,6 +25,7 @@ from .approvals import ApprovalBroker, ApprovalNotFound
 from .oauth import SCOPE, OAuthProvider, PublicClientMetadata
 from .sessions import SessionBusy, SessionClosed, SessionManager
 from .store import SessionNotFound, Store
+from .tree import PROJECTS_DIR, SessionTree
 
 MIN_TOKEN_CHARS = 32
 READ_ONLY = ToolAnnotations(read_only_hint=True)
@@ -129,6 +130,7 @@ def build_server(
     read_transcript: Callable[[str, str | None], list[Any]] = transcripts.read_transcript,
     watch_interval: float | None = None,
     poll_seconds: float = 1.0,
+    projects_dir: Path = PROJECTS_DIR,
 ) -> MCPServer:
     auth = None
     if oauth is not None:
@@ -143,6 +145,16 @@ def build_server(
             validate_token_resource=False,
         )
     watcher = events.LiveWatcher(manager.store, live_dir, manager.root, clock=manager.clock)
+    tree = SessionTree(manager.store, live_dir, manager.root, projects_dir=projects_dir, clock=manager.clock)
+    tree_version: list[str] = []  # the last shape seen, so a change can be reported
+
+    def check() -> None:
+        """Look at the running sessions and the tree's shape; record what changed."""
+        watcher.check()
+        version = tree.build()["version"]
+        if tree_version and tree_version[0] != version:
+            watcher.record("claude-voice", "tree_changed", version)
+        tree_version[:] = [version]
 
     @contextlib.asynccontextmanager
     async def lifespan(_server):
@@ -153,7 +165,7 @@ def build_server(
             async def watch():
                 while True:
                     with contextlib.suppress(Exception):
-                        watcher.check()
+                        check()
                     await asyncio.sleep(watch_interval)
 
             task = asyncio.create_task(watch())
@@ -493,7 +505,7 @@ def build_server(
         """Has anything happened since I last asked? Returns only new events (a session
         finished, failed, needs approval or input, started, ended) and a cursor to pass
         next time. Call without a cursor first; cheap enough to poll."""
-        watcher.check()
+        check()
         b, f = _parse_cursor(cursor)
         latest_b, latest_f = events.last_bridge_seq(manager.store), watcher.last_seq()
         items: list[dict[str, Any]] = []
@@ -505,6 +517,14 @@ def build_server(
             "cursor": f"b{nb}.f{nf}",
             "events": [{k: v for k, v in e.items() if k not in ("seq",)} for e in items],
         }
+
+    @mcp.tool(annotations=READ_ONLY)
+    def session_tree() -> dict[str, Any]:
+        """The sessions to choose from, as a tree: the bridge, the Claude Code sessions
+        running on this machine, the sessions the bridge runs, helper agents, and for each
+        which others it has sent messages to in the last day (talks_to). `version` changes
+        when the shape changes; whats_new reports that as kind "tree_changed"."""
+        return tree.build()
 
     @mcp.tool(annotations=READ_ONLY)
     def list_pending_approvals(session_id: str | None = None) -> dict[str, Any]:

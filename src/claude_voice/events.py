@@ -116,6 +116,14 @@ class LiveWatcher:
                 seqs.append(cur.lastrowid or 0)
         return self.feed_after(min(seqs) - 1) if seqs else []
 
+    def record(self, session: str, kind: str, text: str | None) -> None:
+        """Add a news item the watcher did not see itself, e.g. the tree changing shape."""
+        with self.db:
+            self.db.execute(
+                "INSERT INTO feed(ts, session, kind, text, project) VALUES(?,?,?,?,?)",
+                (self.clock(), session, kind, text, None),
+            )
+
     def feed_after(self, seq: int, limit: int = 200) -> list[dict[str, Any]]:
         rows = self.db.execute(
             "SELECT seq, ts, session, kind, text, project FROM feed WHERE seq>? ORDER BY seq LIMIT ?",
