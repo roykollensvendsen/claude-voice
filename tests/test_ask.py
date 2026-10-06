@@ -267,3 +267,19 @@ async def test_without_our_message_in_view_only_the_last_words_are_returned(tmp_
     async with Client(bridge(tmp_path, root, live, target, deliver)) as c:
         out = await call(c, "ask_active_session", session="billing-ab", message="hi", wait_seconds=5)
     assert out["reply"] == "Short answer."
+
+
+async def test_a_busy_session_is_answered_by_its_first_words_after_our_message(tmp_path, root, live):
+    target = Target(live, str(root / "billing"), status="busy")  # someone is working with it right now
+
+    async def deliver(name, text):
+        target.says("unrelated work in progress")
+        target.transcript.append(msg("user", f"Another Claude session sent a message:\n{text}"))
+        target.says("The folder is billing.")
+        target.says("Back to the refactoring: | a | table |")
+        return {"delivered": True, "detail": "DELIVERED"}
+
+    async with Client(bridge(tmp_path, root, live, target, deliver)) as c:
+        out = await call(c, "ask_active_session", session="billing-ab", message="Which folder?", wait_seconds=5)
+    assert out["status"] == "answered"  # without waiting for the session to go idle
+    assert out["reply"] == "The folder is billing."

@@ -172,3 +172,21 @@ async def test_the_courier_carries_a_name_the_receiver_can_read():
     await default.deliver("billing", "hi")
     assert factory.clients[1].options.extra_args == {"name": "Owner via claude-voice"}
     await default.close()
+
+
+async def test_a_send_addressed_with_a_ref_or_rewrapped_text_still_counts():
+    with_ref = [sent_text("billing [4849b2]", "Reply  with\npong"), done("DELIVERED")]
+    factory = Factory([with_ref])
+    courier = Courier(client_factory=factory)
+    assert (await courier.deliver("billing", "Reply with pong"))["delivered"] is True
+    await courier.close()
+
+
+async def test_a_message_sent_but_not_recognised_is_never_sent_again():
+    wrong = [sent_text("someone-else", "Reply with pong"), done("DELIVERED")]
+    factory = Factory([wrong], [ok("Reply with pong")])
+    courier = Courier(client_factory=factory)
+    out = await courier.deliver("billing", "Reply with pong")
+    assert out["delivered"] is False
+    assert len(factory.clients) == 1  # no second courier, so no second copy anywhere
+    await courier.close()
