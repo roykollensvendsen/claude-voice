@@ -8,6 +8,7 @@ import logging
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +22,7 @@ from mcp.types import ToolAnnotations
 from pydantic import AnyHttpUrl
 from starlette.types import ASGIApp
 
-from . import events, transcripts
+from . import events, metrics, transcripts
 from .approvals import ApprovalBroker, ApprovalNotFound
 from .metrics import METRICS
 from .oauth import SCOPE, OAuthProvider, PublicClientMetadata
@@ -154,6 +155,7 @@ def build_server(
     deliver: Callable[[str, str], Awaitable[dict[str, Any]]] = transcripts.deliver,
     read_transcript: Callable[[str, str | None], list[Any]] | None = None,
     watch_interval: float | None = None,
+    restart: dict[str, Any] | None = None,
     poll_seconds: float = 1.0,
     receive_seconds: float = 15.0,
     projects_dir: Path = PROJECTS_DIR,
@@ -178,6 +180,10 @@ def build_server(
     watcher = events.LiveWatcher(manager.store, live_dir, manager.root, clock=manager.clock)
     tree = SessionTree(manager.store, live_dir, manager.root, projects_dir=projects_dir, clock=manager.clock)
     tree_version: list[str] = []  # the last shape seen, so a change can be reported
+    last_check: list[str] = []
+    started_at = datetime.now(UTC).isoformat(timespec="seconds")
+    restart = restart or {"at": started_at, "reason": None, "total": None}
+    running_version = metrics.version()
 
     def check() -> None:
         """Look at the running sessions and the tree's shape; record what changed."""
@@ -186,6 +192,7 @@ def build_server(
         if tree_version and tree_version[0] != version:
             watcher.record("claude-voice", "tree_changed", version)
         tree_version[:] = [version]
+        last_check[:] = [datetime.now(UTC).isoformat(timespec="seconds")]
 
     @contextlib.asynccontextmanager
     async def lifespan(_server):
@@ -663,6 +670,29 @@ def build_server(
         return tree.build()
 
     @mcp.tool(annotations=READ_ONLY)
+    def health() -> dict[str, Any]:
+        """The bridge's own state: since when and which version, memory, the last restart,
+        calls/errors/latency per tool since start, the latest errors, courier and watcher."""
+        snap = METRICS.snapshot()
+        courier = transcripts.shared_courier()
+        return {
+            "now": {
+                "up_since": started_at,
+                "version": running_version,
+                "memory_rss_mb": metrics.memory_rss_mb(),
+                "last_restart": {"at": restart["at"], "reason": restart["reason"]},
+                "restarts_total": restart["total"],
+            },
+            "tools": snap["tools"],
+            "errors": snap["errors"],
+            "courier": {"warm": courier.warm, "last_delivery_ms": courier.last_delivery_ms},
+            "watcher": {
+                "last_check_at": last_check[0] if last_check else None,
+                "tree_version": tree_version[0] if tree_version else tree.build()["version"],
+            },
+        }
+
+    @mcp.tool(annotations=READ_ONLY)
     def list_pending_approvals(session_id: str | None = None) -> dict[str, Any]:
         """Tool calls Claude is waiting to be allowed to make. Read each one to the user."""
         if manager.approvals is None:
@@ -722,6 +752,7 @@ def serve_forever(cfg: Config) -> None:
     # The token doubles as the login secret on the OAuth consent page and as a
     # static bearer token for local MCP clients.
     oauth = OAuthProvider(store, login_secret=token, public_url=cfg.public_url, static_token=token)
-    app = build_app(build_server(manager, oauth=oauth, watch_interval=5.0), cfg.public_hosts)
+    restart = metrics.restart_info("~/.local/state/claude-voice/restarts")
+    app = build_app(build_server(manager, oauth=oauth, watch_interval=5.0, restart=restart), cfg.public_hosts)
     logging.basicConfig(level=logging.INFO, format="%(name)s: %(message)s")
     uvicorn.run(app, host=cfg.host, port=cfg.port, log_level="info")
