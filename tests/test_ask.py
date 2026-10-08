@@ -355,3 +355,40 @@ async def test_a_question_opened_while_answering_us_is_reported(tmp_path, root, 
         out = await call(c, "ask_active_session", session="billing-ab", message="review it?", wait_seconds=5)
     assert out["status"] == "needs_choice"
     assert out["question"]["text"] == "Skal jeg kjøre en gjennomgang først?"
+
+
+# -- saying when a turn was cut, and paging through it ------------------------------------------
+
+
+async def test_each_turn_says_whether_it_was_cut_and_how_long_it_is(tmp_path, root, live):
+    target = Target(live, str(root / "billing"))
+    target.says("word " * 200)  # 1000 characters
+    async with Client(bridge(tmp_path, root, live, target, None)) as c:
+        out = await call(c, "read_session_output", session="billing-ab", max_chars=100)
+    long, short = out["turns"][-1], out["turns"][0]
+    assert long["cut"] is True and long["length"] == 1000 and len(long["text"]) <= 100
+    assert short["cut"] is False and short["length"] == len("earlier question")
+
+
+async def test_one_long_turn_can_be_read_page_by_page(tmp_path, root, live):
+    target = Target(live, str(root / "billing"))
+    body = "".join(f"sentence {i:03d}. " for i in range(60))  # 900 characters
+    target.says(body)
+    async with Client(bridge(tmp_path, root, live, target, None)) as c:
+        pages, offset = [], 0
+        while True:
+            page = await call(c, "read_session_output", session="billing-ab", turn=2, offset=offset, max_chars=400)
+            pages.append(page["text"])
+            if not page["has_more"]:
+                break
+            offset = page["next_offset"]
+    assert "".join(pages) == body
+    assert page["turn"] == 2 and page["length"] == len(body)
+    assert len(pages) == 3
+
+
+async def test_asking_for_a_turn_that_does_not_exist_is_a_clear_error(tmp_path, root, live):
+    target = Target(live, str(root / "billing"))
+    async with Client(bridge(tmp_path, root, live, target, None)) as c:
+        res = await c.call_tool("read_session_output", {"session": "billing-ab", "turn": 99})
+    assert res.is_error and "no turn 99" in res.content[0].text.lower()
