@@ -32,15 +32,15 @@ claude-voice on your computer
 
 | Tool | What it is for |
 | --- | --- |
-| `list_projects` | the folders Claude can be started in |
+| `list_projects` | the folders Claude was used in lately, or any folder found by a word from its name |
 | `create_session`, `send_task` | start Claude on a task; it answers at once and works in the background |
 | `session_recap` | where one session stands, short enough to read aloud |
 | `whats_new` | only what happened since you last asked: finished, failed, waiting for you |
-| `fleet_recap`, `recent_activity` | "what have my agents done since yesterday?" |
+| `fleet_recap` | every session in one call, each with a line on what it is doing |
 | `health` | the bridge's own state: uptime, version, memory, calls and errors per tool, courier and watcher |
 | `list_pending_approvals`, `approve`, `deny` | answer Claude's requests to edit files, run commands and so on |
 | `cancel`, `close_session` | stop a turn, retire a session |
-| `list_sessions`, `get_messages` | browse sessions and their full event log |
+| `list_sessions` | the sessions this bridge started, and every one running on the computer |
 | `session_tree` | the sessions as a tree, including which ones have been messaging each other |
 | `list_active_sessions` | every Claude Code session running on the computer now, terminal or background |
 | `message_active_session` | send a message into a session that is open in a terminal |

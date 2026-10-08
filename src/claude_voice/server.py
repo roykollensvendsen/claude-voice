@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from claude_agent_sdk import SDKSessionInfo
+from claude_agent_sdk import SDKSessionInfo, project_key_for_directory
 from claude_agent_sdk import list_sessions as list_claude_sessions
 from mcp.server import MCPServer
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
@@ -249,10 +249,32 @@ def build_server(
         raise ToolError(f"No session with id {session_id}")
 
     @mcp.tool(annotations=READ_ONLY)
-    def list_projects() -> dict[str, Any]:
-        """List the project directories Claude can be started in."""
-        names = sorted(p.name for p in manager.root.iterdir() if p.is_dir() and not p.name.startswith("."))
-        return {"root": str(manager.root), "projects": names}
+    def list_projects(query: str | None = None) -> dict[str, Any]:
+        """Folders Claude can be started in: those used in the last 30 days, newest first.
+        A word from a name (`query`) searches every folder. At most 20."""
+        rows = []
+        for p in manager.root.iterdir():
+            if not p.is_dir() or p.name.startswith("."):
+                continue
+            if query and query.lower() not in p.name.lower():
+                continue
+            used = [f.stat().st_mtime for f in (projects_dir / project_key_for_directory(str(p))).glob("*.jsonl")]
+            newest = max(used, default=None)
+            if not query and (newest is None or newest < time.time() - 30 * 24 * 3600):
+                continue
+            rows.append((newest or 0.0, p.name, len(used)))
+        rows.sort(key=lambda r: (-r[0], r[1]))
+        return {
+            "root": str(manager.root),
+            "projects": [
+                {
+                    "name": name,
+                    "last_used": datetime.fromtimestamp(when, UTC).isoformat(timespec="minutes") if when else None,
+                    "sessions": count,
+                }
+                for when, name, count in rows[:20]
+            ],
+        }
 
     @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
     def create_session(project: str, label: str | None = None) -> dict[str, Any]:
@@ -263,15 +285,10 @@ def build_server(
             raise ToolError(str(exc)) from None
 
     @mcp.tool(annotations=READ_ONLY)
-    def list_sessions(status: str | None = None, project: str | None = None, limit: int = 20) -> dict[str, Any]:
-        """List sessions: `sessions` are those started through this bridge;
-        `running_claude_code_sessions` are all Claude Code sessions running on the machine
-        right now (also those opened in a terminal)."""
-        try:
-            project_path = str(manager.resolve_project(project)) if project else None
-        except ValueError as exc:
-            raise ToolError(str(exc)) from None
-        rows = store.list_sessions(project_path, status, min(max(limit, 1), 100))
+    def list_sessions() -> dict[str, Any]:
+        """Sessions this bridge started (`sessions`, newest 20) and every Claude Code session
+        running on the machine (`running_claude_code_sessions`)."""
+        rows = [s for s in store.list_sessions(limit=100) if s["status"] != "closed"][:20]
         return {"sessions": rows, "running_claude_code_sessions": running()}
 
     @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
@@ -294,19 +311,6 @@ def build_server(
             if isinstance(recap.get(key), str):
                 recap[key] = transcripts.clip(recap[key], max(max_chars, 20))
         return recap
-
-    @mcp.tool(annotations=READ_ONLY)
-    def get_messages(session_id: str, after: int = 0, limit: int = 50) -> dict[str, Any]:
-        """Detailed event log of a session. Pass next_after back as `after` to page on."""
-        session_id = known(session_id)
-        events = store.events(session_id, after=max(after, 0), limit=min(max(limit, 1), 200))
-        return {"events": events, "next_after": events[-1]["seq"] if events else after}
-
-    @mcp.tool(annotations=READ_ONLY)
-    def recent_activity(since_minutes: int = 1440, limit: int = 100) -> dict[str, Any]:
-        """Everything that happened across all sessions in the last N minutes."""
-        since = manager.clock() - max(since_minutes, 1) * 60
-        return {"events": store.recent_events(since, limit=min(max(limit, 1), 500))}
 
     @mcp.tool(annotations=READ_ONLY)
     def fleet_recap() -> dict[str, Any]:
@@ -502,9 +506,8 @@ def build_server(
 
     @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
     async def message_active_session(session: str, message: str) -> dict[str, Any]:
-        """Send a message into a Claude Code session that is open right now (e.g. in a
-        terminal), by its name or id from list_active_sessions. It arrives in that very
-        window. Read its answer later with read_session_output."""
+        """Send a message into a running Claude Code session (name or id from
+        list_active_sessions); read its answer later with read_session_output."""
         target = find_live(session)
         moved = moved_to(target)
         if moved:
@@ -676,10 +679,8 @@ def build_server(
     @mcp.tool(annotations=READ_ONLY)
     async def digest_session(session: str, question: str | None = None, language: str | None = None) -> dict[str, Any]:
         """Sum up a running session's conversation, or answer `question` about it, in a few
-        speakable sentences. A separate small model reads the transcript, so none of it
-        lands in your context. `language` (e.g. "norsk") sets the answer's language; by default
-        it follows the owner's. Takes about ten seconds. cut/skipped_* say how much of a
-        very long start was left out."""
+        speakable sentences, in `language` if given (e.g. "norsk"); takes about ten seconds.
+        A separate model reads it, so none of it fills your context."""
         target = find_live(session)
         turns = numbered_turns(target)
         lines = []
@@ -707,14 +708,14 @@ def build_server(
         }
 
     @mcp.tool(annotations=READ_ONLY)
-    def search_session_history(session: str, query: str, limit: int = 5, max_chars: int = 300) -> dict[str, Any]:
+    def search_session_history(session: str, query: str, max_chars: int = 300) -> dict[str, Any]:
         """Search the whole conversation of a running Claude Code session (name or id from
         list_active_sessions) for keywords; returns only the most relevant excerpts.
         Use instead of reading long output when looking for something said earlier."""
         target = find_live(session)
         turns = transcripts.recent_turns(read_transcript(target["sessionId"], target.get("cwd")), None)
         size = max(max_chars, 40)
-        matches = transcripts.search_turns(turns, query, limit=min(max(limit, 1), 20), context_chars=size // 2 - 10)
+        matches = transcripts.search_turns(turns, query, limit=5, context_chars=size // 2 - 10)
         for match in matches:
             match["text"] = transcripts.clip(match["text"], size)
         return {"session": target["name"], "total_turns": len(turns), "matches": matches}
