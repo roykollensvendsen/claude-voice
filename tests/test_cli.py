@@ -36,7 +36,7 @@ def signed_in():
 
 
 def signed_out():
-    return False, "not signed in"
+    return False, "Claude Code is not signed in"
 
 
 def test_check_reports_a_usable_configuration_without_serving(tmp_path, capsys):
