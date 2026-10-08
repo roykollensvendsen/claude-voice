@@ -244,3 +244,23 @@ async def test_a_courier_may_send_only_once_per_message():
     await courier.deliver("billing", "a")
     assert [name for name, _ in factory.clients[0].executed] == ["SendMessage"]
     await courier.close()
+
+
+async def test_a_delivery_is_logged_with_the_trace_of_the_turn_it_belongs_to(caplog):
+    import logging
+
+    from claude_voice.transcripts import current_trace
+
+    factory = Factory([ok("hi")])
+    courier = Courier(client_factory=factory)
+    token = current_trace.set("ab12cd34ef56")
+    try:
+        with caplog.at_level(logging.INFO, logger="claude_voice"):
+            await courier.deliver("billing", "hi")
+    finally:
+        current_trace.reset(token)
+    lines = [r.getMessage() for r in caplog.records if r.name == "claude_voice"]
+    assert any(
+        line.startswith("courier billing -> delivered ") and line.endswith("trace=ab12cd34ef56") for line in lines
+    )
+    await courier.close()
