@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,6 +23,7 @@ from starlette.types import ASGIApp
 
 from . import events, transcripts
 from .approvals import ApprovalBroker, ApprovalNotFound
+from .metrics import METRICS
 from .oauth import SCOPE, OAuthProvider, PublicClientMetadata
 from .sessions import SessionBusy, SessionClosed, SessionManager
 from .store import SessionNotFound, Store
@@ -107,17 +109,38 @@ def _parse_cursor(cursor: str | None) -> tuple[int | None, int | None]:
 
 
 async def log_requests(ctx, call_next):
-    """Log each MCP method (and tool name) so the journal shows what a client asked for."""
+    """Log and count each MCP call: method, tool, outcome, time and the caller's trace id.
+
+    A voice client sends a trace id per spoken turn as params._meta.trace_id; it is
+    kept for the courier too, so one search follows a turn through every part.
+    """
     params = ctx.params if isinstance(ctx.params, dict) else {}
-    what = f"{ctx.method} {params.get('name', '')}".rstrip()
+    tool = str(params.get("name", ""))
+    what = f"{ctx.method} {tool}".rstrip()
+    meta = params.get("_meta") if isinstance(params.get("_meta"), dict) else {}
+    trace = str(meta.get("trace_id") or "") or None
+    token = transcripts.current_trace.set(trace)
+    started = time.monotonic()
     try:
         result = await call_next(ctx)
     except Exception as exc:
-        log.info("mcp %s -> %s", what, type(exc).__name__)
+        ms = (time.monotonic() - started) * 1000
+        log.info("mcp %s -> %s %dms trace=%s", what, type(exc).__name__, ms, trace or "-")
+        if ctx.method == "tools/call":
+            METRICS.record(tool, ms, error=f"{type(exc).__name__}: {exc}", kind="exception", trace_id=trace)
         raise
+    finally:
+        transcripts.current_trace.reset(token)
+    ms = (time.monotonic() - started) * 1000
     if ctx.method == "tools/call":
         failed = getattr(result, "is_error", None) or (isinstance(result, dict) and result.get("isError"))
-        log.info("mcp %s -> %s", what, "error" if failed else "ok")
+        log.info("mcp %s -> %s %dms trace=%s", what, "error" if failed else "ok", ms, trace or "-")
+        error = None
+        if failed:
+            content = getattr(result, "content", None) or (result.get("content") if isinstance(result, dict) else None)
+            first = content[0] if content else None
+            error = str(getattr(first, "text", None) or (first.get("text") if isinstance(first, dict) else first) or "")
+        METRICS.record(tool, ms, error=error, trace_id=trace)
     elif ctx.request_id is not None:
         log.info("mcp %s", what)
     return result
