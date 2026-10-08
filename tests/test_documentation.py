@@ -81,3 +81,16 @@ def test_the_readme_lists_exactly_the_tools_the_bridge_offers(tmp_path):
         re.findall(r"`(\w+)`", "\n".join(row.split("|")[1] for row in table.splitlines() if row.startswith("| `")))
     )
     assert documented == asyncio.run(offered())
+
+
+def test_the_start_here_steps_are_run_on_a_clean_machine_by_continuous_integration():
+    """The five-minute start is what a stranger follows; nothing else proves it still works."""
+    import re
+
+    readme = (ROOT / "README.md").read_text()
+    marked = re.findall(r"<!-- not run:[^>]*the clean-install job runs it[^>]*-->\n```bash\n", readme)
+    assert len(marked) == 1, "exactly one block in the README is the clean install"
+    workflow = (ROOT / ".github" / "workflows" / "checks.yml").read_text()
+    job = workflow.split("\n  clean-install:", 1)
+    assert len(job) == 2, "checks.yml has no clean-install job"
+    assert "python3 scripts/clean_install.py" in job[1].split("\n  checks:", 1)[0]
