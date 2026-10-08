@@ -699,7 +699,7 @@ def build_server(
         digest = await summarize("\n".join(kept), question, language)
         return {
             "session": target["name"],
-            "digest": transcripts.clip(digest, 600),
+            "digest": transcripts.whole_sentences(digest, 600),
             "turns_considered": len(kept),
             "cut": bool(skipped),
             "skipped_turns": len(skipped),

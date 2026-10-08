@@ -95,6 +95,14 @@ async def test_the_digest_is_kept_short_enough_to_say(setup):
     assert len(out["digest"]) <= 600
 
 
+async def test_a_long_digest_is_cut_after_its_last_whole_sentence(setup):
+    long = " ".join(f"Sentence number {i} says something useful." for i in range(30))
+    async with Client(bridge(setup, TURNS, Summarizer(long))) as c:
+        out = (await c.call_tool("digest_session", {"session": "billing-ab"})).structured_content
+    assert len(out["digest"]) <= 600
+    assert out["digest"].endswith("says something useful.")
+
+
 async def test_the_caller_can_choose_the_language_of_the_digest(setup):
     summarize = Summarizer()
     async with Client(bridge(setup, TURNS, summarize)) as c:
