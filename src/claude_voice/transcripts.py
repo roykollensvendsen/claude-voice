@@ -405,6 +405,38 @@ class Courier:
             await self._drop()
 
 
+DIGEST_PROMPT = (
+    "You sum up a Claude Code session's conversation for its owner, who will hear your "
+    "answer read aloud. Answer in the language the owner writes in, in one to four plain "
+    "sentences and at most 600 characters: no code, file paths, lists or identifiers. If a "
+    "question is given, answer exactly that from the conversation; if the conversation "
+    "does not say, say so."
+)
+
+
+async def summarize(text: str, question: str | None) -> str:
+    """A short spoken summary of `text` (or an answer to `question`) from a one-shot small model."""
+    ask = f"Question: {question}" if question else "Sum up what has happened and where it stands now."
+    reply = ""
+    # The helper sits in a courier folder, so it is hidden from session lists and trees.
+    with tempfile.TemporaryDirectory(prefix="claude-voice-msg-digest-") as cwd:
+        opts = ClaudeAgentOptions(
+            cwd=cwd,
+            model="haiku",
+            tools=[],
+            setting_sources=[],
+            max_turns=1,
+            settings=json.dumps({"disableClaudeAiConnectors": True}),
+            system_prompt=DIGEST_PROMPT,
+        )
+        async with ClaudeSDKClient(opts) as client:
+            await client.query(f"{ask}\n\n<conversation>\n{text}\n</conversation>")
+            async for m in client.receive_response():
+                if isinstance(m, ResultMessage):
+                    reply = (m.result or "").strip()
+    return reply
+
+
 _courier = Courier()
 
 
