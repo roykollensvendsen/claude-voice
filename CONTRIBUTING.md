@@ -27,7 +27,12 @@ uv run ruff check . && uv run ruff format --check .
 uv run mypy src
 uv run pytest -q --cov
 committed --no-merge-commit origin/main..HEAD
+python3 scripts/clean_install.py
 ```
+
+The last one follows the README's "Start here" on an empty Ubuntu, so it needs
+Docker and about two minutes. Run it when you touch the README's first steps,
+the setup check or the packaging.
 
 Run them after the last edit, not before it. A file edited after the format
 gate ran will fail in continuous integration, which is the cheapest possible
