@@ -414,9 +414,11 @@ DIGEST_PROMPT = (
 )
 
 
-async def summarize(text: str, question: str | None) -> str:
+async def summarize(text: str, question: str | None, language: str | None = None) -> str:
     """A short spoken summary of `text` (or an answer to `question`) from a one-shot small model."""
     ask = f"Question: {question}" if question else "Sum up what has happened and where it stands now."
+    if language:
+        ask = f"Answer in {language}, whatever language the conversation is in. {ask}"
     reply = ""
     # The helper sits in a courier folder, so it is hidden from session lists and trees.
     with tempfile.TemporaryDirectory(prefix="claude-voice-msg-digest-") as cwd:

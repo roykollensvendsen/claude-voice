@@ -30,9 +30,11 @@ class Summarizer:
     def __init__(self, answer="The export was fixed and the tests pass."):
         self.answer = answer
         self.calls = []
+        self.languages = []
 
-    async def __call__(self, text, question):
+    async def __call__(self, text, question, language=None):
         self.calls.append((text, question))
+        self.languages.append(language)
         return self.answer
 
 
@@ -91,3 +93,11 @@ async def test_the_digest_is_kept_short_enough_to_say(setup):
     async with Client(bridge(setup, TURNS, Summarizer("word " * 400))) as c:
         out = (await c.call_tool("digest_session", {"session": "billing-ab"})).structured_content
     assert len(out["digest"]) <= 600
+
+
+async def test_the_caller_can_choose_the_language_of_the_digest(setup):
+    summarize = Summarizer()
+    async with Client(bridge(setup, TURNS, summarize)) as c:
+        await c.call_tool("digest_session", {"session": "billing-ab", "language": "norsk"})
+        await c.call_tool("digest_session", {"session": "billing-ab"})
+    assert summarize.languages == ["norsk", None]

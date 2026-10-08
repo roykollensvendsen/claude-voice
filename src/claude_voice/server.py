@@ -156,7 +156,7 @@ def build_server(
     read_transcript: Callable[[str, str | None], list[Any]] | None = None,
     watch_interval: float | None = None,
     restart: dict[str, Any] | None = None,
-    summarize: Callable[[str, str | None], Awaitable[str]] = transcripts.summarize,
+    summarize: Callable[[str, str | None, str | None], Awaitable[str]] = transcripts.summarize,
     digest_chars: int = 150_000,
     poll_seconds: float = 1.0,
     receive_seconds: float = 15.0,
@@ -674,10 +674,12 @@ def build_server(
         return {"session": target["name"], "status": target.get("status"), "turns": turns, "next_after": next_after}
 
     @mcp.tool(annotations=READ_ONLY)
-    async def digest_session(session: str, question: str | None = None) -> dict[str, Any]:
+    async def digest_session(session: str, question: str | None = None, language: str | None = None) -> dict[str, Any]:
         """Sum up a running session's conversation, or answer `question` about it, in a few
         speakable sentences. A separate small model reads the transcript, so none of it
-        lands in your context. cut/skipped_* say how much of a very long start was left out."""
+        lands in your context. `language` (e.g. "norsk") sets the answer's language; by default
+        it follows the owner's. Takes about ten seconds. cut/skipped_* say how much of a
+        very long start was left out."""
         target = find_live(session)
         turns = numbered_turns(target)
         lines = []
@@ -694,7 +696,7 @@ def build_server(
             size += len(line)
         kept.reverse()
         skipped = lines[: len(lines) - len(kept)]
-        digest = await summarize("\n".join(kept), question)
+        digest = await summarize("\n".join(kept), question, language)
         return {
             "session": target["name"],
             "digest": transcripts.clip(digest, 600),
