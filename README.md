@@ -28,6 +28,47 @@ claude-voice on your computer
    └─ sessions open elsewhere ──► Claude Code's own session messaging and transcripts
 ```
 
+## Start here: five minutes on one computer
+
+You need Linux or macOS, a Claude subscription (Pro or Max), and an internet
+connection. Nothing else has to be installed first.
+
+<!-- not run: installs software on the reader's computer; the clean-install job runs it in an empty container on every change -->
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh          # uv, which installs Python tools
+curl -fsSL https://claude.ai/install.sh | bash           # Claude Code
+export PATH="$HOME/.local/bin:$PATH"
+uv tool install git+https://github.com/roykollensvendsen/claude-voice
+mkdir -p ~/src                                           # the bridge only works in folders under here
+claude-voice check
+```
+
+`check` now says that Claude Code is not signed in. Run `claude`, type
+`/login`, sign in with your Claude account, and run `claude-voice check` again.
+It should print `ready to serve over stdio`. Your projects belong in `~/src`;
+to use another folder, set `CLAUDE_VOICE_ROOT` (see [the settings](#settings)).
+
+Then connect it to Claude Code on the same computer:
+
+<!-- not run: changes the reader's Claude Code configuration -->
+```bash
+claude mcp add --scope user claude-voice -- claude-voice serve
+```
+
+Start `claude` in any folder and ask: *"Which Claude Code sessions are running
+on this computer?"* The answer comes from the bridge. In Claude Desktop, add
+this to its configuration file instead (*Settings → Developer → Edit Config*),
+with the full path that `which claude-voice` prints:
+
+<!-- not run: a configuration snippet, not commands -->
+```json
+{ "mcpServers": { "claude-voice": { "command": "/home/you/.local/bin/claude-voice", "args": ["serve"] } } }
+```
+
+That is the whole bridge, used locally. The next two steps let you reach it from
+a phone: [run it as a service](#run-it-as-a-service-and-reach-it-from-the-phone),
+then give it a public address.
+
 ## What you can ask for
 
 | Tool | What it is for |
@@ -81,10 +122,7 @@ claude-voice on your computer
 > could approve on its own. Keep your Claude Code permission rules sensible, and
 > guard the login secret like an SSH key.
 
-## Run it
-
-You need Python 3.12 or newer, [uv](https://docs.astral.sh/uv/), and Claude
-Code signed in with your account (run `claude`, then `/login`).
+## Settings
 
 `check` says whether the bridge could start, without starting it. It also asks
 Claude Code whether it is signed in. When something is missing, it says how to
@@ -142,8 +180,13 @@ the bridge. You type the login secret there once.
 
 ## Run it as a service and reach it from the phone
 
+This step needs Linux with systemd; on macOS, run `claude-voice serve
+--transport http` in a terminal for now. The script lives in the repository,
+so clone it first:
+
 <!-- not run: installs a system service on the reader's computer -->
 ```
+git clone https://github.com/roykollensvendsen/claude-voice && cd claude-voice
 deploy/install.sh
 journalctl --user -u claude-voice -f
 ```

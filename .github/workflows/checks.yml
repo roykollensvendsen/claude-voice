@@ -65,6 +65,14 @@ jobs:
       - name: Subjects in the imperative
         run: python scripts/imperative.py ${{ steps.range.outputs.range }}
 
+  # The README's five-minute start, run on an empty Ubuntu as a stranger would.
+  clean-install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: python3 scripts/clean_install.py
+
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 10          # the default is 360; this job takes under a minute
