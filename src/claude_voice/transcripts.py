@@ -10,9 +10,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import contextvars
 import json
+import logging
 import re
 import tempfile
+import time
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from types import SimpleNamespace
@@ -204,6 +207,10 @@ def read_transcript(session_id: str, directory: str | None) -> list[Any]:
     return get_session_messages(session_id, directory=directory)
 
 
+# The trace id of the call being served, set by the server's request middleware.
+current_trace: contextvars.ContextVar[str | None] = contextvars.ContextVar("current_trace", default=None)
+log = logging.getLogger("claude_voice")
+
 COURIER_NAME = "Owner via claude-voice"
 COURIER_PROMPT = (
     "You are a message courier and nothing else. Each request names a session and holds a "
@@ -246,6 +253,7 @@ class Courier:
         self._cwd: tempfile.TemporaryDirectory[str] | None = None
         self._carried = 0
         self._job: dict[str, Any] | None = None  # the message being carried right now
+        self.last_delivery_ms: int | None = None
 
     async def _before_send(self, hook_input: Any, tool_use_id: str | None, context: Any) -> Any:
         """Let the courier send once, and make that send carry exactly our text.
@@ -322,6 +330,19 @@ class Courier:
 
     async def deliver(self, name: str, text: str) -> dict[str, Any]:
         """Send `text` into the running session called `name` via SendMessage."""
+        started = time.monotonic()
+        out = await self._deliver(name, text)
+        self.last_delivery_ms = round((time.monotonic() - started) * 1000)
+        log.info(
+            "courier %s -> %s %dms trace=%s",
+            name,
+            "delivered" if out["delivered"] else "not delivered",
+            self.last_delivery_ms,
+            current_trace.get() or "-",
+        )
+        return out
+
+    async def _deliver(self, name: str, text: str) -> dict[str, Any]:
         async with self._lock:
             try:
                 out = await self._carry(name, text)
