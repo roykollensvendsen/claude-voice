@@ -293,3 +293,26 @@ async def test_recap_texts_are_cut_to_max_chars(tmp_path, root, live):
         await m.wait(s["id"])
         recap = await call(c, "session_recap", session_id=s["id"], max_chars=60)
     assert len(recap["last_result"]) <= 60
+
+
+async def test_cancel_says_plainly_that_a_terminal_session_cannot_be_stopped_from_here(tmp_path, root, live):
+    _, srv = server_for(tmp_path, root, live)
+    async with Client(srv) as c:
+        out = await call(c, "cancel", session_id="billing-ab")
+    assert out["status"] == "not_supported" and out["cancelled"] is False
+    assert "screen" in out["reason"]
+
+
+async def test_cancel_stops_only_the_turn_of_a_bridge_session_and_says_how(tmp_path, root, live):
+    from fakes import Pause
+
+    pause = Pause()
+    m, srv = server_for(tmp_path, root, live, claude=FakeClaude([pause]))
+    async with Client(srv) as c:
+        s = await call(c, "create_session", project="billing")
+        await call(c, "send_task", session_id=s["id"], prompt="go")
+        await pause.reached.wait()
+        out = await call(c, "cancel", session_id=s["id"])
+        again = await call(c, "cancel", session_id=s["id"])
+    assert out["status"] == "interrupted" and out["how"] == "sdk" and out["cancelled"] is True
+    assert again["status"] == "not_running"
