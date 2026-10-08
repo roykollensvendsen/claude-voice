@@ -103,3 +103,8 @@ async def test_one_call_covers_running_and_bridge_sessions(world):
     assert rows["report"]["kind"] == "bridge-session"
     assert rows["report"]["doing"] == "Report done."
     assert set(rows["billing-1"]) >= {"id", "name", "kind", "project", "status", "doing", "minutes_since_update"}
+
+
+def test_doing_leaves_out_web_addresses(world):
+    transcript(world, "billing", "s1", [says("PR 23 is open: https://github.com/x/y/pull/23 and waits.")])
+    assert doing_line("s1", str(world / "home" / "billing"), world / "projects") == "PR 23 is open: and waits."

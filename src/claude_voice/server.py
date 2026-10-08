@@ -307,9 +307,50 @@ def build_server(
         return {"events": store.recent_events(since, limit=min(max(limit, 1), 500))}
 
     @mcp.tool(annotations=READ_ONLY)
-    def fleet_recap(since_minutes: int = 1440) -> dict[str, Any]:
-        """One recap per session active in the last N minutes: 'what have my agents done?'"""
-        return manager.fleet_recap(max(since_minutes, 1))
+    def fleet_recap() -> dict[str, Any]:
+        """Every session in one call: running Claude Code sessions and the bridge's own
+        (active in the last day), each with status and `doing`, one line on what it is
+        doing. Answers "what are my sessions up to?" without reading each one."""
+        sessions = []
+        live_by_id = {str(d.get("sessionId")): d for d in live_sessions()}
+        for row in running():
+            d = live_by_id.get(str(row["claude_session_id"]), {})
+            if row["status"] == "moved":
+                where = row["moved_to"]["name"] or "en annen økt"
+                doing = f"flyttet til {where}"
+            else:
+                doing = transcripts.doing_line(str(row["claude_session_id"]), str(d.get("cwd")), projects_dir)
+            item = {
+                "id": row["claude_session_id"],
+                "name": row["name"],
+                "kind": "terminal" if row["kind"] == "interactive" else "background",
+                "project": row["project"],
+                "status": row["status"],
+                "doing": doing,
+                "minutes_since_update": row["minutes_since_update"],
+            }
+            for key in ("waiting_for", "question", "moved_to"):
+                if key in row:
+                    item[key] = row[key]
+            sessions.append(item)
+        cutoff = manager.clock() - 24 * 3600
+        for s in store.list_sessions(limit=200):
+            if s["status"] == "closed" or s["updated_at"] < cutoff:
+                continue
+            recap = manager.recap(s["id"])
+            words = recap["latest_text"] or recap["last_result"] or recap["last_error"] or ""
+            sessions.append(
+                {
+                    "id": s["id"],
+                    "name": s["label"] or Path(s["project_path"]).name,
+                    "kind": "bridge-session",
+                    "project": under_root(s["project_path"]),
+                    "status": s["status"],
+                    "doing": transcripts.first_sentence(words) if words else "",
+                    "minutes_since_update": round((manager.clock() - s["updated_at"]) / 60),
+                }
+            )
+        return {"sessions": sessions}
 
     @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
     async def cancel(session_id: str) -> dict[str, Any]:

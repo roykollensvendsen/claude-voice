@@ -176,6 +176,45 @@ def open_question(session_id: str, cwd: str, projects_dir: Path = PROJECTS_DIR) 
     }
 
 
+def first_sentence(text: str, max_chars: int = 160) -> str:
+    """One speakable line: the first sentence, without markdown, at most max_chars."""
+    plain = re.sub(r"https?://\S+", "", text.split("|", 1)[0])  # addresses are not speakable
+    plain = re.sub(r"[*_`#>]+", "", plain)
+    plain = " ".join(plain.replace("\n", " ").split()).lstrip("- ").strip()
+    sentence = re.split(r"(?<=[.!?])\s", plain, maxsplit=1)[0]
+    return clip(sentence, max_chars)
+
+
+def doing_line(session_id: str, cwd: str, projects_dir: Path = PROJECTS_DIR) -> str:
+    """What a session is doing, in one line: the question it waits on, or its latest words."""
+    question = open_question(session_id, cwd, projects_dir)
+    if question:
+        return clip("venter på valg: " + question["text"], 160)
+    path = projects_dir / project_key_for_directory(cwd) / f"{session_id}.jsonl"
+    try:
+        with path.open("rb") as f:
+            f.seek(0, 2)
+            f.seek(max(f.tell() - 262144, 0))
+            tail = f.read().decode(errors="replace").splitlines()
+    except OSError:
+        return ""
+    for line in reversed(tail):
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if entry.get("type") != "assistant" or entry.get("isSidechain"):
+            continue
+        texts = [
+            b.get("text", "")
+            for b in (entry.get("message") or {}).get("content") or []
+            if isinstance(b, dict) and b.get("type") == "text" and b.get("text", "").strip()
+        ]
+        if texts:
+            return first_sentence(texts[-1])
+    return ""
+
+
 def read_raw_transcript(session_id: str, cwd: str, projects_dir: Path = PROJECTS_DIR) -> list[Any]:
     """A session's turns, read from Claude Code's transcript file itself.
 
