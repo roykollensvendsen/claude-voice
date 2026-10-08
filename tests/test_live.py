@@ -142,10 +142,9 @@ async def test_attaching_backfills_recent_history(tmp_path, root, live):
     async with Client(srv) as c:
         s = await call(c, "attach_conversation", claude_session_id="current-id")
         recap = await call(c, "session_recap", session_id=s["id"])
-        msgs = await call(c, "get_messages", session_id=s["id"])
     assert recap["latest_text"] == "All 12 tests pass."
     assert recap["last_prompt"] == "Run the tests too"
-    assert "history" in {e["kind"] for e in msgs["events"]}
+    assert "history" in {e["kind"] for e in m.store.events(s["id"])}
 
 
 async def test_a_turn_that_does_nothing_is_an_error(tmp_path, root, live):

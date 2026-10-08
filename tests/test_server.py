@@ -48,8 +48,6 @@ async def test_exposes_the_voice_control_tools(tmp_path, root):
         "list_sessions",
         "send_task",
         "session_recap",
-        "get_messages",
-        "recent_activity",
         "fleet_recap",
         "cancel",
         "close_session",
@@ -59,13 +57,6 @@ async def test_exposes_the_voice_control_tools(tmp_path, root):
         "approve",
         "deny",
     } <= names
-
-
-async def test_list_projects_shows_visible_directories_under_the_root(tmp_path, root):
-    _, server = make(tmp_path, root, FakeClaude())
-    async with Client(server) as client:
-        out = await call(client, "list_projects")
-    assert out["projects"] == ["app", "lib"]
 
 
 async def test_a_voice_round_trip(tmp_path, root):
@@ -78,9 +69,7 @@ async def test_a_voice_round_trip(tmp_path, root):
 
         recap = await call(client, "session_recap", session_id=s["id"])
         assert recap["last_result"] == "Done."
-        msgs = await call(client, "get_messages", session_id=s["id"])
-        assert [e["kind"] for e in msgs["events"]] == ["prompt", "text", "result"]
-        assert msgs["next_after"] == msgs["events"][-1]["seq"]
+        assert [e["kind"] for e in m.store.events(s["id"])] == ["prompt", "text", "result"]
 
         listed = await call(client, "list_sessions")
         assert [x["label"] for x in listed["sessions"]] == ["demo"]
@@ -98,9 +87,6 @@ async def test_mistakes_come_back_as_readable_tool_errors(tmp_path, root):
         await pause.reached.wait()
         busy = await client.call_tool("send_task", {"session_id": s["id"], "prompt": "again"})
         assert busy.is_error and "still working" in busy.content[0].text
-
-        outside = await client.call_tool("list_sessions", {"project": "/etc"})
-        assert outside.is_error and "under" in outside.content[0].text
 
         unknown = await client.call_tool("session_recap", {"session_id": "nope"})
         assert unknown.is_error and "no session" in unknown.content[0].text.lower()
@@ -152,8 +138,8 @@ async def test_http_refuses_requests_without_the_right_token(http_server, auth):
 async def test_http_serves_mcp_with_the_right_token(http_server):
     http = create_mcp_http_client(headers={"Authorization": f"Bearer {TOKEN}"})
     async with http, Client(streamable_http_client(f"{http_server}/mcp", http_client=http)) as c:
-        out = await call(c, "list_projects")
-    assert out["projects"] == ["app", "lib"]
+        out = await call(c, "list_projects", query="ap")
+    assert [p["name"] for p in out["projects"]] == ["app"]
 
 
 async def test_health_check_needs_no_token(http_server):
@@ -245,8 +231,6 @@ async def test_status_tools_are_marked_read_only_so_clients_need_no_confirmation
         "list_projects",
         "list_sessions",
         "session_recap",
-        "get_messages",
-        "recent_activity",
         "fleet_recap",
         "list_claude_conversations",
         "list_pending_approvals",
