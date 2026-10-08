@@ -32,6 +32,7 @@ claude-voice on your computer
 
 You need Linux or macOS, a Claude subscription (Pro or Max), and an internet
 connection. Nothing else has to be installed first.
+An assistant doing this for you should read [AGENTS.md](AGENTS.md) first.
 
 <!-- not run: installs software on the reader's computer; the clean-install job runs it in an empty container on every change -->
 ```bash
