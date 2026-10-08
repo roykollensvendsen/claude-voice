@@ -387,8 +387,41 @@ async def test_tool_calls_are_logged_by_name(tmp_path, root, caplog):
             await call(client, "list_projects")
             await client.call_tool("session_recap", {"session_id": "nope"})
     lines = [r.getMessage() for r in caplog.records if r.name == "claude_voice"]
-    assert "mcp tools/call list_projects -> ok" in lines
-    assert "mcp tools/call session_recap -> error" in lines
+    assert any(line.startswith("mcp tools/call list_projects -> ok ") and line.endswith("trace=-") for line in lines)
+    assert any(line.startswith("mcp tools/call session_recap -> error ") for line in lines)
+
+
+async def test_a_trace_id_sent_with_a_call_is_logged_with_it_and_its_time(tmp_path, root, caplog):
+    import logging
+    import re
+
+    _, server = make(tmp_path, root, FakeClaude())
+    with caplog.at_level(logging.INFO, logger="claude_voice"):
+        async with Client(server) as client:
+            await client.call_tool("list_projects", {}, meta={"trace_id": "ab12cd34ef56"})
+    lines = [r.getMessage() for r in caplog.records if r.name == "claude_voice"]
+    assert any(re.fullmatch(r"mcp tools/call list_projects -> ok \d+ms trace=ab12cd34ef56", line) for line in lines)
+
+
+async def test_every_call_is_counted_with_its_time_and_outcome(tmp_path, root):
+    from claude_voice.metrics import METRICS
+
+    METRICS.reset()
+    _, server = make(tmp_path, root, FakeClaude())
+    async with Client(server) as client:
+        await client.call_tool("list_projects", {})
+        await client.call_tool("list_projects", {})
+        await client.call_tool("session_recap", {"session_id": "nope"}, meta={"trace_id": "t1"})
+    snap = METRICS.snapshot()
+    tools = {t["name"]: t for t in snap["tools"]}
+    assert tools["list_projects"]["calls"] == 2 and tools["list_projects"]["errors"] == 0
+    assert tools["session_recap"]["errors"] == 1
+    assert (
+        tools["list_projects"]["p50_ms"] >= 0 and tools["list_projects"]["p95_ms"] >= tools["list_projects"]["p50_ms"]
+    )
+    err = snap["errors"][0]
+    assert err["tool"] == "session_recap" and err["trace_id"] == "t1" and err["kind"] == "tool_error"
+    assert "nope" in err["error"] and len(err["error"]) <= 200
 
 
 async def test_list_sessions_also_shows_running_claude_code_sessions(tmp_path, root):
