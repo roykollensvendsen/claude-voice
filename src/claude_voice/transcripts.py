@@ -181,7 +181,8 @@ def first_sentence(text: str, max_chars: int = 160) -> str:
     plain = re.sub(r"https?://\S+", "", text.split("|", 1)[0])  # addresses are not speakable
     plain = re.sub(r"[*_`#>]+", "", plain)
     plain = " ".join(plain.replace("\n", " ").split()).lstrip("- ").strip()
-    sentence = re.split(r"(?<=[.!?])\s", plain, maxsplit=1)[0]
+    # A sentence ends at . ! or ? before a capital letter; "4. oktober" is not an end.
+    sentence = re.split(r"(?<!\b\d)(?<!\b\d\d)(?<=[.!?])\s+(?=[A-ZÆØÅ])", plain, maxsplit=1)[0]
     return clip(sentence, max_chars)
 
 
