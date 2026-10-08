@@ -557,19 +557,46 @@ def build_server(
 
     @mcp.tool(annotations=READ_ONLY)
     def read_session_output(
-        session: str, limit: int = 6, max_chars: int = 600, after: int | None = None
+        session: str,
+        limit: int = 6,
+        max_chars: int = 600,
+        after: int | None = None,
+        turn: int | None = None,
+        offset: int = 0,
     ) -> dict[str, Any]:
-        """The latest prompts and replies of a running Claude Code session (name or id from
-        list_active_sessions), read from its own transcript. Each is cut to max_chars.
-        Turns are numbered; pass next_after back as `after` to get only what is new."""
+        """The latest turns of a running Claude Code session (name or id from
+        list_active_sessions). Turns are numbered: pass next_after back as `after` to get
+        only new ones. A turn longer than max_chars is cut and says so (cut, length); read
+        it whole with `turn` (its index) and `offset`, page by page via next_offset."""
         target = find_live(session)
         turns = numbered_turns(target)
+        size = max(max_chars, 20)
+        if turn is not None:
+            whole = next((t for t in turns if t["index"] == turn), None)
+            if whole is None:
+                raise ToolError(f"No turn {turn} in {target['name']}")
+            start = min(max(offset, 0), len(whole["text"]))
+            chunk = whole["text"][start : start + size]
+            end = start + len(chunk)
+            return {
+                "session": target["name"],
+                "status": target.get("status"),
+                "turn": turn,
+                "role": whole["role"],
+                "text": chunk,
+                "offset": start,
+                "next_offset": end,
+                "has_more": end < len(whole["text"]),
+                "length": len(whole["text"]),
+            }
         if after is None:
             turns = turns[-min(max(limit, 1), 30) :]
         else:
             turns = [t for t in turns if t["index"] > after][: min(max(limit, 1), 30)]
-        for turn in turns:
-            turn["text"] = transcripts.clip(turn["text"], max(max_chars, 20))
+        for t in turns:
+            t["length"] = len(t["text"])
+            t["cut"] = t["length"] > size
+            t["text"] = transcripts.clip(t["text"], size)
         next_after = turns[-1]["index"] if turns else (after if after is not None else -1)
         return {"session": target["name"], "status": target.get("status"), "turns": turns, "next_after": next_after}
 
