@@ -355,12 +355,21 @@ class Courier:
             out = await self._carry(name, text)
             return {k: v for k, v in out.items() if k != "attempted"}
 
+    @property
+    def warm(self) -> bool:
+        """Whether a courier is started and ready, so the next message goes fast."""
+        return self._client is not None
+
     async def close(self) -> None:
         async with self._lock:
             await self._drop()
 
 
 _courier = Courier()
+
+
+def shared_courier() -> Courier:
+    return _courier
 
 
 def configure_courier(name: str) -> None:

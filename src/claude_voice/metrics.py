@@ -65,3 +65,70 @@ def _percentile(sorted_times: list[float], q: float) -> int:
 
 
 METRICS = Metrics()
+
+
+def memory_rss_mb() -> int:
+    """This process's resident memory, from /proc (Linux)."""
+    try:
+        for line in open("/proc/self/status"):
+            if line.startswith("VmRSS:"):
+                return round(int(line.split()[1]) / 1024)
+    except OSError:
+        pass
+    return 0
+
+
+def version() -> str:
+    """The commit this bridge runs from, when it runs from a git checkout."""
+    import subprocess
+    from pathlib import Path
+
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=Path(__file__).resolve().parent,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=True,
+        )
+        return out.stdout.strip() or "unknown"
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+
+
+def restart_info(state_file: str, unit: str = "claude-voice") -> dict:
+    """Whether systemd restarted this unit on its own since the last start we saw.
+
+    A starting process cannot see why its predecessor stopped; systemd's count of
+    automatic restarts (NRestarts) going up says it was not a deliberate start.
+    """
+    import os
+    import subprocess
+    from pathlib import Path
+
+    at = datetime.now(UTC).isoformat(timespec="seconds")
+    if not os.environ.get("INVOCATION_ID"):  # not started by systemd
+        return {"at": at, "reason": None, "total": None}
+    try:
+        out = subprocess.run(
+            ["systemctl", "--user", "show", unit, "-p", "NRestarts", "--value"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=True,
+        )
+        total = int(out.stdout.strip() or 0)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return {"at": at, "reason": None, "total": None}
+    path = Path(state_file).expanduser()
+    try:
+        seen = int(path.read_text())
+    except (OSError, ValueError):
+        seen = total
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(str(total))
+    except OSError:
+        pass
+    return {"at": at, "reason": "auto-restart" if total > seen else None, "total": total}

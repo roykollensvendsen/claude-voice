@@ -255,6 +255,7 @@ async def test_status_tools_are_marked_read_only_so_clients_need_no_confirmation
         "search_session_history",
         "whats_new",
         "session_tree",
+        "health",
     }
     for name in read_only:
         ann = tools[name].annotations
