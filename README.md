@@ -100,7 +100,7 @@ claude-voice: ANTHROPIC_API_KEY is set, so Claude would bill the API instead of 
 
 ```console
 $ env -u ANTHROPIC_API_KEY -u CLAUDE_VOICE_TOKEN CLAUDE_VOICE_ROOT=src claude-voice serve --transport http
-claude-voice: CLAUDE_VOICE_TOKEN must be set to serve over HTTP
+claude-voice: CLAUDE_VOICE_TOKEN must be set to serve over HTTP. Make one with `export CLAUDE_VOICE_TOKEN=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')`.
 ```
 
 With a secret it listens on `http://127.0.0.1:8811/mcp`:

@@ -67,6 +67,11 @@ class Config:
     courier_name: str = transcripts.COURIER_NAME
 
 
+MAKE_TOKEN = (
+    "Make one with `export CLAUDE_VOICE_TOKEN=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')`."
+)
+
+
 def load_config(env: Mapping[str, str], transport: str) -> Config:
     # RULE: an api key in the environment stops the bridge from starting
     if env.get("ANTHROPIC_API_KEY") and env.get("CLAUDE_VOICE_ALLOW_API_KEY") != "1":
@@ -76,7 +81,10 @@ def load_config(env: Mapping[str, str], transport: str) -> Config:
         )
     root = Path(env.get("CLAUDE_VOICE_ROOT", "~/src")).expanduser()
     if not root.is_dir():
-        raise ConfigError(f"CLAUDE_VOICE_ROOT is not a directory: {root}")
+        raise ConfigError(
+            f"CLAUDE_VOICE_ROOT is not a directory: {root}. Make it with `mkdir -p {root}`, or set "
+            "CLAUDE_VOICE_ROOT to the folder that holds your projects."
+        )
     cfg = Config(
         root=root,
         db=Path(env.get("CLAUDE_VOICE_DB", "~/.local/state/claude-voice/bridge.db")).expanduser(),
@@ -92,9 +100,9 @@ def load_config(env: Mapping[str, str], transport: str) -> Config:
     )
     if transport == "http":
         if not cfg.token:
-            raise ConfigError("CLAUDE_VOICE_TOKEN must be set to serve over HTTP")
+            raise ConfigError(f"CLAUDE_VOICE_TOKEN must be set to serve over HTTP. {MAKE_TOKEN}")
         if len(cfg.token) < MIN_TOKEN_CHARS:
-            raise ConfigError(f"CLAUDE_VOICE_TOKEN must be at least {MIN_TOKEN_CHARS} characters")
+            raise ConfigError(f"CLAUDE_VOICE_TOKEN must be at least {MIN_TOKEN_CHARS} characters. {MAKE_TOKEN}")
     return cfg
 
 
