@@ -186,6 +186,16 @@ def first_sentence(text: str, max_chars: int = 160) -> str:
     return clip(sentence, max_chars)
 
 
+def whole_sentences(text: str, max_chars: int) -> str:
+    """Text cut after its last whole sentence that fits, so a voice never stops mid-sentence."""
+    text = " ".join(text.split())
+    if len(text) <= max_chars:
+        return text
+    head = text[:max_chars]
+    ends = [m.end() for m in re.finditer(r"[.!?](?=\s|$)", head)]
+    return head[: ends[-1]] if ends else clip(text, max_chars)
+
+
 def doing_line(session_id: str, cwd: str, projects_dir: Path = PROJECTS_DIR) -> str:
     """What a session is doing, in one line: the question it waits on, or its latest words."""
     question = open_question(session_id, cwd, projects_dir)
