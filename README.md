@@ -86,12 +86,14 @@ claude-voice on your computer
 You need Python 3.12 or newer, [uv](https://docs.astral.sh/uv/), and Claude
 Code signed in with your account (run `claude`, then `/login`).
 
-`check` reads the configuration from the environment and says whether the
-bridge could start, without starting it:
+`check` says whether the bridge could start, without starting it. It also asks
+Claude Code whether it is signed in. When something is missing, it says how to
+fix it, and when all is well it prints `ready to serve`. `check --json` lists
+every check, for an assistant doing the setup:
 
 ```console
-$ env -u ANTHROPIC_API_KEY -u CLAUDE_VOICE_ALLOW_API_KEY CLAUDE_VOICE_ROOT=src claude-voice check
-claude-voice: ready to serve over stdio; projects under src
+$ env -u ANTHROPIC_API_KEY -u CLAUDE_VOICE_ALLOW_API_KEY CLAUDE_VOICE_ROOT=no-such-folder claude-voice check
+claude-voice: CLAUDE_VOICE_ROOT is not a directory: no-such-folder. Make it with `mkdir -p no-such-folder`, or set CLAUDE_VOICE_ROOT to the folder that holds your projects.
 $ env -u CLAUDE_VOICE_ALLOW_API_KEY CLAUDE_VOICE_ROOT=src ANTHROPIC_API_KEY=sk-ant-example claude-voice check
 claude-voice: ANTHROPIC_API_KEY is set, so Claude would bill the API instead of your subscription. Unset it, or set CLAUDE_VOICE_ALLOW_API_KEY=1 if that is intended.
 ```
