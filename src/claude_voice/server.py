@@ -368,9 +368,25 @@ def build_server(
 
     @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
     async def cancel(session_id: str) -> dict[str, Any]:
-        """Stop what Claude is doing in a session. The session can be used again afterwards."""
-        session_id = known(session_id)
-        return await manager.cancel(session_id)
+        """Stop the current turn of a session; the session stays usable. `status` says whether
+        it was interrupted, not running, or not_supported (a terminal session: stop it there)."""
+        try:
+            session_id = known(session_id)
+        except ToolError:
+            target = next((d for d in live_sessions() if session_id in (d.get("sessionId"), d.get("name"))), None)
+            if target is None:
+                raise
+            # Only Esc in its own window stops a turn there; a signal from outside ends the session.
+            return {
+                "session_id": target.get("sessionId"),
+                "cancelled": False,
+                "status": "not_supported",
+                "reason": "a session open in a terminal can only be stopped at its screen",
+            }
+        out = await manager.cancel(session_id)
+        if out["cancelled"]:
+            return {**out, "status": "interrupted", "how": "sdk"}
+        return {**out, "status": "not_running"}
 
     @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
     def close_session(session_id: str) -> dict[str, Any]:
