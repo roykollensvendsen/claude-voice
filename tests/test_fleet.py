@@ -108,3 +108,12 @@ async def test_one_call_covers_running_and_bridge_sessions(world):
 def test_doing_leaves_out_web_addresses(world):
     transcript(world, "billing", "s1", [says("PR 23 is open: https://github.com/x/y/pull/23 and waits.")])
     assert doing_line("s1", str(world / "home" / "billing"), world / "projects") == "PR 23 is open: and waits."
+
+
+def test_a_date_or_number_with_a_full_stop_does_not_end_the_sentence(world):
+    text = "Siden 4. oktober har 3. utkast ventet. Så kom resten."
+    transcript(world, "billing", "s1", [says(text)])
+    assert (
+        doing_line("s1", str(world / "home" / "billing"), world / "projects")
+        == "Siden 4. oktober har 3. utkast ventet."
+    )
