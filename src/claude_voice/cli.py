@@ -18,7 +18,10 @@ from .server import Config, ConfigError, load_config, serve_forever
 #: appear in a worked example, so a verb cannot be added without one.
 COMMANDS: tuple[str, ...] = ("serve", "check")
 
-SIGN_IN = "Run `claude`, type /login and sign in with your Claude account, then check again."
+SIGN_IN = (
+    "Run `claude`, type /login and sign in with your Claude account, then check again. If `claude` "
+    "is not found, install it first: `curl -fsSL https://claude.ai/install.sh | bash`."
+)
 
 
 def claude_code_login() -> tuple[bool, str]:
