@@ -170,6 +170,8 @@ def build_server(
     start_seconds: float = 20.0,
     summarize: Callable[[str, str | None, str | None], Awaitable[str]] = transcripts.summarize,
     digest_chars: int = 150_000,
+    side_answer: Callable[[str, str, str | None], Awaitable[str]] | None = None,
+    side_chars: int = 8_000,
     poll_seconds: float = 1.0,
     receive_seconds: float = 15.0,
     projects_dir: Path = PROJECTS_DIR,
@@ -193,6 +195,7 @@ def build_server(
 
     watcher = events.LiveWatcher(manager.store, live_dir, manager.root, clock=manager.clock)
     tree = SessionTree(manager.store, live_dir, manager.root, projects_dir=projects_dir, clock=manager.clock)
+    side_answer = side_answer or transcripts.shared_reader()
     tree_version: list[str] = []  # the last shape seen, so a change can be reported
     last_check: list[str] = []
     started_at = datetime.now(UTC).isoformat(timespec="seconds")
@@ -221,6 +224,9 @@ def build_server(
                     await asyncio.sleep(watch_interval)
 
             task = asyncio.create_task(watch())
+            # The service keeps the side-question reader ready, so the first answer is quick too.
+            warming = asyncio.create_task(transcripts.shared_reader().warm())
+            warming.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
         try:
             yield {}
         finally:
@@ -756,27 +762,39 @@ def build_server(
         next_after = turns[-1]["index"] if turns else (after if after is not None else -1)
         return {"session": target["name"], "status": target.get("status"), "turns": turns, "next_after": next_after}
 
-    @mcp.tool(annotations=READ_ONLY)
-    async def digest_session(session: str, question: str | None = None, language: str | None = None) -> dict[str, Any]:
-        """Sum up a running session's conversation, or answer `question` about it, in a few
-        speakable sentences, in `language` if given (e.g. "norsk"); takes about ten seconds.
-        A separate model reads it, so none of it fills your context."""
-        target = find_live(session)
-        turns = numbered_turns(target)
+    def conversation_end(target: dict[str, Any], limit: int) -> tuple[list[str], list[str]]:
+        """A session's conversation as lines, the end kept up to `limit` characters, and the rest."""
         lines = []
-        for t in turns:
+        for t in numbered_turns(target):
             who = "Owner" if t["role"] == "user" else "Claude"
             tools = f" [used: {', '.join(t['tools'])}]" if t.get("tools") else ""
             lines.append(f"{who}: {t['text']}{tools}")
         kept: list[str] = []
         size = 0
         for line in reversed(lines):  # keep the end: that is where the session stands now
-            if size + len(line) > digest_chars and kept:
+            if size + len(line) > limit and kept:
                 break
             kept.append(line)
             size += len(line)
         kept.reverse()
-        skipped = lines[: len(lines) - len(kept)]
+        return kept, lines[: len(lines) - len(kept)]
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def side_question(session: str, question: str, language: str | None = None) -> dict[str, Any]:
+        """A quick answer (usually three to seven seconds) to a question about a running session, read from
+        what it has written lately. The question is never sent into the session."""
+        target = find_live(session)
+        kept, skipped = conversation_end(target, side_chars)
+        answer = await side_answer("\n".join(kept), question, language)
+        return {"answer": transcripts.whole_sentences(answer, 300), "considered_turns": len(kept), "cut": bool(skipped)}
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def digest_session(session: str, question: str | None = None, language: str | None = None) -> dict[str, Any]:
+        """Sum up a running session's conversation, or answer `question` about it, in a few
+        speakable sentences, in `language` if given (e.g. "norsk"); takes about ten seconds.
+        A separate model reads it, so none of it fills your context."""
+        target = find_live(session)
+        kept, skipped = conversation_end(target, digest_chars)
         digest = await summarize("\n".join(kept), question, language)
         return {
             "session": target["name"],

@@ -115,7 +115,8 @@ class ReaderClient:
         self.prompts.append(prompt)
 
     async def receive_response(self):
-        yield done(f"Svar {len(self.prompts)}.")
+        asked = [p for p in self.prompts if p != "/clear"]
+        yield done("" if self.prompts[-1] == "/clear" else f"Svar {len(asked)}.")
 
 
 async def test_the_reader_stays_warm_between_questions_and_starts_afresh_now_and_then():
@@ -132,4 +133,5 @@ async def test_the_reader_stays_warm_between_questions_and_starts_afresh_now_and
     assert made[0].options.model == "haiku" and made[0].options.tools == []
     assert "claude-voice-msg-" in str(made[0].options.cwd)
     assert "norsk" in made[0].prompts[0] and "Hva skjer?" in made[0].prompts[0]
+    assert made[0].prompts[1] == "/clear"  # each answer is forgotten, so the next stays fast
     await reader.close()
