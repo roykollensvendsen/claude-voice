@@ -295,7 +295,8 @@ async def test_a_send_claude_code_refuses_is_reported_as_refused_and_not_tried_a
     courier = Courier(client_factory=factory)
     out = await courier.deliver("billing", "hi")
     assert out["delivered"] is False
-    assert "refused" in out["detail"]
+    # The voice app recognises these exact words and tells the owner to look at the screen.
+    assert "refused to send" in out["detail"]
     assert len(factory.clients) == 1  # a second courier would only answer in the session's place
     await courier.close()
 
