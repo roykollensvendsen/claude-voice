@@ -601,7 +601,7 @@ def build_server(
         out = await deliver(target["name"], message)
         if not out.get("delivered"):
             raise ToolError(f"Could not deliver: {out.get('detail') or 'unknown reason'}")
-        return {"session": target["name"], "status": "delivered", **out}
+        return {"session": target["name"], "status": "delivered", "delivered": True}
 
     def numbered_turns(target: dict[str, Any]) -> list[dict[str, Any]]:
         msgs = read_transcript(target["sessionId"], target.get("cwd"))
