@@ -56,7 +56,7 @@ def defined_test_names() -> set[str]:
     """
     found = set()
     for module in sorted((ROOT / "tests").rglob("test_*.py")):
-        found.update(re.findall(r"^def (test_\w+)", module.read_text(), re.MULTILINE))
+        found.update(re.findall(r"^(?:async )?def (test_\w+)", module.read_text(), re.MULTILINE))
     return found
 
 

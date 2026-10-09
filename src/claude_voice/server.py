@@ -166,6 +166,7 @@ def build_server(
     watch_interval: float | None = None,
     restart: dict[str, Any] | None = None,
     start_background: Callable[[str, str], Awaitable[None]] = transcripts.start_background,
+    stop_background: Callable[[str], Awaitable[None]] = transcripts.stop_background,
     start_seconds: float = 20.0,
     summarize: Callable[[str, str | None, str | None], Awaitable[str]] = transcripts.summarize,
     digest_chars: int = 150_000,
@@ -411,6 +412,7 @@ def build_server(
         while time.monotonic() < deadline:
             found = next((d for d in live_sessions() if d.get("name") == wanted and d.get("cwd") == str(path)), None)
             if found:
+                store.record_started(str(found.get("sessionId")), wanted, str(path))
                 return {
                     "name": wanted,
                     "claude_session_id": found.get("sessionId"),
@@ -419,6 +421,28 @@ def build_server(
                 }
             await asyncio.sleep(0.2)
         raise ToolError(f"{wanted} was started but did not appear among the running sessions")
+
+    @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+    async def stop_active_session(name: str) -> dict[str, Any]:
+        """Stop a background session that start_active_session started. Any other session,
+        such as one open in a terminal, is refused (status not_started_here)."""
+        target = next((d for d in live_sessions() if name in (d.get("name"), d.get("sessionId"))), None)
+        if target is None:
+            return {"name": name, "status": "not_running"}
+        sid = str(target.get("sessionId"))
+        # RULE: only a session the bridge started itself is ever stopped
+        if not store.was_started(sid):
+            return {"name": name, "status": "not_started_here"}
+        try:
+            await stop_background(sid)
+        except Exception as exc:
+            raise ToolError(f"Claude Code could not stop {name}: {exc}") from None
+        deadline = time.monotonic() + start_seconds
+        while any(d.get("sessionId") == sid for d in live_sessions()):
+            if time.monotonic() > deadline:
+                raise ToolError(f"{name} was asked to stop but is still running")
+            await asyncio.sleep(0.2)
+        return {"name": name, "status": "stopped"}
 
     @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
     def close_session(session_id: str) -> dict[str, Any]:

@@ -32,3 +32,9 @@ name = "an approval nobody answers is refused"
 file = "src/claude_voice/approvals.py"
 find = 'return PermissionResultDeny\(message="Not approved in time; the user did not answer."\)'
 replace = 'return PermissionResultAllow()'
+
+[[rule]]
+name = "only a session the bridge started itself is ever stopped"
+file = "src/claude_voice/server.py"
+find = 'if not store.was_started\(sid\):'
+replace = 'if False:'

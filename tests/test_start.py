@@ -120,7 +120,7 @@ async def test_a_session_the_bridge_started_can_be_stopped_and_is_gone_after(tmp
     assert again["status"] == "not_running"
 
 
-async def test_a_session_the_bridge_did_not_start_is_never_stopped_even_by_its_exact_name(tmp_path, world):
+async def test_only_a_session_the_bridge_started_itself_is_ever_stopped(tmp_path, world):
     root, live = world
     (live / "term.json").write_text(
         json.dumps(
