@@ -479,6 +479,37 @@ async def start_background(cwd: str, name: str) -> None:
         raise RuntimeError(out.decode(errors="replace").strip()[-300:] or f"claude --bg exited {proc.returncode}")
 
 
+async def stop_background(session_id: str) -> None:
+    """Stop a background session, as `claude stop <id>` does from a terminal."""
+    import shutil
+
+    import claude_agent_sdk
+
+    bundled = Path(claude_agent_sdk.__file__).parent / "_bundled" / "claude"
+    cli = shutil.which("claude") or str(bundled)
+    # `claude stop` takes the background job's short id, which `claude agents` maps to the session.
+    listing = await asyncio.create_subprocess_exec(
+        cli, "agents", "--json", stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE
+    )
+    raw, _ = await asyncio.wait_for(listing.communicate(), 60)
+    try:
+        jobs = json.loads(raw or b"[]")
+    except ValueError:
+        jobs = []
+    job = next((str(j.get("id")) for j in jobs if j.get("sessionId") == session_id and j.get("id")), session_id[:8])
+    proc = await asyncio.create_subprocess_exec(
+        cli,
+        "stop",
+        job,
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    out, _ = await asyncio.wait_for(proc.communicate(), 60)
+    if proc.returncode:
+        raise RuntimeError(out.decode(errors="replace").strip()[-300:] or f"claude stop exited {proc.returncode}")
+
+
 def shared_courier() -> Courier:
     return _courier
 

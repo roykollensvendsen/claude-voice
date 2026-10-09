@@ -30,6 +30,13 @@ CREATE TABLE IF NOT EXISTS events(
 );
 CREATE INDEX IF NOT EXISTS events_session_seq ON events(session_id, seq);
 CREATE INDEX IF NOT EXISTS events_ts ON events(ts);
+-- Background sessions this bridge started; only these may it stop.
+CREATE TABLE IF NOT EXISTS started(
+  claude_session_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  cwd TEXT NOT NULL,
+  started_at REAL NOT NULL
+);
 """
 
 UPDATABLE = {"claude_session_id", "label", "status", "last_error"}
@@ -55,6 +62,16 @@ class Store:
         for row in self.db.execute("SELECT id FROM sessions WHERE status='running'").fetchall():
             self.update_session(row["id"], status="interrupted")
             self.add_event(row["id"], "interrupted", {"reason": "bridge restarted"})
+
+    def record_started(self, claude_session_id: str, name: str, cwd: str) -> None:
+        with self.db:
+            self.db.execute(
+                "INSERT OR REPLACE INTO started VALUES (?, ?, ?, ?)", (claude_session_id, name, cwd, self.clock())
+            )
+
+    def was_started(self, claude_session_id: str) -> bool:
+        row = self.db.execute("SELECT 1 FROM started WHERE claude_session_id = ?", (claude_session_id,)).fetchone()
+        return row is not None
 
     def create_session(self, project_path: str, label: str | None = None) -> dict[str, Any]:
         now = self.clock()
