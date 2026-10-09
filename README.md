@@ -89,6 +89,7 @@ then give it a public address.
 | `stop_active_session` | stop such a session again; sessions the bridge did not start are never stopped |
 | `message_active_session` | send a message into a session that is open in a terminal |
 | `ask_active_session` | ask such a session something and wait for its answer, as if talking to it directly |
+| `side_question` | a quick answer about a busy session, read from what it wrote lately, never sent into it |
 | `digest_session` | a long conversation summed up, or a question about it answered, in a few sentences |
 | `read_session_output`, `search_session_history` | read what such a session said lately, or search everything it said |
 | `list_claude_conversations`, `attach_conversation` | continue an earlier conversation, as a copy run by the bridge |

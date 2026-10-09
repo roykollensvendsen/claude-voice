@@ -449,6 +449,99 @@ async def summarize(text: str, question: str | None, language: str | None = None
     return reply
 
 
+SIDE_PROMPT = (
+    "You answer a quick question about a Claude Code session for its owner, who will hear the "
+    "answer read aloud while the session keeps working. Use only the conversation given with "
+    "the question; earlier questions are about other moments and may be about other sessions. "
+    "Answer in one to three plain sentences, at most 300 characters, with no code, paths, lists "
+    "or identifiers. If the conversation does not say, say so."
+)
+
+
+class SideReader:
+    """Answers side questions through one small helper kept ready, like the courier.
+
+    A helper started per question took five to twelve seconds; a warm one about three and a
+    half, as long as its conversation is cleared after each answer. Without that, every
+    earlier transcript stayed in its context and answers slowed to fifteen seconds.
+    After `fresh_after` questions it is replaced anyway.
+    """
+
+    def __init__(
+        self, client_factory: Callable[[ClaudeAgentOptions], Any] = ClaudeSDKClient, fresh_after: int = 10
+    ) -> None:
+        self.client_factory = client_factory
+        self.fresh_after = fresh_after
+        self._lock = asyncio.Lock()
+        self._client: Any = None
+        self._cwd: tempfile.TemporaryDirectory[str] | None = None
+        self._asked = 0
+
+    async def _open(self) -> None:
+        self._cwd = tempfile.TemporaryDirectory(prefix="claude-voice-msg-side-")
+        opts = ClaudeAgentOptions(
+            cwd=self._cwd.name,
+            model="haiku",
+            tools=[],
+            setting_sources=[],
+            settings=json.dumps({"disableClaudeAiConnectors": True}),
+            system_prompt=SIDE_PROMPT,
+        )
+        client = self.client_factory(opts)
+        await client.__aenter__()
+        self._client, self._asked = client, 0
+
+    async def close(self) -> None:
+        client, self._client = self._client, None
+        if client is not None:
+            with contextlib.suppress(Exception):
+                await client.__aexit__(None, None, None)
+        if self._cwd is not None:
+            self._cwd.cleanup()
+            self._cwd = None
+
+    async def warm(self) -> None:
+        async with self._lock:
+            if self._client is None:
+                await self._open()
+
+    async def __call__(self, text: str, question: str, language: str | None = None) -> str:
+        ask = f"Answer in {language}. " if language else ""
+        prompt = f"{ask}Question: {question}\n\n<conversation>\n{text}\n</conversation>"
+        async with self._lock:
+            for attempt in (1, 2):
+                if self._client is None or self._asked >= self.fresh_after:
+                    await self.close()
+                    await self._open()
+                self._asked += 1
+                reply = ""
+                try:
+                    await self._client.query(prompt)
+                    async for m in self._client.receive_response():
+                        if isinstance(m, ResultMessage):
+                            reply = (m.result or "").strip()
+                    # Forget the question, so the next one is read on its own and stays fast.
+                    await self._client.query("/clear")
+                    async for _ in self._client.receive_response():
+                        pass
+                    return reply
+                except Exception:
+                    await self.close()
+                    if attempt == 2:
+                        raise
+        return ""
+
+
+_reader: SideReader | None = None
+
+
+def shared_reader() -> SideReader:
+    global _reader
+    if _reader is None:
+        _reader = SideReader()
+    return _reader
+
+
 _courier = Courier()
 
 
