@@ -28,6 +28,8 @@ from claude_agent_sdk import (
     PermissionResultAllow,
     PermissionResultDeny,
     ResultMessage,
+    ToolResultBlock,
+    ToolUseBlock,
     get_session_messages,
     project_key_for_directory,
 )
@@ -363,7 +365,8 @@ class Courier:
         client = self._client
         self._carried += 1
         self._job = {"name": name, "text": text, "sent": False}
-        detail = ""
+        sends: set[str] = set()
+        refused = False
         try:
             await client.query(
                 f"Session: {name}\n"
@@ -371,12 +374,22 @@ class Courier:
                 f"<message>\n{text}\n</message>"
             )
             async for m in client.receive_response():
-                if isinstance(m, ResultMessage):
-                    detail = (m.result or m.subtype or "").strip()
+                for block in getattr(m, "content", None) or []:
+                    if isinstance(block, ToolUseBlock) and block.name == "SendMessage":
+                        sends.add(block.id)
+                    elif isinstance(block, ToolResultBlock) and block.tool_use_id in sends and block.is_error:
+                        refused = True  # Claude Code stopped the send, e.g. to ask for permission
         finally:
             sent = bool(self._job and self._job["sent"])
             self._job = None
-        return {"delivered": sent, "detail": detail, "attempted": sent}
+        # What the courier writes is never passed on: it is not the session's answer.
+        if sent:
+            detail = ""
+        elif refused:
+            detail = "Claude Code refused to send it; the receiving session may be waiting for the owner's permission"
+        else:
+            detail = "the courier did not send it"
+        return {"delivered": sent, "detail": detail, "attempted": sent or refused}
 
     async def deliver(self, name: str, text: str) -> dict[str, Any]:
         """Send `text` into the running session called `name` via SendMessage."""

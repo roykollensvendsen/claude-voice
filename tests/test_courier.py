@@ -291,7 +291,7 @@ def refused_send(to, message):
 
 async def test_a_send_claude_code_refuses_is_reported_as_refused_and_not_tried_again():
     chatty = [done("I cannot control podcasts; use your phone's player.")]
-    factory = Factory([refused_send("billing", "hi"), done("The send was blocked.")], [chatty])
+    factory = Factory([[refused_send("billing", "hi"), done("The send was blocked.")]], [chatty])
     courier = Courier(client_factory=factory)
     out = await courier.deliver("billing", "hi")
     assert out["delivered"] is False
