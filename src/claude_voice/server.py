@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import secrets
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
@@ -164,6 +165,8 @@ def build_server(
     read_transcript: Callable[[str, str | None], list[Any]] | None = None,
     watch_interval: float | None = None,
     restart: dict[str, Any] | None = None,
+    start_background: Callable[[str, str], Awaitable[None]] = transcripts.start_background,
+    start_seconds: float = 20.0,
     summarize: Callable[[str, str | None, str | None], Awaitable[str]] = transcripts.summarize,
     digest_chars: int = 150_000,
     poll_seconds: float = 1.0,
@@ -387,6 +390,35 @@ def build_server(
         if out["cancelled"]:
             return {**out, "status": "interrupted", "how": "sdk"}
         return {**out, "status": "not_running"}
+
+    @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
+    async def start_active_session(project: str, name: str | None = None) -> dict[str, Any]:
+        """Start a new Claude Code session in the background in a project (from list_projects),
+        named `name` or after the project. It is listed at once, so ask_active_session reaches it."""
+        try:
+            path = manager.resolve_project(project)
+        except ValueError as exc:
+            raise ToolError(str(exc)) from None
+        taken = {str(d.get("name")) for d in live_sessions()}
+        wanted = (name or "").strip() or f"{path.name}-{secrets.token_hex(2)}"
+        while wanted in taken:
+            wanted = f"{wanted}-{secrets.token_hex(2)}"
+        try:
+            await start_background(str(path), wanted)
+        except Exception as exc:
+            raise ToolError(f"Claude Code could not start a session: {exc}") from None
+        deadline = time.monotonic() + start_seconds
+        while time.monotonic() < deadline:
+            found = next((d for d in live_sessions() if d.get("name") == wanted and d.get("cwd") == str(path)), None)
+            if found:
+                return {
+                    "name": wanted,
+                    "claude_session_id": found.get("sessionId"),
+                    "project": under_root(str(path)),
+                    "status": found.get("status") or "idle",
+                }
+            await asyncio.sleep(0.2)
+        raise ToolError(f"{wanted} was started but did not appear among the running sessions")
 
     @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
     def close_session(session_id: str) -> dict[str, Any]:

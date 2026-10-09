@@ -85,6 +85,7 @@ then give it a public address.
 | `list_sessions` | the sessions this bridge started, and every one running on the computer |
 | `session_tree` | the sessions as a tree, including which ones have been messaging each other |
 | `list_active_sessions` | every Claude Code session running on the computer now, terminal or background |
+| `start_active_session` | start a new Claude Code session in the background, ready to talk to at once |
 | `message_active_session` | send a message into a session that is open in a terminal |
 | `ask_active_session` | ask such a session something and wait for its answer, as if talking to it directly |
 | `digest_session` | a long conversation summed up, or a question about it answered, in a few sentences |

@@ -452,6 +452,33 @@ async def summarize(text: str, question: str | None, language: str | None = None
 _courier = Courier()
 
 
+async def start_background(cwd: str, name: str) -> None:
+    """Start a Claude Code session in the background, as `claude --bg` does from a terminal.
+
+    It runs under the owner's own Claude Code and settings, and appears in the running
+    sessions like any other background session.
+    """
+    import shutil
+
+    import claude_agent_sdk
+
+    bundled = Path(claude_agent_sdk.__file__).parent / "_bundled" / "claude"
+    cli = shutil.which("claude") or str(bundled)
+    proc = await asyncio.create_subprocess_exec(
+        cli,
+        "--bg",
+        "--name",
+        name,
+        cwd=cwd,
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    out, _ = await asyncio.wait_for(proc.communicate(), 60)
+    if proc.returncode:
+        raise RuntimeError(out.decode(errors="replace").strip()[-300:] or f"claude --bg exited {proc.returncode}")
+
+
 def shared_courier() -> Courier:
     return _courier
 
