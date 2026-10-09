@@ -9,7 +9,9 @@ from claude_agent_sdk import (
     PermissionResultDeny,
     ResultMessage,
     ToolPermissionContext,
+    ToolResultBlock,
     ToolUseBlock,
+    UserMessage,
 )
 
 from claude_voice.transcripts import Courier
@@ -70,10 +72,23 @@ class FakeCourierClient:
             await asyncio.sleep(0)
             # Like Claude Code: every tool call goes through the permission callback,
             # and what actually runs is the input the callback hands back.
+            refused = None
             for block in getattr(message, "content", []):
-                if isinstance(block, ToolUseBlock):
+                if isinstance(block, ToolUseBlock) and block.input.get("_refused"):
+                    refused = block  # stopped by Claude Code before any hook runs
+                elif isinstance(block, ToolUseBlock):
                     await self._run(block)
             yield message
+            if refused is not None:
+                yield UserMessage(
+                    content=[
+                        ToolResultBlock(
+                            tool_use_id=refused.id,
+                            content="The user doesn't want to take this action right now.",
+                            is_error=True,
+                        )
+                    ]
+                )
 
 
 class Factory:
@@ -263,4 +278,33 @@ async def test_a_delivery_is_logged_with_the_trace_of_the_turn_it_belongs_to(cap
     assert any(
         line.startswith("courier billing -> delivered ") and line.endswith("trace=ab12cd34ef56") for line in lines
     )
+    await courier.close()
+
+
+def refused_send(to, message):
+    """A send Claude Code stops before it runs, as when it wants the owner's permission."""
+    return AssistantMessage(
+        content=[ToolUseBlock(id="r", name="SendMessage", input={"to": to, "message": message, "_refused": True})],
+        model="fake",
+    )
+
+
+async def test_a_send_claude_code_refuses_is_reported_as_refused_and_not_tried_again():
+    chatty = [done("I cannot control podcasts; use your phone's player.")]
+    factory = Factory([refused_send("billing", "hi"), done("The send was blocked.")], [chatty])
+    courier = Courier(client_factory=factory)
+    out = await courier.deliver("billing", "hi")
+    assert out["delivered"] is False
+    assert "refused" in out["detail"]
+    assert len(factory.clients) == 1  # a second courier would only answer in the session's place
+    await courier.close()
+
+
+async def test_the_couriers_own_words_never_reach_the_caller():
+    factory = Factory([ok("hi")], [[done("Hei Roy! I'll connect you to Hermes.")], [done("Sure thing.")]])
+    courier = Courier(client_factory=factory)
+    delivered = await courier.deliver("billing", "hi")
+    assert "DELIVERED" not in str(delivered)
+    failed = await courier.deliver("billing", "hello")
+    assert failed["delivered"] is False and "Hermes" not in failed["detail"] and "Sure" not in failed["detail"]
     await courier.close()
