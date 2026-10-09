@@ -386,6 +386,7 @@ class Courier:
         if sent:
             detail = ""
         elif refused:
+            # The voice app matches "refused to send"; keep those words, or tell it first.
             detail = "Claude Code refused to send it; the receiving session may be waiting for the owner's permission"
         else:
             detail = "the courier did not send it"
