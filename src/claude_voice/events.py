@@ -46,7 +46,7 @@ def read_live(live_dir: Path) -> list[dict[str, Any]]:
     out = []
     for f in sorted(live_dir.glob("*.json")) if live_dir.is_dir() else []:
         try:
-            d = json.loads(f.read_text())
+            d = json.loads(f.read_text(encoding="utf-8"))
             if not procs.alive(int(d["pid"])):
                 continue  # the process is gone
         except (ValueError, KeyError, TypeError, OSError):

@@ -63,10 +63,10 @@ def repair() -> None:
     """Put back a file an earlier run was killed in the middle of mutating."""
     if not RECOVERY.is_file():
         return
-    kept = json.loads(RECOVERY.read_text())
+    kept = json.loads(RECOVERY.read_text(encoding="utf-8"))
     path = ROOT / kept["file"]
-    if path.read_text() == kept["mutated"]:
-        path.write_text(kept["original"])
+    if path.read_text(encoding="utf-8") == kept["mutated"]:
+        path.write_text(kept["original"], encoding="utf-8")
         print(f"repaired {kept['file']}, left mutated by a run that was killed")  # noqa: T201
     else:
         print(f"{kept['file']} was left mutated and has since changed; not touching it")  # noqa: T201
@@ -75,12 +75,12 @@ def repair() -> None:
 
 def restore(path: pathlib.Path, original: str, mutated: str) -> bool:
     """Put a file back, unless somebody else changed it while the suite ran."""
-    if path.read_text() != mutated:
+    if path.read_text(encoding="utf-8") != mutated:
         # Restoring now would overwrite an edit made while this was running,
         # which is a silent way to lose somebody's work.
         # RULE: a file changed during the run is never restored over
         return False
-    path.write_text(original)
+    path.write_text(original, encoding="utf-8")
     return True
 
 
@@ -124,7 +124,7 @@ def main() -> int:
     repair()
     # RULE: an empty rule table is not a crash
     # A scaffolded repository starts with a table of comments and no rows.
-    rules = tomllib.loads(TABLE.read_text()).get("rule", [])
+    rules = tomllib.loads(TABLE.read_text(encoding="utf-8")).get("rule", [])
     if not rules:
         print(f"no rules in {TABLE.relative_to(ROOT)} yet; add one per rule the code enforces")  # noqa: T201
         return 0
@@ -137,7 +137,7 @@ def main() -> int:
             # Read each file as it is now, not as it was when the run began: a
             # bulk snapshot taken up front is restored over anything edited
             # since, and losing an edit that way costs more than the run.
-            text = path.read_text()
+            text = path.read_text(encoding="utf-8")
             lines = text.splitlines()
             i = line_of(text, rule["find"], rule.get("occurrence", 1))
             # Keep the line's own indentation: a replacement that carries its own
@@ -145,8 +145,10 @@ def main() -> int:
             indent = lines[i][: len(lines[i]) - len(lines[i].lstrip())]
             lines[i] = indent + rule["replace"].strip()
             mutated = "\n".join(lines) + "\n"
-            RECOVERY.write_text(json.dumps({"file": rule["file"], "original": text, "mutated": mutated}))
-            path.write_text(mutated)
+            RECOVERY.write_text(
+                json.dumps({"file": rule["file"], "original": text, "mutated": mutated}), encoding="utf-8"
+            )
+            path.write_text(mutated, encoding="utf-8")
             standing = (path, text, mutated)
             count, failed = run_suite()
             if not restore(path, text, mutated):
@@ -176,7 +178,7 @@ def main() -> int:
         print("CHANGED WHILE MUTATED, so left as they are:", ", ".join(sorted(set(lost))))  # noqa: T201
         print("Edit the tree while this runs and the result is not about your code.")  # noqa: T201
     if args.write:
-        args.write.write_text(report(results, survived, lucky))
+        args.write.write_text(report(results, survived, lucky), encoding="utf-8")
     return 1 if survived or lucky or lost else 0
 
 

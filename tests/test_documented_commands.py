@@ -47,7 +47,7 @@ def examples() -> list[tuple[str, str, str]]:
     found = []
     for page in pages():
         name = str(page.relative_to(ROOT))
-        text = page.read_text()
+        text = page.read_text(encoding="utf-8")
         for block in _console_blocks(text):
             command, expected = None, []
             for line in block.splitlines():
@@ -95,7 +95,7 @@ def test_no_block_of_commands_escapes_by_choosing_another_fence():
     """A block that looks like commands is run, or says in the document why it is not."""
     escaped = []
     for page in pages():
-        text = page.read_text()
+        text = page.read_text(encoding="utf-8")
         for match in re.finditer(r"^```(\w*)\n(.*?)^```", text, re.DOTALL | re.MULTILINE):
             fence, body = match.group(1), match.group(2)
             if fence == "console" or not LOOKS_LIKE_A_COMMAND.search(body):

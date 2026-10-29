@@ -90,7 +90,7 @@ class Stopper:
     async def __call__(self, session_id):
         self.calls.append(session_id)
         for f in self.live.glob("*.json"):
-            if json.loads(f.read_text()).get("sessionId") == session_id:
+            if json.loads(f.read_text(encoding="utf-8")).get("sessionId") == session_id:
                 f.unlink()
 
 

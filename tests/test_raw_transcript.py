@@ -7,6 +7,20 @@ from claude_agent_sdk import project_key_for_directory
 from claude_voice.transcripts import read_raw_transcript, recent_turns
 
 
+def test_a_transcript_is_read_as_utf8_whatever_the_system_encoding(tmp_path):
+    # Claude Code writes UTF-8. Windows reads text as cp1252 by default, where
+    # the last byte of a closing quote (E2 80 9D) is not a character at all.
+    cwd = "/home/someone/project"
+    text = "Renamed “Café del Mar” – done ✓"
+    path = tmp_path / project_key_for_directory(cwd) / "sid-1.jsonl"
+    path.parent.mkdir(parents=True)
+    entry = {"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": text}]}}
+    path.write_bytes((json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8"))
+
+    turns = recent_turns(read_raw_transcript("sid-1", cwd, projects_dir=tmp_path), None)
+    assert [t["text"] for t in turns] == [text]
+
+
 def test_peer_messages_that_arrive_mid_turn_are_kept_and_other_meta_entries_are_not(tmp_path):
     cwd = "/home/someone/project"
     lines = [

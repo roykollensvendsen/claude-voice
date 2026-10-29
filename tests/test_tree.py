@@ -61,7 +61,7 @@ class World:
         key = project_key_for_directory(cwd)
         path = self.projects / key / f"{sid}.jsonl"
         path.parent.mkdir(exist_ok=True)
-        with path.open("a" if append else "w") as f:
+        with path.open("a" if append else "w", encoding="utf-8") as f:
             for e in entries:
                 f.write(json.dumps(e) + "\n")
 

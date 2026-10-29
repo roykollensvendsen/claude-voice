@@ -24,7 +24,7 @@ BASE = "apt-get update -qq && apt-get install -y -qq curl ca-certificates git >/
 
 
 def steps() -> str:
-    readme = (ROOT / "README.md").read_text()
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
     found = re.findall(r"<!-- not run:[^>]*the clean-install job runs it[^>]*-->\n```bash\n(.*?)```", readme, re.S)
     if len(found) != 1:
         sys.exit("clean_install: expected exactly one marked block in README.md")

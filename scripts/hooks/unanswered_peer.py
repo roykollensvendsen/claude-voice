@@ -68,7 +68,7 @@ def _courier_name() -> str | None:
     if name:
         return name.strip()
     try:
-        for line in ENV_FILE.read_text().splitlines():
+        for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
             if line.startswith("CLAUDE_VOICE_COURIER_NAME="):
                 return line.split("=", 1)[1].strip() or None
     except OSError:
@@ -88,7 +88,7 @@ def _is_courier(name: str, address: str) -> bool:
     if not pid:
         return False
     try:
-        cwd = json.loads((SESSIONS_DIR / f"{pid.group(1)}.json").read_text()).get("cwd", "")
+        cwd = json.loads((SESSIONS_DIR / f"{pid.group(1)}.json").read_text(encoding="utf-8")).get("cwd", "")
     except (OSError, ValueError, AttributeError):
         return False
     return pathlib.Path(str(cwd)).name.startswith(COURIERS)
@@ -116,14 +116,14 @@ def main(stdin: IO[str] = sys.stdin, stdout: IO[str] = sys.stdout) -> int:
         event = json.load(stdin)
         if event.get("stop_hook_active"):
             return 0
-        lines = pathlib.Path(event["transcript_path"]).read_text().splitlines()
+        lines = pathlib.Path(event["transcript_path"]).read_text(encoding="utf-8").splitlines()
         entries = [json.loads(line) for line in lines if line.strip()]
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return 0
 
     state = STATE_DIR / f"{event.get('session_id', 'unknown')}.json"
     try:
-        nagged = set(json.loads(state.read_text()))
+        nagged = set(json.loads(state.read_text(encoding="utf-8")))
     except (OSError, ValueError):
         nagged = set()
     fresh = [m for m in unanswered(entries) if m["key"] not in nagged]
@@ -132,7 +132,7 @@ def main(stdin: IO[str] = sys.stdin, stdout: IO[str] = sys.stdout) -> int:
 
     try:
         state.parent.mkdir(parents=True, exist_ok=True)
-        state.write_text(json.dumps(sorted(nagged | {m["key"] for m in fresh})))
+        state.write_text(json.dumps(sorted(nagged | {m["key"] for m in fresh})), encoding="utf-8")
     except OSError:
         return 0  # without memory this could hold a turn back more than once
     lines_out = [f'- {m["name"]} ({m["address"]}): "{m["text"].splitlines()[0][:200]}"' for m in fresh]

@@ -131,7 +131,7 @@ class SessionTree:
         names: set[str] = set()
         for f in sorted(self.live_dir.glob("*.json")) if self.live_dir.is_dir() else []:
             try:
-                d = json.loads(f.read_text())
+                d = json.loads(f.read_text(encoding="utf-8"))
                 pid = int(d["pid"])
             except (ValueError, KeyError, TypeError, OSError):
                 continue
