@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import time
 from collections.abc import Callable
@@ -23,6 +22,7 @@ from typing import Any
 
 from claude_agent_sdk import list_subagents, project_key_for_directory
 
+from . import procs
 from .store import Store
 from .transcripts import PROJECTS_DIR
 
@@ -35,11 +35,7 @@ SOCKET_PID = re.compile(r"/(\d+)\.sock$")
 
 
 def _pid_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return False
-    return True
+    return procs.alive(pid)
 
 
 def _timestamp(entry: dict[str, Any]) -> float | None:

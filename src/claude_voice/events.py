@@ -9,12 +9,12 @@ ended) into feed entries. `whats_new` returns both after a cursor.
 from __future__ import annotations
 
 import json
-import os
 import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from . import procs
 from .store import Store
 from .transcripts import clip
 
@@ -47,9 +47,10 @@ def read_live(live_dir: Path) -> list[dict[str, Any]]:
     for f in sorted(live_dir.glob("*.json")) if live_dir.is_dir() else []:
         try:
             d = json.loads(f.read_text())
-            os.kill(int(d["pid"]), 0)
+            if not procs.alive(int(d["pid"])):
+                continue  # the process is gone
         except (ValueError, KeyError, TypeError, OSError):
-            continue  # unreadable, or the process is gone
+            continue  # unreadable
         out.append(d)
     return out
 
