@@ -72,7 +72,7 @@ def messages(where: str) -> list[tuple[str, str]]:
     """Every message in a range, or the one in a file."""
     if where.startswith("--file="):
         path = pathlib.Path(where.removeprefix("--file="))
-        return [(path.name, path.read_text())]
+        return [(path.name, path.read_text(encoding="utf-8"))]
     result = subprocess.run(  # noqa: S603
         ["git", "log", "--no-merges", "--format=%H%x00%B%x01", where],  # noqa: S607
         capture_output=True,

@@ -238,7 +238,7 @@ def read_raw_transcript(session_id: str, cwd: str, projects_dir: Path = PROJECTS
     """
     path = projects_dir / project_key_for_directory(cwd) / f"{session_id}.jsonl"
     try:
-        lines = path.read_text().splitlines()
+        lines = path.read_text(encoding="utf-8").splitlines()
     except OSError:
         return []
     out = []

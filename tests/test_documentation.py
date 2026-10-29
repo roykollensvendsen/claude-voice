@@ -15,7 +15,7 @@ ROOT = pathlib.Path(__file__).parent.parent
 
 
 def read(name: str) -> str:
-    return (ROOT / name).read_text()
+    return (ROOT / name).read_text(encoding="utf-8")
 
 
 def test_every_gate_the_contributing_guide_names_runs_in_the_workflow():
@@ -28,7 +28,7 @@ def test_every_gate_the_contributing_guide_names_runs_in_the_workflow():
     all there is to check.
     """
     guide = read("CONTRIBUTING.md")
-    workflow = "\n".join(p.read_text() for p in sorted((ROOT / ".github/workflows").glob("*.yml")))
+    workflow = "\n".join(p.read_text(encoding="utf-8") for p in sorted((ROOT / ".github/workflows").glob("*.yml")))
     block = re.search(r"## The gates.*?```\n(.*?)```", guide, re.DOTALL)
     assert block, "CONTRIBUTING.md no longer lists the gates"
     run_steps = "\n".join(line for line in workflow.splitlines() if "run:" in line)
@@ -75,7 +75,7 @@ def test_the_readme_lists_exactly_the_tools_the_bridge_offers(tmp_path):
         async with Client(build_server(m)) as client:
             return {t.name for t in (await client.list_tools()).tools}
 
-    readme = (ROOT / "README.md").read_text()
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
     table = readme.split("## What you can ask for", 1)[1].split("\n## ", 1)[0]
     documented = set(
         re.findall(r"`(\w+)`", "\n".join(row.split("|")[1] for row in table.splitlines() if row.startswith("| `")))
@@ -87,10 +87,10 @@ def test_the_start_here_steps_are_run_on_a_clean_machine_by_continuous_integrati
     """The five-minute start is what a stranger follows; nothing else proves it still works."""
     import re
 
-    readme = (ROOT / "README.md").read_text()
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
     marked = re.findall(r"<!-- not run:[^>]*the clean-install job runs it[^>]*-->\n```bash\n", readme)
     assert len(marked) == 1, "exactly one block in the README is the clean install"
-    workflow = (ROOT / ".github" / "workflows" / "checks.yml").read_text()
+    workflow = (ROOT / ".github" / "workflows" / "checks.yml").read_text(encoding="utf-8")
     job = workflow.split("\n  clean-install:", 1)
     assert len(job) == 2, "checks.yml has no clean-install job"
     assert "python3 scripts/clean_install.py" in job[1].split("\n  checks:", 1)[0]

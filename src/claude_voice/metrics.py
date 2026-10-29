@@ -122,12 +122,12 @@ def restart_info(state_file: str, unit: str = "claude-voice") -> dict:
         return {"at": at, "reason": None, "total": None}
     path = Path(state_file).expanduser()
     try:
-        seen = int(path.read_text())
+        seen = int(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         seen = total
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(str(total))
+        path.write_text(str(total), encoding="utf-8")
     except OSError:
         pass
     return {"at": at, "reason": "auto-restart" if total > seen else None, "total": total}

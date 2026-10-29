@@ -34,7 +34,7 @@ def marked_rules() -> set[str]:
     """Every rule the source marks, by the words the marker gives it."""
     found = set()
     for source in sorted((ROOT / "src").rglob("*.py")):
-        for line in source.read_text().splitlines():
+        for line in source.read_text(encoding="utf-8").splitlines():
             match = MARKER.search(line)
             if match:
                 found.add(match.group(1))
@@ -43,7 +43,7 @@ def marked_rules() -> set[str]:
 
 def rowed_rules() -> set[str]:
     """Every rule the mutation table claims to switch off."""
-    table = tomllib.loads((ROOT / "scripts/mutations.toml").read_text())
+    table = tomllib.loads((ROOT / "scripts/mutations.toml").read_text(encoding="utf-8"))
     return {str(rule["name"]) for rule in table.get("rule", [])}
 
 
@@ -56,7 +56,7 @@ def defined_test_names() -> set[str]:
     """
     found = set()
     for module in sorted((ROOT / "tests").rglob("test_*.py")):
-        found.update(re.findall(r"^(?:async )?def (test_\w+)", module.read_text(), re.MULTILINE))
+        found.update(re.findall(r"^(?:async )?def (test_\w+)", module.read_text(encoding="utf-8"), re.MULTILINE))
     return found
 
 
