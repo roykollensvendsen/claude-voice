@@ -10,6 +10,8 @@ from collections import deque
 from datetime import UTC, datetime
 from typing import Any
 
+import psutil
+
 SAMPLES_PER_TOOL = 500
 ERRORS_KEPT = 10
 
@@ -68,14 +70,11 @@ METRICS = Metrics()
 
 
 def memory_rss_mb() -> int:
-    """This process's resident memory, from /proc (Linux)."""
+    """This process's resident memory, as the operating system reports it."""
     try:
-        for line in open("/proc/self/status"):
-            if line.startswith("VmRSS:"):
-                return round(int(line.split()[1]) / 1024)
-    except OSError:
-        pass
-    return 0
+        return round(psutil.Process().memory_info().rss / (1024 * 1024))
+    except psutil.Error:
+        return 0
 
 
 def version() -> str:
