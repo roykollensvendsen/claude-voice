@@ -130,6 +130,7 @@ def test_a_courier_known_by_its_folder_is_ignored_whatever_its_name(tmp_path, st
 
 
 def test_the_configured_courier_name_is_ignored_even_after_the_courier_is_gone(tmp_path, state):
+    state.delenv("CLAUDE_VOICE_COURIER_NAME", raising=False)  # the hook reads the environment before the file
     env = tmp_path / "env"
     env.write_text("CLAUDE_VOICE_TOKEN=secret\nCLAUDE_VOICE_COURIER_NAME=Roy via stemmen\n")
     hook = _hook()
