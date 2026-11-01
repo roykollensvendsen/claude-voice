@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import contextlib
 import hashlib
 import secrets
 import socket
@@ -46,12 +47,13 @@ def root(tmp_path):
     return tmp_path / "src"
 
 
-@pytest.fixture
-async def bridge(tmp_path, root, clock):
+@contextlib.asynccontextmanager
+async def served(tmp_path, root, clock, **oauth_options):
+    """The bridge over HTTP on a free port, with its own sign-in; yields a client for it."""
     port = free_port()
     url = f"http://127.0.0.1:{port}"
     store = Store(tmp_path / "bridge.db", clock=clock)
-    oauth = OAuthProvider(store, login_secret=SECRET, public_url=url, clock=clock)
+    oauth = OAuthProvider(store, login_secret=SECRET, public_url=url, clock=clock, **oauth_options)
     manager = SessionManager(store, project_root=root, client_factory=FakeClaude())
     app = build_app(build_server(manager, oauth=oauth))
     uv = uvicorn.Server(uvicorn.Config(app, port=port, log_level="warning"))
@@ -62,6 +64,12 @@ async def bridge(tmp_path, root, clock):
         yield http
     uv.should_exit = True
     await task
+
+
+@pytest.fixture
+async def bridge(tmp_path, root, clock):
+    async with served(tmp_path, root, clock) as http:
+        yield http
 
 
 def pkce():
@@ -265,6 +273,19 @@ async def test_access_tokens_expire(bridge, clock):
     _, tokens = await login(bridge)
     clock.t += tokens["expires_in"] + 1
     assert (await mcp_initialize(bridge, tokens["access_token"])).status_code == 401
+
+
+async def test_the_access_token_lifetime_is_a_setting(tmp_path, root, clock):
+    # A client that cannot refresh gives the bridge up; on a computer that sleeps at night,
+    # a token that lasts a week needs a refresh once a week instead of after every pause.
+    week = 7 * 24 * 3600
+    async with served(tmp_path, root, clock, access_ttl=week) as http:
+        _, tokens = await login(http)
+        assert tokens["expires_in"] == week
+        clock.t += 3600 + 1
+        assert (await mcp_initialize(http, tokens["access_token"])).status_code == 200
+        clock.t += week
+        assert (await mcp_initialize(http, tokens["access_token"])).status_code == 401
 
 
 async def test_the_static_token_still_works_for_local_tools(tmp_path, clock):

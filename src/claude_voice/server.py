@@ -27,7 +27,7 @@ from starlette.types import ASGIApp
 from . import events, metrics, transcripts
 from .approvals import ApprovalBroker, ApprovalNotFound
 from .metrics import METRICS
-from .oauth import SCOPE, OAuthProvider, PublicClientMetadata
+from .oauth import ACCESS_TTL, MIN_ACCESS_TTL, SCOPE, OAuthProvider, PublicClientMetadata
 from .sessions import SessionBusy, SessionClosed, SessionManager
 from .store import SessionNotFound, Store
 from .tree import PROJECTS_DIR, SessionTree
@@ -72,6 +72,7 @@ class Config:
     public_hosts: list[str] = field(default_factory=list)
     public_url: str = ""
     courier_name: str = transcripts.COURIER_NAME
+    access_ttl: int = ACCESS_TTL
 
 
 MAKE_TOKEN = (
@@ -102,6 +103,15 @@ def load_config(env: Mapping[str, str], transport: str) -> Config:
         public_hosts=[h for h in env.get("CLAUDE_VOICE_PUBLIC_HOSTS", "").split(",") if h],
     )
     cfg.courier_name = env.get("CLAUDE_VOICE_COURIER_NAME", "").strip() or transcripts.COURIER_NAME
+    ttl = env.get("CLAUDE_VOICE_ACCESS_TOKEN_SECONDS", "").strip()
+    if ttl:
+        # RULE: an access-token lifetime that is not a whole number of at least a minute stops the bridge
+        if not ttl.isdigit() or int(ttl) < MIN_ACCESS_TTL:
+            raise ConfigError(
+                f"CLAUDE_VOICE_ACCESS_TOKEN_SECONDS is {ttl!r}; use a whole number of seconds, "
+                f"at least {MIN_ACCESS_TTL} (an hour is 3600, a week 604800)."
+            )
+        cfg.access_ttl = int(ttl)
     cfg.public_url = env.get("CLAUDE_VOICE_PUBLIC_URL", "").rstrip("/") or (
         f"https://{cfg.public_hosts[0]}" if cfg.public_hosts else f"http://127.0.0.1:{cfg.port}"
     )
@@ -953,7 +963,9 @@ def serve_forever(cfg: Config) -> None:
     token = cfg.token or ""
     # The token doubles as the login secret on the OAuth consent page and as a
     # static bearer token for local MCP clients.
-    oauth = OAuthProvider(store, login_secret=token, public_url=cfg.public_url, static_token=token)
+    oauth = OAuthProvider(
+        store, login_secret=token, public_url=cfg.public_url, static_token=token, access_ttl=cfg.access_ttl
+    )
     restart = metrics.restart_info("~/.local/state/claude-voice/restarts")
     app = build_app(build_server(manager, oauth=oauth, watch_interval=5.0, restart=restart), cfg.public_hosts)
     configure_logging(cfg.db.parent / LOG_FILE)

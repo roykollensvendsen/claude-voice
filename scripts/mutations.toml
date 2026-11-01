@@ -38,3 +38,9 @@ name = "only a session the bridge started itself is ever stopped"
 file = "src/claude_voice/server.py"
 find = 'if not store.was_started\(sid\):'
 replace = 'if False:'
+
+[[rule]]
+name = "an access-token lifetime that is not a whole number of at least a minute stops the bridge"
+file = "src/claude_voice/server.py"
+find = 'if not ttl.isdigit\(\) or int\(ttl\) < MIN_ACCESS_TTL:'
+replace = 'if False:'

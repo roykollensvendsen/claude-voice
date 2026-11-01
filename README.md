@@ -168,6 +168,7 @@ also the default.
 | `CLAUDE_VOICE_HOST` / `_PORT` | `127.0.0.1` / `8811` | keep it on this computer and tunnel in |
 | `CLAUDE_VOICE_COURIER_NAME` | `Owner via claude-voice` | the sender name a session sees when the voice messages it, e.g. `Roy via stemmen` |
 | `CLAUDE_VOICE_DB` | `~/.local/state/claude-voice/bridge.db` | where sessions and events are kept |
+| `CLAUDE_VOICE_ACCESS_TOKEN_SECONDS` | `3600` | how long a sign-in's access token lasts before the app must refresh it; set it to a week (`604800`) on a computer that sleeps, since the Claude app gives a connector up after about an hour of failed refreshes |
 
 ### Signing in
 
