@@ -37,6 +37,10 @@ wants to reach the bridge from a phone.
 
 - **`check` is not ready:** do its `fix`.
 - **The service will not stay up:** read `journalctl --user -u claude-voice -n 50`.
+- **Something went wrong earlier**, such as the phone's connector showing as
+  disconnected: `~/.local/state/claude-voice/bridge.log`, next to the bridge's
+  database, keeps every request, each token refresh with its outcome, and each
+  tool call, across restarts.
 - **A phone cannot connect:**
   - `curl https://<their host>/healthz` should print `ok` from outside;
   - port 443 is the one claude.ai reaches.

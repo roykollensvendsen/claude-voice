@@ -15,4 +15,7 @@ versions follow [semantic versioning](https://semver.org/spec/v2.0.0.html).
 - Risky actions wait for a spoken approval and are refused after ten minutes.
 - Sessions open elsewhere can be listed, messaged, read and searched.
 - `whats_new`, a cheap delta of what happened since the last poll.
+- The log is kept in `bridge.log` next to the database as well as on the console,
+  with the outcome of every token refresh, so a connector that dropped while
+  nobody watched can be diagnosed afterwards.
 - `claude-voice check` and `claude-voice serve`, and a user service installer.

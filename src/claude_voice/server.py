@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import logging.handlers
 import secrets
 import time
 from collections.abc import Awaitable, Callable, Mapping
@@ -36,6 +37,11 @@ READ_ONLY = ToolAnnotations(read_only_hint=True)
 COURIER_PREFIX = "claude-voice-msg-"
 # Claude Code keeps one JSON file per running session here.
 LIVE_DIR = Path("~/.claude/sessions").expanduser()
+# The log is kept in a file next to the database too: the console is gone after a restart,
+# and a connector dropped overnight is diagnosed from what the token endpoint saw.
+LOG_FILE = "bridge.log"
+LOG_BYTES = 5_000_000
+LOG_KEPT = 3
 
 INSTRUCTIONS = """\
 Controls Claude Code sessions running on the user's own machine. The user is
@@ -922,6 +928,17 @@ def build_app(server: MCPServer, public_hosts: list[str] | None = None) -> ASGIA
     return PublicClientMetadata(server.streamable_http_app(transport_security=security))
 
 
+def configure_logging(log_file: Path) -> logging.Handler:
+    """Log to the console and to `log_file`, rotated; returns the file handler."""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
+    logging.getLogger().setLevel(logging.INFO)  # basicConfig leaves the level alone once handlers exist
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    handler = logging.handlers.RotatingFileHandler(log_file, maxBytes=LOG_BYTES, backupCount=LOG_KEPT, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(name)s: %(message)s"))
+    logging.getLogger().addHandler(handler)
+    return handler
+
+
 def serve_forever(cfg: Config) -> None:
     """Run the bridge with a checked configuration until stopped."""
     transcripts.configure_courier(cfg.courier_name)
@@ -939,5 +956,6 @@ def serve_forever(cfg: Config) -> None:
     oauth = OAuthProvider(store, login_secret=token, public_url=cfg.public_url, static_token=token)
     restart = metrics.restart_info("~/.local/state/claude-voice/restarts")
     app = build_app(build_server(manager, oauth=oauth, watch_interval=5.0, restart=restart), cfg.public_hosts)
-    logging.basicConfig(level=logging.INFO, format="%(name)s: %(message)s")
-    uvicorn.run(app, host=cfg.host, port=cfg.port, log_level="info")
+    configure_logging(cfg.db.parent / LOG_FILE)
+    # No log config of its own, so uvicorn's lines, the request log included, reach the file.
+    uvicorn.run(app, host=cfg.host, port=cfg.port, log_level="info", log_config=None)

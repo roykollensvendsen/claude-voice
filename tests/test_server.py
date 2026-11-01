@@ -429,3 +429,21 @@ def test_the_courier_name_comes_from_the_environment(tmp_path):
     assert load_config(env, "stdio").courier_name == "Owner via claude-voice"
     named = {**env, "CLAUDE_VOICE_COURIER_NAME": "Roy via stemmen"}
     assert load_config(named, "stdio").courier_name == "Roy via stemmen"
+
+
+def test_the_log_is_kept_in_a_file_next_to_the_database(tmp_path):
+    import logging
+
+    from claude_voice.server import configure_logging
+
+    level = logging.getLogger().level
+    handler = configure_logging(tmp_path / "state" / "bridge.log")
+    try:
+        logging.getLogger("claude_voice.oauth").info("oauth refresh ok for client abcdef12 (family 123456)")
+        handler.flush()
+    finally:
+        logging.getLogger().removeHandler(handler)
+        logging.getLogger().setLevel(level)
+        handler.close()
+    text = (tmp_path / "state" / "bridge.log").read_text(encoding="utf-8")
+    assert "claude_voice.oauth: oauth refresh ok for client abcdef12" in text
