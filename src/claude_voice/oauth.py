@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import html
 import json
+import logging
 import secrets
 import time
 from collections.abc import Callable
@@ -39,6 +40,9 @@ CODE_TTL = 300
 CONSENT_TTL = 600
 MAX_SECRET_ATTEMPTS = 5
 SCOPE = "claude"
+# A client that cannot refresh its tokens gives the bridge up for good, so every token
+# refresh and its outcome is logged: a dropped connector is diagnosed from here.
+log = logging.getLogger("claude_voice.oauth")
 METADATA_PATH = "/.well-known/oauth-authorization-server"
 
 SCHEMA = """
@@ -171,6 +175,7 @@ class OAuthProvider:
     ) -> OAuthToken:
         if self._codes.pop(authorization_code.code, None) is None:
             raise TokenError("invalid_grant", "authorization code already used")
+        log.info("oauth sign-in: tokens issued to client %s", client.client_id[:8])
         return await self.issue_tokens(client.client_id, authorization_code.scopes, authorization_code.resource)
 
     # -- tokens --------------------------------------------------------------
@@ -225,6 +230,7 @@ class OAuthProvider:
             return AccessToken(token=token, client_id="static-token", scopes=[SCOPE], subject="owner")
         row = self._load(token, "access")
         if row is None:
+            log.info("oauth access refused: unknown or expired access token")
             return None
         client_id, scopes, resource, expires_at, _ = row
         return AccessToken(
@@ -239,6 +245,7 @@ class OAuthProvider:
     async def load_refresh_token(self, client: OAuthClientInformationFull, refresh_token: str) -> RefreshToken | None:
         row = self._load(refresh_token, "refresh")
         if row is None or row[0] != client.client_id:
+            log.info("oauth refresh refused for client %s: unknown, spent or expired token", client.client_id[:8])
             return None
         client_id, scopes, resource, expires_at, _ = row
         return RefreshToken(
@@ -258,6 +265,7 @@ class OAuthProvider:
         with self.db:
             # Rotation: the presented refresh token is spent.
             self.db.execute("DELETE FROM oauth_tokens WHERE hash=?", (_hash(refresh_token.token),))
+        log.info("oauth refresh ok for client %s (family %s)", client.client_id[:8], (family or "")[:6])
         return await self.issue_tokens(client.client_id, scopes or refresh_token.scopes, refresh_token.resource, family)
 
     async def revoke_token(self, token: AccessToken | RefreshToken) -> None:

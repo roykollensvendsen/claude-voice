@@ -248,6 +248,19 @@ async def test_refresh_rotates_and_old_refresh_dies(bridge):
     assert (await token(bridge, **form, refresh_token=tokens["refresh_token"])).status_code == 400
 
 
+async def test_every_token_refresh_is_logged_with_its_outcome(bridge, caplog):
+    import logging
+
+    client_id, tokens = await login(bridge)
+    form = dict(grant_type="refresh_token", client_id=client_id)
+    with caplog.at_level(logging.INFO, logger="claude_voice.oauth"):
+        assert (await token(bridge, **form, refresh_token=tokens["refresh_token"])).status_code == 200
+        assert (await token(bridge, **form, refresh_token=tokens["refresh_token"])).status_code == 400
+    lines = [r.getMessage() for r in caplog.records if r.name == "claude_voice.oauth"]
+    assert any(line.startswith(f"oauth refresh ok for client {client_id[:8]}") for line in lines), lines
+    assert any(line.startswith(f"oauth refresh refused for client {client_id[:8]}") for line in lines), lines
+
+
 async def test_access_tokens_expire(bridge, clock):
     _, tokens = await login(bridge)
     clock.t += tokens["expires_in"] + 1
