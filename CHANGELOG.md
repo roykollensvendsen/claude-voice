@@ -15,6 +15,9 @@ versions follow [semantic versioning](https://semver.org/spec/v2.0.0.html).
 - Risky actions wait for a spoken approval and are refused after ten minutes.
 - Sessions open elsewhere can be listed, messaged, read and searched.
 - `whats_new`, a cheap delta of what happened since the last poll.
+- `CLAUDE_VOICE_ACCESS_TOKEN_SECONDS` sets how long an access token lasts, for a
+  bridge on a computer that sleeps: the Claude app gives a connector up after about
+  an hour of failed token refreshes.
 - The log is kept in `bridge.log` next to the database as well as on the console,
   with the outcome of every token refresh, so a connector that dropped while
   nobody watched can be diagnosed afterwards.

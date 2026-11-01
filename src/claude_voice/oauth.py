@@ -34,7 +34,10 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .store import Store
 
+# How long an access token lasts before the client must refresh it. A client that fails to
+# refresh gives the connector up, so a bridge on a computer that sleeps sets this longer.
 ACCESS_TTL = 3600
+MIN_ACCESS_TTL = 60
 REFRESH_TTL = 90 * 24 * 3600
 CODE_TTL = 300
 CONSENT_TTL = 600
@@ -79,8 +82,10 @@ class OAuthProvider:
         public_url: str,
         clock: Callable[[], float] = time.time,
         static_token: str | None = None,
+        access_ttl: int = ACCESS_TTL,
     ) -> None:
         self.db = store.db
+        self.access_ttl = access_ttl
         self.db.executescript(SCHEMA)
         self.login_secret = login_secret
         self.public_url = public_url.rstrip("/")
@@ -193,7 +198,7 @@ class OAuthProvider:
                 client_id,
                 json.dumps(scopes),
                 resource,
-                now + ACCESS_TTL,
+                now + self.access_ttl,
                 family,
             ),
             (
@@ -211,7 +216,7 @@ class OAuthProvider:
             self.db.executemany("INSERT INTO oauth_tokens VALUES(?,?,?,?,?,?,?)", rows)
         return OAuthToken(
             access_token=access,
-            expires_in=ACCESS_TTL,
+            expires_in=self.access_ttl,
             refresh_token=refresh,
             scope=" ".join(scopes) or None,
         )
