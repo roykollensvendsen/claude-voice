@@ -658,6 +658,9 @@ def build_server(
         session: str, message: str, wait_seconds: float = 60, max_chars: int = 600
     ) -> dict[str, Any]:
         """Ask a Claude Code session that is open right now, and wait for its answer.
+        reply_final is true once its turn has ended, so reply is its last word; while false,
+        reply is its latest message so far, whole and maybe already the answer, but more may
+        follow.
         status: "answered", "needs_input" (it waits for its user), "still_working" (the
         wait ran out; continue with read_session_output(after=next_after)),
         "session_ended" (it exited meanwhile), "not_received" (the message never reached
@@ -673,6 +676,7 @@ def build_server(
                 "moved_to": moved,
                 "session_ended": False,
                 "reply": "",
+                "reply_final": False,
                 "turns": [],
                 "next_after": -1,
             }
@@ -692,6 +696,7 @@ def build_server(
                 **blocked,
                 "session_ended": False,
                 "reply": "",
+                "reply_final": False,
                 "turns": [],
                 "next_after": -1,
             }
@@ -758,6 +763,8 @@ def build_server(
             "status": status,
             "session_ended": status == "session_ended",
             "reply": new[-1]["text"] if new else "",
+            # RULE: a reply is final only once the turn has ended
+            "reply_final": bool(new) and status in ("answered", "needs_input", "needs_choice"),
             "turns": new,
             "next_after": new[-1]["index"] if new else start,
             **({"question": blocked["question"]} if status == "needs_choice" and blocked else {}),
