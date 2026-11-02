@@ -152,7 +152,10 @@ def _tailscale(host: Host) -> dict[str, Any]:
 
 def _tailnet_port(host: Host, port: int) -> dict[str, Any]:
     """A `tailscale serve` port, not open to Funnel, that leads to this bridge."""
-    fix = f"tailscale serve --bg --https=8814 http://127.0.0.1:{port}"
+    fix = (
+        f"By name: tailscale serve --bg --https=8814 http://127.0.0.1:{port} ; "
+        f"by address (when the phone cannot look the name up): tailscale serve --bg --tcp=8813 tcp://127.0.0.1:{port}"
+    )
     affects = "the companion app on the phone"
     if not host.which("tailscale"):
         return check("tailnet_port", "Tailnet-only port", False, "tailscale is not installed", affects=affects, fix=fix)
@@ -167,6 +170,13 @@ def _tailnet_port(host: Host, port: int) -> dict[str, Any]:
         for hostport, web in (status.get("Web") or {}).items()
         if hostport not in funnel
         and any(f"127.0.0.1:{port}" in str(h.get("Proxy", "")) for h in (web.get("Handlers") or {}).values())
+    ]
+    # A plain TCP forward answers by address too; web ports answer only by name.
+    ours += [
+        f"tcp port {listen}"
+        for listen, tcp in (status.get("TCP") or {}).items()
+        if str((tcp or {}).get("TCPForward", "")).endswith(f":{port}")
+        and listen not in {h.rsplit(":", 1)[-1] for h in funnel}
     ]
     return check(
         "tailnet_port",
