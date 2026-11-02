@@ -808,6 +808,21 @@ def build_server(
         except (LookupError, RuntimeError) as exc:
             raise ToolError(str(exc)) from None
 
+    def update_changes_now() -> dict[str, Any]:
+        folder = bridge_folder or repos.paths.claude_voice
+        if folder is None:
+            raise LookupError("No claude-voice clone is known; set [paths] claude_voice in the settings file.")
+        return updater.changes(Path(folder))
+
+    @tool(annotations=READ_ONLY)
+    def update_changes() -> dict[str, Any]:
+        """What updating claude-voice would bring: the new commits on GitHub, grouped by kind
+        (new, fixed, and so on), newest last. Say the groups in a sentence or two."""
+        try:
+            return update_changes_now()
+        except LookupError as exc:
+            raise ToolError(str(exc)) from None
+
     def bridge_now() -> dict[str, Any]:
         folder = bridge_folder or repos.paths.claude_voice
         return {"version": running_version, "git": gitstatus.cached(folder) if folder else None}
@@ -1504,6 +1519,7 @@ def build_server(
             settings=start_settings,
             detail=session_detail,
             summary=request_summary,
+            update_changes=update_changes_now,
             ui_origins=ui_origins,
         ).routes(mcp)
 
