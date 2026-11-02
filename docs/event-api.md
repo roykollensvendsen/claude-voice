@@ -203,6 +203,23 @@ reconnect and read `GET /api/v1/update` for the rest.
 The checks take a few seconds, so a UI asks on sign-in and then now and then,
 not on every refresh.
 
+## Answering from the phone
+
+Questions (Claude Code's choice boxes) and permission prompts from any session
+can be answered here while the app is open. A hook in the owner's Claude Code
+settings hands each one to the bridge and waits for the phone; when no stream is
+open it steps aside at once and the box shows in the terminal as before, and if
+no answer comes within five minutes the box shows there too.
+
+| Call | Answer |
+| --- | --- |
+| `GET /api/v1/prompts` | the open ones: `{"prompts": [{"id", "session", "kind": "question"|"approval", "question": {"text", "header", "options": [{"label", "description"}], "multi"}, "tool", "input", "cut", "asked_at"}]}`. `input` is what an approval would run: the command, the file, or short JSON, at most 300 characters |
+| `POST /api/v1/prompts/{id}` | for a question `{"answer": "<label>"}`, `{"answer": ["<label>", …]}` when `multi`, or `{"answer": {"text": "…"}}`; for an approval `{"decision": "allow"|"deny", "reason"?}`. `200`, `409` when it does not fit the prompt, `404` when it is gone. A change: with the cookie it needs an allowed `Origin` |
+
+Read `GET /api/v1/prompts` on every connect; the stream only carries changes:
+`prompt` (one opened) and `prompt_closed` (`{"id", "how": "phone"|"timeout"|"screen"}`).
+Every answer is logged with its session, the answer and who gave it.
+
 ## Roles
 
 A role is a background session started for a set purpose. The built-in one,

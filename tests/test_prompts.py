@@ -189,3 +189,20 @@ def test_the_hook_is_given_to_claude_code_only_for_questions_and_permission_prom
     assert set(entries) == {"PreToolUse", "PermissionRequest"}
     assert entries["PreToolUse"][0]["matcher"] == "AskUserQuestion"
     assert json.dumps(entries).count("claude_voice.phone_hook") == 2
+
+
+def test_installing_the_hook_keeps_every_other_setting_and_hook_and_can_run_twice(tmp_path):
+    settings = tmp_path / "settings.json"
+    other = {"type": "command", "command": "$HOME/.claude/hooks/no_choice_box_while_spoken_to.py"}
+    settings.write_text(
+        json.dumps({"model": "opus", "hooks": {"PreToolUse": [{"matcher": "AskUserQuestion", "hooks": [other]}]}})
+    )
+    phone_hook.install(settings, "/opt/cv/bin/python")
+    phone_hook.install(settings, "/opt/cv/bin/python")
+    after = json.loads(settings.read_text())
+    assert after["model"] == "opus"
+    pre = after["hooks"]["PreToolUse"]
+    commands = [h["command"] for m in pre for h in m["hooks"]]
+    assert other["command"] in commands and commands.count("/opt/cv/bin/python -m claude_voice.phone_hook") == 1
+    assert len(after["hooks"]["PermissionRequest"]) == 1
+    assert (tmp_path / "settings.json.bak").exists()  # the file as it was, kept beside it
