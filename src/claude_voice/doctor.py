@@ -11,12 +11,13 @@ the same in the tests and for real. Nothing here prints a secret.
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
+
+from . import procs
 
 STATE_DIR = Path("~/.local/state/claude-voice")
 STATUSLINE_FILE = "statusline.json"
@@ -34,10 +35,10 @@ class RealHost:
     """This computer."""
 
     def which(self, name: str) -> str | None:
-        return shutil.which(name)
+        return procs.find(name)
 
     def run(self, *command: str) -> tuple[int, str]:
-        path = shutil.which(command[0])
+        path = self.which(command[0])
         if not path:
             return 127, ""
         try:
