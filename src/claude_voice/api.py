@@ -174,6 +174,7 @@ class EventApi:
         start_update: Callable[[], dict[str, Any]] | None = None,
         bridge: Callable[[], dict[str, Any]] | None = None,
         settings: Any = None,
+        update_changes: Callable[[], dict[str, Any]] | None = None,
         ui_origins: list[str] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -191,6 +192,7 @@ class EventApi:
         self.start_role = start_role
         self.ui_origins = [o.rstrip("/") for o in ui_origins or []]
         self.settings = settings  # how new sessions start: launch.Settings
+        self.update_changes = update_changes
         self.prompts: dict[str, dict[str, Any]] = {}  # open questions and approvals, by id
         self.clock = clock
         self._failures: list[float] = []
@@ -214,6 +216,7 @@ class EventApi:
         route("/api/v1/doctor", methods=["GET"])(self.dependencies)
         route("/api/v1/usage", methods=["GET"])(self.usage_now)
         route("/api/v1/update", methods=["GET", "POST"])(self.update)
+        route("/api/v1/update/changes", methods=["GET"])(self.changes)
         route("/api/v1/bridge", methods=["GET"])(self.bridge_now)
         route("/api/v1/roles/{role}/start", methods=["POST"])(self.role_start)
 
@@ -351,6 +354,18 @@ class EventApi:
         if self.usage is None:
             return JSONResponse({"error": "no usage here"}, 404)
         return JSONResponse(self.usage(), headers={"Cache-Control": "no-store"})
+
+    async def changes(self, request: Request) -> Response:
+        """The commits an update would bring, grouped by kind."""
+        if not await self._allowed(request):
+            return JSONResponse({"error": "sign in first"}, 401)
+        if self.update_changes is None:
+            return JSONResponse({"error": "no updates here"}, 404)
+        try:
+            out = await asyncio.to_thread(self.update_changes)  # a fetch from GitHub takes a moment
+        except LookupError as exc:
+            return JSONResponse({"error": str(exc)}, 404)
+        return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
     async def update(self, request: Request) -> Response:
         if self.update_state is None or self.start_update is None:

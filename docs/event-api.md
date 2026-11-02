@@ -168,6 +168,7 @@ esac
 | `GET /api/v1/bridge` | `{"version": "<short commit>", "git": {...}}`: the version running, and where the bridge's own folder stands, in the same `git` shape as a session's. `git.tracking.behind` above 0 means an update is waiting (as of the last fetch) |
 | `POST /api/v1/update` | starts an update and answers `202 {"started": true, "note"}`; `409` while one runs, `404` when the bridge does not run from a git clone. A change: with the cookie it needs an allowed `Origin` |
 | `GET /api/v1/update` | the latest update: `{"running", "started_at", "from", "to", "steps": [{"step", "ok", "detail", "at"}], "result", "detail"}` |
+| `GET /api/v1/update/changes` | what an update would bring: `{"current", "latest", "behind", "groups": [{"type": "feat"\|"fix"\|…\|"other", "title", "commits": [{"sha", "subject", "breaking"}]}], "fetched", "note"?, "checked_at"}`. The commits on GitHub this clone has not pulled, oldest first, grouped by the kind their subject names, new things first; no model is involved. It fetches from GitHub, so it takes a moment; `note` says when GitHub could not be reached |
 
 The update runs outside the bridge, because it restarts it. In order:
 1. Local changes to tracked files stop it before anything is touched.
