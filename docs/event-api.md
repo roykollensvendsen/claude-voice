@@ -73,8 +73,8 @@ ran in the last day, with the session the owner talks to:
   every kind of session. `state_since` is when it last changed, as the bridge
   saw it: exact to about five seconds, and from the bridge's start at the
   earliest. `waiting_kind` is `question`, `approval`, `input` or `null`.
-- `status`: `idle`, `busy`, `shell` (Claude is running a command; its `state` is
-  `working`), `waiting` (for its owner)
+- `status`: `idle`, `busy`, `shell` (Claude has finished its turn while a command it
+  started runs on in the background; its `state` is `idle`), `waiting` (for its owner)
   or `moved` (its conversation continues in `moved_to`).
 - `doing`: one line on what it is doing, fit to show or say. It starts
   `venter på valg:` when it waits on a question.
