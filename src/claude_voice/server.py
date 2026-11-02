@@ -40,6 +40,7 @@ from . import (
     metrics,
     procs,
     roles,
+    software,
     titles,
     transcripts,
     updater,
@@ -288,6 +289,7 @@ def build_server(
     repo_config: config.Config | None = None,
     find_program: Callable[[str], str | None] = procs.find,
     desktop_env: Mapping[str, str] | None = None,
+    ci_status: Callable[[str], dict[str, Any] | None] = software.latest_run,
 ) -> MCPServer:
     auth = None
     if oauth is not None:
@@ -822,6 +824,26 @@ def build_server(
             return update_changes_now()
         except LookupError as exc:
             raise ToolError(str(exc)) from None
+
+    software_seen: dict[str, Any] = {}
+
+    def software_now() -> dict[str, Any]:
+        """Both repositories' measures and checks, kept for ten minutes: git and GitHub are slow."""
+        if software_seen and time.monotonic() - software_seen["at"] < 600:
+            return software_seen["report"]
+        listed = (
+            ("claude-voice", repos.repos.claude_voice, bridge_folder or repos.paths.claude_voice),
+            ("claude-voice-ui", repos.repos.claude_voice_ui, repos.paths.claude_voice_ui),
+        )
+        report = {
+            "as_of": datetime.now(UTC).isoformat(timespec="seconds"),
+            "repos": [
+                software.repo_report(name, f"https://github.com/{repo}", folder, ci_status(repo))
+                for name, repo, folder in listed
+            ],
+        }
+        software_seen.update(at=time.monotonic(), report=report)
+        return report
 
     def bridge_now() -> dict[str, Any]:
         folder = bridge_folder or repos.paths.claude_voice
@@ -1517,6 +1539,7 @@ def build_server(
             },
             start_role=launch_role,
             settings=start_settings,
+            software=software_now,
             detail=session_detail,
             summary=request_summary,
             update_changes=update_changes_now,
