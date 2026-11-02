@@ -148,3 +148,44 @@ async def test_the_record_of_started_sessions_survives_a_restart_of_the_bridge(t
     async with Client(bridge_with_stop(tmp_path, world, Starter(world[1]), stopper)) as c:  # same database
         out = (await c.call_tool("stop_active_session", {"name": "invoices"})).structured_content
     assert out["status"] == "stopped"
+
+
+class ModelStarter(Starter):
+    async def __call__(self, cwd, name, model=None, effort=None):
+        self.models = (model, effort)
+        await super().__call__(cwd, name)
+
+
+async def test_a_session_can_be_started_on_a_chosen_model_and_effort(tmp_path, world):
+    starter = ModelStarter(world[1])
+    async with Client(bridge(tmp_path, world, starter)) as c:
+        out = (
+            await c.call_tool("start_active_session", {"project": "billing", "model": "opus", "effort": "high"})
+        ).structured_content
+        plain = (await c.call_tool("start_active_session", {"project": "billing"})).structured_content
+    assert starter.models == (None, None)  # the second start, left to Claude Code's defaults
+    assert "first reply" in out["note"] and "note" not in plain
+
+
+@pytest.mark.parametrize(("field", "value"), [("model", "opus; rm -rf /"), ("model", ""), ("effort", "extreme")])
+async def test_only_a_well_formed_model_name_and_a_known_effort_reach_claude_code(tmp_path, world, field, value):
+    starter = ModelStarter(world[1])
+    async with Client(bridge(tmp_path, world, starter)) as c:
+        bad = await c.call_tool("start_active_session", {"project": "billing", field: value})
+    assert bad.is_error and starter.calls == []
+
+
+def test_the_background_start_passes_model_and_effort_to_claude_code():
+    from claude_voice.transcripts import background_command
+
+    assert background_command("claude", "x") == ["claude", "--bg", "--name", "x"]
+    assert background_command("claude", "x", model="opus", effort="max") == [
+        "claude",
+        "--bg",
+        "--name",
+        "x",
+        "--model",
+        "opus",
+        "--effort",
+        "max",
+    ]
