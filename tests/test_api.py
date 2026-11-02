@@ -210,3 +210,19 @@ async def test_behind_tailscale_the_address_tailscale_added_last_decides(bridge,
     async with from_address(app, "127.0.0.1") as c:  # Tailscale connects from this computer
         api = await c.get("/api/v1/sessions", headers={**BEARER, "X-Forwarded-For": forwarded})
     assert api.status_code == code
+
+
+@pytest.mark.parametrize(("proto", "secure"), [("http", False), ("https", True)])
+async def test_the_sign_in_cookie_follows_the_scheme_the_request_came_in_on(tmp_path, root, live, proto, secure):  # noqa: F811
+    store = Store(tmp_path / "b.db")
+    oauth = OAuthProvider(store, SECRET, "https://bridge.example", static_token=SECRET)  # the public address is https
+    m = SessionManager(store, project_root=root, client_factory=FakeClaude())
+    app = build_app(build_server(m, oauth=oauth, conversations=lambda **k: [], live_dir=live))
+    async with from_address(app, "127.0.0.1") as c:
+        r = await c.post(
+            "/api/v1/signin",
+            json={"secret": SECRET},
+            headers={"X-Forwarded-For": "100.101.102.103", "X-Forwarded-Proto": proto},
+        )
+    assert r.status_code == 204
+    assert ("secure" in r.headers["set-cookie"].lower()) is secure
