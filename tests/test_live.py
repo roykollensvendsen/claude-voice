@@ -316,3 +316,17 @@ async def test_cancel_stops_only_the_turn_of_a_bridge_session_and_says_how(tmp_p
         again = await call(c, "cancel", session_id=s["id"])
     assert out["status"] == "interrupted" and out["how"] == "sdk" and out["cancelled"] is True
     assert again["status"] == "not_running"
+
+
+async def test_a_read_from_a_point_says_how_many_turns_it_left_for_later(tmp_path, root, live):
+    turns = [
+        msg("user", f"turn {i}") if i % 2 == 0 else msg("assistant", [{"type": "text", "text": f"turn {i}"}])
+        for i in range(10)
+    ]
+    _, srv = server_for(tmp_path, root, live, read=lambda sid, directory: turns)
+    async with Client(srv) as c:
+        first = await call(c, "read_session_output", session="billing-ab", after=1, limit=3)
+        rest = await call(c, "read_session_output", session="billing-ab", after=first["next_after"], limit=30)
+    assert [t["index"] for t in first["turns"]] == [2, 3, 4]
+    assert first["turns_left"] == 5
+    assert rest["turns_left"] == 0
