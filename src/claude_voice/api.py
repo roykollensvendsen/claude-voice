@@ -174,6 +174,8 @@ class EventApi:
         start_update: Callable[[], dict[str, Any]] | None = None,
         bridge: Callable[[], dict[str, Any]] | None = None,
         settings: Any = None,
+        detail: Callable[[str], dict[str, Any]] | None = None,
+        summary: Callable[[str, str | None], Awaitable[dict[str, Any]]] | None = None,
         ui_origins: list[str] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -191,6 +193,7 @@ class EventApi:
         self.start_role = start_role
         self.ui_origins = [o.rstrip("/") for o in ui_origins or []]
         self.settings = settings  # how new sessions start: launch.Settings
+        self.detail, self.summary = detail, summary
         self.prompts: dict[str, dict[str, Any]] = {}  # open questions and approvals, by id
         self.clock = clock
         self._failures: list[float] = []
@@ -204,6 +207,8 @@ class EventApi:
         route("/api/v1/sessions/{session}/output", methods=["GET"])(self.session_output)
         route("/api/v1/sessions/{session}/pending", methods=["GET"])(self.session_pending)
         route("/api/v1/sessions/{session}/prs", methods=["GET"])(self.session_prs)
+        route("/api/v1/sessions/{session}/detail", methods=["GET"])(self.session_detail)
+        route("/api/v1/sessions/{session}/summary", methods=["POST"])(self.session_summary)
         route("/api/v1/events", methods=["GET"])(self.events)
         route("/api/v1/roles", methods=["GET"])(self.list_roles)
         route("/api/v1/prompts", methods=["GET", "POST"])(self.prompts_route)
@@ -336,6 +341,29 @@ class EventApi:
 
     async def session_prs(self, request: Request) -> Response:
         return await self._one(request, self.prs)
+
+    async def session_detail(self, request: Request) -> Response:
+        if self.detail is None:
+            return JSONResponse({"error": "not available"}, 404)
+        return await self._one(request, self.detail)
+
+    async def session_summary(self, request: Request) -> Response:
+        """Ask for a fresh summary: 202 at once; the stream says when it is ready."""
+        if self.summary is None:
+            return JSONResponse({"error": "not available"}, 404)
+        refused = await self._change_allowed(request)
+        if refused:
+            return refused
+        try:
+            body = await request.json()
+        except ValueError:
+            body = {}
+        language = body.get("language") if isinstance(body, dict) else None
+        try:
+            out = await self.summary(request.path_params["session"], str(language) if language else None)
+        except LookupError as exc:
+            return JSONResponse({"error": str(exc)}, 404)
+        return JSONResponse(out, 202)
 
     async def dependencies(self, request: Request) -> Response:
         if not await self._allowed(request):

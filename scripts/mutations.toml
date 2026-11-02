@@ -146,3 +146,15 @@ name = "a started session does not inherit the identity of the session that star
 file = "src/claude_voice/transcripts.py"
 find = 'return \{k: v for k, v in env\.items\(\) if k not in INHERITED\}'
 replace = 'return dict(env)'
+
+[[rule]]
+name = "a helper counts as running until it has handed back"
+file = "src/claude_voice/detail.py"
+find = 'if \(background is None and call not in answered\) or \(background is not None and background not in handed_back\)'
+replace = 'if background is None and call not in answered'
+
+[[rule]]
+name = "a second request for a summary joins the one already running"
+file = "src/claude_voice/detail.py"
+find = 'if current is not None and not current\.done\(\):'
+replace = 'if False:'

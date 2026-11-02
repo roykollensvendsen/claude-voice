@@ -87,7 +87,7 @@ def test_the_timeline_names_what_happened_newest_first():
 
 def test_the_tool_calls_are_counted_per_tool():
     calls = detail.digest(ENTRIES)["tool_calls"]
-    assert calls["total"] == 10 and calls["by_tool"]["Bash"] == 4 and calls["by_tool"]["Agent"] == 2
+    assert calls["total"] == 7 and calls["by_tool"]["Bash"] == 3 and calls["by_tool"]["Agent"] == 2
 
 
 def test_a_helper_counts_as_running_until_it_has_handed_back():
@@ -145,7 +145,7 @@ async def test_the_page_never_makes_a_summary_on_its_own(world):  # noqa: F811
     assert page["number"] == 1 and page["name"] == "billing-ab"
 
 
-async def test_a_summary_is_made_once_on_request_and_announced(world):  # noqa: F811
+async def test_a_second_request_for_a_summary_joins_the_one_already_running(world):  # noqa: F811
     summarizer = Summarizer()
     async with client(build_app(bridge(world, summarizer))) as c:
         with api.HUB.subscribe() as events:
@@ -207,3 +207,21 @@ async def test_the_summary_is_asked_for_in_the_language_given(world, language): 
         await c.post("/api/v1/sessions/billing-ab/summary", json=body, headers=BEARER)
         await asyncio.sleep(0.1)
     assert summarizer.calls[0][1] == language
+
+
+def test_a_pull_request_is_opened_once_however_often_claude_code_links_it():
+    link = {"type": "pr-link", "prNumber": 7, "prUrl": "https://github.com/o/r/pull/7"}
+    timeline = detail.digest([{**link, "timestamp": at(1)}, {**link, "timestamp": at(2)}])["timeline"]
+    assert [(i["kind"], i["at"]) for i in timeline] == [("pr_opened", at(1))]
+
+
+def test_a_commit_message_given_on_the_lines_after_the_command_is_its_text():
+    command = "git commit -q -F - <<'EOF'\nfix: Keep the newest items\n\nBody.\nEOF\ngit log -1"
+    merge = "gh pr merge some-branch --rebase"
+    timeline = detail.digest([tool("Bash", 1, "b1", command=command), tool("Bash", 2, "b2", command=merge)])["timeline"]
+    assert [i["text"] for i in timeline] == ["some-branch", "fix: Keep the newest items"]
+
+
+def test_a_command_only_mentioned_in_text_is_not_counted():
+    written = "cat >> notes.txt <<'EOF'\nmerge = \"gh pr merge 3\" and then git commit\nEOF"
+    assert detail.digest([tool("Bash", 1, "b1", command=written)])["timeline"] == []

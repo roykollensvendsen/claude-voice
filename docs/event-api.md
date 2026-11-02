@@ -204,6 +204,25 @@ reconnect and read `GET /api/v1/update` for the rest.
 The checks take a few seconds, so a UI asks on sign-in and then now and then,
 not on every refresh.
 
+## A session's own page
+
+| Call | Answer |
+| --- | --- |
+| `GET /api/v1/sessions/{session}/detail` | `{"session", "number", "name", "context", "tool_calls": {"total", "by_tool": {"<tool>": n}}, "subagents": {"running", "total"}, "timeline": [{"at", "kind", "text", "url"?}], "summary", "summary_state", "summary_error", "summary_at"}` |
+| `POST /api/v1/sessions/{session}/summary` | `{"language"?: "norsk"}`; `202` with `{"session", "state": "generating"}`, also when one is already being made (it joins that one); `404` for a session that is not running. A change: with the cookie it needs an allowed `Origin` |
+
+`{session}` is a name, an id or a number. Everything on the page is read from the
+session's transcript, so it costs no model call, and the page never makes a
+summary: only the POST does, with a small model, and so does the voice tool
+`refresh_session_summary`. `context` is the same object as on the cards.
+`timeline` holds at most the 50 newest items, newest first, of the kinds
+`prompt` (what the owner typed), `question`, `error` (a tool that failed),
+`commit`, `pr_opened` (with `url`), `pr_merged` and `compact`. A helper
+(`subagents`) runs until it has handed its result back. `summary_state` is
+`none`, `generating`, `ready` or `error` (then `summary_error` says why, and the
+last good `summary` is kept). The stream carries `summary` with
+`{"session", "summary", "summary_state"}` when one is ready or has failed.
+
 ## How new sessions start
 
 | Call | Answer |
