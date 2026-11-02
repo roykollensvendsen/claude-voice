@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import logging.handlers
 import secrets
+import subprocess
+import sys
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
@@ -24,7 +27,7 @@ from mcp.types import ToolAnnotations
 from pydantic import AnyHttpUrl
 from starlette.types import ASGIApp
 
-from . import api, doctor, events, gitstatus, metrics, roles, titles, transcripts, usage
+from . import api, doctor, events, gitstatus, metrics, procs, roles, titles, transcripts, updater, usage
 from .approvals import ApprovalBroker, ApprovalNotFound
 from .metrics import METRICS
 from .oauth import ACCESS_TTL, MIN_ACCESS_TTL, SCOPE, OAuthProvider, PublicClientMetadata
@@ -231,6 +234,9 @@ def build_server(
     doctor_host: doctor.Host | None = None,
     bridge_port: int = 8811,
     statusline_dir: Path = usage.STATUSLINE_DIR,
+    update_log: Path = updater.LOG,
+    launch_update: Callable[[Path, Path], None] | None = None,
+    bridge_folder: Path | None = None,
 ) -> MCPServer:
     auth = None
     if oauth is not None:
@@ -270,6 +276,7 @@ def build_server(
         last_check[:] = [datetime.now(UTC).isoformat(timespec="seconds")]
         if api.HUB.listening():
             fleet_recap()  # notes each session's state, and announces the ones that changed
+            update_state()  # and each step of an update under way
 
     @contextlib.asynccontextmanager
     async def lifespan(_server):
@@ -629,6 +636,57 @@ def build_server(
             return await launch_role(role, task)
         except LookupError as exc:
             raise ToolError(str(exc)) from None
+
+    update_steps_seen: list[int] = [0]
+
+    def update_state() -> dict[str, Any]:
+        """The latest update's log; open streams hear of each new step."""
+        try:
+            body = json.loads(update_log.expanduser().read_text())
+        except (OSError, ValueError):
+            body = {"running": False, "steps": [], "result": None}
+        steps = body.get("steps") or []
+        if len(steps) < update_steps_seen[0]:
+            update_steps_seen[0] = 0  # a new run began
+        for step in steps[update_steps_seen[0] :]:
+            api.HUB.publish("update", step)
+        update_steps_seen[0] = len(steps)
+        return {**body, "running": bool(body.get("running")) and updater.running(update_log)}
+
+    def start_update() -> dict[str, Any]:
+        if updater.running(update_log):
+            raise RuntimeError("An update is already running.")
+        folder = bridge_folder or roles.own_clone()
+        if folder is None:
+            raise LookupError("This bridge does not run from a git clone, so it cannot update itself.")
+        (launch_update or launch_updater)(folder, update_log.expanduser())
+        return {
+            "started": True,
+            "note": "The bridge restarts if the update works, so the voice drops for a few seconds.",
+        }
+
+    def launch_updater(folder: Path, log: Path) -> None:
+        """Start the updater outside this service, so it survives the restart it causes."""
+        systemd_run = procs.find("systemd-run")
+        if not systemd_run:
+            raise RuntimeError("Updating needs systemd-run, to run outside the bridge's own service.")
+        unit = f"claude-voice-update-{int(time.time())}"
+        command = [systemd_run, "--user", "--collect", "--quiet", f"--unit={unit}", sys.executable]
+        command += ["-m", "claude_voice.updater", "--repo", str(folder), "--log", str(log), "--port", str(bridge_port)]
+        subprocess.run(command, check=True, capture_output=True, timeout=30)
+
+    @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+    def update_bridge() -> dict[str, Any]:
+        """Update claude-voice to the latest version: pull, install, test, restart, and roll back
+        if any of it fails. Say first that the voice drops for a few seconds while it restarts."""
+        try:
+            return start_update()
+        except (LookupError, RuntimeError) as exc:
+            raise ToolError(str(exc)) from None
+
+    def bridge_now() -> dict[str, Any]:
+        folder = bridge_folder or roles.own_clone()
+        return {"version": running_version, "git": gitstatus.cached(folder) if folder else None}
 
     def doctor_report() -> dict[str, Any]:
         table = roles.load(roles_file)
@@ -1245,6 +1303,9 @@ def build_server(
             news=whats_new,
             roles=roles_now,
             doctor=doctor_report,
+            update_state=update_state,
+            start_update=start_update,
+            bridge=bridge_now,
             usage=lambda: {
                 "plan": (current := usage.plan(statusline_dir)),
                 "warning": usage.warning(current),

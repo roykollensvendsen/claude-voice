@@ -150,6 +150,27 @@ case "$cv_sid" in ""|*[!A-Za-z0-9-]*) ;; *)
 esac
 ```
 
+## Updating the bridge
+
+| Call | Answer |
+| --- | --- |
+| `GET /api/v1/bridge` | `{"version": "<short commit>", "git": {...}}`: the version running, and where the bridge's own folder stands, in the same `git` shape as a session's. `git.tracking.behind` above 0 means an update is waiting (as of the last fetch) |
+| `POST /api/v1/update` | starts an update and answers `202 {"started": true, "note"}`; `409` while one runs, `404` when the bridge does not run from a git clone. A change: with the cookie it needs an allowed `Origin` |
+| `GET /api/v1/update` | the latest update: `{"running", "started_at", "from", "to", "steps": [{"step", "ok", "detail", "at"}], "result", "detail"}` |
+
+The update runs outside the bridge, because it restarts it. In order:
+1. Local changes to tracked files stop it before anything is touched.
+2. Up to date: nothing more happens.
+3. Otherwise it pulls a fast-forward only, installs, and runs the tests.
+4. If installing or the tests fail, the folder goes back to the version that
+   ran, and the bridge is not restarted.
+5. If they pass, it restarts the bridge and checks that it answers. If it does
+   not, the old version is put back and started again.
+
+`result` is `updated`, `up_to_date`, `stopped` or `rolled_back`. Each step also
+arrives as an `update` event. The event stream drops during the restart, so
+reconnect and read `GET /api/v1/update` for the rest.
+
 ## What is missing
 
 `GET /api/v1/doctor` checks the bridge's dependencies and answers:
@@ -197,6 +218,7 @@ that must send a bearer token reads the stream with `fetch`.
 | `active` | the `active` object | the session the owner talks to changed |
 | `status` | `{"session": "<id>", "name", "state", "previous", "since", "doing", "at"}` | a session's `state` changed |
 | `git` | `{"session": "<id>", "git": {...}}` | a session's git status changed |
+| `update` | one step: `{"step", "ok", "detail", "at"}`, with `step` one of `check`, `fetch`, `pull`, `install`, `test`, `restart`, `verify`, `rollback`, `done` | an update made progress |
 | `news` | one item: `{"kind", "session", "text", …}` | something happened worth telling: a session finished, failed, started waiting, asked for an approval |
 
 A comment line (`: keep-alive`) comes every 15 seconds so proxies keep the
