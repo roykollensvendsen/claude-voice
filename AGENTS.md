@@ -54,6 +54,9 @@ If you are a session working on this repository, rather than installing it:
 
 - Follow [CONTRIBUTING.md](CONTRIBUTING.md): the gates, a failing test before
   the code, the mutation run, and the three rules for every change.
+- Keep the quality ratchet: run `uv run python scripts/ratchet.py update` before
+  the last push and commit `quality.json`. Never make a measure worse without a
+  `Ratchet-Exception:` line in the pull request saying why.
 - Push only to your owner's fork; a pull request goes to
   `roykollensvendsen/claude-voice` with `gh pr create --repo`.
 - Never rename or remove a tool or field that Hermes or the voice app uses.

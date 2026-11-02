@@ -31,6 +31,7 @@ uv run ruff check . && uv run ruff format --check .
 uv run mypy src
 uv run pytest -q --cov
 committed --no-merge-commit origin/main..HEAD
+uv run python scripts/ratchet.py check --base origin/main
 python3 scripts/clean_install.py
 ```
 
@@ -38,9 +39,43 @@ The last one follows the README's "Start here" on an empty Ubuntu, so it needs
 Docker and about two minutes. Run it when you touch the README's first steps,
 the setup check or the packaging.
 
+The ratchet takes about ten minutes, because it switches every rule off in
+turn; `--skip-mutation` gives a quick look that keeps the recorded mutation
+figures.
+
 Run them after the last edit, not before it. A file edited after the format
 gate ran will fail in continuous integration, which is the cheapest possible
 way to learn that the gates are not a ritual performed once.
+
+## The quality ratchet
+
+The gates above pass or fail. None of them notices the code slowly getting
+worse, so `quality.json` at the root records the levels it has reached:
+
+| Measure | Better is |
+| --- | --- |
+| `coverage`: the share of the source the suite runs, in percent | higher (it may wobble by half a point between machines) |
+| `mutation`: of the rules marked in the source, how many turn their own test red when switched off | higher |
+| `tests`: how many tests pass | higher |
+| `lint_errors`, `type_errors` | lower |
+| `cycles`: groups of modules that import each other in a circle when they load | lower |
+| `complexity`: per module, the McCabe count of its most tangled function, not counting functions defined inside it | lower |
+| `test_seconds`: how long the suite takes, against `test_budget` | inside the budget plus its tolerance |
+
+`scripts/ratchet.py check` fails a change that makes any of them worse than the
+base branch, and a change whose `quality.json` does not record the levels it
+reached. So a change that improves something runs
+`uv run python scripts/ratchet.py update` and commits `quality.json` with it,
+and the level can never slip back. A change that must make a measure worse
+says so in its pull request, on a line of its own:
+
+<!-- not run: an example line in a pull request -->
+```
+Ratchet-Exception: coverage - the module it covered was deleted
+```
+
+and records the new level with `update` like any other change. The time budget
+is a limit, not a level: it changes only by hand, in `quality.json`.
 
 ## How a change is made
 
