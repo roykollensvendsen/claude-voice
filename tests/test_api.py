@@ -11,6 +11,7 @@ from fakes import FakeClaude
 from mcp.client import Client
 from test_live import TRANSCRIPT, live, root  # noqa: F401  (fixtures)
 
+from claude_voice import api
 from claude_voice.oauth import OAuthProvider
 from claude_voice.server import build_app, build_server
 from claude_voice.sessions import SessionManager
@@ -19,6 +20,13 @@ from claude_voice.store import Store
 SECRET = "s3cret-token-for-the-event-api-tests"
 HOST = "http://127.0.0.1:8811"
 BEARER = {"Authorization": f"Bearer {SECRET}"}
+
+
+class Delivered:
+    """Stands in for the courier: every message arrives."""
+
+    async def __call__(self, name, text):
+        return {"delivered": True, "detail": ""}
 
 
 class PRs:
@@ -43,6 +51,7 @@ def bridge(tmp_path, root, live):  # noqa: F811
         live_dir=live,
         read_transcript=lambda sid, directory: TRANSCRIPT,
         list_prs=prs,
+        deliver=Delivered(),
         ui_origins=["https://ui.example"],
     )
     return server, build_app(server, ui_origins=["https://ui.example"]), tmp_path / "b.db", prs
@@ -143,12 +152,29 @@ async def test_the_event_stream_says_which_session_is_being_talked_to(bridge):
         stream = asyncio.create_task(c.get("/api/v1/events?max_events=2", headers=BEARER))
         await asyncio.sleep(0.3)
         async with Client(server) as mcp:
-            await mcp.call_tool("read_session_output", {"session": "billing-ab"})
+            await mcp.call_tool("message_active_session", {"session": "billing-ab", "message": "hi"})
             await mcp.call_tool("set_active_session", {"session": "billing-ab"})
         events = sse((await asyncio.wait_for(stream, 10)).text)
     assert events[0][0] == "focus" and events[0][1]["session"] == "billing-ab"
-    assert events[0][1]["tool"] == "read_session_output"
+    assert events[0][1]["tool"] == "message_active_session"
     assert events[1][0] == "active" and events[1][1]["name"] == "billing-ab"
+
+
+@pytest.mark.parametrize("tool", ["read_session_output", "side_question", "digest_session", "search_session_history"])
+async def test_only_talking_to_a_session_puts_it_in_focus_and_a_look_at_it_does_not(bridge, tool):
+    server, app, _, _ = bridge
+    args = {"session": "billing-ab"}
+    if tool in ("side_question", "search_session_history"):
+        args["question" if tool == "side_question" else "query"] = "tests"
+    with api.HUB.subscribe() as events:
+        async with Client(server) as mcp:
+            await mcp.call_tool(tool, args)
+        seen = []
+        while not events.empty():
+            seen.append(events.get_nowait())
+    names = [name for name, _ in seen]
+    assert "focus" not in names
+    assert ("peek", "billing-ab", tool) in [(n, d.get("session"), d.get("tool")) for n, d in seen]
 
 
 async def test_signing_out_ends_the_cookie(bridge):
