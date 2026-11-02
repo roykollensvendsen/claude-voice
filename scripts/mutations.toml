@@ -92,3 +92,15 @@ name = "a contribute session does not start while something it needs is missing"
 file = "src/claude_voice/server.py"
 find = 'if blockers:'
 replace = 'if False:'
+
+[[rule]]
+name = "local changes stop the update before anything is touched"
+file = "src/claude_voice/updater.py"
+find = 'if not ok or changed:'
+replace = 'if not ok:'
+
+[[rule]]
+name = "an update whose tests fail is rolled back without a restart"
+file = "src/claude_voice/updater.py"
+find = 'if not ok:  # roll back'
+replace = 'if False:'

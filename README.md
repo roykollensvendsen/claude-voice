@@ -97,6 +97,7 @@ the bridge says which are missing, with the exact fix, through its
 | `fleet_recap` | every session in one call, each with a line on what it is doing |
 | `get_active_session`, `set_active_session` | the session the owner talks to, chosen on the companion page or by voice |
 | `check_dependencies` | which dependencies are missing for full use of the bridge, and the exact fix for each |
+| `update_bridge` | update claude-voice: pull, install, test, restart, and roll back if anything fails |
 | `health` | the bridge's own state: uptime, version, memory, calls and errors per tool, courier and watcher |
 | `list_pending_approvals`, `approve`, `deny` | answer Claude's requests to edit files, run commands and so on |
 | `cancel`, `close_session` | stop a turn, retire a session |

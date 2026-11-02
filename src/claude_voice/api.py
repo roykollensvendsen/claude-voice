@@ -165,6 +165,9 @@ class EventApi:
         clear_active: Callable[[], None] | None = None,
         doctor: Callable[[], dict[str, Any]] | None = None,
         usage: Callable[[], dict[str, Any]] | None = None,
+        update_state: Callable[[], dict[str, Any]] | None = None,
+        start_update: Callable[[], dict[str, Any]] | None = None,
+        bridge: Callable[[], dict[str, Any]] | None = None,
         ui_origins: list[str] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -176,6 +179,7 @@ class EventApi:
         self.clear_active = clear_active
         self.doctor = doctor
         self.usage = usage
+        self.update_state, self.start_update, self.bridge = update_state, start_update, bridge
         self.output, self.pending, self.prs, self.news = output, pending, prs, news
         self.roles = roles or (lambda: {"roles": []})
         self.start_role = start_role
@@ -196,6 +200,8 @@ class EventApi:
         route("/api/v1/roles", methods=["GET"])(self.list_roles)
         route("/api/v1/doctor", methods=["GET"])(self.dependencies)
         route("/api/v1/usage", methods=["GET"])(self.usage_now)
+        route("/api/v1/update", methods=["GET", "POST"])(self.update)
+        route("/api/v1/bridge", methods=["GET"])(self.bridge_now)
         route("/api/v1/roles/{role}/start", methods=["POST"])(self.role_start)
 
     # -- who is asking ---------------------------------------------------------------
@@ -332,6 +338,30 @@ class EventApi:
         if self.usage is None:
             return JSONResponse({"error": "no usage here"}, 404)
         return JSONResponse(self.usage(), headers={"Cache-Control": "no-store"})
+
+    async def update(self, request: Request) -> Response:
+        if self.update_state is None or self.start_update is None:
+            return JSONResponse({"error": "no updates here"}, 404)
+        if request.method == "GET":
+            if not await self._allowed(request):
+                return JSONResponse({"error": "sign in first"}, 401)
+            return JSONResponse(self.update_state(), headers={"Cache-Control": "no-store"})
+        refused = await self._change_allowed(request)
+        if refused:
+            return refused
+        try:
+            return JSONResponse(self.start_update(), status_code=202)
+        except RuntimeError as exc:
+            return JSONResponse({"error": str(exc)}, 409)
+        except LookupError as exc:
+            return JSONResponse({"error": str(exc)}, 404)
+
+    async def bridge_now(self, request: Request) -> Response:
+        if not await self._allowed(request):
+            return JSONResponse({"error": "sign in first"}, 401)
+        if self.bridge is None:
+            return JSONResponse({"error": "not here"}, 404)
+        return JSONResponse(self.bridge(), headers={"Cache-Control": "no-store"})
 
     # -- roles -----------------------------------------------------------------------
 
