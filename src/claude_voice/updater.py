@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -200,3 +201,52 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+# The kinds of change a commit subject names (Conventional Commits), in the order they are told.
+KINDS = (
+    ("feat", "New"),
+    ("fix", "Fixed"),
+    ("perf", "Faster"),
+    ("refactor", "Reworked"),
+    ("docs", "Documentation"),
+    ("test", "Tests"),
+    ("build", "Build"),
+    ("ci", "Continuous integration"),
+    ("chore", "Housekeeping"),
+    ("style", "Style"),
+    ("revert", "Reverted"),
+)
+SUBJECT = re.compile(r"(?P<type>[a-z]+)(?:\([^)]*\))?(?P<bang>!)?:\s*(?P<rest>.+)")
+
+
+def group_commits(commits: list[tuple[str, str]]) -> list[dict[str, Any]]:
+    """Commits (short hash, subject), oldest first, grouped by kind with new things first."""
+    known = dict(KINDS)
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for sha, subject in commits:
+        m = SUBJECT.fullmatch(subject.strip())
+        kind = m["type"] if m and m["type"] in known else "other"
+        text = m["rest"] if m and kind != "other" else subject.strip()
+        groups.setdefault(kind, []).append({"sha": sha, "subject": text, "breaking": bool(m and m["bang"])})
+    order = [k for k, _ in KINDS] + ["other"]
+    titles = {**known, "other": "Other"}
+    return [{"type": k, "title": titles[k], "commits": groups[k]} for k in order if k in groups]
+
+
+def changes(repo: Path) -> dict[str, Any]:
+    """What an update would bring: the commits on GitHub this clone has not pulled, grouped."""
+    fetched, detail = _git(repo, "fetch", "--quiet")
+    _, current = _git(repo, "rev-parse", "--short", "HEAD")
+    _, latest = _git(repo, "rev-parse", "--short", "@{upstream}")
+    ok, out = _git(repo, "log", "--reverse", "--format=%h%x00%s", "HEAD..@{upstream}")
+    commits = [tuple(line.split("\0", 1)) for line in out.splitlines() if "\0" in line] if ok else []
+    return {
+        "current": current,
+        "latest": latest,
+        "behind": len(commits),
+        "groups": group_commits([(sha, subject) for sha, subject in commits]),
+        "fetched": fetched,
+        **({} if fetched else {"note": f"Could not reach GitHub, so this may be old: {detail[-200:]}"}),
+        "checked_at": _now(),
+    }
