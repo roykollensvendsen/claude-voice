@@ -111,9 +111,9 @@ class EventHub:
 
     def __init__(self, keep: int = 100) -> None:
         self.keep = keep
-        self._queues: set[asyncio.Queue[tuple[str, dict[str, Any]]]] = set()
+        self._queues: set[asyncio.Queue[tuple[str, dict[str, Any] | None]]] = set()
 
-    def publish(self, event: str, data: dict[str, Any]) -> None:
+    def publish(self, event: str, data: dict[str, Any] | None) -> None:
         for q in list(self._queues):
             if q.full():
                 with contextlib.suppress(asyncio.QueueEmpty):
@@ -122,7 +122,7 @@ class EventHub:
 
     @contextlib.contextmanager
     def subscribe(self) -> Any:
-        q: asyncio.Queue[tuple[str, dict[str, Any]]] = asyncio.Queue(self.keep)
+        q: asyncio.Queue[tuple[str, dict[str, Any] | None]] = asyncio.Queue(self.keep)
         self._queues.add(q)
         try:
             yield q
@@ -158,6 +158,7 @@ class EventApi:
         news: Callable[[str | None], dict[str, Any]],
         roles: Callable[[], dict[str, Any]] | None = None,
         start_role: Callable[[str, str | None], Awaitable[dict[str, Any]]] | None = None,
+        clear_active: Callable[[], None] | None = None,
         ui_origins: list[str] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -166,6 +167,7 @@ class EventApi:
         self.public_url = public_url.rstrip("/")
         self.check_token = check_token
         self.sessions, self.get_active, self.set_active = sessions, get_active, set_active
+        self.clear_active = clear_active
         self.output, self.pending, self.prs, self.news = output, pending, prs, news
         self.roles = roles or (lambda: {"roles": []})
         self.start_role = start_role
@@ -178,7 +180,7 @@ class EventApi:
         route("/api/v1/signin", methods=["POST"])(self.signin)
         route("/api/v1/signout", methods=["POST"])(self.signout)
         route("/api/v1/sessions", methods=["GET"])(self.list_sessions)
-        route("/api/v1/active", methods=["GET", "PUT"])(self.active)
+        route("/api/v1/active", methods=["GET", "PUT", "DELETE"])(self.active)
         route("/api/v1/sessions/{session}/output", methods=["GET"])(self.session_output)
         route("/api/v1/sessions/{session}/pending", methods=["GET"])(self.session_pending)
         route("/api/v1/sessions/{session}/prs", methods=["GET"])(self.session_prs)
@@ -271,6 +273,10 @@ class EventApi:
         refused = await self._change_allowed(request)
         if refused:
             return refused
+        if request.method == "DELETE":
+            if self.clear_active is not None:
+                self.clear_active()
+            return Response(status_code=204)
         try:
             body = await request.json()
         except ValueError:

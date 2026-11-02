@@ -1039,6 +1039,10 @@ def build_server(
         api.HUB.publish("active", active)
         return active
 
+    def clear_active() -> None:
+        store.clear_setting("active_session")
+        api.HUB.publish("active", None)
+
     @tool(annotations=READ_ONLY)
     def get_active_session() -> dict[str, Any]:
         """The session the owner chose to talk to, on the companion page or by voice:
@@ -1121,6 +1125,7 @@ def build_server(
             sessions=fleet_recap,
             get_active=lambda: store.get_setting("active_session"),
             set_active=set_active,
+            clear_active=clear_active,
             output=api_output,
             pending=api_pending,
             prs=api_prs,

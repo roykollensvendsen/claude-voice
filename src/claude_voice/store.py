@@ -95,6 +95,10 @@ class Store:
         with self.db:
             self.db.execute("INSERT OR REPLACE INTO settings VALUES (?, ?, ?)", (key, json.dumps(value), self.clock()))
 
+    def clear_setting(self, key: str) -> None:
+        with self.db:
+            self.db.execute("DELETE FROM settings WHERE key = ?", (key,))
+
     def get_setting(self, key: str) -> Any:
         row = self.db.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
         return json.loads(row[0]) if row else None
