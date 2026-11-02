@@ -203,3 +203,33 @@ async def test_a_contribute_session_does_not_start_while_something_it_needs_is_m
         bad = await c.call_tool("start_role", {"role": "contribute"})
     assert bad.is_error and "GitHub CLI" in bad.content[0].text and "gh auth login" in bad.content[0].text
     assert starter.calls == []
+
+
+async def test_the_contribute_session_works_where_the_settings_say_and_sends_to_their_repository(tmp_path, world):
+    from claude_voice import config
+
+    home, _, live, table = world
+    table.write_text("")  # no folder in the roles file: the settings decide
+    mine = tmp_path / "elsewhere" / "cv"
+    (mine / ".git").mkdir(parents=True)
+    settings = tmp_path / "config.toml"
+    settings.write_text(f"[repos]\nclaude_voice = 'someone/claude-voice'\n[paths]\ncontribute = '{mine}'\n")
+    starter = Starter(live)
+    store = Store(tmp_path / "b.db")
+    m = SessionManager(store, project_root=home, client_factory=FakeClaude())
+    server = build_server(
+        m,
+        conversations=lambda **k: [],
+        live_dir=live,
+        start_background=starter,
+        stop_background=Stopper(live),
+        start_seconds=1.0,
+        roles_file=table,
+        doctor_host=ReadyHost(),
+        repo_config=config.load(settings, own_clone=None, env={}),
+    )
+    async with Client(server) as c:
+        await c.call_tool("start_role", {"role": "contribute"})
+    call = starter.calls[0]
+    assert call["cwd"] == str(mine)
+    assert "someone/claude-voice" in call["prompt"] and "someone/claude-voice" in call["settings"]

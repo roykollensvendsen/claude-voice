@@ -228,3 +228,27 @@ async def test_the_bridge_says_which_version_runs_and_where_its_folder_stands(tm
     async with client(app) as c:
         out = (await c.get("/api/v1/bridge", headers=BEARER)).json()
     assert set(out) == {"version", "git"}
+
+
+async def test_the_update_runs_in_the_clone_the_settings_name(tmp_path):
+    from claude_voice import config
+
+    launcher = Launcher()
+    clone = tmp_path / "my-cv"
+    clone.mkdir()
+    settings = tmp_path / "config.toml"
+    settings.write_text(f"[paths]\nclaude_voice = '{clone}'\n")
+    (tmp_path / "home").mkdir(exist_ok=True)
+    store = Store(tmp_path / "b.db")
+    m = SessionManager(store, project_root=tmp_path / "home", client_factory=FakeClaude())
+    server = build_server(
+        m,
+        conversations=lambda **k: [],
+        live_dir=tmp_path / "live",
+        update_log=tmp_path / "update.json",
+        launch_update=launcher,
+        repo_config=config.load(settings, own_clone=None, env={}),
+    )
+    async with Client(server) as mcp:
+        await mcp.call_tool("update_bridge", {})
+    assert launcher.started[0][0] == clone
