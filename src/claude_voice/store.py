@@ -51,6 +51,12 @@ CREATE TABLE IF NOT EXISTS voice_calls(
   chars INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS voice_calls_ts ON voice_calls(ts);
+-- Each session's short number; a released number is held back for a day.
+CREATE TABLE IF NOT EXISTS session_numbers(
+  session_id TEXT PRIMARY KEY,
+  number INTEGER NOT NULL,
+  released_at REAL
+);
 -- Background sessions this bridge started; only these may it stop.
 CREATE TABLE IF NOT EXISTS started(
   claude_session_id TEXT PRIMARY KEY,
@@ -114,6 +120,47 @@ class Store:
             "SELECT ts, client, connection, chars FROM voice_calls WHERE ts >= ? ORDER BY ts", (since,)
         ).fetchall()
         return [(float(r[0]), str(r[1]), str(r[2]), int(r[3])) for r in rows]
+
+    def number_sessions(self, session_ids: list[str], hold_seconds: float = 86400) -> dict[str, int]:
+        """Each session's short number: kept while it lives, the smallest free one for a new
+        session, and a number whose session ended held back for `hold_seconds`."""
+        now = self.clock()
+        wanted = set(session_ids)
+        with self.db:
+            self.db.execute(
+                "DELETE FROM session_numbers WHERE released_at IS NOT NULL AND released_at < ?", (now - hold_seconds,)
+            )
+            rows = self.db.execute("SELECT session_id, number, released_at FROM session_numbers").fetchall()
+            known = {str(r[0]): (int(r[1]), r[2]) for r in rows}
+            for sid, (_, released) in known.items():
+                if sid not in wanted and released is None:
+                    self.db.execute("UPDATE session_numbers SET released_at = ? WHERE session_id = ?", (now, sid))
+                elif sid in wanted and released is not None:
+                    self.db.execute("UPDATE session_numbers SET released_at = NULL WHERE session_id = ?", (sid,))
+            taken = {number for number, _ in known.values()}
+            out = {sid: known[sid][0] for sid in session_ids if sid in known}
+            for sid in session_ids:
+                if sid in out:
+                    continue
+                n = 1
+                while n in taken:
+                    n += 1
+                taken.add(n)
+                out[sid] = n
+                self.db.execute("INSERT OR REPLACE INTO session_numbers VALUES (?, ?, NULL)", (sid, n))
+        return out
+
+    def number_sessions_peek(self, session_id: str) -> int | None:
+        row = self.db.execute(
+            "SELECT number FROM session_numbers WHERE session_id = ? AND released_at IS NULL", (session_id,)
+        ).fetchone()
+        return int(row[0]) if row else None
+
+    def session_by_number(self, number: int) -> str | None:
+        row = self.db.execute(
+            "SELECT session_id FROM session_numbers WHERE number = ? AND released_at IS NULL", (number,)
+        ).fetchone()
+        return str(row[0]) if row else None
 
     def clear_setting(self, key: str) -> None:
         with self.db:

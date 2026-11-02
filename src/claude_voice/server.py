@@ -147,6 +147,8 @@ def _parse_cursor(cursor: str | None) -> tuple[int | None, int | None]:
 
 
 REMOTE_ID = re.compile(r"session_[A-Za-z0-9]+")
+# A session named by its short number, as said aloud: "3", "nr 3", "nr. 3", "nummer 3", "number 3".
+SPOKEN_NUMBER = re.compile(r"(?:nr\.?|nummer|number)?\s*(\d{1,4})", re.IGNORECASE)
 
 
 def app_url(bridge_session_id: Any) -> str | None:
@@ -356,9 +358,17 @@ def build_server(
         mcp.custom_route("/oauth/consent", methods=["POST"])(oauth.consent_submit)
     store = manager.store
 
+    def by_number(session: str) -> str:
+        """`session`, or the id of the session its number names: "3", "nr 3", "nummer 3"."""
+        match = SPOKEN_NUMBER.fullmatch(str(session).strip())
+        if not match:
+            return session
+        return store.session_by_number(int(match.group(1))) or session
+
     def known(session_id: str) -> str:
         """Resolve a bridge session id, or a Claude session id the bridge has adopted,
         to the bridge's id. Explain when it is a terminal session the bridge never saw."""
+        session_id = by_number(session_id)
         try:
             return store.get_session(session_id)["id"]
         except SessionNotFound:
@@ -501,7 +511,11 @@ def build_server(
         doing. Answers "what are my sessions up to?" without reading each one."""
         sessions = []
         live_by_id = {str(d.get("sessionId")): d for d in live_sessions()}
-        for row in running():
+        live_rows = running()
+        cutoff = manager.clock() - 24 * 3600
+        own_rows = [s for s in store.list_sessions(limit=200) if s["status"] != "closed" and s["updated_at"] >= cutoff]
+        numbers = store.number_sessions([str(r["claude_session_id"]) for r in live_rows] + [s["id"] for s in own_rows])
+        for row in live_rows:
             d = live_by_id.get(str(row["claude_session_id"]), {})
             if row["status"] == "moved":
                 where = row["moved_to"]["name"] or "en annen økt"
@@ -511,6 +525,7 @@ def build_server(
             state, waiting_kind = live_state(str(row["status"]), str(row["claude_session_id"]), str(d.get("cwd")))
             item = {
                 "id": row["claude_session_id"],
+                "number": numbers.get(str(row["claude_session_id"])),
                 "name": row["name"],
                 "kind": "terminal" if row["kind"] == "interactive" else "background",
                 "project": row["project"],
@@ -528,10 +543,7 @@ def build_server(
                 if key in row:
                     item[key] = row[key]
             sessions.append(item)
-        cutoff = manager.clock() - 24 * 3600
-        for s in store.list_sessions(limit=200):
-            if s["status"] == "closed" or s["updated_at"] < cutoff:
-                continue
+        for s in own_rows:
             recap = manager.recap(s["id"])
             words = recap["latest_text"] or recap["last_result"] or recap["last_error"] or ""
             name = s["label"] or Path(s["project_path"]).name
@@ -540,6 +552,7 @@ def build_server(
             sessions.append(
                 {
                     "id": s["id"],
+                    "number": numbers.get(s["id"]),
                     "name": name,
                     "kind": "bridge-session",
                     "project": under_root(s["project_path"]),
@@ -927,6 +940,7 @@ def build_server(
         return manager.attach(claude_session_id, path, label, history=history)
 
     def find_live(session: str) -> dict[str, Any]:
+        session = by_number(session)
         for d in live_sessions():
             if str(d.get("name", "")).startswith(COURIER_PREFIX) or Path(str(d.get("cwd"))).name.startswith(
                 COURIER_PREFIX
@@ -1261,9 +1275,10 @@ def build_server(
 
     def resolve_session(session: str) -> dict[str, Any]:
         """A running session or one of the bridge's own, by name or id, as the page shows it."""
+        session = by_number(session)
         for row in fleet_recap()["sessions"]:
             if session in (row["id"], row["name"]):
-                return {"id": row["id"], "name": row["name"], "kind": row["kind"]}
+                return {"id": row["id"], "number": row.get("number"), "name": row["name"], "kind": row["kind"]}
         raise LookupError(f"No session called {session!r}")
 
     def set_active(session: str, by: str) -> dict[str, Any]:
@@ -1310,6 +1325,7 @@ def build_server(
 
     def lookup(session: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         """The running session, or else the bridge's own, named `session` (name or id)."""
+        session = by_number(session)
         for d in live_sessions():
             if session in (d.get("name"), str(d.get("sessionId"))) and under_root(d.get("cwd")):
                 return d, None
