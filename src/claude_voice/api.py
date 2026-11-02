@@ -174,6 +174,7 @@ class EventApi:
         start_update: Callable[[], dict[str, Any]] | None = None,
         bridge: Callable[[], dict[str, Any]] | None = None,
         settings: Any = None,
+        software: Callable[[], dict[str, Any]] | None = None,
         detail: Callable[[str], dict[str, Any]] | None = None,
         summary: Callable[[str, str | None], Awaitable[dict[str, Any]]] | None = None,
         update_changes: Callable[[], dict[str, Any]] | None = None,
@@ -194,6 +195,7 @@ class EventApi:
         self.start_role = start_role
         self.ui_origins = [o.rstrip("/") for o in ui_origins or []]
         self.settings = settings  # how new sessions start: launch.Settings
+        self.software = software
         self.detail, self.summary = detail, summary
         self.update_changes = update_changes
         self.prompts: dict[str, dict[str, Any]] = {}  # open questions and approvals, by id
@@ -221,6 +223,7 @@ class EventApi:
         route("/api/v1/doctor", methods=["GET"])(self.dependencies)
         route("/api/v1/usage", methods=["GET"])(self.usage_now)
         route("/api/v1/update", methods=["GET", "POST"])(self.update)
+        route("/api/v1/health/software", methods=["GET"])(self.software_health)
         route("/api/v1/update/changes", methods=["GET"])(self.changes)
         route("/api/v1/bridge", methods=["GET"])(self.bridge_now)
         route("/api/v1/roles/{role}/start", methods=["POST"])(self.role_start)
@@ -393,6 +396,15 @@ class EventApi:
             out = await asyncio.to_thread(self.update_changes)  # a fetch from GitHub takes a moment
         except LookupError as exc:
             return JSONResponse({"error": str(exc)}, 404)
+        return JSONResponse(out, headers={"Cache-Control": "no-store"})
+
+    async def software_health(self, request: Request) -> Response:
+        """How both repositories are doing: their quality measures, trends and checks."""
+        if not await self._allowed(request):
+            return JSONResponse({"error": "sign in first"}, 401)
+        if self.software is None:
+            return JSONResponse({"error": "not available"}, 404)
+        out = await asyncio.to_thread(self.software)  # git history and GitHub take a moment
         return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
     async def update(self, request: Request) -> Response:
