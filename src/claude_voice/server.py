@@ -1160,7 +1160,7 @@ def build_app(
         from starlette.staticfiles import StaticFiles
 
         app.mount("/ui", StaticFiles(directory=str(ui_dir), html=True), name="ui")
-    wrapped: ASGIApp = PublicClientMetadata(app)
+    wrapped: ASGIApp = api.TailnetOnly(PublicClientMetadata(app))
     if ui_origins:
         from starlette.middleware.cors import CORSMiddleware
 
