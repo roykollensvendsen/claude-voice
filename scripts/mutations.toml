@@ -80,3 +80,9 @@ name = "a contribute session never pushes to the upstream repository"
 file = "src/claude_voice/guard.py"
 find = 'if _names_upstream\(url, upstream\):'
 replace = 'if False:'
+
+[[rule]]
+name = "the event API answers only this computer and the tailnet"
+file = "src/claude_voice/api.py"
+find = 'if not from_tailnet_or_here\(caller_address\(scope\)\):'
+replace = 'if False:'

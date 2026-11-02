@@ -7,6 +7,17 @@ apps.
 All paths are under the bridge's address, for example
 `https://<machine>.<tailnet>.ts.net`, and start with `/api/v1`.
 
+## Who can reach it
+
+Only this computer and devices on the owner's tailnet. The bridge refuses
+`/api/` and `/ui/` to every other address with `403`, so the API cannot be
+reached through Tailscale Funnel even though the MCP endpoint is. Behind
+Tailscale the address that counts is the last one in `X-Forwarded-For`, the one
+Tailscale adds; a caller cannot get past by writing a tailnet address there
+itself. A UI reaches the bridge through a tailnet-only `tailscale serve` port,
+over HTTPS by name or over plain HTTP at the computer's tailnet address. The
+tailnet encrypts both.
+
 ## Signing in
 
 Every call needs one of these:
@@ -23,7 +34,8 @@ Every call needs one of these:
 | `POST /api/v1/signout` | — | `204`; the cookie stops working |
 
 The cookie cannot be read by scripts (`HttpOnly`) and is only sent to the same
-site (`SameSite=Strict`). A change made with the cookie (`signout`,
+site (`SameSite=Strict`). It is marked `Secure` when the request came in over
+HTTPS, and not on a plain HTTP tailnet address, where a browser would drop it. A change made with the cookie (`signout`,
 `PUT /active`) must carry an `Origin` header naming the bridge or an allowed UI
 origin, or it is refused with `403`. Bearer calls need no `Origin`.
 

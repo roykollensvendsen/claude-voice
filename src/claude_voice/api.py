@@ -15,6 +15,7 @@ import asyncio
 import contextlib
 import hashlib
 import hmac
+import ipaddress
 import json
 import secrets
 import time
@@ -24,6 +25,7 @@ from typing import Any
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 COOKIE = "cv_ui"
 SIGN_IN_SECONDS = 30 * 24 * 3600
@@ -45,6 +47,55 @@ SESSION_TOOLS = {
     "cancel",
     "stop_active_session",
 }
+
+
+TAILNET = (ipaddress.ip_network("100.64.0.0/10"), ipaddress.ip_network("fd7a:115c:a1e0::/48"))
+PRIVATE_PATHS = ("/api/", "/ui")
+
+
+def caller_address(scope: Scope) -> str:
+    """Where a request really comes from. Tailscale, for Funnel and for the tailnet port
+    alike, connects from this computer and adds the caller to X-Forwarded-For; anything a
+    caller wrote there itself comes before that, so only the last entry counts."""
+    for name, value in scope.get("headers") or []:
+        if name == b"x-forwarded-for":
+            last = value.decode("latin-1").split(",")[-1].strip()
+            if last:
+                return last
+    client = scope.get("client") or ("", 0)
+    return str(client[0])
+
+
+def from_tailnet_or_here(address: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    return ip.is_loopback or any(ip in net for net in TAILNET)
+
+
+class TailnetOnly:
+    """Refuses the event API and the companion app's files to anyone but this computer and
+    the tailnet, so they cannot be reached through Funnel; everything else passes."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        path = str(scope.get("path", ""))
+        # RULE: the event API answers only this computer and the tailnet
+        if scope.get("type") == "http" and path.startswith(PRIVATE_PATHS):
+            if not from_tailnet_or_here(caller_address(scope)):
+                response = JSONResponse({"error": "only reachable from this computer or the tailnet"}, 403)
+                await response(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
+
+
+def _scheme(request: Request) -> str:
+    """The scheme the caller used: Tailscale says it in X-Forwarded-Proto, last entry counting."""
+    forwarded = request.headers.get("x-forwarded-proto", "").split(",")[-1].strip().lower()
+    return forwarded or request.url.scheme
 
 
 def _hash(token: str) -> str:
@@ -189,7 +240,7 @@ class EventApi:
             max_age=SIGN_IN_SECONDS,
             httponly=True,
             samesite="strict",
-            secure=self.public_url.startswith("https://"),
+            secure=_scheme(request) == "https",  # a browser drops a secure cookie on a plain http page
             path="/api",
         )
         return response
