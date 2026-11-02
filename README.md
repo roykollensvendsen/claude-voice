@@ -79,6 +79,7 @@ then give it a public address.
 | `session_recap` | where one session stands, short enough to read aloud |
 | `whats_new` | only what happened since you last asked: finished, failed, waiting for you |
 | `fleet_recap` | every session in one call, each with a line on what it is doing |
+| `get_active_session`, `set_active_session` | the session the owner talks to, chosen on the companion page or by voice |
 | `health` | the bridge's own state: uptime, version, memory, calls and errors per tool, courier and watcher |
 | `list_pending_approvals`, `approve`, `deny` | answer Claude's requests to edit files, run commands and so on |
 | `cancel`, `close_session` | stop a turn, retire a session |
@@ -93,6 +94,15 @@ then give it a public address.
 | `digest_session` | a long conversation summed up, or a question about it answered, in a few sentences |
 | `read_session_output`, `search_session_history` | read what such a session said lately, or search everything it said |
 | `list_claude_conversations`, `attach_conversation` | continue an earlier conversation, as a copy run by the bridge |
+
+## The companion app
+
+claude-voice-ui is a phone app, built as its own project, that sits beside the
+voice. It shows every session as a card. Tapping one makes it the session the
+voice talks to, and while you talk it shows what that session last wrote and
+whether it waits for you. It reads the bridge only through the
+[event API](docs/event-api.md): a few JSON endpoints and one stream of live
+events, behind the bridge's own login. Any other app can use the same API.
 
 ## How it behaves
 
@@ -167,6 +177,8 @@ also the default.
 | `CLAUDE_VOICE_PUBLIC_HOSTS` | — | comma-separated hostnames the tunnel serves |
 | `CLAUDE_VOICE_HOST` / `_PORT` | `127.0.0.1` / `8811` | keep it on this computer and tunnel in |
 | `CLAUDE_VOICE_COURIER_NAME` | `Owner via claude-voice` | the sender name a session sees when the voice messages it, e.g. `Roy via stemmen` |
+| `CLAUDE_VOICE_UI_ORIGINS` | — | comma-separated origins of a companion app served elsewhere, allowed to call the [event API](docs/event-api.md) across sites |
+| `CLAUDE_VOICE_UI_DIR` | — | a folder with a companion app's built files, served at `/ui/` |
 | `CLAUDE_VOICE_DB` | `~/.local/state/claude-voice/bridge.db` | where sessions and events are kept |
 | `CLAUDE_VOICE_ACCESS_TOKEN_SECONDS` | `3600` | how long a sign-in's access token lasts before the app must refresh it; set it to a week (`604800`) on a computer that sleeps, since the Claude app gives a connector up after about an hour of failed refreshes |
 

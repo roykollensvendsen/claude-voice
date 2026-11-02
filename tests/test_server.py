@@ -254,6 +254,7 @@ async def test_status_tools_are_marked_read_only_so_clients_need_no_confirmation
         "whats_new",
         "session_tree",
         "health",
+        "get_active_session",
         "digest_session",
         "side_question",
     }
