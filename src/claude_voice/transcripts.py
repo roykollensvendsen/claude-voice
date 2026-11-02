@@ -180,6 +180,36 @@ def open_question(session_id: str, cwd: str, projects_dir: Path = PROJECTS_DIR) 
     }
 
 
+def pending_tool(session_id: str, cwd: str, projects_dir: Path = PROJECTS_DIR) -> str | None:
+    """The tool a session asked to use and has had no result for yet, if any: when the session
+    waits, that is a permission prompt for it (an AskUserQuestion is a question instead)."""
+    path = projects_dir / project_key_for_directory(cwd) / f"{session_id}.jsonl"
+    try:
+        with path.open("rb") as f:
+            f.seek(0, 2)
+            f.seek(max(f.tell() - 262144, 0))
+            tail = f.read().decode(errors="replace").splitlines()
+    except OSError:
+        return None
+    asked: dict[str, str] = {}
+    for line in tail:
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if entry.get("isSidechain"):
+            continue
+        for block in (entry.get("message") or {}).get("content") or []:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "tool_use":
+                asked[str(block.get("id"))] = str(block.get("name"))
+            elif block.get("type") == "tool_result":
+                asked.pop(str(block.get("tool_use_id")), None)
+    pending = [name for name in asked.values() if name != "AskUserQuestion"]
+    return pending[-1] if pending else None
+
+
 def first_sentence(text: str, max_chars: int = 160) -> str:
     """One speakable line: the first sentence, without markdown, at most max_chars."""
     plain = re.sub(r"https?://\S+", "", text.split("|", 1)[0])  # addresses are not speakable

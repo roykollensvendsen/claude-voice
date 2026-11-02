@@ -61,6 +61,12 @@ ran in the last day, with the session the owner talks to:
 ```
 
 - `kind`: `terminal`, `background` or `bridge-session`.
+- `state`: one of `working`, `idle`, `answer` (waiting for an answer to a
+  question), `approval` (waiting for permission to use a tool), `input`
+  (waiting for something else), `shell`, `moved` or `stopped`; the same set for
+  every kind of session. `state_since` is when it last changed, as the bridge
+  saw it: exact to about five seconds, and from the bridge's start at the
+  earliest. `waiting_kind` is `question`, `approval`, `input` or `null`.
 - `status`: `idle`, `busy`, `shell` (running a command), `waiting` (for its owner)
   or `moved` (its conversation continues in `moved_to`).
 - `doing`: one line on what it is doing, fit to show or say. It starts
@@ -134,6 +140,7 @@ that must send a bearer token reads the stream with `fetch`.
 | --- | --- | --- |
 | `focus` | `{"session": "<id or name>", "tool": "ask_active_session", "at": "<iso>"}` | the voice, or any MCP client, just called a tool aimed at a session: asked it, messaged it, read it, summed it up |
 | `active` | the `active` object | the session the owner talks to changed |
+| `status` | `{"session": "<id>", "name", "state", "previous", "since", "doing", "at"}` | a session's `state` changed |
 | `news` | one item: `{"kind", "session", "text", …}` | something happened worth telling: a session finished, failed, started waiting, asked for an approval |
 
 A comment line (`: keep-alive`) comes every 15 seconds so proxies keep the
