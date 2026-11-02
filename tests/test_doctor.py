@@ -45,7 +45,8 @@ def healthy(tmp_path):
     (clone / ".git").mkdir(parents=True)
     state = tmp_path / "state"
     state.mkdir()
-    (state / "statusline.json").write_text("{}")
+    (state / "statusline").mkdir()
+    (state / "statusline" / "s1.json").write_text("{}")
     host = Host(
         answers={
             ("gh", "auth", "status"): (0, ""),

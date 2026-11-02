@@ -20,7 +20,7 @@ from typing import Any, Protocol
 from . import procs
 
 STATE_DIR = Path("~/.local/state/claude-voice")
-STATUSLINE_FILE = "statusline.json"
+STATUSLINE_FILE = "statusline"  # a folder of one file per session
 STATUSLINE_FRESH = 6 * 3600
 
 
@@ -184,9 +184,10 @@ def _tailnet_port(host: Host, port: int) -> dict[str, Any]:
 def _statusline(state_dir: Path) -> dict[str, Any]:
     path = state_dir.expanduser() / STATUSLINE_FILE
     try:
-        age = time.time() - path.stat().st_mtime
+        newest = max((p.stat().st_mtime for p in path.glob("*.json")), default=None) if path.is_dir() else None
     except OSError:
-        age = None
+        newest = None
+    age = time.time() - newest if newest is not None else None
     fresh = age is not None and age < STATUSLINE_FRESH
     return check(
         "statusline",
@@ -198,7 +199,8 @@ def _statusline(state_dir: Path) -> dict[str, Any]:
         if age is None
         else f"{path} has not been written for {round(age / 3600)} hours",
         affects="the plan's five-hour and weekly bars, and how full each session is",
-        fix=f"Make your Claude Code status line script also write its input to {path}",
+        fix=f"Make your Claude Code status line script also write its input to {path}/<session id>.json "
+        "(see docs/event-api.md, Usage)",
         fix_url="https://code.claude.com/docs/en/statusline",
     )
 

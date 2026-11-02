@@ -24,7 +24,7 @@ from mcp.types import ToolAnnotations
 from pydantic import AnyHttpUrl
 from starlette.types import ASGIApp
 
-from . import api, doctor, events, gitstatus, metrics, roles, titles, transcripts
+from . import api, doctor, events, gitstatus, metrics, roles, titles, transcripts, usage
 from .approvals import ApprovalBroker, ApprovalNotFound
 from .metrics import METRICS
 from .oauth import ACCESS_TTL, MIN_ACCESS_TTL, SCOPE, OAuthProvider, PublicClientMetadata
@@ -142,6 +142,30 @@ def _parse_cursor(cursor: str | None) -> tuple[int | None, int | None]:
         return None, None
 
 
+VOICE_STORE: list[Store] = []  # the store voice calls are counted in, set by build_server
+
+
+def _result_chars(result: Any) -> int:
+    content = getattr(result, "content", None) or (result.get("content") if isinstance(result, dict) else None) or []
+    return sum(
+        len(str(getattr(c, "text", None) or (c.get("text") if isinstance(c, dict) else "") or "")) for c in content
+    )
+
+
+def note_voice_call(ctx: Any, tool: str, trace: str | None, result: Any) -> None:
+    """Count a call served to the Claude app or the voice app, for the voice estimate."""
+    request = getattr(ctx, "request", None)
+    if request is None or not VOICE_STORE:
+        return  # in-process callers are not voice
+    scope = getattr(request, "scope", None) or {}
+    client = usage.client_of(api.caller_address(scope), trace)
+    if client is None:
+        return
+    connection = trace if client == "voice_app" else request.headers.get("mcp-session-id") or api.caller_address(scope)
+    with contextlib.suppress(Exception):
+        usage.record(VOICE_STORE[0], client, str(connection), tool, _result_chars(result))
+
+
 async def log_requests(ctx, call_next):
     """Log and count each MCP call: method, tool, outcome, time and the caller's trace id.
 
@@ -168,6 +192,7 @@ async def log_requests(ctx, call_next):
     ms = (time.monotonic() - started) * 1000
     if ctx.method == "tools/call":
         api.publish_focus(tool, params.get("arguments"))
+        note_voice_call(ctx, tool, trace, result)
         failed = getattr(result, "is_error", None) or (isinstance(result, dict) and result.get("isError"))
         log.info("mcp %s -> %s %dms trace=%s", what, "error" if failed else "ok", ms, trace or "-")
         error = None
@@ -205,6 +230,7 @@ def build_server(
     roles_file: Path | None = roles.USER_FILE,
     doctor_host: doctor.Host | None = None,
     bridge_port: int = 8811,
+    statusline_dir: Path = usage.STATUSLINE_DIR,
 ) -> MCPServer:
     auth = None
     if oauth is not None:
@@ -227,6 +253,7 @@ def build_server(
     tree = SessionTree(manager.store, live_dir, manager.root, projects_dir=projects_dir, clock=manager.clock)
     side_answer = side_answer or transcripts.shared_reader()
     host: doctor.Host = doctor_host or doctor.RealHost()
+    VOICE_STORE[:] = [manager.store]
     tree_version: list[str] = []  # the last shape seen, so a change can be reported
     last_check: list[str] = []
     started_at = datetime.now(UTC).isoformat(timespec="seconds")
@@ -445,6 +472,7 @@ def build_server(
                 "state_since": observe(str(row["claude_session_id"]), str(row["name"]), state, doing),
                 "waiting_kind": waiting_kind,
                 "git": git_of(str(row["claude_session_id"]), str(d.get("cwd"))) if d.get("cwd") else None,
+                "context": usage.context(statusline_dir, str(row["claude_session_id"])),
                 "doing": doing,
                 "minutes_since_update": row["minutes_since_update"],
             }
@@ -472,6 +500,7 @@ def build_server(
                     "state_since": observe(s["id"], name, state, line),
                     "waiting_kind": None,
                     "git": git_of(s["id"], s["project_path"]),
+                    "context": None,
                     "doing": transcripts.first_sentence(words) if words else "",
                     "minutes_since_update": round((manager.clock() - s["updated_at"]) / 60),
                 }
@@ -1216,6 +1245,11 @@ def build_server(
             news=whats_new,
             roles=roles_now,
             doctor=doctor_report,
+            usage=lambda: {
+                "plan": (current := usage.plan(statusline_dir)),
+                "warning": usage.warning(current),
+                "voice": usage.voice(store),
+            },
             start_role=launch_role,
             ui_origins=ui_origins,
         ).routes(mcp)

@@ -104,6 +104,52 @@ for a session that is not in the list. `DELETE /api/v1/active` clears the choice
 `{id}` is a session's `id` or `name` from the list. An unknown one answers `404`.
 Turn texts are cut to 600 characters; `cut` and `length` say when.
 
+## Usage
+
+`GET /api/v1/usage` answers how much of the plan is used and an estimate of
+voice activity through the bridge:
+
+```json
+{"plan": {"five_hour": {"used_percentage": 12, "resets_at": "<iso>", "stale": false} or null,
+          "seven_day": {...} or null,
+          "as_of": "<iso>", "label": "includes chat and voice; as of the last answer"} or null,
+ "warning": {"status": "allowed_warning" or "rejected", "used_percentage", "at"} or null,
+ "voice": {"label": "estimate, voice activity via the bridge",
+           "today": {"connections", "minutes", "tool_calls", "chars_out", "est_tokens"},
+           "last_7_days": [{"day": "2026-11-02", "connections", "minutes", "tool_calls", "chars_out", "est_tokens"}]}}
+```
+
+- **The plan** comes from Claude Code's status line, from the newest one that
+  had the figures. A figure past its reset is `stale`. A plan may report only
+  one of the two windows, so either can be `null`. The figures cover chat,
+  voice and Claude Code alike, and move only when a session talks to the model.
+- **`warning`** appears from 80 per cent of a live figure: `rejected` at 100.
+- **Voice** counts the calls the bridge served to the Claude app (from
+  elsewhere) and to the voice app (from this computer, with a trace id). Calls
+  more than ten minutes apart are separate conversations. Tokens are characters
+  divided by four. It is an estimate of activity through the bridge, not a
+  measure of the plan.
+- **No cost in money is ever given:** on a subscription it is notional.
+
+Each session in the list also carries `context`: `{"used_percentage", "as_of"}`
+from its own latest status line, or `null`.
+
+The status line's input reaches only the status line script. The owner's script
+therefore also writes it, one file per session, to
+`~/.local/state/claude-voice/statusline/<session id>.json`. Add this after the
+line that reads the input, in a script that has it in `$input`:
+
+<!-- not run: it belongs in the reader's own status line script -->
+```bash
+cv_state="$HOME/.local/state/claude-voice/statusline"
+cv_sid=$(echo "$input" | jq -r '.session_id // empty')
+case "$cv_sid" in ""|*[!A-Za-z0-9-]*) ;; *)
+  mkdir -p "$cv_state" && echo "$input" | jq -c '{session_id, at: now,
+    context_window: (if .context_window then {used_percentage: .context_window.used_percentage} else null end),
+    rate_limits: (.rate_limits // null)}' > "$cv_state/$cv_sid.json.tmp" && mv "$cv_state/$cv_sid.json.tmp" "$cv_state/$cv_sid.json";;
+esac
+```
+
 ## What is missing
 
 `GET /api/v1/doctor` checks the bridge's dependencies and answers:
