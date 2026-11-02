@@ -70,6 +70,22 @@ That is the whole bridge, used locally. The next two steps let you reach it from
 a phone: [run it as a service](#run-it-as-a-service-and-reach-it-from-the-phone),
 then give it a public address.
 
+## What it depends on
+
+Only a signed-in Claude Code is required. Each of the rest adds something, and
+the bridge says which are missing, with the exact fix, through its
+`check_dependencies` tool and the event API's `/api/v1/doctor`:
+
+| Dependency | What it adds |
+| --- | --- |
+| Claude Code, signed in | everything; required |
+| git | git status on the companion app's cards, and the contribute session |
+| GitHub CLI (`gh`), signed in | pull requests on the cards, and the contribute session |
+| uv | updating claude-voice and running its tests |
+| Tailscale, with Funnel | reaching the bridge from the phone |
+| a tailnet-only `tailscale serve` port | the companion app on the phone |
+| the status line writing its figures | the plan's five-hour and weekly bars, and how full each session is |
+
 ## What you can ask for
 
 | Tool | What it is for |
@@ -80,6 +96,7 @@ then give it a public address.
 | `whats_new` | only what happened since you last asked: finished, failed, waiting for you |
 | `fleet_recap` | every session in one call, each with a line on what it is doing |
 | `get_active_session`, `set_active_session` | the session the owner talks to, chosen on the companion page or by voice |
+| `check_dependencies` | which dependencies are missing for full use of the bridge, and the exact fix for each |
 | `health` | the bridge's own state: uptime, version, memory, calls and errors per tool, courier and watcher |
 | `list_pending_approvals`, `approve`, `deny` | answer Claude's requests to edit files, run commands and so on |
 | `cancel`, `close_session` | stop a turn, retire a session |

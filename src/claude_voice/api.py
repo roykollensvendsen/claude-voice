@@ -159,6 +159,7 @@ class EventApi:
         roles: Callable[[], dict[str, Any]] | None = None,
         start_role: Callable[[str, str | None], Awaitable[dict[str, Any]]] | None = None,
         clear_active: Callable[[], None] | None = None,
+        doctor: Callable[[], dict[str, Any]] | None = None,
         ui_origins: list[str] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -168,6 +169,7 @@ class EventApi:
         self.check_token = check_token
         self.sessions, self.get_active, self.set_active = sessions, get_active, set_active
         self.clear_active = clear_active
+        self.doctor = doctor
         self.output, self.pending, self.prs, self.news = output, pending, prs, news
         self.roles = roles or (lambda: {"roles": []})
         self.start_role = start_role
@@ -186,6 +188,7 @@ class EventApi:
         route("/api/v1/sessions/{session}/prs", methods=["GET"])(self.session_prs)
         route("/api/v1/events", methods=["GET"])(self.events)
         route("/api/v1/roles", methods=["GET"])(self.list_roles)
+        route("/api/v1/doctor", methods=["GET"])(self.dependencies)
         route("/api/v1/roles/{role}/start", methods=["POST"])(self.role_start)
 
     # -- who is asking ---------------------------------------------------------------
@@ -307,6 +310,14 @@ class EventApi:
 
     async def session_prs(self, request: Request) -> Response:
         return await self._one(request, self.prs)
+
+    async def dependencies(self, request: Request) -> Response:
+        if not await self._allowed(request):
+            return JSONResponse({"error": "sign in first"}, 401)
+        if self.doctor is None:
+            return JSONResponse({"error": "no doctor here"}, 404)
+        report = await asyncio.to_thread(self.doctor)
+        return JSONResponse(report, headers={"Cache-Control": "no-store"})
 
     # -- roles -----------------------------------------------------------------------
 

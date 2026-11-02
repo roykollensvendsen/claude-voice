@@ -24,7 +24,7 @@ from mcp.types import ToolAnnotations
 from pydantic import AnyHttpUrl
 from starlette.types import ASGIApp
 
-from . import api, events, metrics, roles, titles, transcripts
+from . import api, doctor, events, metrics, roles, titles, transcripts
 from .approvals import ApprovalBroker, ApprovalNotFound
 from .metrics import METRICS
 from .oauth import ACCESS_TTL, MIN_ACCESS_TTL, SCOPE, OAuthProvider, PublicClientMetadata
@@ -203,6 +203,8 @@ def build_server(
     receive_seconds: float = 15.0,
     projects_dir: Path = PROJECTS_DIR,
     roles_file: Path | None = roles.USER_FILE,
+    doctor_host: doctor.Host | None = None,
+    bridge_port: int = 8811,
 ) -> MCPServer:
     auth = None
     if oauth is not None:
@@ -224,6 +226,7 @@ def build_server(
     watcher = events.LiveWatcher(manager.store, live_dir, manager.root, clock=manager.clock)
     tree = SessionTree(manager.store, live_dir, manager.root, projects_dir=projects_dir, clock=manager.clock)
     side_answer = side_answer or transcripts.shared_reader()
+    host: doctor.Host = doctor_host or doctor.RealHost()
     tree_version: list[str] = []  # the last shape seen, so a change can be reported
     last_check: list[str] = []
     started_at = datetime.now(UTC).isoformat(timespec="seconds")
@@ -504,6 +507,12 @@ def build_server(
         if role not in table:
             raise LookupError(f"No role {role!r}; there are: {', '.join(sorted(table))}")
         spec = table[role]
+        blockers = doctor.before_role(host, spec) if spec.get("guard") else []
+        # RULE: a contribute session does not start while something it needs is missing
+        if blockers:
+            raise ToolError(
+                "Not started; first: " + "; ".join(f"{b['title']}: {b['detail']}. Fix: {b['fix']}" for b in blockers)
+            )
         folder = roles.folder_for(spec)
         name = unused_name(str(spec.get("name") or role))
         try:
@@ -527,6 +536,17 @@ def build_server(
             return await launch_role(role, task)
         except LookupError as exc:
             raise ToolError(str(exc)) from None
+
+    def doctor_report() -> dict[str, Any]:
+        table = roles.load(roles_file)
+        return doctor.examine(host, table.get("contribute"), port=bridge_port)
+
+    @tool(annotations=READ_ONLY)
+    def check_dependencies() -> dict[str, Any]:
+        """Which of the bridge's dependencies are missing, what each costs, and the exact fix:
+        Claude Code's sign-in, git, the GitHub CLI, uv, Tailscale, the tailnet port, the
+        status line figures, and the contribute session's clone."""
+        return doctor_report()
 
     def roles_now() -> dict[str, Any]:
         live = {str(d.get("sessionId")): d for d in live_sessions()}
@@ -1131,6 +1151,7 @@ def build_server(
             prs=api_prs,
             news=whats_new,
             roles=roles_now,
+            doctor=doctor_report,
             start_role=launch_role,
             ui_origins=ui_origins,
         ).routes(mcp)
@@ -1209,7 +1230,9 @@ def serve_forever(cfg: Config) -> None:
         store, login_secret=token, public_url=cfg.public_url, static_token=token, access_ttl=cfg.access_ttl
     )
     restart = metrics.restart_info("~/.local/state/claude-voice/restarts")
-    server = build_server(manager, oauth=oauth, watch_interval=5.0, restart=restart, ui_origins=cfg.ui_origins)
+    server = build_server(
+        manager, oauth=oauth, watch_interval=5.0, restart=restart, ui_origins=cfg.ui_origins, bridge_port=cfg.port
+    )
     app = build_app(server, cfg.public_hosts, ui_origins=cfg.ui_origins, ui_dir=cfg.ui_dir)
     configure_logging(cfg.db.parent / LOG_FILE)
     # No log config of its own, so uvicorn's lines, the request log included, reach the file.
