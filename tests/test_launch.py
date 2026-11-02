@@ -8,7 +8,7 @@ import pytest
 from fakes import FakeClaude
 from mcp.client import Client
 
-from claude_voice import api, config, launch
+from claude_voice import api, config, launch, transcripts
 from claude_voice.oauth import OAuthProvider
 from claude_voice.server import build_app, build_server
 from claude_voice.sessions import SessionManager
@@ -45,6 +45,7 @@ def finder(*present):
 
 
 DESKTOP = {"WAYLAND_DISPLAY": "wayland-0"}
+GNOME = finder("gnome-terminal")
 
 
 def test_the_first_terminal_found_on_the_desktop_is_used():
@@ -78,7 +79,7 @@ def test_new_sessions_get_remote_control_and_a_window_unless_the_settings_file_s
     assert config.load(f, env={"HOME": str(tmp_path)}).sessions == config.Sessions(False, "background", "kitty")
 
 
-def test_a_way_of_starting_that_does_not_exist_is_refused_in_the_settings_file(tmp_path):
+def test_a_way_of_starting_a_session_that_does_not_exist_is_refused(tmp_path):
     f = tmp_path / "c.toml"
     f.write_text('[sessions]\nlaunch = "window"\n')
     with pytest.raises(config.ConfigError, match="launch"):
@@ -106,7 +107,7 @@ def world(tmp_path):
     return tmp_path
 
 
-def bridge(world, starter, sessions=None, find=finder("gnome-terminal"), env=DESKTOP):
+def bridge(world, starter, sessions=None, find=GNOME, env=DESKTOP):
     store = Store(world / "b.db")
     m = SessionManager(store, project_root=world / "home", client_factory=FakeClaude())
     repos = config.Config(config.Repos(), config.Paths(None, None, None, None), None, sessions or config.Sessions())
@@ -182,3 +183,17 @@ async def test_a_setting_that_does_not_exist_or_does_not_fit_is_refused(world, b
     async with client(build_app(bridge(world, Starter(world / "live")))) as c:
         refused = await c.put("/api/v1/settings", json=body, headers=BEARER)
     assert refused.status_code == 400
+
+
+def test_a_started_session_does_not_inherit_the_identity_of_the_session_that_started_it():
+    env = transcripts.clean_env(
+        {
+            "HOME": "/home/x",
+            "CLAUDECODE": "1",
+            "CLAUDE_CODE_SESSION_ID": "abc",
+            "CLAUDE_CODE_CHILD_SESSION": "1",
+            "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+            "WAYLAND_DISPLAY": "wayland-0",
+        }
+    )
+    assert env == {"HOME": "/home/x", "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1", "WAYLAND_DISPLAY": "wayland-0"}

@@ -15,6 +15,11 @@ runs from, so the file is only needed to change something:
     claude_voice_ui = "~/src/claude-voice-ui"   # default: next to it
     ui_dist = "~/src/claude-voice-ui/dist"      # default: inside it; CLAUDE_VOICE_UI_DIR wins
     contribute = "~/src/claude-voice"           # the contribute session's clone; default: claude_voice
+
+    [sessions]
+    remote_control = true                       # a session the bridge starts is reachable from the Claude app
+    launch = "terminal"                         # or "background": where a started session runs
+    terminal_command = "kitty --directory {cwd}"  # default: the first of gnome-terminal, kgx, konsole, xterm
 """
 
 from __future__ import annotations
@@ -24,7 +29,7 @@ import re
 import subprocess
 import tomllib
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +37,7 @@ FILE = Path("~/.config/claude-voice/config.toml")
 REPO = re.compile(r"[A-Za-z0-9-]+/[A-Za-z0-9._-]+")
 UPSTREAM = "roykollensvendsen/claude-voice"
 UPSTREAM_UI = "roykollensvendsen/claude-voice-ui"
+LAUNCHES = ("terminal", "background")
 
 
 class ConfigError(ValueError):
@@ -54,10 +60,18 @@ class Paths:
 
 
 @dataclass
+class Sessions:
+    remote_control: bool = True
+    launch: str = "terminal"
+    terminal_command: str | None = None
+
+
+@dataclass
 class Config:
     repos: Repos
     paths: Paths
     file: Path | None
+    sessions: Sessions = field(default_factory=Sessions)
 
 
 def _repo(value: Any, key: str) -> str:
@@ -98,7 +112,19 @@ def load(path: Path | None = FILE, own_clone: Path | None = None, env: Mapping[s
         or (ui / "dist" if ui else None)
     )
     contribute = _path(paths_raw.get("contribute"), home) or voice
-    return Config(repos, Paths(voice, ui, dist, contribute), file)
+    return Config(repos, Paths(voice, ui, dist, contribute), file, _sessions(raw.get("sessions") or {}))
+
+
+def _sessions(raw: dict[str, Any]) -> Sessions:
+    launch = raw.get("launch", "terminal")
+    # RULE: a way of starting a session that does not exist is refused
+    if launch not in LAUNCHES:
+        raise ConfigError(f"[sessions] launch = {launch!r} is not one of: {', '.join(LAUNCHES)}")
+    remote = raw.get("remote_control", True)
+    if not isinstance(remote, bool):
+        raise ConfigError(f"[sessions] remote_control = {remote!r} is not true or false")
+    command = raw.get("terminal_command")
+    return Sessions(remote, launch, str(command) if command else None)
 
 
 def _remotes(folder: Path) -> list[str]:

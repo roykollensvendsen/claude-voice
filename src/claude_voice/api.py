@@ -173,6 +173,7 @@ class EventApi:
         update_state: Callable[[], dict[str, Any]] | None = None,
         start_update: Callable[[], dict[str, Any]] | None = None,
         bridge: Callable[[], dict[str, Any]] | None = None,
+        settings: Any = None,
         ui_origins: list[str] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -189,6 +190,7 @@ class EventApi:
         self.roles = roles or (lambda: {"roles": []})
         self.start_role = start_role
         self.ui_origins = [o.rstrip("/") for o in ui_origins or []]
+        self.settings = settings  # how new sessions start: launch.Settings
         self.prompts: dict[str, dict[str, Any]] = {}  # open questions and approvals, by id
         self.clock = clock
         self._failures: list[float] = []
@@ -205,6 +207,7 @@ class EventApi:
         route("/api/v1/events", methods=["GET"])(self.events)
         route("/api/v1/roles", methods=["GET"])(self.list_roles)
         route("/api/v1/prompts", methods=["GET", "POST"])(self.prompts_route)
+        route("/api/v1/settings", methods=["GET", "PUT"])(self.settings_route)
         route("/api/v1/prompts/{prompt}", methods=["POST"])(self.answer_prompt)
         route("/api/v1/prompts/{prompt}/wait", methods=["GET"])(self.wait_prompt)
         route("/api/v1/prompts/{prompt}/close", methods=["POST"])(self.close_prompt)
@@ -372,6 +375,31 @@ class EventApi:
         if self.bridge is None:
             return JSONResponse({"error": "not here"}, 404)
         return JSONResponse(self.bridge(), headers={"Cache-Control": "no-store"})
+
+    # -- how new sessions start --------------------------------------------------------
+
+    async def settings_route(self, request: Request) -> Response:
+        if self.settings is None:
+            return JSONResponse({"error": "not available"}, 404)
+        if request.method == "GET":
+            if not await self._allowed(request):
+                return JSONResponse({"error": "sign in first"}, 401)
+            return JSONResponse(self.settings.get(), headers={"Cache-Control": "no-store"})
+        refused = await self._change_allowed(request)
+        if refused:
+            return refused
+        try:
+            body = await request.json()
+        except ValueError:
+            body = None
+        # RULE: a setting that does not exist or does not fit is refused
+        try:
+            now = self.settings.change(body)
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, 400)
+        log.info("settings -> %s", json.dumps({k: now[k] for k in ("remote_control", "start_in")}))
+        HUB.publish("settings", now)
+        return JSONResponse(now)
 
     # -- questions and approvals from the phone -------------------------------------
 

@@ -128,3 +128,21 @@ name = "an answer that does not fit the prompt is refused"
 file = "src/claude_voice/api.py"
 find = 'reason = self\._fits\(prompt, body\)'
 replace = 'reason = None'
+
+[[rule]]
+name = "a way of starting a session that does not exist is refused"
+file = "src/claude_voice/config.py"
+find = 'if launch not in LAUNCHES:'
+replace = 'if False:'
+
+[[rule]]
+name = "a setting that does not exist or does not fit is refused"
+file = "src/claude_voice/api.py"
+find = 'now = self\.settings\.change\(body\)'
+replace = 'now = self.settings.get()'
+
+[[rule]]
+name = "a started session does not inherit the identity of the session that started it"
+file = "src/claude_voice/transcripts.py"
+find = 'return \{k: v for k, v in env\.items\(\) if k not in INHERITED\}'
+replace = 'return dict(env)'
