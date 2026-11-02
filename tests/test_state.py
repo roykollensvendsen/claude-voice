@@ -84,3 +84,23 @@ async def test_the_time_in_a_state_counts_from_its_last_change_and_each_change_i
     assert changed["state"] == "idle" and changed["state_since"] != first["state_since"]
     status = [data for name, data in published if name == "status"]
     assert status[-1]["state"] == "idle" and status[-1]["previous"] == "working" and status[-1]["name"] == "billing-ab"
+
+
+async def test_a_change_is_announced_while_someone_listens_even_if_nobody_asks(world):  # noqa: F811
+    import asyncio
+
+    running(world, "billing-ab", "billing", "s1", status="busy")
+    transcript(world, "billing", "s1", [says("on it")])
+    store = Store(world / "b.db")
+    m = SessionManager(store, project_root=world / "home", client_factory=FakeClaude())
+    server = build_server(
+        m, conversations=lambda **k: [], live_dir=world / "live", projects_dir=world / "projects", watch_interval=0.05
+    )
+    with api.HUB.subscribe() as events:
+        async with Client(server):  # the watcher runs while the server does
+            await asyncio.sleep(0.3)
+            running(world, "billing-ab", "billing", "s1", status="idle")
+            name, data = await asyncio.wait_for(events.get(), 5)
+            while name != "status":
+                name, data = await asyncio.wait_for(events.get(), 5)
+    assert data["state"] == "idle" and data["previous"] == "working"
