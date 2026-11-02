@@ -24,7 +24,7 @@ from mcp.types import ToolAnnotations
 from pydantic import AnyHttpUrl
 from starlette.types import ASGIApp
 
-from . import api, doctor, events, metrics, roles, titles, transcripts
+from . import api, doctor, events, gitstatus, metrics, roles, titles, transcripts
 from .approvals import ApprovalBroker, ApprovalNotFound
 from .metrics import METRICS
 from .oauth import ACCESS_TTL, MIN_ACCESS_TTL, SCOPE, OAuthProvider, PublicClientMetadata
@@ -387,6 +387,17 @@ def build_server(
             status, "stopped" if status in ("error", "cancelled", "interrupted") else "idle"
         )
 
+    git_seen: dict[str, Any] = {}
+
+    def git_of(sid: str, folder: str) -> dict[str, Any] | None:
+        """The folder's git status; open streams hear when it changes."""
+        status = gitstatus.cached(folder)
+        shape = {k: v for k, v in (status or {}).items() if k != "checked_at"}
+        if sid in git_seen and git_seen[sid] != shape:
+            api.HUB.publish("git", {"session": sid, "git": status})
+        git_seen[sid] = shape
+        return status
+
     def observe(sid: str, name: str, state: str, doing: str) -> str:
         """When `sid` entered `state`; tells open streams when it changes."""
         now = datetime.fromtimestamp(manager.clock(), UTC).isoformat(timespec="seconds")
@@ -433,6 +444,7 @@ def build_server(
                 "state": state,
                 "state_since": observe(str(row["claude_session_id"]), str(row["name"]), state, doing),
                 "waiting_kind": waiting_kind,
+                "git": git_of(str(row["claude_session_id"]), str(d.get("cwd"))) if d.get("cwd") else None,
                 "doing": doing,
                 "minutes_since_update": row["minutes_since_update"],
             }
@@ -459,6 +471,7 @@ def build_server(
                     "state": state,
                     "state_since": observe(s["id"], name, state, line),
                     "waiting_kind": None,
+                    "git": git_of(s["id"], s["project_path"]),
                     "doing": transcripts.first_sentence(words) if words else "",
                     "minutes_since_update": round((manager.clock() - s["updated_at"]) / 60),
                 }

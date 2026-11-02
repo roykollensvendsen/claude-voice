@@ -72,6 +72,15 @@ ran in the last day, with the session the owner talks to:
 - `doing`: one line on what it is doing, fit to show or say. It starts
   `venter på valg:` when it waits on a question.
 - `question` and `waiting_for` appear only while it waits.
+- `git`: where the session's folder stands in git, or `null` when it is not a
+  repository:
+  `{"branch": "feat/x" or null when detached, "commit": {"hash", "subject"},
+  "dirty", "changed_files", "tracking", "main", "parent", "checked_at"}`.
+  `tracking`, `main` and `parent` are each `{"name", "ahead", "behind"}` or
+  `null`. They compare against the branch it tracks, the remote's main branch,
+  and for a fork the `upstream` remote's main branch. Only local refs are read
+  and nothing is fetched, so `behind` is as fresh as the folder's last fetch.
+  The answer is kept for 45 seconds per folder.
 - `active` is `null` until something has chosen a session.
 
 ## The session the owner talks to
@@ -141,6 +150,7 @@ that must send a bearer token reads the stream with `fetch`.
 | `focus` | `{"session": "<id or name>", "tool": "ask_active_session", "at": "<iso>"}` | the voice, or any MCP client, just called a tool aimed at a session: asked it, messaged it, read it, summed it up |
 | `active` | the `active` object | the session the owner talks to changed |
 | `status` | `{"session": "<id>", "name", "state", "previous", "since", "doing", "at"}` | a session's `state` changed |
+| `git` | `{"session": "<id>", "git": {...}}` | a session's git status changed |
 | `news` | one item: `{"kind", "session", "text", …}` | something happened worth telling: a session finished, failed, started waiting, asked for an approval |
 
 A comment line (`: keep-alive`) comes every 15 seconds so proxies keep the
