@@ -116,3 +116,20 @@ def test_a_contribute_session_needs_a_clone_claude_code_trusts(tmp_path):
     blockers = doctor.before_role(host, {"folder": str(clone), "upstream": "o/r"})
     assert [b["id"] for b in blockers] == ["role_trust"] and str(clone) in blockers[0]["fix"]
     assert doctor.before_role(host, {"folder": str(tmp_path / "gone"), "upstream": "o/r"})[0]["id"] == "role_clone"
+
+
+def test_tools_in_the_users_own_folders_are_found_when_the_service_path_leaves_them_out(tmp_path, monkeypatch):
+    import os
+
+    home = tmp_path / "home"
+    (home / ".local" / "bin").mkdir(parents=True)
+    tool = home / ".local" / "bin" / "uv"
+    tool.write_text("#!/bin/sh\necho uv 1.0\n")
+    tool.chmod(0o755)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")  # as a systemd user service gets it
+    if os.name == "nt":
+        pytest.skip("Windows finds tools by extension; the user folders are a Unix habit")
+    host = doctor.RealHost()
+    assert host.which("uv") == str(tool)
+    assert host.run("uv")[0] == 0
