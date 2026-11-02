@@ -89,6 +89,28 @@ for a session that is not in the list. `DELETE /api/v1/active` clears the choice
 `{id}` is a session's `id` or `name` from the list. An unknown one answers `404`.
 Turn texts are cut to 600 characters; `cut` and `length` say when.
 
+## What is missing
+
+`GET /api/v1/doctor` checks the bridge's dependencies and answers:
+
+```json
+{"ready": true, "checked_at": "<iso>",
+ "checks": [{"id": "gh", "title": "GitHub CLI", "ok": false, "required": false,
+             "affects": "pull requests on the cards, and the contribute session",
+             "detail": "gh is installed but not signed in",
+             "fix": "gh auth login", "fix_url": "https://cli.github.com/manual/gh_auth_login"}]}
+```
+
+- `ready` is false only when a required check fails; today that is only
+  Claude Code's sign-in.
+- `id`, `title`, `ok`, `required`, `detail` and `fix` are stable. `fix` is text
+  for a person to run or follow, and never holds a secret.
+- The ids are `claude_signed_in`, `git`, `gh`, `uv`, `tailscale`,
+  `tailnet_port`, `statusline`, `role_clone` and `role_trust`.
+
+The checks take a few seconds, so a UI asks on sign-in and then now and then,
+not on every refresh.
+
 ## Roles
 
 A role is a background session started for a set purpose. The built-in one,
