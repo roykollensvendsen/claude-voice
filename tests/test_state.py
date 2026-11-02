@@ -40,7 +40,7 @@ async def states(server):
     [
         ("busy", [says("on it")], "working", None),
         ("idle", [says("done")], "idle", None),
-        ("shell", [says("running it")], "shell", None),
+        ("shell", [says("running it")], "working", None),  # Claude itself is running a command
         ("waiting", [asks("Which file?", "a.py", "b.py")], "answer", "question"),
         ("waiting", [uses("Bash")], "approval", "approval"),
         ("waiting", [says("done")], "input", "input"),
