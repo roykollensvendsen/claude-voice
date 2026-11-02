@@ -1246,11 +1246,13 @@ def build_server(
         active = {**found, "set_by": by, "set_at": datetime.now(UTC).isoformat(timespec="seconds")}
         store.set_setting("active_session", active)
         api.HUB.publish("active", active)
+        log.info("active -> %s by %s", found["name"], by)
         return active
 
     def clear_active() -> None:
         store.clear_setting("active_session")
         api.HUB.publish("active", None)
+        log.info("active -> none by page")
 
     @tool(annotations=READ_ONLY)
     def get_active_session() -> dict[str, Any]:
