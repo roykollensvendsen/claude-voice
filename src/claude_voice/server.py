@@ -241,6 +241,8 @@ def build_server(
             watcher.record("claude-voice", "tree_changed", version)
         tree_version[:] = [version]
         last_check[:] = [datetime.now(UTC).isoformat(timespec="seconds")]
+        if api.HUB.listening():
+            fleet_recap()  # notes each session's state, and announces the ones that changed
 
     @contextlib.asynccontextmanager
     async def lifespan(_server):
@@ -368,6 +370,45 @@ def build_server(
                 recap[key] = transcripts.clip(recap[key], max(max_chars, 20))
         return recap
 
+    state_seen: dict[str, tuple[str, str]] = {}  # session id -> (state, since)
+
+    def live_state(status: str, sid: str, cwd: str) -> tuple[str, str | None]:
+        """Claude Code's status, named as one of the fixed states, with what a wait is for."""
+        if status == "waiting":
+            if transcripts.open_question(sid, cwd, projects_dir):
+                return "answer", "question"
+            if transcripts.pending_tool(sid, cwd, projects_dir):
+                return "approval", "approval"
+            return "input", "input"
+        return {"busy": "working", "idle": "idle", "shell": "shell", "moved": "moved"}.get(status, "idle"), None
+
+    def bridge_state(status: str) -> str:
+        return {"running": "working", "idle": "idle", "closed": "stopped"}.get(
+            status, "stopped" if status in ("error", "cancelled", "interrupted") else "idle"
+        )
+
+    def observe(sid: str, name: str, state: str, doing: str) -> str:
+        """When `sid` entered `state`; tells open streams when it changes."""
+        now = datetime.fromtimestamp(manager.clock(), UTC).isoformat(timespec="seconds")
+        seen = state_seen.get(sid)
+        if seen is not None and seen[0] == state:
+            return seen[1]
+        state_seen[sid] = (state, now)
+        if seen is not None:
+            api.HUB.publish(
+                "status",
+                {
+                    "session": sid,
+                    "name": name,
+                    "state": state,
+                    "previous": seen[0],
+                    "since": now,
+                    "doing": doing,
+                    "at": now,
+                },
+            )
+        return now
+
     @tool(annotations=READ_ONLY)
     def fleet_recap() -> dict[str, Any]:
         """Every session in one call: running Claude Code sessions and the bridge's own
@@ -382,12 +423,16 @@ def build_server(
                 doing = f"flyttet til {where}"
             else:
                 doing = transcripts.doing_line(str(row["claude_session_id"]), str(d.get("cwd")), projects_dir)
+            state, waiting_kind = live_state(str(row["status"]), str(row["claude_session_id"]), str(d.get("cwd")))
             item = {
                 "id": row["claude_session_id"],
                 "name": row["name"],
                 "kind": "terminal" if row["kind"] == "interactive" else "background",
                 "project": row["project"],
                 "status": row["status"],
+                "state": state,
+                "state_since": observe(str(row["claude_session_id"]), str(row["name"]), state, doing),
+                "waiting_kind": waiting_kind,
                 "doing": doing,
                 "minutes_since_update": row["minutes_since_update"],
             }
@@ -401,13 +446,19 @@ def build_server(
                 continue
             recap = manager.recap(s["id"])
             words = recap["latest_text"] or recap["last_result"] or recap["last_error"] or ""
+            name = s["label"] or Path(s["project_path"]).name
+            state = bridge_state(str(s["status"]))
+            line = transcripts.first_sentence(words) if words else ""
             sessions.append(
                 {
                     "id": s["id"],
-                    "name": s["label"] or Path(s["project_path"]).name,
+                    "name": name,
                     "kind": "bridge-session",
                     "project": under_root(s["project_path"]),
                     "status": s["status"],
+                    "state": state,
+                    "state_since": observe(s["id"], name, state, line),
+                    "waiting_kind": None,
                     "doing": transcripts.first_sentence(words) if words else "",
                     "minutes_since_update": round((manager.clock() - s["updated_at"]) / 60),
                 }

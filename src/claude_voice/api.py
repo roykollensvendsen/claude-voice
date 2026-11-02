@@ -120,6 +120,10 @@ class EventHub:
                     q.get_nowait()
             q.put_nowait((event, data))
 
+    def listening(self) -> bool:
+        """Whether any stream is open, so work done only to tell someone can be skipped."""
+        return bool(self._queues)
+
     @contextlib.contextmanager
     def subscribe(self) -> Any:
         q: asyncio.Queue[tuple[str, dict[str, Any] | None]] = asyncio.Queue(self.keep)
