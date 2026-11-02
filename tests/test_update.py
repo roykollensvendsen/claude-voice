@@ -117,3 +117,114 @@ def test_only_one_update_runs_at_a_time(install, tmp_path):
     assert updater.running(log) is True
     log.write_text(json.dumps({"running": True, "pid": 999999999, "steps": []}))  # a run that died
     assert updater.running(log) is False
+
+
+# -- through the bridge -----------------------------------------------------------------
+
+
+import httpx  # noqa: E402
+from fakes import FakeClaude  # noqa: E402
+from mcp.client import Client  # noqa: E402
+
+from claude_voice import api  # noqa: E402
+from claude_voice.oauth import OAuthProvider  # noqa: E402
+from claude_voice.server import build_app, build_server  # noqa: E402
+from claude_voice.sessions import SessionManager  # noqa: E402
+from claude_voice.store import Store  # noqa: E402
+
+SECRET = "s3cret-token-for-the-update-tests-x"
+BEARER = {"Authorization": f"Bearer {SECRET}"}
+
+
+class Launcher:
+    def __init__(self):
+        self.started = []
+
+    def __call__(self, repo, log):
+        self.started.append((repo, log))
+
+
+def bridge_with_update(tmp_path, launcher):
+    (tmp_path / "home").mkdir(exist_ok=True)
+    store = Store(tmp_path / "b.db")
+    oauth = OAuthProvider(store, SECRET, "http://127.0.0.1:8811", static_token=SECRET)
+    m = SessionManager(store, project_root=tmp_path / "home", client_factory=FakeClaude())
+    server = build_server(
+        m,
+        oauth=oauth,
+        conversations=lambda **k: [],
+        live_dir=tmp_path / "live",
+        update_log=tmp_path / "update.json",
+        launch_update=launcher,
+        bridge_folder=tmp_path,
+    )
+    return server, build_app(server)
+
+
+def client(app):
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8811")
+
+
+async def test_the_app_and_the_voice_start_an_update_that_runs_outside_the_bridge(tmp_path):
+    launcher = Launcher()
+    server, app = bridge_with_update(tmp_path, launcher)
+    async with client(app) as c:
+        started = await c.post("/api/v1/update", headers=BEARER)
+        state = (await c.get("/api/v1/update", headers=BEARER)).json()
+    assert started.status_code == 202 and launcher.started == [(tmp_path, tmp_path / "update.json")]
+    assert "drops" in started.json()["note"]
+    assert state["running"] is False and state["steps"] == []  # the launcher here writes nothing
+    async with Client(server) as mcp:
+        out = (await mcp.call_tool("update_bridge", {})).structured_content
+    assert out["started"] is True and len(launcher.started) == 2
+
+
+async def test_a_second_update_is_refused_while_one_runs(tmp_path):
+    import os
+
+    launcher = Launcher()
+    (tmp_path / "update.json").write_text(json.dumps({"running": True, "pid": os.getpid(), "steps": []}))
+    _, app = bridge_with_update(tmp_path, launcher)
+    async with client(app) as c:
+        again = await c.post("/api/v1/update", headers=BEARER)
+    assert again.status_code == 409 and launcher.started == []
+
+
+async def test_each_step_of_an_update_reaches_open_streams(tmp_path):
+    launcher = Launcher()
+    server, app = bridge_with_update(tmp_path, launcher)
+    log = tmp_path / "update.json"
+    with api.HUB.subscribe() as events:
+        async with client(app) as c:
+            log.write_text(
+                json.dumps(
+                    {"running": True, "pid": 1, "steps": [{"step": "check", "ok": True, "detail": "", "at": "t"}]}
+                )
+            )
+            await c.get("/api/v1/update", headers=BEARER)
+            log.write_text(
+                json.dumps(
+                    {
+                        "running": False,
+                        "pid": 1,
+                        "result": "up_to_date",
+                        "steps": [
+                            {"step": "check", "ok": True, "detail": "", "at": "t"},
+                            {"step": "done", "ok": True, "detail": "", "at": "t"},
+                        ],
+                    }
+                )
+            )
+            await c.get("/api/v1/update", headers=BEARER)
+        seen = []
+        while not events.empty():
+            seen.append(events.get_nowait())
+    steps = [d["step"] for name, d in seen if name == "update"]
+    assert steps == ["check", "done"]
+
+
+async def test_the_bridge_says_which_version_runs_and_where_its_folder_stands(tmp_path):
+    _, app = bridge_with_update(tmp_path, Launcher())
+    async with client(app) as c:
+        out = (await c.get("/api/v1/bridge", headers=BEARER)).json()
+    assert set(out) == {"version", "git"}
