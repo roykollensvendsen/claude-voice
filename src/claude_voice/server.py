@@ -485,7 +485,8 @@ def build_server(
             if transcripts.pending_tool(sid, cwd, projects_dir):
                 return "approval", "approval"
             return "input", "input"
-        return {"busy": "working", "idle": "idle", "shell": "shell", "moved": "moved"}.get(status, "idle"), None
+        # Claude Code says "shell" while Claude runs a command: that is Claude working, not Claude gone.
+        return {"busy": "working", "idle": "idle", "shell": "working", "moved": "moved"}.get(status, "idle"), None
 
     def bridge_state(status: str) -> str:
         return {"running": "working", "idle": "idle", "closed": "stopped"}.get(
