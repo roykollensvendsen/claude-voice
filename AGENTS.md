@@ -47,3 +47,13 @@ wants to reach the bridge from a phone.
 - **The bridge runs but a tool misbehaves:**
   - its `health` tool lists the latest errors;
   - each error carries the trace id of the call that caused it.
+
+## When you are changing claude-voice itself
+
+If you are a session working on this repository, rather than installing it:
+
+- Follow [CONTRIBUTING.md](CONTRIBUTING.md): the gates, a failing test before
+  the code, the mutation run, and the three rules for every change.
+- Push only to your owner's fork; a pull request goes to
+  `roykollensvendsen/claude-voice` with `gh pr create --repo`.
+- Never rename or remove a tool or field that Hermes or the voice app uses.

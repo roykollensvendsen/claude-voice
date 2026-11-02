@@ -76,6 +76,18 @@ for a session that is not in the list. `set_by` is `page` for this call and
 `{id}` is a session's `id` or `name` from the list. An unknown one answers `404`.
 Turn texts are cut to 600 characters; `cut` and `length` say when.
 
+## Roles
+
+A role is a background session started for a set purpose. The built-in one,
+`contribute`, changes claude-voice in the owner's clone and opens a pull
+request; it can never push to the project's own repository. A UI shows roles
+as pinned cards above the sessions.
+
+| Call | Answer |
+| --- | --- |
+| `GET /api/v1/roles` | `{"roles": [{"name", "title", "description", "session": {"name", "id", "status"} or null}]}`; `session` is the running session last started for the role |
+| `POST /api/v1/roles/{name}/start` | with `{"task": "what to change"}` or `{}`: starts a session for the role and answers `{"role", "name", "claude_session_id", "status"}`. `404` for an unknown role, `502` when Claude Code could not start it. A change: with the cookie it needs an allowed `Origin` |
+
 ## Live events
 
 `GET /api/v1/events` is a stream of

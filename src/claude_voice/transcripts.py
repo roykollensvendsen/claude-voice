@@ -564,8 +564,16 @@ MODEL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._\[\]-]{0,99}")
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 
 
-def background_command(cli: str, name: str, model: str | None = None, effort: str | None = None) -> list[str]:
-    """The command that starts a named background session, on a model and effort if given."""
+def background_command(
+    cli: str,
+    name: str,
+    model: str | None = None,
+    effort: str | None = None,
+    prompt: str | None = None,
+    settings: str | None = None,
+) -> list[str]:
+    """The command that starts a named background session, on a model and effort if given,
+    with extra settings (such as a hook) and a first message if given."""
     return [
         cli,
         "--bg",
@@ -573,10 +581,19 @@ def background_command(cli: str, name: str, model: str | None = None, effort: st
         name,
         *(["--model", model] if model else []),
         *(["--effort", effort] if effort else []),
+        *(["--settings", settings] if settings else []),
+        *(["--", prompt] if prompt else []),
     ]
 
 
-async def start_background(cwd: str, name: str, model: str | None = None, effort: str | None = None) -> None:
+async def start_background(
+    cwd: str,
+    name: str,
+    model: str | None = None,
+    effort: str | None = None,
+    prompt: str | None = None,
+    settings: str | None = None,
+) -> None:
     """Start a Claude Code session in the background, as `claude --bg` does from a terminal.
 
     It runs under the owner's own Claude Code and settings, and appears in the running
@@ -589,7 +606,7 @@ async def start_background(cwd: str, name: str, model: str | None = None, effort
     bundled = Path(claude_agent_sdk.__file__).parent / "_bundled" / "claude"
     cli = shutil.which("claude") or str(bundled)
     proc = await asyncio.create_subprocess_exec(
-        *background_command(cli, name, model, effort),
+        *background_command(cli, name, model, effort, prompt, settings),
         cwd=cwd,
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,

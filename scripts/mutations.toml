@@ -74,3 +74,9 @@ name = "only an origin named in the settings may call across sites"
 file = "src/claude_voice/server.py"
 find = 'allow_origins=list\(ui_origins\),'
 replace = 'allow_origins=["*"],'
+
+[[rule]]
+name = "a contribute session never pushes to the upstream repository"
+file = "src/claude_voice/guard.py"
+find = 'if _names_upstream\(url, upstream\):'
+replace = 'if False:'

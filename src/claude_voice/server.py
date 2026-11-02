@@ -24,7 +24,7 @@ from mcp.types import ToolAnnotations
 from pydantic import AnyHttpUrl
 from starlette.types import ASGIApp
 
-from . import api, events, metrics, titles, transcripts
+from . import api, events, metrics, roles, titles, transcripts
 from .approvals import ApprovalBroker, ApprovalNotFound
 from .metrics import METRICS
 from .oauth import ACCESS_TTL, MIN_ACCESS_TTL, SCOPE, OAuthProvider, PublicClientMetadata
@@ -202,6 +202,7 @@ def build_server(
     poll_seconds: float = 1.0,
     receive_seconds: float = 15.0,
     projects_dir: Path = PROJECTS_DIR,
+    roles_file: Path | None = roles.USER_FILE,
 ) -> MCPServer:
     auth = None
     if oauth is not None:
@@ -480,6 +481,62 @@ def build_server(
                 }
             await asyncio.sleep(0.2)
         raise ToolError(f"{wanted} was started but did not appear among the running sessions")
+
+    def unused_name(wanted: str) -> str:
+        taken = {str(d.get("name")) for d in live_sessions()}
+        while wanted in taken:
+            wanted = f"{wanted}-{secrets.token_hex(2)}"
+        return wanted
+
+    async def appeared(name: str, folder: Path) -> dict[str, Any]:
+        """The started session once Claude Code lists it, recorded so the bridge may stop it."""
+        deadline = time.monotonic() + start_seconds
+        while time.monotonic() < deadline:
+            found = next((d for d in live_sessions() if d.get("name") == name and d.get("cwd") == str(folder)), None)
+            if found:
+                store.record_started(str(found.get("sessionId")), name, str(folder))
+                return found
+            await asyncio.sleep(0.2)
+        raise ToolError(f"{name} was started but did not appear among the running sessions")
+
+    async def launch_role(role: str, task: str | None) -> dict[str, Any]:
+        table = roles.load(roles_file)
+        if role not in table:
+            raise LookupError(f"No role {role!r}; there are: {', '.join(sorted(table))}")
+        spec = table[role]
+        folder = roles.folder_for(spec)
+        name = unused_name(str(spec.get("name") or role))
+        try:
+            await start_background(
+                str(folder),
+                name,
+                prompt=roles.first_message(spec, folder, task),
+                settings=roles.guard_settings(spec),
+            )
+        except Exception as exc:
+            raise ToolError(f"Claude Code could not start a session: {exc}") from None
+        found = await appeared(name, folder)
+        store.set_setting(f"role:{role}", {"name": name, "id": str(found.get("sessionId"))})
+        return {"role": role, "name": name, "claude_session_id": found.get("sessionId"), "status": found.get("status")}
+
+    @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
+    async def start_role(role: str, task: str | None = None) -> dict[str, Any]:
+        """Start a background session for a role, such as "contribute" (change claude-voice and
+        open a pull request), with `task` as what the owner wants; reach it with ask_active_session."""
+        try:
+            return await launch_role(role, task)
+        except LookupError as exc:
+            raise ToolError(str(exc)) from None
+
+    def roles_now() -> dict[str, Any]:
+        live = {str(d.get("sessionId")): d for d in live_sessions()}
+        out = []
+        for name, spec in roles.load(roles_file).items():
+            seen = store.get_setting(f"role:{name}")
+            d = live.get(seen["id"]) if seen else None
+            session = {"name": d.get("name"), "id": seen["id"], "status": d.get("status")} if d and seen else None
+            out.append({**roles.public(name, spec), "session": session})
+        return {"roles": out}
 
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
     async def stop_active_session(name: str) -> dict[str, Any]:
@@ -1068,6 +1125,8 @@ def build_server(
             pending=api_pending,
             prs=api_prs,
             news=whats_new,
+            roles=roles_now,
+            start_role=launch_role,
             ui_origins=ui_origins,
         ).routes(mcp)
 
