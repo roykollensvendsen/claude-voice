@@ -5,13 +5,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
 import subprocess
 import sys
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
+from . import procs
 from .server import Config, ConfigError, load_config, serve_forever
 
 #: Every verb this command has. The documentation test requires each one to
@@ -29,7 +29,7 @@ def claude_code_login() -> tuple[bool, str]:
     import claude_agent_sdk
 
     bundled = Path(claude_agent_sdk.__file__).parent / "_bundled" / "claude"
-    cli = str(bundled) if bundled.exists() else shutil.which("claude")
+    cli = str(bundled) if bundled.exists() else procs.find("claude")
     if not cli:
         return False, "Claude Code was not found"
     try:

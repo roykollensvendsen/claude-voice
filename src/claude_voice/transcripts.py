@@ -34,6 +34,8 @@ from claude_agent_sdk import (
     project_key_for_directory,
 )
 
+from . import procs
+
 MESSAGING_TOOLS = frozenset({"ListAgents", "SendMessage", "ToolSearch"})
 
 
@@ -599,12 +601,11 @@ async def start_background(
     It runs under the owner's own Claude Code and settings, and appears in the running
     sessions like any other background session.
     """
-    import shutil
 
     import claude_agent_sdk
 
     bundled = Path(claude_agent_sdk.__file__).parent / "_bundled" / "claude"
-    cli = shutil.which("claude") or str(bundled)
+    cli = procs.find("claude") or str(bundled)
     proc = await asyncio.create_subprocess_exec(
         *background_command(cli, name, model, effort, prompt, settings),
         cwd=cwd,
@@ -619,12 +620,11 @@ async def start_background(
 
 async def stop_background(session_id: str) -> None:
     """Stop a background session, as `claude stop <id>` does from a terminal."""
-    import shutil
 
     import claude_agent_sdk
 
     bundled = Path(claude_agent_sdk.__file__).parent / "_bundled" / "claude"
-    cli = shutil.which("claude") or str(bundled)
+    cli = procs.find("claude") or str(bundled)
     # `claude stop` takes the background job's short id, which `claude agents` maps to the session.
     listing = await asyncio.create_subprocess_exec(
         cli, "agents", "--json", stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE
@@ -653,10 +653,9 @@ def open_pull_requests(folder: str) -> list[dict[str, Any]]:
 
     Nothing when `gh` is missing, signed out, or the folder is not a GitHub repository.
     """
-    import shutil
     import subprocess
 
-    gh = shutil.which("gh")
+    gh = procs.find("gh")
     if not gh:
         return []
     try:
