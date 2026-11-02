@@ -19,8 +19,9 @@ USER_FILE = Path("~/.config/claude-voice/roles.toml")
 WAITING = "Wait for the owner to say what they want changed."
 
 
-def load(user_file: Path | None) -> dict[str, dict[str, Any]]:
-    """Every role by name: the built-in ones, with the user's file laid over them."""
+def load(user_file: Path | None, defaults: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
+    """Every role by name: the built-in ones, with the user's file laid over them. A role's
+    empty `folder` or `upstream` is taken from `defaults` (the repository settings)."""
     with BUILT_IN.open("rb") as f:
         found: dict[str, dict[str, Any]] = {k: dict(v) for k, v in tomllib.load(f).get("roles", {}).items()}
     path = user_file.expanduser() if user_file else None
@@ -28,6 +29,13 @@ def load(user_file: Path | None) -> dict[str, dict[str, Any]]:
         with path.open("rb") as f:
             for name, values in tomllib.load(f).get("roles", {}).items():
                 found[name] = {**found.get(name, {}), **values}
+    from .config import UPSTREAM
+
+    fill = {"upstream": UPSTREAM, **{k: v for k, v in (defaults or {}).items() if v}}
+    for role in found.values():
+        for key, value in fill.items():
+            if not role.get(key):
+                role[key] = str(value)
     return found
 
 

@@ -28,7 +28,7 @@ from mcp.types import ToolAnnotations
 from pydantic import AnyHttpUrl
 from starlette.types import ASGIApp
 
-from . import api, doctor, events, gitstatus, metrics, procs, roles, titles, transcripts, updater, usage
+from . import api, config, doctor, events, gitstatus, metrics, procs, roles, titles, transcripts, updater, usage
 from .approvals import ApprovalBroker, ApprovalNotFound
 from .metrics import METRICS
 from .oauth import ACCESS_TTL, MIN_ACCESS_TTL, SCOPE, OAuthProvider, PublicClientMetadata
@@ -267,6 +267,7 @@ def build_server(
     update_log: Path = updater.LOG,
     launch_update: Callable[[Path, Path], None] | None = None,
     bridge_folder: Path | None = None,
+    repo_config: config.Config | None = None,
 ) -> MCPServer:
     auth = None
     if oauth is not None:
@@ -289,6 +290,14 @@ def build_server(
     tree = SessionTree(manager.store, live_dir, manager.root, projects_dir=projects_dir, clock=manager.clock)
     side_answer = side_answer or transcripts.shared_reader()
     host: doctor.Host = doctor_host or doctor.RealHost()
+    repos = repo_config or config.load(config.FILE, own_clone=roles.own_clone())
+
+    def role_table() -> dict[str, dict[str, Any]]:
+        contribute = repos.paths.contribute
+        return roles.load(
+            roles_file, {"folder": str(contribute) if contribute else "", "upstream": repos.repos.claude_voice}
+        )
+
     VOICE_STORE[:] = [manager.store]
     tree_version: list[str] = []  # the last shape seen, so a change can be reported
     last_check: list[str] = []
@@ -636,7 +645,7 @@ def build_server(
         raise ToolError(f"{name} was started but did not appear among the running sessions")
 
     async def launch_role(role: str, task: str | None) -> dict[str, Any]:
-        table = roles.load(roles_file)
+        table = role_table()
         if role not in table:
             raise LookupError(f"No role {role!r}; there are: {', '.join(sorted(table))}")
         spec = table[role]
@@ -709,7 +718,7 @@ def build_server(
     def start_update() -> dict[str, Any]:
         if updater.running(update_log):
             raise RuntimeError("An update is already running.")
-        folder = bridge_folder or roles.own_clone()
+        folder = bridge_folder or repos.paths.claude_voice
         if folder is None:
             raise LookupError("This bridge does not run from a git clone, so it cannot update itself.")
         (launch_update or launch_updater)(folder, update_log.expanduser())
@@ -738,12 +747,13 @@ def build_server(
             raise ToolError(str(exc)) from None
 
     def bridge_now() -> dict[str, Any]:
-        folder = bridge_folder or roles.own_clone()
+        folder = bridge_folder or repos.paths.claude_voice
         return {"version": running_version, "git": gitstatus.cached(folder) if folder else None}
 
     def doctor_report() -> dict[str, Any]:
-        table = roles.load(roles_file)
-        return doctor.examine(host, table.get("contribute"), port=bridge_port)
+        report = doctor.examine(host, role_table().get("contribute"), port=bridge_port)
+        report["checks"] += config.check_paths(repos)
+        return report
 
     @tool(annotations=READ_ONLY)
     def check_dependencies() -> dict[str, Any]:
@@ -755,7 +765,7 @@ def build_server(
     def roles_now() -> dict[str, Any]:
         live = {str(d.get("sessionId")): d for d in live_sessions()}
         out = []
-        for name, spec in roles.load(roles_file).items():
+        for name, spec in role_table().items():
             seen = store.get_setting(f"role:{name}")
             d = live.get(seen["id"]) if seen else None
             session = {"name": d.get("name"), "id": seen["id"], "status": d.get("status")} if d and seen else None

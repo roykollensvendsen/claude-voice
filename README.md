@@ -271,6 +271,33 @@ set the tools to *always allow*, so the app does not ask before each one.
 ChatGPT on a Plus plan could not connect to a custom MCP server from Android at
 the time of writing.
 
+## Where your clones are
+
+The bridge works out where the project's repositories are, on GitHub and on
+this computer, and the defaults suit a clone of this repository with the
+companion app next to it. To change any of it, for example to work from a fork
+or to keep the clones elsewhere, write `~/.config/claude-voice/config.toml`
+(another file can be named in `CLAUDE_VOICE_CONFIG`):
+
+<!-- not run: a configuration example, not commands -->
+```toml
+[repos]
+claude_voice = "roykollensvendsen/claude-voice"        # the project, on GitHub
+claude_voice_ui = "roykollensvendsen/claude-voice-ui"
+fork = "you/claude-voice"                               # your fork, if you have one
+
+[paths]
+claude_voice = "~/src/claude-voice"          # default: the clone the bridge runs from
+claude_voice_ui = "~/src/claude-voice-ui"    # default: next to it
+ui_dist = "~/src/claude-voice-ui/dist"       # default: inside it; CLAUDE_VOICE_UI_DIR wins
+contribute = "~/src/claude-voice"            # the contribute session's clone; default: claude_voice
+```
+
+The update works in `claude_voice`. The contribute session works in
+`contribute`, and sends its pull request to `repos.claude_voice`; it may push
+only to your `fork`. The doctor checks that every folder exists, is a clone,
+and points at the right repository or your fork, and says how to fix it if not.
+
 ## Send a change back
 
 Ask the bridge for a *contribute* session, by voice or in the companion app,

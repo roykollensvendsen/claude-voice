@@ -116,3 +116,9 @@ name = "only a well-formed remote control id becomes a link"
 file = "src/claude_voice/server.py"
 find = 'if not isinstance\(bridge_session_id, str\) or not REMOTE_ID\.fullmatch\(bridge_session_id\):'
 replace = 'if not bridge_session_id:'
+
+[[rule]]
+name = "a repository that is not owner slash name is refused"
+file = "src/claude_voice/config.py"
+find = 'if not isinstance\(value, str\) or not REPO\.fullmatch\(value\) or "\.\." in value:'
+replace = 'if not isinstance(value, str):'

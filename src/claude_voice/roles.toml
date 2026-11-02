@@ -10,10 +10,12 @@ title = "Contribute to claude-voice"
 description = "Say what you want changed in claude-voice; this session builds it in your clone and opens a pull request to the project."
 # The session's name; a number is added if one by that name is running.
 name = "claude-voice-contribute"
-# Your clone of claude-voice. Empty means the clone this bridge runs from.
+# Your clone of claude-voice. Empty means [paths] contribute in
+# ~/.config/claude-voice/config.toml, or else the clone this bridge runs from.
 folder = ""
 # The project's own repository: the pull request goes here, and no push may.
-upstream = "roykollensvendsen/claude-voice"
+# Empty means [repos] claude_voice in config.toml.
+upstream = ""
 # Refuse every push to the upstream repository, whatever the command.
 guard = true
 prompt = """
