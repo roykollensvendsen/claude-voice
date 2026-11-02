@@ -64,6 +64,10 @@ def test_the_guard_answers_claude_code_as_a_pre_tool_use_hook(tmp_path):
 # -- the roles themselves ----------------------------------------------------------------
 
 
+def ready_clone(world):
+    (world[1] / ".git").mkdir(exist_ok=True)
+
+
 def test_the_built_in_contribute_role_is_there_and_a_users_file_can_change_or_add_roles(tmp_path):
     builtin = roles.load(None)
     assert builtin["contribute"]["upstream"] == UPSTREAM and builtin["contribute"]["guard"] is True
@@ -112,7 +116,7 @@ def world(tmp_path):
     return home, clone, live, table
 
 
-def bridge(tmp_path, world, starter, oauth=None):
+def bridge(tmp_path, world, starter, oauth=None, host=None):
     home, _, live, table = world
     store = Store(tmp_path / "b.db")
     m = SessionManager(store, project_root=home, client_factory=FakeClaude())
@@ -125,12 +129,14 @@ def bridge(tmp_path, world, starter, oauth=None):
         stop_background=Stopper(live),
         start_seconds=1.0,
         roles_file=table,
+        doctor_host=host or ReadyHost(),
     )
     return server
 
 
 async def test_starting_the_contribute_role_runs_a_guarded_session_in_the_users_clone(tmp_path, world):
     _, clone, live, _ = world
+    ready_clone(world)
     starter = Starter(live)
     async with Client(bridge(tmp_path, world, starter)) as c:
         out = (await c.call_tool("start_role", {"role": "contribute", "task": "Add a dark theme"})).structured_content
@@ -153,6 +159,7 @@ async def test_an_unknown_role_is_refused(tmp_path, world):
 
 async def test_the_event_api_lists_the_roles_and_starts_one(tmp_path, world):
     starter = Starter(world[2])
+    ready_clone(world)
 
     def oauth(store):
         return OAuthProvider(store, SECRET, "http://127.0.0.1:8811", static_token=SECRET)
@@ -166,3 +173,33 @@ async def test_the_event_api_lists_the_roles_and_starts_one(tmp_path, world):
     role = before["roles"][0]
     assert role["name"] == "contribute" and role["title"] and role["session"] is None
     assert started.status_code == 200 and after["roles"][0]["session"]["name"] == started.json()["name"]
+
+
+class ReadyHost:
+    """A computer with every tool a contribute session needs, signed in and trusting every folder."""
+
+    def which(self, name):
+        return f"/usr/bin/{name}"
+
+    def run(self, *command):
+        return 0, ""
+
+    def login(self):
+        return True, "signed in"
+
+    def trusted(self, folder):
+        return True
+
+
+class NoGitHubHost(ReadyHost):
+    def which(self, name):
+        return None if name == "gh" else super().which(name)
+
+
+async def test_a_contribute_session_does_not_start_while_something_it_needs_is_missing(tmp_path, world):
+    starter = Starter(world[2])
+    (world[1] / ".git").mkdir()
+    async with Client(bridge(tmp_path, world, starter, host=NoGitHubHost())) as c:
+        bad = await c.call_tool("start_role", {"role": "contribute"})
+    assert bad.is_error and "GitHub CLI" in bad.content[0].text and "gh auth login" in bad.content[0].text
+    assert starter.calls == []
