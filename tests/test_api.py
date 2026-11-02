@@ -226,3 +226,22 @@ async def test_the_sign_in_cookie_follows_the_scheme_the_request_came_in_on(tmp_
         )
     assert r.status_code == 204
     assert ("secure" in r.headers["set-cookie"].lower()) is secure
+
+
+async def test_the_choice_can_be_cleared_so_the_voice_decides_again(bridge):
+    server, app, _, _ = bridge
+    async with client(app) as c:
+        await c.put("/api/v1/active", json={"session": "billing-ab"}, headers=BEARER)
+        stream = asyncio.create_task(c.get("/api/v1/events?max_events=1", headers=BEARER))
+        await asyncio.sleep(0.3)
+        cleared = await c.delete("/api/v1/active", headers=BEARER)
+        events = sse((await asyncio.wait_for(stream, 10)).text)
+        after = (await c.get("/api/v1/active", headers=BEARER)).json()
+        await c.post("/api/v1/signin", json={"secret": SECRET})
+        foreign = await c.delete("/api/v1/active", headers={"Origin": "https://evil.test"})
+    assert cleared.status_code == 204 and after is None
+    assert events == [("active", None)]
+    assert foreign.status_code == 403
+    async with Client(server) as mcp:
+        seen = (await mcp.call_tool("get_active_session", {})).structured_content
+    assert seen["name"] is None
