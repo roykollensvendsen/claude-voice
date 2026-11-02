@@ -116,8 +116,8 @@ the bridge says which are missing, with the exact fix, through its
 
 ## The companion app
 
-claude-voice-ui is a phone app, built as its own project, that sits beside the
-voice. It shows every session as a card. Tapping one makes it the session the
+[claude-voice-ui](https://github.com/roykollensvendsen/claude-voice-ui) is a
+phone app, built as its own project, that sits beside the voice. It shows every session as a card. Tapping one makes it the session the
 voice talks to, and while you talk it shows what that session last wrote and
 whether it waits for you. It reads the bridge only through the
 [event API](docs/event-api.md): a few JSON endpoints and one stream of live
@@ -126,7 +126,7 @@ events, behind the bridge's own login. Any other app can use the same API.
 The app and the API answer only this computer and your tailnet, never the
 internet through Funnel. To open it on the phone:
 
-1. Build the app, and set `CLAUDE_VOICE_UI_DIR` in
+1. Clone and build the app (its README says how), and set `CLAUDE_VOICE_UI_DIR` in
    `~/.config/claude-voice/env` to its built folder; `deploy/install.sh` does
    this when it finds `../claude-voice-ui/dist`. Restart the service.
 2. Give the bridge a port that only the tailnet reaches. Choose one or both:
