@@ -392,3 +392,28 @@ async def test_asking_for_a_turn_that_does_not_exist_is_a_clear_error(tmp_path, 
     async with Client(bridge(tmp_path, root, live, target, None)) as c:
         res = await c.call_tool("read_session_output", {"session": "billing-ab", "turn": 99})
     assert res.is_error and "no turn 99" in res.content[0].text.lower()
+
+
+async def test_a_reply_is_final_only_once_the_turn_has_ended(tmp_path, root, live):
+    # Seen live: the whole answer was written, the turn not yet closed at the cap, and
+    # the relay could not tell a finished reply from a partial one.
+    target = Target(live, str(root / "billing"))
+    closes = []
+
+    async def deliver(name, text):
+        target.set("busy")
+        target.transcript.append(msg("user", text))
+        target.says("Here is the whole answer.")
+        if closes:
+            target.set("idle")
+        return {"delivered": True, "detail": "DELIVERED"}
+
+    async with Client(bridge(tmp_path, root, live, target, deliver)) as c:
+        so_far = await call(c, "ask_active_session", session="billing-ab", message="go", wait_seconds=0.2)
+        closes.append(True)
+        done = await call(c, "ask_active_session", session="billing-ab", message="again", wait_seconds=5)
+    assert so_far["status"] == "still_working"
+    assert so_far["reply"] == "Here is the whole answer."
+    assert so_far["reply_final"] is False
+    assert done["status"] == "answered"
+    assert done["reply_final"] is True
