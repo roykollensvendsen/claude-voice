@@ -7,6 +7,7 @@ import contextlib
 import json
 import logging
 import logging.handlers
+import re
 import secrets
 import subprocess
 import sys
@@ -143,6 +144,18 @@ def _parse_cursor(cursor: str | None) -> tuple[int | None, int | None]:
         return int(b.removeprefix("b")), int(f.removeprefix("f"))
     except ValueError:
         return None, None
+
+
+REMOTE_ID = re.compile(r"session_[A-Za-z0-9]+")
+
+
+def app_url(bridge_session_id: Any) -> str | None:
+    """The address that opens a Remote Control session in the Claude app, from the id
+    Claude Code records for it; None when the session is not on Remote Control."""
+    # RULE: only a well-formed remote control id becomes a link
+    if not isinstance(bridge_session_id, str) or not REMOTE_ID.fullmatch(bridge_session_id):
+        return None
+    return f"https://claude.ai/code/{bridge_session_id}"
 
 
 VOICE_STORE: list[Store] = []  # the store voice calls are counted in, set by build_server
@@ -498,6 +511,7 @@ def build_server(
                 "waiting_kind": waiting_kind,
                 "git": git_of(str(row["claude_session_id"]), str(d.get("cwd"))) if d.get("cwd") else None,
                 "context": usage.context(statusline_dir, str(row["claude_session_id"])),
+                "app_url": app_url(d.get("bridgeSessionId")),
                 "doing": doing,
                 "minutes_since_update": row["minutes_since_update"],
             }
@@ -526,6 +540,7 @@ def build_server(
                     "waiting_kind": None,
                     "git": git_of(s["id"], s["project_path"]),
                     "context": None,
+                    "app_url": None,
                     "doing": transcripts.first_sentence(words) if words else "",
                     "minutes_since_update": round((manager.clock() - s["updated_at"]) / 60),
                 }

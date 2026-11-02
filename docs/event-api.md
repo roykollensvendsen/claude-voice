@@ -72,6 +72,10 @@ ran in the last day, with the session the owner talks to:
 - `doing`: one line on what it is doing, fit to show or say. It starts
   `venter på valg:` when it waits on a question.
 - `question` and `waiting_for` appear only while it waits.
+- `app_url`: the address that opens the session in the Claude app, such as
+  `https://claude.ai/code/session_…`, while it is connected to Remote Control;
+  otherwise `null`. A terminal session gets one when it is started with
+  `claude --remote-control`, or connected later with `/remote-control`.
 - `git`: where the session's folder stands in git, or `null` when it is not a
   repository:
   `{"branch": "feat/x" or null when detached, "commit": {"hash", "subject"},
