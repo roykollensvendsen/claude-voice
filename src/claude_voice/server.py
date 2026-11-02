@@ -277,6 +277,7 @@ def build_server(
         if api.HUB.listening():
             fleet_recap()  # notes each session's state, and announces the ones that changed
             update_state()  # and each step of an update under way
+            announce_new_turns()
 
     @contextlib.asynccontextmanager
     async def lifespan(_server):
@@ -636,6 +637,26 @@ def build_server(
             return await launch_role(role, task)
         except LookupError as exc:
             raise ToolError(str(exc)) from None
+
+    transcript_sizes: dict[str, int] = {}
+
+    def announce_new_turns() -> None:
+        """Tell open streams which running session wrote something new. A transcript is only
+        read once it has grown, so a quiet session costs one look at its size."""
+        for d in live_sessions():
+            sid, cwd = str(d.get("sessionId")), str(d.get("cwd"))
+            path = projects_dir / project_key_for_directory(cwd) / f"{sid}.jsonl"
+            try:
+                size = path.stat().st_size
+            except OSError:
+                continue
+            seen = transcript_sizes.get(sid)
+            transcript_sizes[sid] = size
+            if seen is None or size <= seen:
+                continue
+            turns = numbered_turns(d)
+            if turns:
+                api.HUB.publish("output", {"session": sid, "index": turns[-1]["index"], "role": turns[-1]["role"]})
 
     update_steps_seen: list[int] = [0]
 
