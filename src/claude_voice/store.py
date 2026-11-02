@@ -42,6 +42,15 @@ CREATE TABLE IF NOT EXISTS settings(
   value TEXT NOT NULL,
   updated_at REAL NOT NULL
 );
+-- Calls the bridge served to a voice client: the voice estimate's raw count.
+CREATE TABLE IF NOT EXISTS voice_calls(
+  ts REAL NOT NULL,
+  client TEXT NOT NULL,
+  connection TEXT NOT NULL,
+  tool TEXT NOT NULL,
+  chars INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS voice_calls_ts ON voice_calls(ts);
 -- Background sessions this bridge started; only these may it stop.
 CREATE TABLE IF NOT EXISTS started(
   claude_session_id TEXT PRIMARY KEY,
@@ -94,6 +103,17 @@ class Store:
     def set_setting(self, key: str, value: Any) -> None:
         with self.db:
             self.db.execute("INSERT OR REPLACE INTO settings VALUES (?, ?, ?)", (key, json.dumps(value), self.clock()))
+
+    def add_voice_call(self, ts: float, client: str, connection: str, tool: str, chars: int) -> None:
+        with self.db:
+            self.db.execute("DELETE FROM voice_calls WHERE ts < ?", (ts - 31 * 86400,))
+            self.db.execute("INSERT INTO voice_calls VALUES (?, ?, ?, ?, ?)", (ts, client, connection, tool, chars))
+
+    def voice_calls_since(self, since: float) -> list[tuple[float, str, str, int]]:
+        rows = self.db.execute(
+            "SELECT ts, client, connection, chars FROM voice_calls WHERE ts >= ? ORDER BY ts", (since,)
+        ).fetchall()
+        return [(float(r[0]), str(r[1]), str(r[2]), int(r[3])) for r in rows]
 
     def clear_setting(self, key: str) -> None:
         with self.db:
