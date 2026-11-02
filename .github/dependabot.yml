@@ -1,16 +1,28 @@
 # Actions are pinned to a commit so they cannot change under us; this is what
 # moves the pins deliberately, as GitHub's hardening guide asks.
+#
+# Once a month, one pull request per ecosystem: all of a month's updates for
+# the workflows in one, and all for the Python packages in another, so a month
+# costs two reviews rather than one per package.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+    open-pull-requests-limit: 2
+    groups:
+      actions:
+        patterns: ["*"]
     commit-message:
       prefix: ci        # the commit convention this repository enforces
   - package-ecosystem: uv
     directory: /
     schedule:
       interval: monthly
+    open-pull-requests-limit: 2
+    groups:
+      python:
+        patterns: ["*"]
     commit-message:
       prefix: build
