@@ -117,3 +117,27 @@ def test_a_date_or_number_with_a_full_stop_does_not_end_the_sentence(world):
         doing_line("s1", str(world / "home" / "billing"), world / "projects")
         == "Siden 4. oktober har 3. utkast ventet."
     )
+
+
+async def test_a_session_on_remote_control_carries_the_link_that_opens_it_in_the_claude_app(world):
+    running(world, "billing-ab", "billing", "s1", status="idle")
+    running(world, "export-cd", "export", "s2", status="idle")
+    path = world / "live" / "billing-ab.json"
+    entry = json.loads(path.read_text())
+    entry["bridgeSessionId"] = "session_01AbCdEf"
+    path.write_text(json.dumps(entry))
+    m = SessionManager(Store(world / "b.db"), project_root=world / "home", client_factory=FakeClaude())
+    server = build_server(m, conversations=lambda **k: [], live_dir=world / "live", projects_dir=world / "projects")
+    async with Client(server) as c:
+        rows = {r["name"]: r for r in (await c.call_tool("fleet_recap", {})).structured_content["sessions"]}
+    assert rows["billing-ab"]["app_url"] == "https://claude.ai/code/session_01AbCdEf"
+    assert rows["export-cd"]["app_url"] is None  # not on Remote Control
+
+
+def test_only_a_well_formed_remote_control_id_becomes_a_link():
+    from claude_voice.server import app_url
+
+    assert app_url("session_01AbCdEf") == "https://claude.ai/code/session_01AbCdEf"
+    assert app_url(None) is None
+    assert app_url("session_01/../../evil") is None
+    assert app_url("https://elsewhere.example") is None
