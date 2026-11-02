@@ -43,4 +43,7 @@ replace = 'if False:'
 name = "an access-token lifetime that is not a whole number of at least a minute stops the bridge"
 file = "src/claude_voice/server.py"
 find = 'if not ttl.isdigit\(\) or int\(ttl\) < MIN_ACCESS_TTL:'
+name = "only a well-formed model name and a known effort reach Claude Code"
+file = "src/claude_voice/server.py"
+find = 'if model is not None and not transcripts\.MODEL_NAME\.fullmatch\(model\):'
 replace = 'if False:'
