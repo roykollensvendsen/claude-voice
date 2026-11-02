@@ -559,7 +559,24 @@ def shared_reader() -> SideReader:
 _courier = Courier()
 
 
-async def start_background(cwd: str, name: str) -> None:
+# Which models exist is Claude Code's to say, so a name is only checked for its shape.
+MODEL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._\[\]-]{0,99}")
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
+
+
+def background_command(cli: str, name: str, model: str | None = None, effort: str | None = None) -> list[str]:
+    """The command that starts a named background session, on a model and effort if given."""
+    return [
+        cli,
+        "--bg",
+        "--name",
+        name,
+        *(["--model", model] if model else []),
+        *(["--effort", effort] if effort else []),
+    ]
+
+
+async def start_background(cwd: str, name: str, model: str | None = None, effort: str | None = None) -> None:
     """Start a Claude Code session in the background, as `claude --bg` does from a terminal.
 
     It runs under the owner's own Claude Code and settings, and appears in the running
@@ -572,10 +589,7 @@ async def start_background(cwd: str, name: str) -> None:
     bundled = Path(claude_agent_sdk.__file__).parent / "_bundled" / "claude"
     cli = shutil.which("claude") or str(bundled)
     proc = await asyncio.create_subprocess_exec(
-        cli,
-        "--bg",
-        "--name",
-        name,
+        *background_command(cli, name, model, effort),
         cwd=cwd,
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,

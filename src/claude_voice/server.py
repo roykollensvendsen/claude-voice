@@ -181,7 +181,7 @@ def build_server(
     read_transcript: Callable[[str, str | None], list[Any]] | None = None,
     watch_interval: float | None = None,
     restart: dict[str, Any] | None = None,
-    start_background: Callable[[str, str], Awaitable[None]] = transcripts.start_background,
+    start_background: Callable[..., Awaitable[None]] = transcripts.start_background,
     stop_background: Callable[[str], Awaitable[None]] = transcripts.stop_background,
     start_seconds: float = 20.0,
     summarize: Callable[[str, str | None, str | None], Awaitable[str]] = transcripts.summarize,
@@ -415,9 +415,18 @@ def build_server(
         return {**out, "status": "not_running"}
 
     @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
-    async def start_active_session(project: str, name: str | None = None) -> dict[str, Any]:
+    async def start_active_session(
+        project: str, name: str | None = None, model: str | None = None, effort: str | None = None
+    ) -> dict[str, Any]:
         """Start a new Claude Code session in the background in a project (from list_projects),
-        named `name` or after the project. It is listed at once, so ask_active_session reaches it."""
+        named `name` or after the project. It is listed at once, so ask_active_session reaches it.
+        Optional: `model` (an alias such as opus or sonnet, or a full name) and `effort` (low,
+        medium, high, xhigh or max); left out, Claude Code's defaults apply."""
+        # RULE: only a well-formed model name and a known effort reach Claude Code
+        if model is not None and not transcripts.MODEL_NAME.fullmatch(model):
+            raise ToolError(f"Not a model name: {model!r}. Use an alias such as opus, or a full model name.")
+        if effort is not None and effort not in transcripts.EFFORTS:
+            raise ToolError(f"Unknown effort {effort!r}; use one of: {', '.join(transcripts.EFFORTS)}.")
         try:
             path = manager.resolve_project(project)
         except ValueError as exc:
@@ -427,7 +436,10 @@ def build_server(
         while wanted in taken:
             wanted = f"{wanted}-{secrets.token_hex(2)}"
         try:
-            await start_background(str(path), wanted)
+            if model or effort:
+                await start_background(str(path), wanted, model=model, effort=effort)
+            else:
+                await start_background(str(path), wanted)
         except Exception as exc:
             raise ToolError(f"Claude Code could not start a session: {exc}") from None
         deadline = time.monotonic() + start_seconds
@@ -440,6 +452,13 @@ def build_server(
                     "claude_session_id": found.get("sessionId"),
                     "project": under_root(str(path)),
                     "status": found.get("status") or "idle",
+                    # Claude Code accepts any model name at start and refuses an unknown one only
+                    # in its first reply, so a start alone does not prove the model works.
+                    **(
+                        {"note": "Claude Code checks the model only at the first reply; rely on the session after it."}
+                        if model
+                        else {}
+                    ),
                 }
             await asyncio.sleep(0.2)
         raise ToolError(f"{wanted} was started but did not appear among the running sessions")
