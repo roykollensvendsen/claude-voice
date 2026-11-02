@@ -251,6 +251,8 @@ def build_server(
 
     mcp = MCPServer(
         "claude-voice",
+        title="Claude voice bridge",
+        version=running_version,
         instructions=INSTRUCTIONS,
         auth_server_provider=oauth,
         auth=auth,
@@ -282,7 +284,7 @@ def build_server(
             )
         raise ToolError(f"No session with id {session_id}")
 
-    @mcp.tool(annotations=READ_ONLY)
+    @mcp.tool(title="List recent project folders", annotations=READ_ONLY)
     def list_projects(query: str | None = None) -> dict[str, Any]:
         """Folders Claude can be started in: those used in the last 30 days, newest first.
         A word from a name (`query`) searches every folder. At most 20."""
@@ -310,7 +312,10 @@ def build_server(
             ],
         }
 
-    @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
+    @mcp.tool(
+        title="Create a bridge session in a project",
+        annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False),
+    )
     def create_session(project: str, label: str | None = None) -> dict[str, Any]:
         """Start a new Claude Code session in a project (a name from list_projects)."""
         try:
@@ -318,14 +323,17 @@ def build_server(
         except ValueError as exc:
             raise ToolError(str(exc)) from None
 
-    @mcp.tool(annotations=READ_ONLY)
+    @mcp.tool(title="List the bridge's sessions", annotations=READ_ONLY)
     def list_sessions() -> dict[str, Any]:
         """Sessions this bridge started (`sessions`, newest 20) and every Claude Code session
         running on the machine (`running_claude_code_sessions`)."""
         rows = [s for s in store.list_sessions(limit=100) if s["status"] != "closed"][:20]
         return {"sessions": rows, "running_claude_code_sessions": running()}
 
-    @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+    @mcp.tool(
+        title="Send a task to a bridge session",
+        annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True),
+    )
     async def send_task(session_id: str, prompt: str) -> dict[str, Any]:
         """Give Claude a task or follow-up. Returns at once; poll session_recap for progress."""
         session_id = known(session_id)
@@ -335,7 +343,7 @@ def build_server(
             msg = str(exc) if not isinstance(exc, SessionClosed) else "That session is closed."
             raise ToolError(msg) from None
 
-    @mcp.tool(annotations=READ_ONLY)
+    @mcp.tool(title="Show a bridge session's status", annotations=READ_ONLY)
     def session_recap(session_id: str, max_chars: int = 400) -> dict[str, Any]:
         """Short status of one session: running or not, last prompt, latest words, result.
         Texts are cut to max_chars each."""
@@ -346,7 +354,7 @@ def build_server(
                 recap[key] = transcripts.clip(recap[key], max(max_chars, 20))
         return recap
 
-    @mcp.tool(annotations=READ_ONLY)
+    @mcp.tool(title="Show what every session is doing", annotations=READ_ONLY)
     def fleet_recap() -> dict[str, Any]:
         """Every session in one call: running Claude Code sessions and the bridge's own
         (active in the last day), each with status and `doing`, one line on what it is
@@ -392,7 +400,9 @@ def build_server(
             )
         return {"sessions": sessions}
 
-    @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
+    @mcp.tool(
+        title="Stop a session's current turn", annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False)
+    )
     async def cancel(session_id: str) -> dict[str, Any]:
         """Stop the current turn of a session; the session stays usable. `status` says whether
         it was interrupted, not running, or not_supported (a terminal session: stop it there)."""
@@ -414,7 +424,9 @@ def build_server(
             return {**out, "status": "interrupted", "how": "sdk"}
         return {**out, "status": "not_running"}
 
-    @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
+    @mcp.tool(
+        title="Start a background session", annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False)
+    )
     async def start_active_session(
         project: str, name: str | None = None, model: str | None = None, effort: str | None = None
     ) -> dict[str, Any]:
@@ -463,7 +475,9 @@ def build_server(
             await asyncio.sleep(0.2)
         raise ToolError(f"{wanted} was started but did not appear among the running sessions")
 
-    @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+    @mcp.tool(
+        title="Stop a background session", annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True)
+    )
     async def stop_active_session(name: str) -> dict[str, Any]:
         """Stop a background session that start_active_session started. Any other session,
         such as one open in a terminal, is refused (status not_started_here)."""
@@ -485,7 +499,9 @@ def build_server(
             await asyncio.sleep(0.2)
         return {"name": name, "status": "stopped"}
 
-    @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
+    @mcp.tool(
+        title="Retire a bridge session", annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False)
+    )
     def close_session(session_id: str) -> dict[str, Any]:
         """Retire a session. Its history is kept."""
         session_id = known(session_id)
@@ -506,7 +522,7 @@ def build_server(
     def live_sessions() -> list[dict[str, Any]]:
         return events.read_live(live_dir)
 
-    @mcp.tool(annotations=READ_ONLY)
+    @mcp.tool(title="List the sessions running now", annotations=READ_ONLY)
     def list_active_sessions() -> dict[str, Any]:
         """Claude Code sessions running on this machine right now, with whether each is
         busy or waiting for input. kind: "interactive" is a terminal window the user
@@ -554,7 +570,7 @@ def build_server(
         sessions.sort(key=lambda s: s["minutes_since_update"])
         return sessions
 
-    @mcp.tool(annotations=READ_ONLY)
+    @mcp.tool(title="List recent conversations", annotations=READ_ONLY)
     def list_claude_conversations(project: str | None = None, limit: int = 10) -> dict[str, Any]:
         """Recent Claude Code conversations on this machine, newest first, including ones
         started in a terminal. Optionally only for one project."""
@@ -587,7 +603,10 @@ def build_server(
                 break
         return {"conversations": listed}
 
-    @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
+    @mcp.tool(
+        title="Continue an earlier conversation",
+        annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False),
+    )
     def attach_conversation(
         claude_session_id: str, project: str | None = None, label: str | None = None
     ) -> dict[str, Any]:
@@ -625,7 +644,10 @@ def build_server(
                 return d
         raise ToolError(f"No running session called {session!r}; see list_active_sessions")
 
-    @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+    @mcp.tool(
+        title="Send a message to an open session",
+        annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True),
+    )
     async def message_active_session(session: str, message: str) -> dict[str, Any]:
         """Send a message into a running Claude Code session (name or id from
         list_active_sessions); read its answer later with read_session_output."""
@@ -642,7 +664,9 @@ def build_server(
         msgs = read_transcript(target["sessionId"], target.get("cwd"))
         return [{"index": i, **turn} for i, turn in enumerate(transcripts.recent_turns(msgs, None))]
 
-    @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+    @mcp.tool(
+        title="Ask an open session and wait", annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True)
+    )
     async def ask_active_session(
         session: str, message: str, wait_seconds: float = 60, max_chars: int = 600
     ) -> dict[str, Any]:
@@ -752,7 +776,7 @@ def build_server(
             **({"question": blocked["question"]} if status == "needs_choice" and blocked else {}),
         }
 
-    @mcp.tool(annotations=READ_ONLY)
+    @mcp.tool(title="Read an open session's latest turns", annotations=READ_ONLY)
     def read_session_output(
         session: str,
         limit: int = 6,
@@ -824,7 +848,7 @@ def build_server(
         kept.reverse()
         return kept, lines[: len(lines) - len(kept)]
 
-    @mcp.tool(annotations=READ_ONLY)
+    @mcp.tool(title="Ask a quick side question about a session", annotations=READ_ONLY)
     async def side_question(session: str, question: str, language: str | None = None) -> dict[str, Any]:
         """A quick answer (usually three to seven seconds) to a question about a running session, read from
         what it has written lately. The question is never sent into the session."""
@@ -833,7 +857,7 @@ def build_server(
         answer = await side_answer("\n".join(kept), question, language)
         return {"answer": transcripts.whole_sentences(answer, 300), "considered_turns": len(kept), "cut": bool(skipped)}
 
-    @mcp.tool(annotations=READ_ONLY)
+    @mcp.tool(title="Sum up a session's conversation", annotations=READ_ONLY)
     async def digest_session(session: str, question: str | None = None, language: str | None = None) -> dict[str, Any]:
         """Sum up a running session's conversation, or answer `question` about it, in a few
         speakable sentences, in `language` if given (e.g. "norsk"); takes about ten seconds.
@@ -850,7 +874,7 @@ def build_server(
             "skipped_chars": sum(len(x) for x in skipped),
         }
 
-    @mcp.tool(annotations=READ_ONLY)
+    @mcp.tool(title="Search a session's conversation", annotations=READ_ONLY)
     def search_session_history(session: str, query: str, max_chars: int = 300) -> dict[str, Any]:
         """Search the whole conversation of a running Claude Code session (name or id from
         list_active_sessions) for keywords; returns only the most relevant excerpts.
@@ -863,7 +887,7 @@ def build_server(
             match["text"] = transcripts.clip(match["text"], size)
         return {"session": target["name"], "total_turns": len(turns), "matches": matches}
 
-    @mcp.tool(annotations=READ_ONLY)
+    @mcp.tool(title="Check for news since last time", annotations=READ_ONLY)
     def whats_new(cursor: str | None = None) -> dict[str, Any]:
         """Has anything happened since I last asked? Returns only new events (a session
         finished, failed, needs approval or input, started, ended) and a cursor to pass
@@ -881,7 +905,7 @@ def build_server(
             "events": [{k: v for k, v in e.items() if k not in ("seq",)} for e in items],
         }
 
-    @mcp.tool(annotations=READ_ONLY)
+    @mcp.tool(title="Show the tree of sessions", annotations=READ_ONLY)
     def session_tree() -> dict[str, Any]:
         """The sessions to choose from, as a tree: the bridge, the Claude Code sessions
         running on this machine, the sessions the bridge runs, helper agents, and for each
@@ -889,7 +913,7 @@ def build_server(
         when the shape changes; whats_new reports that as kind "tree_changed"."""
         return tree.build()
 
-    @mcp.tool(annotations=READ_ONLY)
+    @mcp.tool(title="Check the bridge's health", annotations=READ_ONLY)
     def health() -> dict[str, Any]:
         """The bridge's own state: since when and which version, memory, the last restart,
         calls/errors/latency per tool since start, the latest errors, courier and watcher."""
@@ -912,19 +936,23 @@ def build_server(
             },
         }
 
-    @mcp.tool(annotations=READ_ONLY)
+    @mcp.tool(title="List tool calls awaiting approval", annotations=READ_ONLY)
     def list_pending_approvals(session_id: str | None = None) -> dict[str, Any]:
         """Tool calls Claude is waiting to be allowed to make. Read each one to the user."""
         if manager.approvals is None:
             return {"approvals": []}
         return {"approvals": manager.approvals.pending(session_id)}
 
-    @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+    @mcp.tool(
+        title="Approve a pending tool call", annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True)
+    )
     def approve(approval_id: str) -> dict[str, Any]:
         """Allow one pending tool call. Only after the user has clearly said yes to it."""
         return _answer(lambda b: b.approve(approval_id))
 
-    @mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
+    @mcp.tool(
+        title="Refuse a pending tool call", annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False)
+    )
     def deny(approval_id: str, reason: str | None = None) -> dict[str, Any]:
         """Refuse one pending tool call; the reason is passed on to Claude."""
         return _answer(lambda b: b.deny(approval_id, reason))
