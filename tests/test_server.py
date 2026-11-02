@@ -390,8 +390,14 @@ async def test_tool_calls_are_logged_by_name(tmp_path, root, caplog):
             await call(client, "list_projects")
             await client.call_tool("session_recap", {"session_id": "nope"})
     lines = [r.getMessage() for r in caplog.records if r.name == "claude_voice"]
-    assert any(line.startswith("mcp tools/call list_projects -> ok ") and line.endswith("trace=-") for line in lines)
-    assert any(line.startswith("mcp tools/call session_recap -> error ") for line in lines)
+    assert any(line.startswith("mcp tools/call list_projects -> ok ") and "trace=-" in line for line in lines)
+    # A call aimed at a session says which, and every call says who made it.
+    assert any(
+        line.startswith("mcp tools/call session_recap -> error ")
+        and "session=nope" in line
+        and line.endswith("from=in_process")
+        for line in lines
+    )
 
 
 async def test_a_trace_id_sent_with_a_call_is_logged_with_it_and_its_time(tmp_path, root, caplog):
@@ -403,7 +409,9 @@ async def test_a_trace_id_sent_with_a_call_is_logged_with_it_and_its_time(tmp_pa
         async with Client(server) as client:
             await client.call_tool("list_projects", {}, meta={"trace_id": "ab12cd34ef56"})
     lines = [r.getMessage() for r in caplog.records if r.name == "claude_voice"]
-    assert any(re.fullmatch(r"mcp tools/call list_projects -> ok \d+ms trace=ab12cd34ef56", line) for line in lines)
+    assert any(
+        re.fullmatch(r"mcp tools/call list_projects -> ok \d+ms trace=ab12cd34ef56 from=\w+", line) for line in lines
+    )
 
 
 async def test_every_call_is_counted_with_its_time_and_outcome(tmp_path, root):

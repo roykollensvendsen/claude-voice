@@ -104,3 +104,9 @@ name = "an update whose tests fail is rolled back without a restart"
 file = "src/claude_voice/updater.py"
 find = 'if not ok:  # roll back'
 replace = 'if False:'
+
+[[rule]]
+name = "only talking to a session puts it in focus and a look at it does not"
+file = "src/claude_voice/api.py"
+find = 'event = "focus" if tool in TALK_TOOLS else "peek"'
+replace = 'event = "focus"'
