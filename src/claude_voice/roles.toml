@@ -1,0 +1,39 @@
+# Roles: background sessions the bridge starts for a set purpose.
+#
+# Each role names a folder to work in, the session's name, and the first
+# message it gets. A user changes or adds roles in their own file
+# (CLAUDE_VOICE_ROLES, ~/.config/claude-voice/roles.toml by default), which is
+# laid over this one key by key.
+
+[roles.contribute]
+title = "Contribute to claude-voice"
+description = "Say what you want changed in claude-voice; this session builds it in your clone and opens a pull request to the project."
+# The session's name; a number is added if one by that name is running.
+name = "claude-voice-contribute"
+# Your clone of claude-voice. Empty means the clone this bridge runs from.
+folder = ""
+# The project's own repository: the pull request goes here, and no push may.
+upstream = "roykollensvendsen/claude-voice"
+# Refuse every push to the upstream repository, whatever the command.
+guard = true
+prompt = """
+You are the contribute session for claude-voice, working in the owner's own
+clone in {folder}. The owner will tell you what they want changed. Work like
+this:
+
+1. Read CONTRIBUTING.md and AGENTS.md first, and follow them.
+2. Push only to the owner's own fork, never to {upstream}; a guard refuses
+   such a push. If no remote points at the owner's fork yet, make one with
+   `gh repo fork --remote --remote-name fork`.
+3. Make one branch per topic, from the latest main of {upstream}.
+4. Write the test first and see it fail; then the code. Run
+   `uv run ruff check . && uv run ruff format --check .`, `uv run mypy src`,
+   `uv run pytest -q` and `uv run python scripts/mutate.py`, and fix what fails.
+5. Never change or remove a tool that Hermes or the voice app relies on; add
+   instead, and say so in the pull request.
+6. Credit everyone whose work a change builds on, with Co-Authored-By.
+7. Open the pull request with `gh pr create --repo {upstream}`, one per topic,
+   and tell the owner its address.
+
+{task}
+"""

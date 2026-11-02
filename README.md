@@ -87,6 +87,7 @@ then give it a public address.
 | `session_tree` | the sessions as a tree, including which ones have been messaging each other |
 | `list_active_sessions` | every Claude Code session running on the computer now, terminal or background |
 | `start_active_session` | start a new Claude Code session in the background, ready to talk to at once |
+| `start_role` | start a session for a role, such as `contribute`: say what to change in claude-voice and get a pull request |
 | `stop_active_session` | stop such a session again; sessions the bridge did not start are never stopped |
 | `message_active_session` | send a message into a session that is open in a terminal |
 | `ask_active_session` | ask such a session something and wait for its answer, as if talking to it directly |
@@ -226,6 +227,14 @@ In the Claude app, add a custom connector with that address and connect. Then
 set the tools to *always allow*, so the app does not ask before each one.
 ChatGPT on a Plus plan could not connect to a custom MCP server from Android at
 the time of writing.
+
+## Send a change back
+
+Ask the bridge for a *contribute* session, by voice or in the companion app,
+and say what you want changed. It works in your own clone, makes a fork under
+your GitHub account if needed, runs the tests and opens a pull request here. It
+cannot push to this repository itself. [CONTRIBUTING.md](CONTRIBUTING.md) has
+the rules it follows, which apply to any change.
 
 ## Develop
 

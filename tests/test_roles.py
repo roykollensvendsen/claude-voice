@@ -88,6 +88,18 @@ class Starter:
         )
 
 
+class Stopper:
+    """Stands in for `claude stop`: the session's registry entry goes away."""
+
+    def __init__(self, live):
+        self.live = live
+
+    async def __call__(self, session_id):
+        for f in self.live.glob("*.json"):
+            if json.loads(f.read_text()).get("sessionId") == session_id:
+                f.unlink()
+
+
 @pytest.fixture
 def world(tmp_path):
     home = tmp_path / "home"
@@ -110,6 +122,7 @@ def bridge(tmp_path, world, starter, oauth=None):
         conversations=lambda **k: [],
         live_dir=live,
         start_background=starter,
+        stop_background=Stopper(live),
         start_seconds=1.0,
         roles_file=table,
     )
@@ -129,7 +142,7 @@ async def test_starting_the_contribute_role_runs_a_guarded_session_in_the_users_
     assert "Add a dark theme" in call["prompt"] and UPSTREAM in call["prompt"] and "gh pr create" in call["prompt"]
     hook = json.loads(call["settings"])["hooks"]["PreToolUse"][0]
     assert hook["matcher"] == "Bash" and "claude_voice.guard" in hook["hooks"][0]["command"]
-    assert stopped["status"] != "not_started_here"  # the bridge may stop what it started
+    assert stopped["status"] == "stopped"  # the bridge may stop what it started
 
 
 async def test_an_unknown_role_is_refused(tmp_path, world):

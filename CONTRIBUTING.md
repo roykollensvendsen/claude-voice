@@ -83,6 +83,33 @@ cannot be tidied at the end by squashing it, which is why `committed.toml`
 refuses a fixup and a work-in-progress commit rather than trusting you to clean
 up later.
 
+## Three more rules for every change
+
+- **One pull request per topic.** Several small changes on one subject go
+  together; changes on different subjects go apart, so each can be reviewed,
+  tested and, if need be, reverted on its own.
+- **Never break what Hermes or the voice app uses.** Other programs call the
+  bridge's tools by name and read their fields. Add a tool or a field rather
+  than renaming or removing one, and say in the pull request which callers it
+  touches. A change that must break one is agreed with that caller first.
+- **Credit the people whose work a change builds on.** A commit that takes in
+  someone else's work keeps them as author, or names them with a
+  `Co-Authored-By:` line.
+
+## Sending a change from your own clone
+
+You do not need to set any of this up by hand. Ask the bridge for the
+*contribute* session, by voice ("start a contribute session") or in the
+companion app. It starts a Claude Code session in your clone of claude-voice
+that already knows these rules. Tell it what you want changed; it makes a fork
+under your GitHub account if you have none, works on a branch, runs the gates
+above, and opens a pull request to this repository.
+
+It cannot push to this repository itself: a guard refuses every push whose
+target is `roykollensvendsen/claude-voice`, however the command is written.
+Its folder, name and first message are set in `src/claude_voice/roles.toml`;
+change them for yourself in `~/.config/claude-voice/roles.toml`.
+
 ## Documents that restate a fact
 
 Point rather than copy. Where a document has to copy anyway, two test files

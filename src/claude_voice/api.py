@@ -105,6 +105,8 @@ class EventApi:
         pending: Callable[[str], dict[str, Any]],
         prs: Callable[[str], Awaitable[dict[str, Any]]],
         news: Callable[[str | None], dict[str, Any]],
+        roles: Callable[[], dict[str, Any]] | None = None,
+        start_role: Callable[[str, str | None], Awaitable[dict[str, Any]]] | None = None,
         ui_origins: list[str] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -114,6 +116,8 @@ class EventApi:
         self.check_token = check_token
         self.sessions, self.get_active, self.set_active = sessions, get_active, set_active
         self.output, self.pending, self.prs, self.news = output, pending, prs, news
+        self.roles = roles or (lambda: {"roles": []})
+        self.start_role = start_role
         self.ui_origins = [o.rstrip("/") for o in ui_origins or []]
         self.clock = clock
         self._failures: list[float] = []
@@ -128,6 +132,8 @@ class EventApi:
         route("/api/v1/sessions/{session}/pending", methods=["GET"])(self.session_pending)
         route("/api/v1/sessions/{session}/prs", methods=["GET"])(self.session_prs)
         route("/api/v1/events", methods=["GET"])(self.events)
+        route("/api/v1/roles", methods=["GET"])(self.list_roles)
+        route("/api/v1/roles/{role}/start", methods=["POST"])(self.role_start)
 
     # -- who is asking ---------------------------------------------------------------
 
@@ -244,6 +250,31 @@ class EventApi:
 
     async def session_prs(self, request: Request) -> Response:
         return await self._one(request, self.prs)
+
+    # -- roles -----------------------------------------------------------------------
+
+    async def list_roles(self, request: Request) -> Response:
+        if not await self._allowed(request):
+            return JSONResponse({"error": "sign in first"}, 401)
+        return JSONResponse(self.roles(), headers={"Cache-Control": "no-store"})
+
+    async def role_start(self, request: Request) -> Response:
+        refused = await self._change_allowed(request)
+        if refused:
+            return refused
+        if self.start_role is None:
+            return JSONResponse({"error": "no roles here"}, 404)
+        try:
+            body = await request.json()
+        except ValueError:
+            body = {}
+        task = (body or {}).get("task")
+        try:
+            return JSONResponse(await self.start_role(request.path_params["role"], str(task) if task else None))
+        except LookupError as exc:
+            return JSONResponse({"error": str(exc)}, 404)
+        except Exception as exc:  # the start failed; say why
+            return JSONResponse({"error": str(getattr(exc, "message", exc))}, 502)
 
     # -- the live stream -------------------------------------------------------------
 
