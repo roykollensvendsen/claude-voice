@@ -108,7 +108,7 @@ def world(tmp_path):
     live = tmp_path / "live"
     live.mkdir()
     table = tmp_path / "roles.toml"
-    table.write_text(f'[roles.contribute]\nfolder = "{clone}"\n')
+    table.write_text(f"[roles.contribute]\nfolder = '{clone}'\n")  # a literal string: Windows paths have backslashes
     return home, clone, live, table
 
 
