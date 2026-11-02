@@ -134,3 +134,24 @@ def test_tools_in_the_users_own_folders_are_found_when_the_service_path_leaves_t
     host = doctor.RealHost()
     assert host.which("uv") == str(tool)
     assert host.run("uv")[0] == 0
+
+
+def test_a_tcp_forward_on_the_tailnet_counts_as_the_tailnet_port(tmp_path):
+    host, clone, state = healthy(tmp_path)
+    tcp_only = json.dumps(
+        {
+            "TCP": {"8813": {"TCPForward": "127.0.0.1:8811"}},
+            "Web": {"box.ts.net:443": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:8811"}}}},
+            "AllowFunnel": {"box.ts.net:443": True},
+        }
+    )
+    host.answers[("tailscale", "serve", "status")] = (0, tcp_only)
+    serve = by_id(doctor.examine(host, {"folder": str(clone)}, state_dir=state, port=8811))["tailnet_port"]
+    assert serve["ok"] is True and "8813" in serve["detail"]
+
+
+def test_the_fix_for_a_missing_tailnet_port_offers_both_the_name_and_the_address(tmp_path):
+    host, clone, state = healthy(tmp_path)
+    host.answers[("tailscale", "serve", "status")] = (0, "{}")
+    serve = by_id(doctor.examine(host, {"folder": str(clone)}, state_dir=state, port=8811))["tailnet_port"]
+    assert "--https=8814" in serve["fix"] and "--tcp=8813" in serve["fix"]
