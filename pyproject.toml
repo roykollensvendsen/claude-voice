@@ -10,7 +10,7 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "claude-agent-sdk>=0.2.163",
+    "claude-agent-sdk>=0.2.175",
     "mcp>=2.3.0",
     "psutil>=7",
 ]
