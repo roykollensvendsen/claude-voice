@@ -728,8 +728,9 @@ def build_server(
     ) -> dict[str, Any]:
         """The latest turns of a running Claude Code session (name or id from
         list_active_sessions). Turns are numbered: pass next_after back as `after` to get
-        only new ones. A turn longer than max_chars is cut and says so (cut, length); read
-        it whole with `turn` (its index) and `offset`, page by page via next_offset."""
+        only new ones, and read on while turns_left is above 0. A turn longer than max_chars
+        is cut and says so (cut, length); read it whole with `turn` (its index) and `offset`,
+        page by page via next_offset."""
         target = find_live(session)
         turns = numbered_turns(target)
         size = max(max_chars, 20)
@@ -751,16 +752,25 @@ def build_server(
                 "has_more": end < len(whole["text"]),
                 "length": len(whole["text"]),
             }
+        left = 0
         if after is None:
             turns = turns[-min(max(limit, 1), 30) :]
         else:
-            turns = [t for t in turns if t["index"] > after][: min(max(limit, 1), 30)]
+            later = [t for t in turns if t["index"] > after]
+            turns = later[: min(max(limit, 1), 30)]
+            left = len(later) - len(turns)  # read on with next_after until this is 0
         for t in turns:
             t["length"] = len(t["text"])
             t["cut"] = t["length"] > size
             t["text"] = transcripts.clip(t["text"], size)
         next_after = turns[-1]["index"] if turns else (after if after is not None else -1)
-        return {"session": target["name"], "status": target.get("status"), "turns": turns, "next_after": next_after}
+        return {
+            "session": target["name"],
+            "status": target.get("status"),
+            "turns": turns,
+            "next_after": next_after,
+            "turns_left": left,
+        }
 
     def conversation_end(target: dict[str, Any], limit: int) -> tuple[list[str], list[str]]:
         """A session's conversation as lines, the end kept up to `limit` characters, and the rest."""
