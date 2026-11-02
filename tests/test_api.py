@@ -271,3 +271,17 @@ async def test_the_choice_can_be_cleared_so_the_voice_decides_again(bridge):
     async with Client(server) as mcp:
         seen = (await mcp.call_tool("get_active_session", {})).structured_content
     assert seen["name"] is None
+
+
+async def test_every_change_of_the_chosen_session_is_logged_with_who_made_it(bridge, caplog):
+    import logging
+
+    server, app, _, _ = bridge
+    with caplog.at_level(logging.INFO, logger="claude_voice"):
+        async with client(app) as c:
+            await c.put("/api/v1/active", json={"session": "billing-ab"}, headers=BEARER)
+            await c.delete("/api/v1/active", headers=BEARER)
+        async with Client(server) as mcp:
+            await mcp.call_tool("set_active_session", {"session": "billing-ab"})
+    lines = [r.getMessage() for r in caplog.records if r.name == "claude_voice" and r.getMessage().startswith("active")]
+    assert lines == ["active -> billing-ab by page", "active -> none by page", "active -> billing-ab by voice"]
