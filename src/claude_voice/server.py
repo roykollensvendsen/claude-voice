@@ -155,6 +155,14 @@ def _result_chars(result: Any) -> int:
     )
 
 
+def caller_kind(ctx: Any, trace: str | None) -> str:
+    """Who called, in a word: the Claude app, the voice app, another program here, or in process."""
+    request = getattr(ctx, "request", None)
+    if request is None:
+        return "in_process"
+    return usage.client_of(api.caller_address(getattr(request, "scope", None) or {}), trace) or "local"
+
+
 def note_voice_call(ctx: Any, tool: str, trace: str | None, result: Any) -> None:
     """Count a call served to the Claude app or the voice app, for the voice estimate."""
     request = getattr(ctx, "request", None)
@@ -194,10 +202,19 @@ async def log_requests(ctx, call_next):
         transcripts.current_trace.reset(token)
     ms = (time.monotonic() - started) * 1000
     if ctx.method == "tools/call":
-        api.publish_focus(tool, params.get("arguments"))
+        api.publish_focus(tool, params.get("arguments"), caller_kind(ctx, trace))
         note_voice_call(ctx, tool, trace, result)
         failed = getattr(result, "is_error", None) or (isinstance(result, dict) and result.get("isError"))
-        log.info("mcp %s -> %s %dms trace=%s", what, "error" if failed else "ok", ms, trace or "-")
+        target = api.session_of(tool, params.get("arguments"))
+        log.info(
+            "mcp %s -> %s %dms trace=%s%s from=%s",
+            what,
+            "error" if failed else "ok",
+            ms,
+            trace or "-",
+            f" session={target}" if target else "",
+            caller_kind(ctx, trace),
+        )
         error = None
         if failed:
             content = getattr(result, "content", None) or (result.get("content") if isinstance(result, dict) else None)

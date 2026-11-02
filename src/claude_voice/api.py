@@ -34,19 +34,12 @@ FAILURE_WINDOW = 600.0
 KEEP_ALIVE_SECONDS = 15.0
 NEWS_SECONDS = 2.0
 
-# Tools whose `session`, `session_id` or `name` argument names the session a caller reached.
-SESSION_TOOLS = {
-    "ask_active_session",
-    "message_active_session",
-    "read_session_output",
-    "search_session_history",
-    "digest_session",
-    "side_question",
-    "send_task",
-    "session_recap",
-    "cancel",
-    "stop_active_session",
-}
+# Tools that talk to a session, by its `session`, `session_id` or `name` argument: they
+# put it in focus, the session the voice is talking to now.
+TALK_TOOLS = {"ask_active_session", "message_active_session", "send_task", "cancel", "stop_active_session"}
+# Tools that only look at a session: a quieter `peek`, so a look never reads as talking.
+LOOK_TOOLS = {"read_session_output", "search_session_history", "digest_session", "side_question", "session_recap"}
+SESSION_TOOLS = TALK_TOOLS | LOOK_TOOLS
 
 
 TAILNET = (ipaddress.ip_network("100.64.0.0/10"), ipaddress.ip_network("fd7a:115c:a1e0::/48"))
@@ -137,13 +130,23 @@ class EventHub:
 HUB = EventHub()
 
 
-def publish_focus(tool: str, arguments: Any) -> None:
-    """Called for every tool call: tell open streams which session the caller reached."""
+def session_of(tool: str, arguments: Any) -> str | None:
+    """The session a tool call is aimed at, if it is aimed at one."""
     if tool not in SESSION_TOOLS or not isinstance(arguments, dict):
-        return
+        return None
     session = arguments.get("session") or arguments.get("session_id") or arguments.get("name")
-    if session:
-        HUB.publish("focus", {"session": str(session), "tool": tool, "at": now_iso()})
+    return str(session) if session else None
+
+
+def publish_focus(tool: str, arguments: Any, client: str | None = None) -> None:
+    """Called for every tool call: tell open streams which session the caller talked to,
+    or only looked at."""
+    session = session_of(tool, arguments)
+    if session is None:
+        return
+    # RULE: only talking to a session puts it in focus and a look at it does not
+    event = "focus" if tool in TALK_TOOLS else "peek"
+    HUB.publish(event, {"session": session, "tool": tool, "client": client, "at": now_iso()})
 
 
 class EventApi:

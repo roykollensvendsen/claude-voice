@@ -214,7 +214,8 @@ that must send a bearer token reads the stream with `fetch`.
 
 | `event:` | `data:` (JSON) | When |
 | --- | --- | --- |
-| `focus` | `{"session": "<id or name>", "tool": "ask_active_session", "at": "<iso>"}` | the voice, or any MCP client, just called a tool aimed at a session: asked it, messaged it, read it, summed it up |
+| `focus` | `{"session": "<id or name>", "tool": "ask_active_session", "client", "at": "<iso>"}` | the voice, or any MCP client, just talked to a session: asked it, messaged it, gave it a task, stopped it |
+| `peek` | the same fields | a caller only looked at a session: read it, searched it, summed it up, asked a side question about it. Not talking to it |
 | `active` | the `active` object | the session the owner talks to changed |
 | `status` | `{"session": "<id>", "name", "state", "previous", "since", "doing", "at"}` | a session's `state` changed |
 | `git` | `{"session": "<id>", "git": {...}}` | a session's git status changed |
@@ -224,6 +225,10 @@ that must send a bearer token reads the stream with `fetch`.
 
 A comment line (`: keep-alive`) comes every 15 seconds so proxies keep the
 stream open. Reconnecting is safe; nothing is replayed.
+
+`client` says who called: `claude_app` (from the internet, through the Claude
+app's connector), `voice_app` (this computer, with a trace id), `local` (another
+program here, such as Hermes) or `in_process`.
 
 `focus.session` is the value the caller passed, a name or an id, so match it
 against both. A UI that follows the conversation switches its view to that
