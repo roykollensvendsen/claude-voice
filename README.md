@@ -271,6 +271,24 @@ set the tools to *always allow*, so the app does not ask before each one.
 ChatGPT on a Plus plan could not connect to a custom MCP server from Android at
 the time of writing.
 
+## Answer questions and approvals from the phone
+
+With the companion app open, a session's choice box or permission prompt can be
+answered on the phone instead of at the terminal. A hook in your Claude Code
+settings hands it to the bridge; with the app closed it steps aside and the box
+shows in the terminal as before. Install it once, with the bridge's own Python:
+
+<!-- not run: changes the reader's Claude Code settings -->
+```
+uv run python -m claude_voice.phone_hook --install
+```
+
+It merges two hooks into `~/.claude/settings.json`, keeps everything already
+there, and saves the old file as `settings.json.bak`. The app and the API answer
+only this computer and the tailnet, behind the login, and every answer is
+logged. Anyone signed in to the app can approve commands on this computer, so
+sign in only on your own devices.
+
 ## Where your clones are
 
 The bridge works out where the project's repositories are, on GitHub and on

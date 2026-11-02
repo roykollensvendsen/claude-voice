@@ -122,3 +122,9 @@ name = "a repository that is not owner slash name is refused"
 file = "src/claude_voice/config.py"
 find = 'if not isinstance\(value, str\) or not REPO\.fullmatch\(value\) or "\.\." in value:'
 replace = 'if not isinstance(value, str):'
+
+[[rule]]
+name = "an answer that does not fit the prompt is refused"
+file = "src/claude_voice/api.py"
+find = 'reason = self\._fits\(prompt, body\)'
+replace = 'reason = None'

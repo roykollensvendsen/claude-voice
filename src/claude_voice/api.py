@@ -17,6 +17,7 @@ import hashlib
 import hmac
 import ipaddress
 import json
+import logging
 import secrets
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -128,6 +129,7 @@ class EventHub:
 
 
 HUB = EventHub()
+log = logging.getLogger("claude_voice")
 
 
 def session_of(tool: str, arguments: Any) -> str | None:
@@ -187,6 +189,7 @@ class EventApi:
         self.roles = roles or (lambda: {"roles": []})
         self.start_role = start_role
         self.ui_origins = [o.rstrip("/") for o in ui_origins or []]
+        self.prompts: dict[str, dict[str, Any]] = {}  # open questions and approvals, by id
         self.clock = clock
         self._failures: list[float] = []
 
@@ -201,6 +204,10 @@ class EventApi:
         route("/api/v1/sessions/{session}/prs", methods=["GET"])(self.session_prs)
         route("/api/v1/events", methods=["GET"])(self.events)
         route("/api/v1/roles", methods=["GET"])(self.list_roles)
+        route("/api/v1/prompts", methods=["GET", "POST"])(self.prompts_route)
+        route("/api/v1/prompts/{prompt}", methods=["POST"])(self.answer_prompt)
+        route("/api/v1/prompts/{prompt}/wait", methods=["GET"])(self.wait_prompt)
+        route("/api/v1/prompts/{prompt}/close", methods=["POST"])(self.close_prompt)
         route("/api/v1/doctor", methods=["GET"])(self.dependencies)
         route("/api/v1/usage", methods=["GET"])(self.usage_now)
         route("/api/v1/update", methods=["GET", "POST"])(self.update)
@@ -365,6 +372,131 @@ class EventApi:
         if self.bridge is None:
             return JSONResponse({"error": "not here"}, 404)
         return JSONResponse(self.bridge(), headers={"Cache-Control": "no-store"})
+
+    # -- questions and approvals from the phone -------------------------------------
+
+    @staticmethod
+    def _readable(tool: str, tool_input: Any) -> tuple[str, bool]:
+        """What an approval would run, short enough to read before saying yes."""
+        if not isinstance(tool_input, dict):
+            text = str(tool_input)
+        elif tool == "Bash":
+            text = str(tool_input.get("command", ""))
+        elif "file_path" in tool_input:
+            text = str(tool_input["file_path"])
+        else:
+            text = json.dumps(tool_input, ensure_ascii=False)
+        return (text[:300], True) if len(text) > 300 else (text, False)
+
+    def _public(self, prompt: dict[str, Any]) -> dict[str, Any]:
+        return {k: v for k, v in prompt.items() if k not in ("done", "answer", "raw_input")}
+
+    async def prompts_route(self, request: Request) -> Response:
+        if request.method == "GET":
+            if not await self._allowed(request):
+                return JSONResponse({"error": "sign in first"}, 401)
+            open_ = [self._public(p) for p in self.prompts.values() if p["answer"] is None]
+            return JSONResponse({"prompts": open_}, headers={"Cache-Control": "no-store"})
+        if not await self._bearer(request):  # only the hook on this computer opens prompts
+            return JSONResponse({"error": "sign in first"}, 401)
+        body = await request.json()
+        kind = body.get("kind")
+        prompt: dict[str, Any] = {
+            "id": secrets.token_hex(8),
+            "session": str(body.get("session_id", "")),
+            "kind": kind,
+            "asked_at": now_iso(),
+            "answer": None,
+            "done": asyncio.Event(),
+        }
+        if kind == "question":
+            first = ((body.get("question") or {}).get("questions") or [{}])[0]
+            prompt["question"] = {
+                "text": str(first.get("question", "")),
+                "header": str(first.get("header", "")),
+                "options": [
+                    {"label": str(o.get("label", "")), "description": str(o.get("description", ""))}
+                    for o in first.get("options") or []
+                    if isinstance(o, dict)
+                ],
+                "multi": bool(first.get("multiSelect")),
+            }
+        elif kind == "approval":
+            prompt["tool"] = str(body.get("tool", ""))
+            prompt["input"], prompt["cut"] = self._readable(prompt["tool"], body.get("input"))
+        else:
+            return JSONResponse({"error": "kind is question or approval"}, 400)
+        self.prompts[prompt["id"]] = prompt
+        HUB.publish("prompt", self._public(prompt))
+        # Wait for the phone only while someone has the app open; else the box shows at once.
+        return JSONResponse({"id": prompt["id"], "wait": HUB.listening()})
+
+    def _fits(self, prompt: dict[str, Any], body: dict[str, Any]) -> str | None:
+        """Why an answer does not fit its prompt, or None."""
+        if prompt["kind"] == "approval":
+            if body.get("decision") not in ("allow", "deny"):
+                return "an approval is answered with decision allow or deny"
+            return None
+        answer = body.get("answer")
+        if answer is None:
+            return "a question is answered with answer"
+        if isinstance(answer, dict):
+            return None if str(answer.get("text", "")).strip() else "a free answer needs text"
+        labels = [o["label"] for o in prompt["question"]["options"]]
+        chosen = answer if isinstance(answer, list) else [answer]
+        if len(chosen) > 1 and not prompt["question"]["multi"]:
+            return "this question takes one choice"
+        unknown = [c for c in chosen if c not in labels]
+        return f"not an option: {', '.join(map(str, unknown))}" if unknown else None
+
+    async def answer_prompt(self, request: Request) -> Response:
+        refused = await self._change_allowed(request)
+        if refused:
+            return refused
+        prompt = self.prompts.get(request.path_params["prompt"])
+        if prompt is None or prompt["answer"] is not None:
+            return JSONResponse({"error": "this prompt is gone"}, 404)
+        body = await request.json()
+        # RULE: an answer that does not fit the prompt is refused
+        reason = self._fits(prompt, body)
+        if reason:
+            return JSONResponse({"error": reason}, 409)
+        prompt["answer"] = {k: body[k] for k in ("answer", "decision", "reason") if k in body}
+        prompt["done"].set()
+        caller = "page" if self._cookie(request) else "bearer"
+        log.info(
+            "prompt %s for %s answered %s from %s",
+            prompt["id"],
+            prompt["session"],
+            json.dumps(prompt["answer"], ensure_ascii=False),
+            caller,
+        )
+        HUB.publish("prompt_closed", {"id": prompt["id"], "how": "phone"})
+        return JSONResponse({"id": prompt["id"], "answered": True})
+
+    async def wait_prompt(self, request: Request) -> Response:
+        if not await self._bearer(request):
+            return JSONResponse({"error": "sign in first"}, 401)
+        prompt = self.prompts.get(request.path_params["prompt"])
+        if prompt is None:
+            return JSONResponse({"error": "this prompt is gone"}, 404)
+        seconds = min(float(request.query_params.get("seconds", "30") or 30), 60.0)
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(prompt["done"].wait(), seconds)
+        if prompt["answer"] is None:
+            return Response(status_code=204)
+        self.prompts.pop(prompt["id"], None)
+        return JSONResponse(prompt["answer"])
+
+    async def close_prompt(self, request: Request) -> Response:
+        if not await self._bearer(request):
+            return JSONResponse({"error": "sign in first"}, 401)
+        prompt = self.prompts.pop(request.path_params["prompt"], None)
+        if prompt is not None:
+            how = str((await request.json()).get("how", "screen"))
+            log.info("prompt %s for %s left to the %s", prompt["id"], prompt["session"], how)
+            HUB.publish("prompt_closed", {"id": prompt["id"], "how": how})
+        return Response(status_code=204)
 
     # -- roles -----------------------------------------------------------------------
 

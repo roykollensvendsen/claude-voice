@@ -1,0 +1,176 @@
+"""Let the owner answer a session's question or approve its tool from the phone.
+
+Claude Code runs this hook before it shows a question (a PreToolUse hook on
+AskUserQuestion) or a permission prompt (a PermissionRequest hook), in every
+session. It hands the prompt to the bridge. When the companion app is open the
+bridge says to wait, and the hook waits for the phone's answer and gives it back
+to Claude Code, so the box never shows. When the app is not open, when no answer
+comes in time, or when anything goes wrong, the hook steps aside and the box
+shows in the terminal exactly as before. It never stops a session.
+
+Installed in the owner's own Claude Code settings; run as
+``python -m claude_voice.phone_hook`` with Claude Code's hook input on stdin.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Any, Protocol
+
+TIMEOUT = 300  # seconds the hook waits for the phone before the box shows at the screen
+ENV_FILE = Path("~/.config/claude-voice/env")
+
+
+class Bridge(Protocol):
+    def open(self, body: dict[str, Any]) -> dict[str, Any]: ...
+    def wait_for(self, prompt_id: str, seconds: float) -> dict[str, Any] | None: ...
+    def close(self, prompt_id: str, how: str) -> None: ...
+
+
+def handle(hook_input: dict[str, Any], bridge: Bridge, timeout: float = TIMEOUT) -> dict[str, Any]:
+    """Claude Code's hook answer: the phone's answer, or nothing so the box shows."""
+    event = hook_input.get("hook_event_name")
+    tool = str(hook_input.get("tool_name") or "")
+    tool_input = hook_input.get("tool_input") or {}
+    session = str(hook_input.get("session_id") or "")
+    if event == "PreToolUse" and tool == "AskUserQuestion":
+        body = {"session_id": session, "kind": "question", "question": tool_input}
+    elif event == "PermissionRequest":
+        body = {"session_id": session, "kind": "approval", "tool": tool, "input": tool_input}
+    else:
+        return {}
+    try:
+        opened = bridge.open(body)
+        if not opened.get("wait"):
+            return {}  # nobody is looking at the phone: the box shows as before
+        answer = bridge.wait_for(str(opened["id"]), timeout)
+        if answer is None:
+            bridge.close(str(opened["id"]), "timeout")
+            return {}
+    except Exception:
+        return {}  # a bridge that is down or broken never stops a session
+    if body["kind"] == "question":
+        questions = tool_input.get("questions") or [{}]
+        chosen = answer.get("answer")
+        text = chosen.get("text") if isinstance(chosen, dict) else chosen
+        value = ", ".join(text) if isinstance(text, list) else str(text)
+        updated = {**tool_input, "answers": {str(questions[0].get("question", "")): value}}
+        return {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "allow",
+                "updatedInput": updated,
+            }
+        }
+    decision: dict[str, Any] = {"behavior": "allow" if answer.get("decision") == "allow" else "deny"}
+    if decision["behavior"] == "deny":
+        decision["message"] = str(answer.get("reason") or "Refused from the phone.")
+    return {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": decision}}
+
+
+class HttpBridge:
+    """The bridge's prompts API on this computer."""
+
+    def __init__(self, base: str, token: str) -> None:
+        self.base, self.token = base.rstrip("/"), token
+
+    def _call(self, method: str, path: str, body: dict[str, Any] | None, timeout: float) -> tuple[int, Any]:
+        data = json.dumps(body).encode() if body is not None else None
+        request = urllib.request.Request(  # noqa: S310 - always this computer's bridge
+            self.base + path,
+            data=data,
+            method=method,
+            headers={"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+            raw = response.read()
+            return response.status, json.loads(raw) if raw else None
+
+    def open(self, body: dict[str, Any]) -> dict[str, Any]:
+        return self._call("POST", "/api/v1/prompts", body, 5)[1]
+
+    def wait_for(self, prompt_id: str, seconds: float) -> dict[str, Any] | None:
+        remaining = seconds
+        while remaining > 0:
+            chunk = min(remaining, 50)
+            status, body = self._call("GET", f"/api/v1/prompts/{prompt_id}/wait?seconds={chunk}", None, chunk + 10)
+            if status == 200 and body:
+                return body
+            remaining -= chunk
+        return None
+
+    def close(self, prompt_id: str, how: str) -> None:
+        try:
+            self._call("POST", f"/api/v1/prompts/{prompt_id}/close", {"how": how}, 5)
+        except (OSError, urllib.error.URLError):
+            pass
+
+
+def _token() -> str:
+    token = os.environ.get("CLAUDE_VOICE_TOKEN", "")
+    if token:
+        return token
+    try:
+        for line in ENV_FILE.expanduser().read_text().splitlines():
+            if line.startswith("CLAUDE_VOICE_TOKEN="):
+                return line.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    return ""
+
+
+def settings_entries(python: str) -> dict[str, list[dict[str, Any]]]:
+    """The hook entries for the owner's Claude Code settings, run with the bridge's Python."""
+    hook = {"type": "command", "command": f"{python} -m claude_voice.phone_hook", "timeout": TIMEOUT + 30}
+    return {
+        "PreToolUse": [{"matcher": "AskUserQuestion", "hooks": [hook]}],
+        "PermissionRequest": [{"matcher": "*", "hooks": [dict(hook)]}],
+    }
+
+
+def install(settings: Path, python: str) -> None:
+    """Add the hook to a Claude Code settings file, keeping every other setting and hook.
+    Running it again changes nothing; the file as it was is kept beside it as .bak."""
+    try:
+        current = json.loads(settings.read_text()) if settings.exists() else {}
+    except ValueError as exc:
+        raise SystemExit(f"{settings} is not valid JSON; fix it first: {exc}") from None
+    if settings.exists():
+        settings.with_name(settings.name + ".bak").write_text(settings.read_text())
+    hooks = current.setdefault("hooks", {})
+    for event, entries in settings_entries(python).items():
+        existing = hooks.setdefault(event, [])
+        mine = entries[0]["hooks"][0]["command"]
+        if not any(mine == h.get("command") for m in existing for h in m.get("hooks", [])):
+            existing.extend(entries)
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    settings.write_text(json.dumps(current, indent=2) + "\n")
+
+
+def main() -> int:
+    if sys.argv[1:2] == ["--install"]:
+        target = Path(sys.argv[2]) if len(sys.argv) > 2 else Path("~/.claude/settings.json").expanduser()
+        install(target, sys.executable)
+        print(f"Installed the phone hook in {target}")
+        return 0
+    try:
+        hook_input = json.load(sys.stdin)
+    except ValueError:
+        return 0
+    token = _token()
+    if not token:
+        return 0
+    port = os.environ.get("CLAUDE_VOICE_PORT", "8811")
+    out = handle(hook_input, HttpBridge(f"http://127.0.0.1:{port}", token))
+    if out:
+        sys.stdout.write(json.dumps(out))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
