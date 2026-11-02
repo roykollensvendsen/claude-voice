@@ -104,3 +104,30 @@ async def test_a_change_is_announced_while_someone_listens_even_if_nobody_asks(w
             while name != "status":
                 name, data = await asyncio.wait_for(events.get(), 5)
     assert data["state"] == "idle" and data["previous"] == "working"
+
+
+async def test_a_new_turn_is_announced_so_a_detail_view_need_not_poll(world):  # noqa: F811
+    import asyncio
+    import json as _json
+
+    from claude_agent_sdk import project_key_for_directory
+
+    running(world, "billing-ab", "billing", "s1", status="busy")
+    transcript(world, "billing", "s1", [says("on it")])
+    m = SessionManager(Store(world / "b.db"), project_root=world / "home", client_factory=FakeClaude())
+    server = build_server(
+        m, conversations=lambda **k: [], live_dir=world / "live", projects_dir=world / "projects", watch_interval=0.05
+    )
+    path = world / "projects" / project_key_for_directory(world / "home" / "billing") / "s1.jsonl"
+    with api.HUB.subscribe() as events:
+        async with Client(server):
+            await asyncio.sleep(0.3)
+            with path.open("a") as f:
+                f.write(
+                    _json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "done"}]}})
+                    + "\n"
+                )
+            name, data = await asyncio.wait_for(events.get(), 5)
+            while name != "output":
+                name, data = await asyncio.wait_for(events.get(), 5)
+    assert data["session"] == "s1" and data["role"] == "assistant" and data["index"] == 1
