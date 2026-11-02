@@ -64,6 +64,9 @@ jobs:
       # committed's own imperative rule flags nothing, so this is what does.
       - name: Subjects in the imperative
         run: python scripts/imperative.py ${{ steps.range.outputs.range }}
+      # Only the commits this event adds: older history is kept as it is.
+      - name: No links to a Claude session
+        run: python scripts/no_session_links.py ${{ steps.range.outputs.range }}
 
   # The suite on Windows, where Claude Code also runs and the bridge must not
   # assume Unix: a signal that only probes a process on Linux ends it there.

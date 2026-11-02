@@ -11,7 +11,11 @@ reporting.
 git clone https://github.com/roykollensvendsen/claude-voice
 cd claude-voice
 uv sync --all-extras
+git config core.hooksPath .githooks
 ```
+
+The last line turns on the commit-msg hook, which refuses a message the gates
+would refuse later while it is still being written.
 
 The commit linter is a separate binary,
 [committed](https://github.com/crate-ci/committed).
@@ -92,6 +96,11 @@ up later.
   bridge's tools by name and read their fields. Add a tool or a field rather
   than renaming or removing one, and say in the pull request which callers it
   touches. A change that must break one is agreed with that caller first.
+- **No links to a Claude session in a commit message.** A `Claude-Session:`
+  line, or any `claude.ai/code/session_` address, points into one person's
+  account and is a dead link to everyone else. `scripts/no_session_links.py`
+  refuses it, in the commit-msg hook and in continuous integration, for new
+  commits only; older history is kept as it is.
 - **Credit the people whose work a change builds on.** A commit that takes in
   someone else's work keeps them as author, or names them with a
   `Co-Authored-By:` line.
