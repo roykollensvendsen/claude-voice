@@ -22,7 +22,7 @@ class Starter:
         self.register = register
         self.calls = []
 
-    async def __call__(self, cwd, name):
+    async def __call__(self, cwd, name, **how):
         self.calls.append((cwd, name))
         if self.register:
             (self.live / f"{name}.json").write_text(
@@ -44,7 +44,14 @@ def world(tmp_path):
 def bridge(tmp_path, world, starter):
     root, live = world
     m = SessionManager(Store(tmp_path / "b.db"), project_root=root, client_factory=FakeClaude())
-    return build_server(m, conversations=lambda **k: [], live_dir=live, start_background=starter, start_seconds=1.0)
+    return build_server(
+        m,
+        conversations=lambda **k: [],
+        live_dir=live,
+        start_background=starter,
+        start_seconds=1.0,
+        find_program=lambda n: None,
+    )
 
 
 async def test_a_started_session_runs_in_the_background_and_is_listed_at_once(tmp_path, world):
@@ -52,7 +59,13 @@ async def test_a_started_session_runs_in_the_background_and_is_listed_at_once(tm
     async with Client(bridge(tmp_path, world, starter)) as c:
         out = (await c.call_tool("start_active_session", {"project": "billing", "name": "invoices"})).structured_content
         listed = (await c.call_tool("list_active_sessions", {})).structured_content
-    assert out == {"name": "invoices", "claude_session_id": "sid-invoices", "project": "billing", "status": "idle"}
+    assert out["started_in"] == "background" and out["note"].startswith("No terminal")
+    assert {k: out[k] for k in ("name", "claude_session_id", "project", "status")} == {
+        "name": "invoices",
+        "claude_session_id": "sid-invoices",
+        "project": "billing",
+        "status": "idle",
+    }
     assert starter.calls == [(str(world[0] / "billing"), "invoices")]
     assert "invoices" in {r["name"] for r in listed["sessions"]}
 
@@ -102,6 +115,7 @@ def bridge_with_stop(tmp_path, world, starter, stopper):
         conversations=lambda **k: [],
         live_dir=live,
         start_background=starter,
+        find_program=lambda name: None,  # no terminal here: sessions start in the background
         stop_background=stopper,
         start_seconds=1.0,
     )
@@ -151,7 +165,7 @@ async def test_the_record_of_started_sessions_survives_a_restart_of_the_bridge(t
 
 
 class ModelStarter(Starter):
-    async def __call__(self, cwd, name, model=None, effort=None):
+    async def __call__(self, cwd, name, model=None, effort=None, **how):
         self.models = (model, effort)
         await super().__call__(cwd, name)
 
@@ -164,7 +178,7 @@ async def test_a_session_can_be_started_on_a_chosen_model_and_effort(tmp_path, w
         ).structured_content
         plain = (await c.call_tool("start_active_session", {"project": "billing"})).structured_content
     assert starter.models == (None, None)  # the second start, left to Claude Code's defaults
-    assert "first reply" in out["note"] and "note" not in plain
+    assert "first reply" in out["note"] and "first reply" not in plain.get("note", "")
 
 
 @pytest.mark.parametrize(("field", "value"), [("model", "opus; rm -rf /"), ("model", ""), ("effort", "extreme")])

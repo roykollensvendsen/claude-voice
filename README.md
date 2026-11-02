@@ -309,7 +309,19 @@ claude_voice = "~/src/claude-voice"          # default: the clone the bridge run
 claude_voice_ui = "~/src/claude-voice-ui"    # default: next to it
 ui_dist = "~/src/claude-voice-ui/dist"       # default: inside it; CLAUDE_VOICE_UI_DIR wins
 contribute = "~/src/claude-voice"            # the contribute session's clone; default: claude_voice
+
+[sessions]
+remote_control = true                        # a started session can be opened in the Claude app
+launch = "terminal"                          # or "background"
+terminal_command = "kitty --directory {cwd}" # default: gnome-terminal, kgx, konsole or xterm, the first found
 ```
+
+A session the bridge starts opens in a terminal window on your desktop, so you
+can watch it and type into it, and with Remote Control, so the Claude app on
+your phone can open it too. Without a desktop it opens in tmux (`tmux attach`
+reaches it), and with no terminal at all in the background. The companion
+app's settings page changes `remote_control` and where sessions start, and one
+start can ask otherwise; the terminal command is set only here.
 
 The update works in `claude_voice`. The contribute session works in
 `contribute`, and sends its pull request to `repos.claude_voice`; it may push

@@ -13,10 +13,11 @@ import contextlib
 import contextvars
 import json
 import logging
+import os
 import re
 import tempfile
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -596,6 +597,32 @@ MODEL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._\[\]-]{0,99}")
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 
 
+# What Claude Code sets in a session's own environment to say which session it is. A
+# session started from inside another (the bridge run from a terminal session, say)
+# would otherwise take that one's name and identity and not keep its own transcript.
+INHERITED = frozenset(
+    {
+        "CLAUDECODE",
+        "CLAUDE_CODE_CHILD_SESSION",
+        "CLAUDE_CODE_ENTRYPOINT",
+        "CLAUDE_CODE_EXECPATH",
+        "CLAUDE_CODE_MESSAGING_SOCKET",
+        "CLAUDE_CODE_MESSAGING_TOKEN",
+        "CLAUDE_CODE_SESSION_ATTENDED",
+        "CLAUDE_CODE_SESSION_ID",
+        "CLAUDE_EFFORT",
+        "CLAUDE_JOB_DIR",
+        "CLAUDE_PID",
+    }
+)
+
+
+def clean_env(env: Mapping[str, str]) -> dict[str, str]:
+    """The environment for a new session: everything but the starting session's identity."""
+    # RULE: a started session does not inherit the identity of the session that started it
+    return {k: v for k, v in env.items() if k not in INHERITED}
+
+
 def background_command(
     cli: str,
     name: str,
@@ -603,14 +630,19 @@ def background_command(
     effort: str | None = None,
     prompt: str | None = None,
     settings: str | None = None,
+    remote_control: bool = False,
+    terminal: list[str] | None = None,
 ) -> list[str]:
-    """The command that starts a named background session, on a model and effort if given,
-    with extra settings (such as a hook) and a first message if given."""
+    """The command that starts a named session, on a model and effort if given, with extra
+    settings (such as a hook), Remote Control and a first message if given. In the
+    background, or inside `terminal`, the command that opens a terminal window."""
     return [
+        *(terminal or []),
         cli,
-        "--bg",
+        *([] if terminal else ["--bg"]),
         "--name",
         name,
+        *(["--remote-control", name] if remote_control else []),
         *(["--model", model] if model else []),
         *(["--effort", effort] if effort else []),
         *(["--settings", settings] if settings else []),
@@ -625,20 +657,46 @@ async def start_background(
     effort: str | None = None,
     prompt: str | None = None,
     settings: str | None = None,
+    remote_control: bool = False,
+    terminal: list[str] | None = None,
 ) -> None:
-    """Start a Claude Code session in the background, as `claude --bg` does from a terminal.
+    """Start a Claude Code session in the background, as `claude --bg` does from a terminal,
+    or inside a terminal window when `terminal` is given.
 
     It runs under the owner's own Claude Code and settings, and appears in the running
-    sessions like any other background session.
+    sessions like any other session.
     """
 
     import claude_agent_sdk
 
     bundled = Path(claude_agent_sdk.__file__).parent / "_bundled" / "claude"
     cli = procs.find("claude") or str(bundled)
+    command = background_command(cli, name, model, effort, prompt, settings, remote_control, terminal)
+    if terminal:
+        opener = procs.find(terminal[0]) or terminal[0]
+        window = await asyncio.create_subprocess_exec(
+            opener,
+            *command[1:],
+            cwd=cwd,
+            env=clean_env(os.environ),
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,  # the window outlives a restart of the bridge
+        )
+        try:  # most terminals hand the window over and exit; one that fails says so at once
+            _, err = await asyncio.wait_for(window.communicate(), 5)
+        except TimeoutError:
+            return  # still running: it is the window itself, and the session is in it
+        if window.returncode:
+            raise RuntimeError(
+                err.decode(errors="replace").strip()[-300:] or f"{terminal[0]} exited {window.returncode}"
+            )
+        return
     proc = await asyncio.create_subprocess_exec(
-        *background_command(cli, name, model, effort, prompt, settings),
+        *command,
         cwd=cwd,
+        env=clean_env(os.environ),
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,

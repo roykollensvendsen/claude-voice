@@ -7,6 +7,7 @@ import contextlib
 import json
 import logging
 import logging.handlers
+import os
 import re
 import secrets
 import subprocess
@@ -28,7 +29,7 @@ from mcp.types import ToolAnnotations
 from pydantic import AnyHttpUrl
 from starlette.types import ASGIApp
 
-from . import api, config, doctor, events, gitstatus, metrics, procs, roles, titles, transcripts, updater, usage
+from . import api, config, doctor, events, gitstatus, launch, metrics, procs, roles, titles, transcripts, updater, usage
 from .approvals import ApprovalBroker, ApprovalNotFound
 from .metrics import METRICS
 from .oauth import ACCESS_TTL, MIN_ACCESS_TTL, SCOPE, OAuthProvider, PublicClientMetadata
@@ -270,6 +271,8 @@ def build_server(
     launch_update: Callable[[Path, Path], None] | None = None,
     bridge_folder: Path | None = None,
     repo_config: config.Config | None = None,
+    find_program: Callable[[str], str | None] = procs.find,
+    desktop_env: Mapping[str, str] | None = None,
 ) -> MCPServer:
     auth = None
     if oauth is not None:
@@ -293,6 +296,24 @@ def build_server(
     side_answer = side_answer or transcripts.shared_reader()
     host: doctor.Host = doctor_host or doctor.RealHost()
     repos = repo_config or config.load(config.FILE, own_clone=roles.own_clone())
+    start_settings = launch.Settings(manager.store, repos.sessions)
+    desktop = os.environ if desktop_env is None else desktop_env
+
+    def how_to_start(
+        folder: str, name: str, start_in: str | None, remote_control: bool | None
+    ) -> tuple[dict[str, Any], str, str | None]:
+        """What to start a session with, where it ends up, and a note when that is not
+        where it was asked for: the settings, unless this one start asks otherwise."""
+        chosen = start_settings.get()
+        where = start_in or chosen["start_in"]
+        remote = chosen["remote_control"] if remote_control is None else remote_control
+        if where != "terminal":
+            return {"remote_control": remote, "terminal": None}, "background", None
+        terminal, opened = launch.terminal_for(folder, name, repos.sessions.terminal_command, find_program, desktop)
+        if terminal is None:
+            note = "No terminal could be opened here, so it started in the background."
+            return {"remote_control": remote, "terminal": None}, "background", note
+        return {"remote_control": remote, "terminal": terminal}, str(opened), None
 
     def role_table() -> dict[str, dict[str, Any]]:
         contribute = repos.paths.contribute
@@ -593,10 +614,17 @@ def build_server(
 
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
     async def start_active_session(
-        project: str, name: str | None = None, model: str | None = None, effort: str | None = None
+        project: str,
+        name: str | None = None,
+        model: str | None = None,
+        effort: str | None = None,
+        start_in: str | None = None,
+        remote_control: bool | None = None,
     ) -> dict[str, Any]:
-        """Start a new Claude Code session in the background in a project (from list_projects),
-        named `name` or after the project. It is listed at once, so ask_active_session reaches it.
+        """Start a new Claude Code session in a project (from list_projects), named `name` or
+        after the project. It is listed at once, so ask_active_session reaches it. It opens in a
+        terminal window or in the background, with or without Remote Control, as the settings
+        say; `start_in` ("terminal" or "background") and `remote_control` change that once.
         Optional: `model` (an alias such as opus or sonnet, or a full name) and `effort` (low,
         medium, high, xhigh or max); left out, Claude Code's defaults apply."""
         # RULE: only a well-formed model name and a known effort reach Claude Code
@@ -612,11 +640,14 @@ def build_server(
         wanted = (name or "").strip() or f"{path.name}-{secrets.token_hex(2)}"
         while wanted in taken:
             wanted = f"{wanted}-{secrets.token_hex(2)}"
+        if start_in is not None and start_in not in config.LAUNCHES:
+            raise ToolError(f"start_in is one of: {', '.join(config.LAUNCHES)}")
+        how, started_in, where_note = how_to_start(str(path), wanted, start_in, remote_control)
         try:
             if model or effort:
-                await start_background(str(path), wanted, model=model, effort=effort)
+                await start_background(str(path), wanted, model=model, effort=effort, **how)
             else:
-                await start_background(str(path), wanted)
+                await start_background(str(path), wanted, **how)
         except Exception as exc:
             raise ToolError(f"Claude Code could not start a session: {exc}") from None
         deadline = time.monotonic() + start_seconds
@@ -624,18 +655,17 @@ def build_server(
             found = next((d for d in live_sessions() if d.get("name") == wanted and d.get("cwd") == str(path)), None)
             if found:
                 store.record_started(str(found.get("sessionId")), wanted, str(path))
+                # Claude Code accepts any model name at start and refuses an unknown one only
+                # in its first reply, so a start alone does not prove the model works.
+                model_note = "Claude Code checks the model only at the first reply; rely on the session after it."
+                notes = [n for n in (where_note, model_note if model else None) if n]
                 return {
                     "name": wanted,
                     "claude_session_id": found.get("sessionId"),
                     "project": under_root(str(path)),
                     "status": found.get("status") or "idle",
-                    # Claude Code accepts any model name at start and refuses an unknown one only
-                    # in its first reply, so a start alone does not prove the model works.
-                    **(
-                        {"note": "Claude Code checks the model only at the first reply; rely on the session after it."}
-                        if model
-                        else {}
-                    ),
+                    "started_in": started_in,
+                    **({"note": " ".join(notes)} if notes else {}),
                 }
             await asyncio.sleep(0.2)
         raise ToolError(f"{wanted} was started but did not appear among the running sessions")
@@ -670,12 +700,14 @@ def build_server(
             )
         folder = roles.folder_for(spec)
         name = unused_name(str(spec.get("name") or role))
+        how, _, _ = how_to_start(str(folder), name, None, None)
         try:
             await start_background(
                 str(folder),
                 name,
                 prompt=roles.first_message(spec, folder, task),
                 settings=roles.guard_settings(spec),
+                **how,
             )
         except Exception as exc:
             raise ToolError(f"Claude Code could not start a session: {exc}") from None
@@ -765,7 +797,7 @@ def build_server(
 
     def doctor_report() -> dict[str, Any]:
         report = doctor.examine(host, role_table().get("contribute"), port=bridge_port)
-        report["checks"] += config.check_paths(repos)
+        report["checks"] += [*config.check_paths(repos), launch.check(repos.sessions, find_program, desktop)]
         return report
 
     @tool(annotations=READ_ONLY)
@@ -1393,6 +1425,7 @@ def build_server(
                 "voice": usage.voice(store),
             },
             start_role=launch_role,
+            settings=start_settings,
             ui_origins=ui_origins,
         ).routes(mcp)
 

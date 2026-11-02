@@ -83,7 +83,7 @@ class Starter:
         self.live = live
         self.calls = []
 
-    async def __call__(self, cwd, name, model=None, effort=None, prompt=None, settings=None):
+    async def __call__(self, cwd, name, model=None, effort=None, prompt=None, settings=None, **how):
         self.calls.append({"cwd": cwd, "name": name, "prompt": prompt, "settings": settings})
         (self.live / f"{name}.json").write_text(
             json.dumps(
@@ -126,6 +126,7 @@ def bridge(tmp_path, world, starter, oauth=None, host=None):
         conversations=lambda **k: [],
         live_dir=live,
         start_background=starter,
+        find_program=lambda name: None,  # no terminal here: sessions start in the background
         stop_background=Stopper(live),
         start_seconds=1.0,
         roles_file=table,
@@ -222,6 +223,7 @@ async def test_the_contribute_session_works_where_the_settings_say_and_sends_to_
         conversations=lambda **k: [],
         live_dir=live,
         start_background=starter,
+        find_program=lambda name: None,  # no terminal here: sessions start in the background
         stop_background=Stopper(live),
         start_seconds=1.0,
         roles_file=table,
