@@ -25,3 +25,6 @@ python3 "$root/scripts/imperative.py" --file "$1" >/dev/null || {
 # judgement, and a gate that refuses a message nobody can shorten teaches
 # people to pass --no-verify.
 python3 "$root/scripts/readable.py" --file "$1" >&2 || true
+
+# A Claude-Session line or a claude.ai/code session address is refused too.
+python3 "$root/scripts/no_session_links.py" --file "$1" || exit 1
