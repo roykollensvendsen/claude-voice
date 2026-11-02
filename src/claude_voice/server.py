@@ -29,7 +29,22 @@ from mcp.types import ToolAnnotations
 from pydantic import AnyHttpUrl
 from starlette.types import ASGIApp
 
-from . import api, config, doctor, events, gitstatus, launch, metrics, procs, roles, titles, transcripts, updater, usage
+from . import (
+    api,
+    config,
+    detail,
+    doctor,
+    events,
+    gitstatus,
+    launch,
+    metrics,
+    procs,
+    roles,
+    titles,
+    transcripts,
+    updater,
+    usage,
+)
 from .approvals import ApprovalBroker, ApprovalNotFound
 from .metrics import METRICS
 from .oauth import ACCESS_TTL, MIN_ACCESS_TTL, SCOPE, OAuthProvider, PublicClientMetadata
@@ -1368,6 +1383,65 @@ def build_server(
                 return None, s
         raise LookupError(f"No session called {session!r}")
 
+    summaries = detail.Summaries(store, summarize, api.HUB.publish)
+
+    def session_detail(session: str) -> dict[str, Any]:
+        """A session's own page: context, tool calls, helpers, timeline and its kept summary.
+        Read from its transcript; it never makes a summary."""
+        live, own = lookup(session)
+        if own is not None:
+            empty = detail.digest([])
+            return {
+                "session": own["id"],
+                "number": None,
+                "name": own["label"],
+                "context": None,
+                **empty,
+                **summaries.state(own["id"]),
+            }
+        assert live is not None
+        sid, cwd = str(live.get("sessionId")), str(live.get("cwd"))
+        numbers = store.number_sessions([str(d.get("sessionId")) for d in live_sessions()])
+        entries = detail.read(projects_dir / project_key_for_directory(cwd) / f"{sid}.jsonl")
+        return {
+            "session": sid,
+            "number": numbers.get(sid),
+            "name": live.get("name"),
+            "context": usage.context(statusline_dir, sid),
+            **detail.digest(entries),
+            **summaries.state(sid),
+        }
+
+    def summary_task(session: str, language: str | None) -> tuple[dict[str, Any], asyncio.Task[str | None]]:
+        live, own = lookup(session)
+        if live is None:
+            raise LookupError(f"{session!r} is not a running Claude Code session")
+        kept, _ = conversation_end(live, digest_chars)
+        return live, summaries.start(str(live.get("sessionId")), "\n".join(kept), language)
+
+    async def request_summary(session: str, language: str | None) -> dict[str, Any]:
+        live, _ = summary_task(session, language)
+        return {"session": str(live.get("sessionId")), "state": "generating"}
+
+    @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
+    async def refresh_session_summary(session: str | None = None, language: str | None = None) -> dict[str, Any]:
+        """Make a fresh summary of a running session (the chosen one if `session` is left out),
+        in `language` if given (e.g. "norsk"), read by a small model; the companion app's
+        session page shows it too. Takes about ten seconds."""
+        if not session:
+            session = str((store.get_setting("active_session") or {}).get("id") or "")
+            if not session:
+                raise ToolError("No session is chosen; name one.")
+        try:
+            live, task = summary_task(session, language)
+        except LookupError as exc:
+            raise ToolError(str(exc)) from None
+        summary = await task
+        sid = str(live.get("sessionId"))
+        if summary is None:
+            raise ToolError(f"The summary failed: {summaries.state(sid)['summary_error']}")
+        return {"session": live.get("name"), "summary": summary, "summary_at": summaries.state(sid)["summary_at"]}
+
     def api_output(session: str, limit: int, after: int | None) -> dict[str, Any]:
         live, own = lookup(session)
         if own is not None:
@@ -1428,6 +1502,8 @@ def build_server(
             },
             start_role=launch_role,
             settings=start_settings,
+            detail=session_detail,
+            summary=request_summary,
             ui_origins=ui_origins,
         ).routes(mcp)
 
