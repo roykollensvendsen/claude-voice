@@ -169,3 +169,44 @@ async def test_only_an_origin_named_in_the_settings_may_call_across_sites(bridge
     assert pre.headers.get("access-control-allow-origin") == "https://ui.example"
     assert pre.headers.get("access-control-allow-credentials") == "true"
     assert "access-control-allow-origin" not in other.headers
+
+
+def from_address(app, address):
+    """A client whose requests reach the bridge from `address`, as uvicorn reports it behind a proxy."""
+    transport = httpx.ASGITransport(app=app, client=(address, 4321))
+    return httpx.AsyncClient(transport=transport, base_url=HOST)
+
+
+@pytest.mark.parametrize("address", ["160.79.106.128", "8.8.8.8", "2001:4860:4860::8888"])
+async def test_the_event_api_answers_only_this_computer_and_the_tailnet(bridge, address):
+    _, app, _, _ = bridge
+    async with from_address(app, address) as c:
+        api = await c.get("/api/v1/sessions", headers=BEARER)
+        ui = await c.get("/ui/")
+        mcp = await c.post("/mcp", json={})
+    assert api.status_code == 403 and ui.status_code == 403
+    assert mcp.status_code == 401  # the MCP endpoint stays on the internet, behind its own login
+
+
+@pytest.mark.parametrize("address", ["127.0.0.1", "::1", "100.101.102.103", "fd7a:115c:a1e0::e501:5695"])
+async def test_this_computer_and_tailnet_devices_reach_the_event_api(bridge, address):
+    _, app, _, _ = bridge
+    async with from_address(app, address) as c:
+        api = await c.get("/api/v1/sessions", headers=BEARER)
+    assert api.status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("forwarded", "code"),
+    [
+        ("160.79.106.128", 403),  # a Funnel caller, as Tailscale forwards it
+        ("100.64.1.1, 160.79.106.128", 403),  # a Funnel caller pretending to be on the tailnet
+        ("100.101.102.103", 200),  # a tailnet device, through the tailnet-only serve port
+        ("fd7a:115c:a1e0::5", 200),
+    ],
+)
+async def test_behind_tailscale_the_address_tailscale_added_last_decides(bridge, forwarded, code):
+    _, app, _, _ = bridge
+    async with from_address(app, "127.0.0.1") as c:  # Tailscale connects from this computer
+        api = await c.get("/api/v1/sessions", headers={**BEARER, "X-Forwarded-For": forwarded})
+    assert api.status_code == code
