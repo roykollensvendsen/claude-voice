@@ -28,6 +28,10 @@ if [[ ! -f "$conf" ]]; then
       echo "CLAUDE_VOICE_TOKEN=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
       echo "CLAUDE_VOICE_ROOT=${CLAUDE_VOICE_ROOT:-$HOME/src}"
       echo "CLAUDE_VOICE_PUBLIC_HOSTS=$public"
+      # The companion app, if it is built next to this checkout.
+      if [[ -d "$repo/../claude-voice-ui/dist" ]]; then
+        echo "CLAUDE_VOICE_UI_DIR=$(cd "$repo/../claude-voice-ui/dist" && pwd)"
+      fi
     } > "$conf" )
   echo "wrote $conf"
 fi
