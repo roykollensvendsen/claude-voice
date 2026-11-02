@@ -74,7 +74,8 @@ ran in the last day, with the session the owner talks to:
 
 `PUT /api/v1/active` with `{"session": "<id or name>"}` makes that session the
 one the voice sends to by default. It answers the new `active` object, or `404`
-for a session that is not in the list. `set_by` is `page` for this call and
+for a session that is not in the list. `DELETE /api/v1/active` clears the choice
+(`204`), so the voice decides again; the `active` event then carries `null`. `set_by` is `page` for this call and
 `voice` when the voice app changed it.
 
 ## One session
