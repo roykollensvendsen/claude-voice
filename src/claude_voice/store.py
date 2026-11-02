@@ -30,6 +30,18 @@ CREATE TABLE IF NOT EXISTS events(
 );
 CREATE INDEX IF NOT EXISTS events_session_seq ON events(session_id, seq);
 CREATE INDEX IF NOT EXISTS events_ts ON events(ts);
+-- Sign-ins to the companion page, by the hash of the cookie's value only.
+CREATE TABLE IF NOT EXISTS web_sessions(
+  token_hash TEXT PRIMARY KEY,
+  created_at REAL NOT NULL,
+  expires_at REAL NOT NULL
+);
+-- Small named values the bridge keeps, such as the session the voice talks to.
+CREATE TABLE IF NOT EXISTS settings(
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at REAL NOT NULL
+);
 -- Background sessions this bridge started; only these may it stop.
 CREATE TABLE IF NOT EXISTS started(
   claude_session_id TEXT PRIMARY KEY,
@@ -62,6 +74,30 @@ class Store:
         for row in self.db.execute("SELECT id FROM sessions WHERE status='running'").fetchall():
             self.update_session(row["id"], status="interrupted")
             self.add_event(row["id"], "interrupted", {"reason": "bridge restarted"})
+
+    def add_web_session(self, token_hash: str, seconds: float) -> None:
+        now = self.clock()
+        with self.db:
+            self.db.execute("DELETE FROM web_sessions WHERE expires_at < ?", (now,))
+            self.db.execute("INSERT INTO web_sessions VALUES (?, ?, ?)", (token_hash, now, now + seconds))
+
+    def web_session_valid(self, token_hash: str) -> bool:
+        row = self.db.execute(
+            "SELECT 1 FROM web_sessions WHERE token_hash = ? AND expires_at >= ?", (token_hash, self.clock())
+        ).fetchone()
+        return row is not None
+
+    def drop_web_session(self, token_hash: str) -> None:
+        with self.db:
+            self.db.execute("DELETE FROM web_sessions WHERE token_hash = ?", (token_hash,))
+
+    def set_setting(self, key: str, value: Any) -> None:
+        with self.db:
+            self.db.execute("INSERT OR REPLACE INTO settings VALUES (?, ?, ?)", (key, json.dumps(value), self.clock()))
+
+    def get_setting(self, key: str) -> Any:
+        row = self.db.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return json.loads(row[0]) if row else None
 
     def record_started(self, claude_session_id: str, name: str, cwd: str) -> None:
         with self.db:

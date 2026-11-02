@@ -631,6 +631,34 @@ async def stop_background(session_id: str) -> None:
         raise RuntimeError(out.decode(errors="replace").strip()[-300:] or f"claude stop exited {proc.returncode}")
 
 
+def open_pull_requests(folder: str) -> list[dict[str, Any]]:
+    """The open pull requests of the repository in `folder`, from the GitHub command line.
+
+    Nothing when `gh` is missing, signed out, or the folder is not a GitHub repository.
+    """
+    import shutil
+    import subprocess
+
+    gh = shutil.which("gh")
+    if not gh:
+        return []
+    try:
+        out = subprocess.run(
+            [gh, "pr", "list", "--limit", "10", "--json", "number,title,url,isDraft"],
+            cwd=folder,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=True,
+        )
+        rows = json.loads(out.stdout or "[]")
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return []
+    return [
+        {"number": r["number"], "title": r["title"], "url": r["url"], "draft": r.get("isDraft", False)} for r in rows
+    ]
+
+
 def shared_courier() -> Courier:
     return _courier
 

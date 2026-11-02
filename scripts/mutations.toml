@@ -56,3 +56,21 @@ name = "a reply is final only once the turn has ended"
 file = "src/claude_voice/server.py"
 find = '"reply_final": bool\(new\) and status in'
 replace = '"reply_final": True,'
+
+[[rule]]
+name = "guessing the secret on the page stops after five wrong tries"
+file = "src/claude_voice/api.py"
+find = 'if len\(self\._failures\) >= MAX_FAILURES:'
+replace = 'if False:'
+
+[[rule]]
+name = "a change sent from another site is refused"
+file = "src/claude_voice/api.py"
+find = 'if not self\._same_site\(request\):  # a page elsewhere'
+replace = 'if False:'
+
+[[rule]]
+name = "only an origin named in the settings may call across sites"
+file = "src/claude_voice/server.py"
+find = 'allow_origins=list\(ui_origins\),'
+replace = 'allow_origins=["*"],'

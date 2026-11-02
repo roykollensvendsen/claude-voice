@@ -24,7 +24,7 @@ from mcp.types import ToolAnnotations
 from pydantic import AnyHttpUrl
 from starlette.types import ASGIApp
 
-from . import events, metrics, titles, transcripts
+from . import api, events, metrics, titles, transcripts
 from .approvals import ApprovalBroker, ApprovalNotFound
 from .metrics import METRICS
 from .oauth import ACCESS_TTL, MIN_ACCESS_TTL, SCOPE, OAuthProvider, PublicClientMetadata
@@ -73,6 +73,8 @@ class Config:
     public_url: str = ""
     courier_name: str = transcripts.COURIER_NAME
     access_ttl: int = ACCESS_TTL
+    ui_origins: list[str] = field(default_factory=list)
+    ui_dir: Path | None = None
 
 
 MAKE_TOKEN = (
@@ -103,6 +105,12 @@ def load_config(env: Mapping[str, str], transport: str) -> Config:
         public_hosts=[h for h in env.get("CLAUDE_VOICE_PUBLIC_HOSTS", "").split(",") if h],
     )
     cfg.courier_name = env.get("CLAUDE_VOICE_COURIER_NAME", "").strip() or transcripts.COURIER_NAME
+    cfg.ui_origins = [o.strip().rstrip("/") for o in env.get("CLAUDE_VOICE_UI_ORIGINS", "").split(",") if o.strip()]
+    ui_dir = env.get("CLAUDE_VOICE_UI_DIR", "").strip()
+    if ui_dir:
+        cfg.ui_dir = Path(ui_dir).expanduser()
+        if not cfg.ui_dir.is_dir():
+            raise ConfigError(f"CLAUDE_VOICE_UI_DIR is not a directory: {cfg.ui_dir}. Build the UI there, or unset it.")
     ttl = env.get("CLAUDE_VOICE_ACCESS_TOKEN_SECONDS", "").strip()
     if ttl:
         # RULE: an access-token lifetime that is not a whole number of at least a minute stops the bridge
@@ -159,6 +167,7 @@ async def log_requests(ctx, call_next):
         transcripts.current_trace.reset(token)
     ms = (time.monotonic() - started) * 1000
     if ctx.method == "tools/call":
+        api.publish_focus(tool, params.get("arguments"))
         failed = getattr(result, "is_error", None) or (isinstance(result, dict) and result.get("isError"))
         log.info("mcp %s -> %s %dms trace=%s", what, "error" if failed else "ok", ms, trace or "-")
         error = None
@@ -184,6 +193,8 @@ def build_server(
     start_background: Callable[..., Awaitable[None]] = transcripts.start_background,
     stop_background: Callable[[str], Awaitable[None]] = transcripts.stop_background,
     start_seconds: float = 20.0,
+    list_prs: Callable[[str], list[dict[str, Any]]] | None = None,
+    ui_origins: list[str] | None = None,
     summarize: Callable[[str, str | None, str | None], Awaitable[str]] = transcripts.summarize,
     digest_chars: int = 150_000,
     side_answer: Callable[[str, str, str | None], Awaitable[str]] | None = None,
@@ -955,11 +966,124 @@ def build_server(
         except ApprovalNotFound:
             raise ToolError("No such pending approval; it may have expired") from None
 
+    # -- the session the voice talks to, and the companion page that picks it -----------
+
+    def resolve_session(session: str) -> dict[str, Any]:
+        """A running session or one of the bridge's own, by name or id, as the page shows it."""
+        for row in fleet_recap()["sessions"]:
+            if session in (row["id"], row["name"]):
+                return {"id": row["id"], "name": row["name"], "kind": row["kind"]}
+        raise LookupError(f"No session called {session!r}")
+
+    def set_active(session: str, by: str) -> dict[str, Any]:
+        found = resolve_session(session)
+        active = {**found, "set_by": by, "set_at": datetime.now(UTC).isoformat(timespec="seconds")}
+        store.set_setting("active_session", active)
+        api.HUB.publish("active", active)
+        return active
+
+    @tool(annotations=READ_ONLY)
+    def get_active_session() -> dict[str, Any]:
+        """The session the owner chose to talk to, on the companion page or by voice:
+        send there by default. Null fields when none is chosen."""
+        return store.get_setting("active_session") or {"id": None, "name": None, "set_by": None, "set_at": None}
+
+    @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
+    def set_active_session(session: str) -> dict[str, Any]:
+        """Make `session` (a name or id from fleet_recap) the one the owner talks to, so the
+        companion page shows it. Call it when the owner switches session by voice."""
+        try:
+            return set_active(session, "voice")
+        except LookupError as exc:
+            raise ToolError(str(exc)) from None
+
+    pr_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+
+    async def prs_for(folder: str) -> list[dict[str, Any]]:
+        cached = pr_cache.get(folder)
+        if cached and time.monotonic() - cached[0] < 60:
+            return cached[1]
+        lister = list_prs or transcripts.open_pull_requests
+        try:
+            found = await asyncio.to_thread(lister, folder)
+        except Exception:
+            found = []
+        pr_cache[folder] = (time.monotonic(), found)
+        return found
+
+    def lookup(session: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+        """The running session, or else the bridge's own, named `session` (name or id)."""
+        for d in live_sessions():
+            if session in (d.get("name"), str(d.get("sessionId"))) and under_root(d.get("cwd")):
+                return d, None
+        for s in store.list_sessions(limit=200):
+            if session in (s["id"], s["label"]) and s["status"] != "closed":
+                return None, s
+        raise LookupError(f"No session called {session!r}")
+
+    def api_output(session: str, limit: int, after: int | None) -> dict[str, Any]:
+        live, own = lookup(session)
+        if own is not None:
+            recap = manager.recap(own["id"])
+            words = recap["latest_text"] or recap["last_result"] or recap["last_error"] or ""
+            turns = [{"index": 0, "role": "assistant", "text": transcripts.clip(words, 600)}] if words else []
+            return {"status": own["status"], "turns": turns, "next_after": 0 if turns else -1, "turns_left": 0}
+        assert live is not None
+        out = read_session_output(str(live.get("sessionId")), limit=limit, after=after)
+        return {k: out[k] for k in ("status", "turns", "next_after", "turns_left")}
+
+    def api_pending(session: str) -> dict[str, Any]:
+        live, own = lookup(session)
+        if own is not None:
+            approvals = manager.approvals.pending(own["id"]) if manager.approvals else []
+            return {"waiting": bool(approvals), "question": None, "approvals": approvals}
+        assert live is not None
+        waiting = live.get("status") == "waiting"
+        question = (
+            transcripts.open_question(str(live.get("sessionId")), str(live.get("cwd")), projects_dir)
+            if waiting
+            else None
+        )
+        return {"waiting": waiting, "question": question, "approvals": []}
+
+    async def api_prs(session: str) -> dict[str, Any]:
+        live, own = lookup(session)
+        folder = str(live.get("cwd")) if live is not None else str(own["project_path"]) if own else ""
+        return {"prs": await prs_for(folder)}
+
+    if oauth is not None:
+
+        async def check_token(token: str) -> bool:
+            return await oauth.load_access_token(token) is not None
+
+        api.EventApi(
+            store,
+            oauth.login_secret,
+            oauth.public_url,
+            check_token,
+            sessions=fleet_recap,
+            get_active=lambda: store.get_setting("active_session"),
+            set_active=set_active,
+            output=api_output,
+            pending=api_pending,
+            prs=api_prs,
+            news=whats_new,
+            ui_origins=ui_origins,
+        ).routes(mcp)
+
     return mcp
 
 
-def build_app(server: MCPServer, public_hosts: list[str] | None = None) -> ASGIApp:
-    """HTTP app. Auth (OAuth plus the static token) comes from the server's provider."""
+def build_app(
+    server: MCPServer,
+    public_hosts: list[str] | None = None,
+    ui_origins: list[str] | None = None,
+    ui_dir: Path | None = None,
+) -> ASGIApp:
+    """HTTP app. Auth (OAuth plus the static token) comes from the server's provider.
+
+    A companion UI's built files in `ui_dir` are served at /ui/; a UI served elsewhere
+    may call the event API across sites only from an origin in `ui_origins`."""
     from starlette.responses import PlainTextResponse
 
     @server.custom_route("/healthz", methods=["GET"])
@@ -972,7 +1096,24 @@ def build_app(server: MCPServer, public_hosts: list[str] | None = None) -> ASGIA
         allowed_hosts=hosts,
         allowed_origins=[f"https://{h}" for h in public_hosts or []] + ["http://127.0.0.1:*", "http://localhost:*"],
     )
-    return PublicClientMetadata(server.streamable_http_app(transport_security=security))
+    app = server.streamable_http_app(transport_security=security)
+    if ui_dir is not None:
+        from starlette.staticfiles import StaticFiles
+
+        app.mount("/ui", StaticFiles(directory=str(ui_dir), html=True), name="ui")
+    wrapped: ASGIApp = PublicClientMetadata(app)
+    if ui_origins:
+        from starlette.middleware.cors import CORSMiddleware
+
+        # RULE: only an origin named in the settings may call across sites
+        wrapped = CORSMiddleware(
+            wrapped,
+            allow_origins=list(ui_origins),
+            allow_credentials=True,
+            allow_methods=["GET", "POST", "PUT"],
+            allow_headers=["Authorization", "Content-Type"],
+        )
+    return wrapped
 
 
 def configure_logging(log_file: Path) -> logging.Handler:
@@ -1004,7 +1145,8 @@ def serve_forever(cfg: Config) -> None:
         store, login_secret=token, public_url=cfg.public_url, static_token=token, access_ttl=cfg.access_ttl
     )
     restart = metrics.restart_info("~/.local/state/claude-voice/restarts")
-    app = build_app(build_server(manager, oauth=oauth, watch_interval=5.0, restart=restart), cfg.public_hosts)
+    server = build_server(manager, oauth=oauth, watch_interval=5.0, restart=restart, ui_origins=cfg.ui_origins)
+    app = build_app(server, cfg.public_hosts, ui_origins=cfg.ui_origins, ui_dir=cfg.ui_dir)
     configure_logging(cfg.db.parent / LOG_FILE)
     # No log config of its own, so uvicorn's lines, the request log included, reach the file.
     uvicorn.run(app, host=cfg.host, port=cfg.port, log_level="info", log_config=None)
