@@ -99,7 +99,8 @@ def digest(entries: list[dict[str, Any]]) -> dict[str, Any]:
             handed_back.add(str(origin["senderTaskId"]))
         if kind == "queue-operation":
             handed_back.update(re.findall(r"<task-id>([^<]+)</task-id>", str(entry.get("content", ""))))
-        for block in _blocks(entry):
+        # Claude Code also keeps copies of turns (such as api-request-blob); only the turns count.
+        for block in _blocks(entry) if kind in ("user", "assistant") else []:
             if block.get("type") == "tool_use":
                 name, given = str(block.get("name", "")), block.get("input") or {}
                 tools[name] += 1
@@ -115,9 +116,13 @@ def digest(entries: list[dict[str, Any]]) -> dict[str, Any]:
                         target = (merged.group(1) or "").lstrip("#")
                         text = f"#{target}" if target.isdigit() else target or "a pull request"
                         timeline.append(_item(at, "pr_merged", text))
-                    elif COMMIT.search(command):
-                        message = MESSAGE.search(command)
-                        heredoc = HEREDOC.search(command)
+                    elif commit := COMMIT.search(command):
+                        # The message is read only from the commit itself, never from text before it.
+                        rest = command[commit.start() :]
+                        message = MESSAGE.search(rest.split("\n", 1)[0])
+                        heredoc = HEREDOC.search(rest)
+                        if heredoc and heredoc.start() > len(rest.split("\n", 1)[0]):
+                            heredoc = None  # a heredoc that belongs to a later command
                         if message:
                             text = message.group(1) or message.group(2)
                         else:
