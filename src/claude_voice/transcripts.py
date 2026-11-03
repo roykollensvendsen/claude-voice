@@ -235,7 +235,7 @@ def doing_line(session_id: str, cwd: str, projects_dir: Path = PROJECTS_DIR) -> 
     """What a session is doing, in one line: the question it waits on, or its latest words."""
     question = open_question(session_id, cwd, projects_dir)
     if question:
-        return clip("venter på valg: " + question["text"], 160)
+        return clip("waiting on a choice: " + question["text"], 160)
     path = projects_dir / project_key_for_directory(cwd) / f"{session_id}.jsonl"
     try:
         with path.open("rb") as f:
