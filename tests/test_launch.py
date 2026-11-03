@@ -197,3 +197,21 @@ def test_a_started_session_does_not_inherit_the_identity_of_the_session_that_sta
         }
     )
     assert env == {"HOME": "/home/x", "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1", "WAYLAND_DISPLAY": "wayland-0"}
+
+
+def test_a_window_runs_claude_code_through_the_owners_login_shell():
+    """So it gets the owner's PATH and settings from their shell files, as a terminal they open does."""
+    terminal = ["gnome-terminal", "--working-directory=/src/app", "--"]
+    cmd = background_command("claude", "app-1", terminal=terminal, shell="/bin/bash")
+    assert cmd[:3] == terminal
+    assert cmd[3:7] == ["/bin/bash", "-lic", 'exec "$@"', "claude-voice"]
+    assert cmd[7:] == ["claude", "--name", "app-1"]
+    assert "/bin/bash" not in background_command("claude", "app-1", shell="/bin/bash")  # not in the background
+
+
+@pytest.mark.parametrize(
+    ("shell", "used"),
+    [("/bin/bash", "/bin/bash"), ("/usr/bin/zsh", "/usr/bin/zsh"), ("/usr/bin/fish", None)],
+)
+def test_only_a_shell_that_takes_these_options_is_used(shell, used):
+    assert transcripts.login_shell({"SHELL": shell}) == used
