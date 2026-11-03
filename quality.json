@@ -25,20 +25,20 @@
     "claude_voice/updater.py": 12,
     "claude_voice/usage.py": 11
   },
-  "coverage": 91.43,
+  "coverage": 91.41,
   "cycles": 0,
-  "duplication": 2.44,
+  "duplication": 2.13,
   "layer_violations": 0,
   "lint_errors": 0,
   "mutation": {
-    "killed": 25,
-    "total": 25
+    "killed": 26,
+    "total": 26
   },
   "test_budget": {
     "seconds": 180,
     "tolerance": 0.25
   },
-  "test_seconds": 208.1,
-  "tests": 490,
+  "test_seconds": 105.3,
+  "tests": 492,
   "type_errors": 0
 }
