@@ -240,3 +240,23 @@ def test_a_commit_message_is_never_taken_from_text_written_before_the_commit():
     texts = [i["text"] for i in detail.digest([tool("Bash", 1, "b1", command=command)])["timeline"]]
     assert texts == ["feat: Add a"]
     assert [i["text"] for i in detail.digest([tool("Bash", 1, "b2", command=sneaky)])["timeline"]] == ["a commit"]
+
+
+@pytest.mark.parametrize(
+    ("command", "text"),
+    [
+        (
+            "python3 - <<'EOF'\nimport pathlib, json\nEOF\ngit commit -q -F - <<'EOF'\nfix: The right one\n\nBody.\nEOF",
+            "fix: The right one",
+        ),
+        ("git add a && git commit -q --amend --no-edit && git log -1", "amended the last commit"),
+        ('npm run lint; git commit -qam "style: Format it" -m "Body."', "style: Format it"),
+    ],
+)
+def test_a_commit_is_read_from_its_own_command(command, text):
+    assert [i["text"] for i in detail.digest([tool("Bash", 1, "b1", command=command)])["timeline"]] == [text]
+
+
+def test_code_that_calls_git_from_a_program_is_not_a_commit():
+    command = 'cat > t.py <<\'EOF\'\ndef f(tmp_path):\n    git(tmp_path, "-c", "user.name=t", "commit", "-m", "x")\nEOF'
+    assert detail.digest([tool("Bash", 1, "b1", command=command)])["timeline"] == []
