@@ -16,6 +16,7 @@ import logging
 import os
 import re
 import signal
+import sys
 import tempfile
 import time
 from collections.abc import Callable, Iterable, Mapping
@@ -756,6 +757,8 @@ LOGIN_SHELLS = ("bash", "zsh", "sh", "ksh")  # shells that take -l -i -c and "$@
 def login_shell(env: Mapping[str, str] = os.environ) -> str | None:
     """The owner's shell, if it is one a window's session can be run through."""
     shell = env.get("SHELL", "")
+    if not shell and sys.platform == "win32":
+        return None  # no login shells there, and no password database to ask
     if not shell:
         try:
             import pwd
