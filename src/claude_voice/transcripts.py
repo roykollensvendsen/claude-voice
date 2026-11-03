@@ -670,12 +670,17 @@ def background_command(
     settings: str | None = None,
     remote_control: bool = False,
     terminal: list[str] | None = None,
+    shell: str | None = None,
 ) -> list[str]:
     """The command that starts a named session, on a model and effort if given, with extra
     settings (such as a hook), Remote Control and a first message if given. In the
-    background, or inside `terminal`, the command that opens a terminal window."""
+    background, or inside `terminal`, the command that opens a terminal window; there it
+    runs through `shell` as a login shell, so it gets the owner's PATH and settings."""
+    # RULE: a window runs Claude Code through the owners login shell
+    through = [shell, "-lic", 'exec "$@"', "claude-voice"] if terminal and shell else []
     return [
         *(terminal or []),
+        *through,
         cli,
         *([] if terminal else ["--bg"]),
         "--name",
@@ -709,7 +714,8 @@ async def start_background(
 
     bundled = Path(claude_agent_sdk.__file__).parent / "_bundled" / "claude"
     cli = procs.find("claude") or str(bundled)
-    command = background_command(cli, name, model, effort, prompt, settings, remote_control, terminal)
+    shell = login_shell() if terminal else None
+    command = background_command(cli, name, model, effort, prompt, settings, remote_control, terminal, shell)
     if terminal:
         opener = procs.find(terminal[0]) or terminal[0]
         window = await asyncio.create_subprocess_exec(
@@ -742,6 +748,22 @@ async def start_background(
     out, _ = await asyncio.wait_for(proc.communicate(), 60)
     if proc.returncode:
         raise RuntimeError(out.decode(errors="replace").strip()[-300:] or f"claude --bg exited {proc.returncode}")
+
+
+LOGIN_SHELLS = ("bash", "zsh", "sh", "ksh")  # shells that take -l -i -c and "$@"
+
+
+def login_shell(env: Mapping[str, str] = os.environ) -> str | None:
+    """The owner's shell, if it is one a window's session can be run through."""
+    shell = env.get("SHELL", "")
+    if not shell:
+        try:
+            import pwd
+
+            shell = pwd.getpwuid(os.getuid()).pw_shell
+        except (ImportError, KeyError, AttributeError):
+            return None
+    return shell if Path(shell).name in LOGIN_SHELLS else None
 
 
 def stop_window(pid: int) -> None:
