@@ -71,6 +71,27 @@ def _item(at: Any, kind: str, text: str, **extra: Any) -> dict[str, Any]:
     return {"at": at, "kind": kind, "text": _short(text), **extra}
 
 
+def _from_command(command: str) -> tuple[str, str] | None:
+    """The timeline kind and text a shell command stands for: a merge, a commit, or neither."""
+    merged = MERGE.search(command)
+    if merged:
+        target = (merged.group(1) or "").lstrip("#")
+        return "pr_merged", f"#{target}" if target.isdigit() else target or "a pull request"
+    commit = COMMIT.search(command)
+    if not commit:
+        return None
+    # The message is read only from the commit itself, never from text before it.
+    rest = command[commit.start() :]
+    first = rest.split("\n", 1)[0]
+    message = MESSAGE.search(first)
+    if message:
+        return "commit", message.group(1) or message.group(2)
+    heredoc = HEREDOC.search(rest)
+    if heredoc and heredoc.start() <= len(first) and heredoc.group(2).strip():  # not a later command's
+        return "commit", heredoc.group(2).strip()
+    return "commit", "a commit"
+
+
 def digest(entries: list[dict[str, Any]]) -> dict[str, Any]:
     """Tool calls per tool, helpers running and in all, and the newest timeline items."""
     timeline: list[dict[str, Any]] = []
@@ -110,24 +131,9 @@ def digest(entries: list[dict[str, Any]]) -> dict[str, Any]:
                     first = (given.get("questions") or [{}])[0]
                     timeline.append(_item(at, "question", str(first.get("question", "")) or "a question"))
                 elif name == "Bash":
-                    command = str(given.get("command", ""))
-                    merged = MERGE.search(command)
-                    if merged:
-                        target = (merged.group(1) or "").lstrip("#")
-                        text = f"#{target}" if target.isdigit() else target or "a pull request"
-                        timeline.append(_item(at, "pr_merged", text))
-                    elif commit := COMMIT.search(command):
-                        # The message is read only from the commit itself, never from text before it.
-                        rest = command[commit.start() :]
-                        message = MESSAGE.search(rest.split("\n", 1)[0])
-                        heredoc = HEREDOC.search(rest)
-                        if heredoc and heredoc.start() > len(rest.split("\n", 1)[0]):
-                            heredoc = None  # a heredoc that belongs to a later command
-                        if message:
-                            text = message.group(1) or message.group(2)
-                        else:
-                            text = heredoc.group(2).strip() if heredoc and heredoc.group(2).strip() else "a commit"
-                        timeline.append(_item(at, "commit", text))
+                    found = _from_command(str(given.get("command", "")))
+                    if found:
+                        timeline.append(_item(at, *found))
             elif block.get("type") == "tool_result":
                 tool_id = str(block.get("tool_use_id"))
                 answered.add(tool_id)

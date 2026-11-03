@@ -4,7 +4,7 @@
     "claude_voice/approvals.py": 4,
     "claude_voice/cli.py": 19,
     "claude_voice/config.py": 17,
-    "claude_voice/detail.py": 50,
+    "claude_voice/detail.py": 40,
     "claude_voice/doctor.py": 19,
     "claude_voice/events.py": 15,
     "claude_voice/gitstatus.py": 13,
@@ -25,7 +25,7 @@
     "claude_voice/updater.py": 12,
     "claude_voice/usage.py": 11
   },
-  "coverage": 91.3,
+  "coverage": 91.31,
   "cycles": 0,
   "lint_errors": 0,
   "mutation": {
@@ -36,7 +36,7 @@
     "seconds": 180,
     "tolerance": 0.25
   },
-  "test_seconds": 105.8,
+  "test_seconds": 45.7,
   "tests": 475,
   "type_errors": 0
 }
