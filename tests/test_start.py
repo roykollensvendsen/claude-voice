@@ -105,7 +105,7 @@ class Stopper:
                 f.unlink()
 
 
-def bridge_with_stop(tmp_path, world, starter, stopper):
+def bridge_with_stop(tmp_path, world, starter, stopper, windows=None):
     root, live = world
     m = SessionManager(Store(tmp_path / "b.db"), project_root=root, client_factory=FakeClaude())
     return build_server(
@@ -115,6 +115,7 @@ def bridge_with_stop(tmp_path, world, starter, stopper):
         start_background=starter,
         find_program=lambda name: None,  # no terminal here: sessions start in the background
         stop_background=stopper,
+        stop_window=windows or Windows(live),  # never the real one: it would end this test's process
         start_seconds=1.0,
     )
 
@@ -145,11 +146,11 @@ async def test_only_a_session_the_bridge_started_itself_is_ever_stopped(tmp_path
             }
         )
     )
-    stopper = Stopper(live)
-    async with Client(bridge_with_stop(tmp_path, world, Starter(live), stopper)) as c:
+    stopper, windows = Stopper(live), Windows(live)
+    async with Client(bridge_with_stop(tmp_path, world, Starter(live), stopper, windows)) as c:
         out = (await c.call_tool("stop_active_session", {"name": "my-terminal"})).structured_content
     assert out == {"name": "my-terminal", "status": "not_started_here"}
-    assert stopper.calls == []
+    assert stopper.calls == [] and windows.closed == []
     assert (live / "term.json").exists()
 
 
