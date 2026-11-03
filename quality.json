@@ -4,7 +4,7 @@
     "claude_voice/approvals.py": 4,
     "claude_voice/cli.py": 19,
     "claude_voice/config.py": 17,
-    "claude_voice/detail.py": 47,
+    "claude_voice/detail.py": 50,
     "claude_voice/doctor.py": 19,
     "claude_voice/events.py": 15,
     "claude_voice/gitstatus.py": 13,
@@ -36,7 +36,7 @@
     "seconds": 180,
     "tolerance": 0.25
   },
-  "test_seconds": 47.7,
-  "tests": 473,
+  "test_seconds": 105.8,
+  "tests": 475,
   "type_errors": 0
 }
