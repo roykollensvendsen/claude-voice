@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import re
+import signal
 import tempfile
 import time
 from collections.abc import Callable, Iterable, Mapping
@@ -704,6 +705,14 @@ async def start_background(
     out, _ = await asyncio.wait_for(proc.communicate(), 60)
     if proc.returncode:
         raise RuntimeError(out.decode(errors="replace").strip()[-300:] or f"claude --bg exited {proc.returncode}")
+
+
+def stop_window(pid: int) -> None:
+    """End the Claude Code process of a session the bridge opened in a terminal window; the
+    window closes with it, as when its owner quits."""
+    if pid <= 1:
+        raise RuntimeError("Claude Code did not say which process runs that session")
+    os.kill(pid, signal.SIGTERM)
 
 
 async def stop_background(session_id: str) -> None:

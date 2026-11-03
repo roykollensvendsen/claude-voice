@@ -269,6 +269,7 @@ def build_server(
     restart: dict[str, Any] | None = None,
     start_background: Callable[..., Awaitable[None]] = transcripts.start_background,
     stop_background: Callable[[str], Awaitable[None]] = transcripts.stop_background,
+    stop_window: Callable[[int], None] = transcripts.stop_window,
     start_seconds: float = 20.0,
     list_prs: Callable[[str], list[dict[str, Any]]] | None = None,
     ui_origins: list[str] | None = None,
@@ -655,6 +656,18 @@ def build_server(
             path = manager.resolve_project(project)
         except ValueError as exc:
             raise ToolError(str(exc)) from None
+        # RULE: starting the same session twice gives back the one already running
+        same = next(
+            (d for d in live_sessions() if name and d.get("name") == name.strip() and d.get("cwd") == str(path)), None
+        )
+        if same is not None:  # a retry after an answer lost on the way must not open a second window
+            return {
+                "name": same.get("name"),
+                "claude_session_id": same.get("sessionId"),
+                "project": under_root(str(path)),
+                "status": same.get("status") or "idle",
+                "already_running": True,
+            }
         taken = {str(d.get("name")) for d in live_sessions()}
         wanted = (name or "").strip() or f"{path.name}-{secrets.token_hex(2)}"
         while wanted in taken:
@@ -873,8 +886,8 @@ def build_server(
 
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
     async def stop_active_session(name: str) -> dict[str, Any]:
-        """Stop a background session that start_active_session started. Any other session,
-        such as one open in a terminal, is refused (status not_started_here)."""
+        """Stop a session that start_active_session started, in the background or in a window it
+        opened. Any other session, such as one the owner opened, is refused (status not_started_here)."""
         target = next((d for d in live_sessions() if name in (d.get("name"), d.get("sessionId"))), None)
         if target is None:
             return {"name": name, "status": "not_running"}
@@ -883,7 +896,10 @@ def build_server(
         if not store.was_started(sid):
             return {"name": name, "status": "not_started_here"}
         try:
-            await stop_background(sid)
+            if target.get("kind") == "bg":
+                await stop_background(sid)
+            else:  # a window the bridge opened: ending its Claude Code closes it
+                stop_window(int(target.get("pid") or 0))
         except Exception as exc:
             raise ToolError(f"Claude Code could not stop {name}: {exc}") from None
         deadline = time.monotonic() + start_seconds

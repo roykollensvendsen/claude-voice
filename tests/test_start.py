@@ -74,11 +74,9 @@ async def test_without_a_name_one_is_made_from_the_project_and_never_clashes(tmp
     starter = Starter(world[1])
     async with Client(bridge(tmp_path, world, starter)) as c:
         first = (await c.call_tool("start_active_session", {"project": "billing"})).structured_content
-        second = (
-            await c.call_tool("start_active_session", {"project": "billing", "name": first["name"]})
-        ).structured_content
-    assert first["name"].startswith("billing-")
-    assert second["name"] != first["name"] and second["name"].startswith(first["name"])
+        second = (await c.call_tool("start_active_session", {"project": "billing"})).structured_content
+    assert first["name"].startswith("billing-") and second["name"].startswith("billing-")
+    assert second["name"] != first["name"]  # no name given: a new session each time
 
 
 async def test_a_folder_outside_the_root_is_refused(tmp_path, world):
@@ -237,7 +235,7 @@ async def test_a_window_the_bridge_opened_can_be_stopped_by_the_bridge(tmp_path,
 
     async def in_a_window(cwd, name, **how):
         (live / f"{name}.json").write_text(
-            json.dumps({"pid": 4242, "sessionId": f"sid-{name}", "cwd": cwd, "name": name, "kind": "interactive"})
+            json.dumps({"pid": PID, "sessionId": f"sid-{name}", "cwd": cwd, "name": name, "kind": "interactive"})
         )
 
     windows, stopper = Windows(live), Stopper(live)
@@ -255,4 +253,4 @@ async def test_a_window_the_bridge_opened_can_be_stopped_by_the_bridge(tmp_path,
     async with Client(server) as c:
         await c.call_tool("start_active_session", {"project": "billing", "name": "inv"})
         out = (await c.call_tool("stop_active_session", {"name": "inv"})).structured_content
-    assert out["status"] == "stopped" and windows.closed == [4242] and stopper.calls == []
+    assert out["status"] == "stopped" and windows.closed == [PID] and stopper.calls == []
