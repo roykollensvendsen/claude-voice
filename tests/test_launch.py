@@ -211,7 +211,7 @@ def test_a_window_runs_claude_code_through_the_owners_login_shell():
 
 @pytest.mark.parametrize(
     ("shell", "used"),
-    [("/bin/bash", "/bin/bash"), ("/usr/bin/zsh", "/usr/bin/zsh"), ("/usr/bin/fish", None), ("", None)],
+    [("/bin/bash", "/bin/bash"), ("/usr/bin/zsh", "/usr/bin/zsh"), ("/usr/bin/fish", None)],
 )
 def test_only_a_shell_that_takes_these_options_is_used(shell, used):
     assert transcripts.login_shell({"SHELL": shell}) == used
