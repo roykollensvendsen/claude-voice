@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 
 import httpx
 import pytest
@@ -214,4 +215,5 @@ def test_a_window_runs_claude_code_through_the_owners_login_shell():
     [("/bin/bash", "/bin/bash"), ("/usr/bin/zsh", "/usr/bin/zsh"), ("/usr/bin/fish", None)],
 )
 def test_only_a_shell_that_takes_these_options_is_used(shell, used):
-    assert transcripts.login_shell({"SHELL": shell}) == used
+    expected = None if sys.platform == "win32" else used  # Windows has no login shell to use
+    assert transcripts.login_shell({"SHELL": shell}) == expected
