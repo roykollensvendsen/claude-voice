@@ -70,6 +70,24 @@ find = 'return len\(self\._failures\) >= MAX_FAILURES'
 replace = 'return False'
 
 [[rule]]
+name = "an app that never signs in is forgotten after an hour"
+file = "src/claude_voice/oauth.py"
+find = 'self\.db\.execute\(FORGET_UNUSED, '
+replace = 'pass'
+
+[[rule]]
+name = "registering stops while twenty apps wait to sign in"
+file = "src/claude_voice/oauth.py"
+find = 'if waiting >= MAX_UNUSED_CLIENTS:'
+replace = 'if False:'
+
+[[rule]]
+name = "a sign-in is refused while twenty are open"
+file = "src/claude_voice/oauth.py"
+find = 'if len\(self\._consents\) >= MAX_OPEN_SIGN_INS:'
+replace = 'if False:'
+
+[[rule]]
 name = "a change sent from another site is refused"
 file = "src/claude_voice/api.py"
 find = 'if not self\._same_site\(request\):  # a page elsewhere'
