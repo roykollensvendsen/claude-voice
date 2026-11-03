@@ -229,12 +229,18 @@ async def test_a_new_sign_in_attempt_does_not_reset_the_count_of_wrong_secrets(b
     assert allowed.status_code == 302 and "code=" in allowed.headers["location"]
 
 
+def an_hour_after_now():
+    # An app's registration time is the MCP SDK's, read from the real clock while the test
+    # runs, so the hour is counted from now and not from when the test clock was made.
+    return time.time() + 3601
+
+
 async def test_an_app_that_never_signs_in_is_forgotten_after_an_hour(bridge, clock):
     # Anyone may register, so an app that never signs in must not be kept for ever.
     # One that did sign in is kept, or its next refresh would fail.
     signed_in, tokens = await login(bridge)
     stranger = await register(bridge, name="never signs in")
-    clock.t += 3601
+    clock.t = an_hour_after_now()
     await register(bridge, name="the next app")  # registering is when the bridge tidies up
     _, challenge = pkce()
     forgotten = await bridge.get("/authorize", params=authorize_params(stranger, challenge))
@@ -250,7 +256,7 @@ async def test_registering_stops_while_twenty_apps_wait_to_sign_in(bridge, clock
     for i in range(20):
         await register(bridge, name=f"waiting {i}")
     refused = await bridge.post("/register", json=registration("one too many"))
-    clock.t += 3601
+    clock.t = an_hour_after_now()
     again = await bridge.post("/register", json=registration("after an hour"))
     assert refused.status_code == 400 and refused.json()["error"] == "invalid_client_metadata"
     assert again.status_code == 201, again.text
