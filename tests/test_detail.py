@@ -246,10 +246,12 @@ def test_a_commit_message_is_never_taken_from_text_written_before_the_commit():
     ("command", "text"),
     [
         (
-            "python3 - <<'EOF'\nimport pathlib, json\nEOF\ngit commit -q -F - <<'EOF'\nfix: The right one\n\nBody.\nEOF",
+            "python3 - <<'EOF'\nimport pathlib, json\nEOF\n"
+            "git commit -q -F - <<'EOF'\nfix: The right one\n\nBody.\nEOF",
             "fix: The right one",
         ),
         ("git add a && git commit -q --amend --no-edit && git log -1", "amended the last commit"),
+        ("git commit -q -F /tmp/msg.txt 2>&1 | grep -v x; python3 - <<'EOF'\nimport re\nEOF", "a commit"),
         ('npm run lint; git commit -qam "style: Format it" -m "Body."', "style: Format it"),
     ],
 )
