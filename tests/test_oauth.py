@@ -253,7 +253,17 @@ async def test_refresh_rotates_and_old_refresh_dies(bridge):
     fresh = r.json()
     assert fresh["refresh_token"] != tokens["refresh_token"]
     assert (await mcp_initialize(bridge, fresh["access_token"])).status_code == 200
-    assert (await token(bridge, **form, refresh_token=tokens["refresh_token"])).status_code == 400
+
+
+async def test_a_refresh_token_stays_usable_for_a_minute_after_it_is_spent(bridge, clock):
+    """The Claude app refreshed twice at once with the same token; the second must not lock it out."""
+    client_id, tokens = await login(bridge)
+    form = dict(grant_type="refresh_token", client_id=client_id, refresh_token=tokens["refresh_token"])
+    first, second = await token(bridge, **form), await token(bridge, **form)
+    assert first.status_code == 200 and second.status_code == 200
+    assert (await mcp_initialize(bridge, second.json()["access_token"])).status_code == 200
+    clock.t += 61
+    assert (await token(bridge, **form)).status_code == 400  # a minute later it is spent for good
 
 
 async def test_every_token_refresh_is_logged_with_its_outcome(bridge, caplog):
