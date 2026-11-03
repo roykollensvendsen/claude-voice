@@ -20,8 +20,8 @@ TEXT = 120  # characters of each item's text
 HELPERS = ("Agent", "Task")
 # A command counts only where it starts a line or a step, not inside text a command writes.
 STEP = r"(?:^|[;&|(]\s*|\n\s*)"
-COMMIT = re.compile(STEP + r"git\b[^|;&\n]*\bcommit\b")
-MESSAGE = re.compile(r"""-m\s+(?:"([^"]*)"|'([^']*)')""")
+COMMIT = re.compile(STEP + r"git\s[^|;&\n]*\bcommit\b")  # git and a space: not git(...) in a program
+MESSAGE = re.compile(r"""(?:^|\s)-[a-zA-Z]*m\s+(?:"([^"]*)"|'([^']*)')""")  # -m, or combined as in -qam
 HEREDOC = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?[^\n]*\n(.*?)\n")  # the first line after <<'EOF'
 MERGE = re.compile(STEP + r"gh\s+pr\s+merge\b(?:\s+(?!-)(\S+))?")
 
@@ -81,13 +81,16 @@ def _from_command(command: str) -> tuple[str, str] | None:
     if not commit:
         return None
     # The message is read only from the commit itself, never from text before it.
-    rest = command[commit.start() :]
+    rest = command[commit.start() :].lstrip(" \t\n;&|(")  # from git itself, not the step before it
     first = rest.split("\n", 1)[0]
+    if "--amend" in first:
+        return "commit", "amended the last commit"
     message = MESSAGE.search(first)
     if message:
         return "commit", message.group(1) or message.group(2)
-    heredoc = HEREDOC.search(rest)
-    if heredoc and heredoc.start() <= len(first) and heredoc.group(2).strip():  # not a later command's
+    own = re.split(r"[;&|]", first, maxsplit=1)[0]  # the commit's own step, not what follows on the line
+    heredoc = HEREDOC.search(rest) if re.search(r"(?:-F|--file)[ =]-(?:\s|$)", own) else None
+    if heredoc and heredoc.start() <= len(own) and heredoc.group(2).strip():
         return "commit", heredoc.group(2).strip()
     return "commit", "a commit"
 
