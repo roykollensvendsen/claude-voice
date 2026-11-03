@@ -40,7 +40,34 @@ SOURCE = ROOT / "src"
 PACKAGE = SOURCE / "claude_voice"
 COVERAGE_WOBBLE = 0.5  # percentage points: coverage differs slightly between machines and versions
 HIGHER = ("coverage", "mutation", "tests")
-LOWER = ("lint_errors", "type_errors", "cycles")
+LOWER = ("lint_errors", "type_errors", "cycles", "layer_violations", "duplication")
+NEW_MODULE_CEILING = 15  # the most tangled function a new module may have
+BLOCK = 6  # lines in a row that count as a copied block
+# Each module's layer: a module may use, when it loads, only modules in the layers below it.
+LAYERS = {
+    **dict.fromkeys(("procs", "config", "store", "metrics", "titles"), 0),  # foundations
+    **dict.fromkeys(
+        (
+            "transcripts",
+            "sessions",
+            "gitstatus",
+            "doctor",
+            "launch",
+            "roles",
+            "guard",
+            "usage",
+            "updater",
+            "software",
+            "detail",
+            "oauth",
+        ),
+        1,
+    ),  # parts, each about one thing
+    **dict.fromkeys(("events", "tree", "approvals"), 2),  # parts built from parts
+    **dict.fromkeys(("api", "phone_hook"), 3),  # the doors in from outside
+    "server": 4,  # where it is all put together
+    "cli": 5,  # the command line that starts it
+}
 EXCEPTION = re.compile(r"^\s*ratchet-exception:\s*([a-z_]+)", re.IGNORECASE | re.MULTILINE)
 
 
@@ -137,6 +164,36 @@ def cycles(package_dir: Path) -> int:
     return groups
 
 
+def layer_breaches(package_dir: Path, layers: dict[str, int]) -> list[str]:
+    """Every load-time import that reaches up or sideways, and every module with no layer."""
+    names = {p.stem for p in package_dir.glob("*.py") if p.stem != "__init__"}
+    found = []
+    for name in sorted(names):
+        if name not in layers:
+            found.append(f"{name} has no layer")
+            continue
+        for used in sorted(_imports(package_dir / f"{name}.py", package_dir.name, names) - {name}):
+            if used in layers and layers[used] >= layers[name]:
+                found.append(f"{name} (layer {layers[name]}) imports {used} (layer {layers[used]})")
+    return found
+
+
+def duplication(folder: Path) -> float:
+    """The share of non-blank source lines, in percent, that sit in a block of BLOCK or more
+    lines appearing more than once, within a file or across files, ignoring indentation."""
+    files = {
+        p: [" ".join(line.split()) for line in p.read_text(encoding="utf-8").splitlines() if line.strip()]
+        for p in sorted(folder.rglob("*.py"))
+    }
+    where: dict[tuple[str, ...], list[tuple[Path, int]]] = {}
+    for path, lines in files.items():
+        for i in range(len(lines) - BLOCK + 1):
+            where.setdefault(tuple(lines[i : i + BLOCK]), []).append((path, i))
+    copied = {(p, j) for spots in where.values() if len(spots) > 1 for p, i in spots for j in range(i, i + BLOCK)}
+    total = sum(len(lines) for lines in files.values())
+    return round(100 * len(copied) / total, 2) if total else 0.0
+
+
 def _run(*command: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, cwd=ROOT, capture_output=True, text=True, check=False)
 
@@ -169,6 +226,8 @@ def measure(skip_mutation: bool = False, recorded: dict[str, Any] | None = None)
         "lint_errors": len(json.loads(lint.stdout or "[]")),
         "type_errors": int(type_errors[1]) if type_errors else 0,
         "cycles": cycles(PACKAGE),
+        "layer_violations": len(layer_breaches(PACKAGE, LAYERS)),
+        "duplication": duplication(SOURCE),
         "complexity": complexity(SOURCE),
         "test_seconds": seconds,
         "test_budget": None,
@@ -201,6 +260,8 @@ def compare(base: dict[str, Any], now: dict[str, Any], committed: dict[str, Any]
     or the suite over its time budget."""
     found = []
     for metric in (*HIGHER, *LOWER):
+        if metric not in base:
+            continue  # a measure added since the base: nothing to compare with yet
         # RULE: a measure that gets worse fails the check
         if _worse(metric, base[metric], now[metric]) and metric not in allowed:
             found.append(f"{metric} got worse: {base[metric]} -> {now[metric]}")
@@ -208,7 +269,9 @@ def compare(base: dict[str, Any], now: dict[str, Any], committed: dict[str, Any]
         before = base["complexity"].get(module)
         if before is not None and score > before and "complexity" not in allowed:
             found.append(f"complexity of {module} got worse: {before} -> {score}")
-    stale = [m for m in (*HIGHER, *LOWER) if _differs(m, committed[m], now[m])]
+        if before is None and score > NEW_MODULE_CEILING and "complexity" not in allowed:
+            found.append(f"{module} is new and has a function of complexity {score}; keep it at {NEW_MODULE_CEILING}")
+    stale = [m for m in (*HIGHER, *LOWER) if m in now and (m not in committed or _differs(m, committed[m], now[m]))]
     if committed["complexity"] != now["complexity"]:
         stale.append("complexity")
     if stale:

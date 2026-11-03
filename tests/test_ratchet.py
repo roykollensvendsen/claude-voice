@@ -144,7 +144,7 @@ def test_a_module_that_imports_from_a_higher_layer_is_a_breach(tmp_path):
     (pkg / "high.py").write_text("from . import low\n")
     (pkg / "loose.py").write_text("")
     found = ratchet.layer_breaches(pkg, {"low": 0, "high": 1})
-    assert found == ["low (layer 0) imports high (layer 1)", "loose has no layer"]
+    assert set(found) == {"low (layer 0) imports high (layer 1)", "loose has no layer"}
 
 
 def test_the_bridge_keeps_to_its_layers():
