@@ -4,6 +4,7 @@ import json
 
 from claude_agent_sdk import project_key_for_directory
 
+from claude_voice import transcripts
 from claude_voice.transcripts import read_raw_transcript, recent_turns
 
 
@@ -56,3 +57,51 @@ def test_peer_messages_that_arrive_mid_turn_are_kept_and_other_meta_entries_are_
 
 def test_a_missing_transcript_reads_as_empty(tmp_path):
     assert read_raw_transcript("nope", "/x", projects_dir=tmp_path) == []
+
+
+def write(path, entries, mode="w"):
+    with path.open(mode, encoding="utf-8") as f:
+        f.writelines(json.dumps(e) + "\n" for e in entries)
+
+
+def test_a_transcript_keeps_only_what_a_person_reads_not_tool_output(tmp_path):
+    """Transcripts reach hundreds of megabytes, nearly all of it tool output nobody reads back."""
+    path = tmp_path / project_key_for_directory("/w") / "s.jsonl"
+    path.parent.mkdir(parents=True)
+    huge = "x" * 200_000
+    write(
+        path,
+        [
+            {"type": "user", "message": {"content": "Run the tests"}},
+            {
+                "type": "assistant",
+                "message": {"content": [{"type": "tool_use", "id": "t", "name": "Bash", "input": {"command": huge}}]},
+            },
+            {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t", "content": huge}]}},
+            {"type": "assistant", "message": {"content": [{"type": "text", "text": "All green."}]}},
+        ],
+    )
+    msgs = transcripts.read_raw_transcript("s", "/w", tmp_path)
+    assert huge not in json.dumps([m.message for m in msgs])
+    assert transcripts.recent_turns(msgs, None) == [
+        {"role": "user", "text": "Run the tests"},
+        {"role": "assistant", "text": "All green.", "tools": ["Bash"]},
+    ]
+
+
+def test_a_growing_transcript_is_read_from_where_it_left_off(tmp_path):
+    path = tmp_path / project_key_for_directory("/w") / "g.jsonl"
+    path.parent.mkdir(parents=True)
+    write(path, [{"type": "user", "message": {"content": "one"}}])
+    assert [m.message["content"] for m in transcripts.read_raw_transcript("g", "/w", tmp_path)] == ["one"]
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps({"type": "user", "message": {"content": "two"}}) + "\n")
+        f.write('{"type": "user", "message": {"content": "thr')  # still being written
+    assert [m.message["content"] for m in transcripts.read_raw_transcript("g", "/w", tmp_path)] == ["one", "two"]
+    with path.open("a", encoding="utf-8") as f:
+        f.write('ee"}}\n')
+    assert [m.message["content"] for m in transcripts.read_raw_transcript("g", "/w", tmp_path)] == [
+        "one",
+        "two",
+        "three",
+    ]
