@@ -57,7 +57,7 @@ def test_coverage_may_wobble_a_little_between_machines():
 
 
 def test_a_new_module_starts_its_own_baseline():
-    now = measured(complexity={"pkg/a.py": 10, "pkg/b.py": 5, "pkg/c.py": 30})
+    now = measured(complexity={"pkg/a.py": 10, "pkg/b.py": 5, "pkg/c.py": 12})
     assert problems(BASE, now) == []
 
 
@@ -131,3 +131,49 @@ def test_a_cycle_among_the_modules_is_counted_and_a_lazy_import_is_not(tmp_path)
     (pkg / "c.py").write_text("def later():\n    from . import a\n")
     (pkg / "d.py").write_text("from . import c\n")
     assert ratchet.cycles(pkg) == 1
+
+
+# -- layers, duplication and new modules -------------------------------------------------
+
+
+def test_a_module_that_imports_from_a_higher_layer_is_a_breach(tmp_path):
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("")
+    (pkg / "low.py").write_text("from . import high\n")
+    (pkg / "high.py").write_text("from . import low\n")
+    (pkg / "loose.py").write_text("")
+    found = ratchet.layer_breaches(pkg, {"low": 0, "high": 1})
+    assert found == ["low (layer 0) imports high (layer 1)", "loose has no layer"]
+
+
+def test_the_bridge_keeps_to_its_layers():
+    assert ratchet.layer_breaches(ratchet.PACKAGE, ratchet.LAYERS) == []
+
+
+def test_duplicated_code_is_the_share_of_lines_in_blocks_that_appear_twice(tmp_path):
+    block = "\n".join(f"x{i} = compute({i})" for i in range(6))
+    (tmp_path / "a.py").write_text(block + "\n\nunique_a = 1\n" + "\n".join(f"y{i} = {i}" for i in range(3)) + "\n")
+    (tmp_path / "b.py").write_text("    " + block.replace("\n", "\n    ") + "\nunique_b = 2\n")
+    assert ratchet.duplication(tmp_path) == round(100 * 12 / 17, 2)  # 12 of 17 non-blank lines
+
+
+@pytest.mark.parametrize(
+    ("change", "metric"), [({"layer_violations": 1}, "layer_violations"), ({"duplication": 3.0}, "duplication")]
+)
+def test_layering_and_duplication_may_not_get_worse(change, metric):
+    base = {**BASE, "layer_violations": 0, "duplication": 2.0}
+    found = problems(base, {**base, **change})
+    assert found and all(metric in p for p in found)
+
+
+def test_a_base_without_a_new_measure_has_nothing_to_compare_with():
+    now = {**BASE, "layer_violations": 0, "duplication": 2.0}
+    assert problems(BASE, now) == []
+
+
+def test_a_new_module_must_keep_every_function_at_fifteen_or_below():
+    now = measured(complexity={"pkg/a.py": 10, "pkg/b.py": 5, "pkg/new.py": 16})
+    found = problems(BASE, now)
+    assert found and "pkg/new.py" in found[0]
+    assert problems(BASE, measured(complexity={"pkg/a.py": 10, "pkg/b.py": 5, "pkg/new.py": 15})) == []

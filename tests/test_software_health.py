@@ -107,3 +107,12 @@ async def test_the_app_reads_both_repositories_on_one_page(tmp_path):
     assert names == ["claude-voice", "claude-voice-ui"] and page["as_of"]
     assert by_id(page["repos"][1])["coverage"]["status"] == "bad"
     assert by_id(page["repos"][0])["ci"]["url"] == "https://ci/roykollensvendsen/claude-voice"
+
+
+def test_layering_and_duplication_are_measures_once_a_repository_records_them(tmp_path):
+    repo = repo_with_history(tmp_path / "r", {**QUALITY, "layer_violations": 0, "duplication": 2.45})
+    metrics = by_id(software.repo_report("r", "https://github.com/o/r", repo))
+    assert metrics["layers"]["status"] == "ok" and metrics["layers"]["text"] == "every module keeps to its layer"
+    assert metrics["duplication"]["value"] == 2.45 and metrics["duplication"]["status"] == "ok"
+    older = by_id(software.repo_report("r", "https://github.com/o/r", repo_with_history(tmp_path / "s", QUALITY)))
+    assert older["layers"]["status"] == "unknown"
