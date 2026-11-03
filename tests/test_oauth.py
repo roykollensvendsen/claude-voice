@@ -78,33 +78,35 @@ def pkce():
     return verifier, base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
 
+def registration(name="ChatGPT"):
+    return {
+        "client_name": name,
+        "redirect_uris": [REDIRECT],
+        "grant_types": ["authorization_code", "refresh_token"],
+        "response_types": ["code"],
+        "token_endpoint_auth_method": "none",
+    }
+
+
 async def register(http, name="ChatGPT"):
-    r = await http.post(
-        "/register",
-        json={
-            "client_name": name,
-            "redirect_uris": [REDIRECT],
-            "grant_types": ["authorization_code", "refresh_token"],
-            "response_types": ["code"],
-            "token_endpoint_auth_method": "none",
-        },
-    )
+    r = await http.post("/register", json=registration(name))
     assert r.status_code == 201, r.text
     return r.json()["client_id"]
 
 
+def authorize_params(client_id, challenge, state="st-1"):
+    return {
+        "response_type": "code",
+        "client_id": client_id,
+        "redirect_uri": REDIRECT,
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+        "state": state,
+    }
+
+
 async def start_authorize(http, client_id, challenge, state="st-1"):
-    r = await http.get(
-        "/authorize",
-        params={
-            "response_type": "code",
-            "client_id": client_id,
-            "redirect_uri": REDIRECT,
-            "code_challenge": challenge,
-            "code_challenge_method": "S256",
-            "state": state,
-        },
-    )
+    r = await http.get("/authorize", params=authorize_params(client_id, challenge, state))
     assert r.status_code == 302, r.text
     consent = r.headers["location"]
     assert urlparse(consent).path == "/oauth/consent"
@@ -225,6 +227,48 @@ async def test_a_new_sign_in_attempt_does_not_reset_the_count_of_wrong_secrets(b
     allowed = await consent(bridge, await start_authorize(bridge, client_id, challenge))
     assert codes == [401] * 5 + [429] and refused.status_code == 429
     assert allowed.status_code == 302 and "code=" in allowed.headers["location"]
+
+
+async def test_an_app_that_never_signs_in_is_forgotten_after_an_hour(bridge, clock):
+    # Anyone may register, so an app that never signs in must not be kept for ever.
+    # One that did sign in is kept, or its next refresh would fail.
+    signed_in, tokens = await login(bridge)
+    stranger = await register(bridge, name="never signs in")
+    clock.t += 3601
+    await register(bridge, name="the next app")  # registering is when the bridge tidies up
+    _, challenge = pkce()
+    forgotten = await bridge.get("/authorize", params=authorize_params(stranger, challenge))
+    refresh = dict(grant_type="refresh_token", client_id=signed_in, refresh_token=tokens["refresh_token"])
+    kept = await token(bridge, **refresh)
+    assert forgotten.status_code == 400
+    assert kept.status_code == 200, kept.text
+
+
+async def test_registering_stops_while_twenty_apps_wait_to_sign_in(bridge, clock):
+    # A script could otherwise register apps without end, each one a row kept on disk.
+    await login(bridge)  # an app that signed in is not waiting, so it does not count
+    for i in range(20):
+        await register(bridge, name=f"waiting {i}")
+    refused = await bridge.post("/register", json=registration("one too many"))
+    clock.t += 3601
+    again = await bridge.post("/register", json=registration("after an hour"))
+    assert refused.status_code == 400 and refused.json()["error"] == "invalid_client_metadata"
+    assert again.status_code == 201, again.text
+
+
+async def test_a_sign_in_is_refused_while_twenty_are_open(bridge, clock):
+    # Each open sign-in is held in memory for ten minutes, so without a limit one app
+    # could fill the memory by asking again and again.
+    client_id = await register(bridge)
+    _, challenge = pkce()
+    for _ in range(20):
+        await start_authorize(bridge, client_id, challenge)
+    refused = await bridge.get("/authorize", params=authorize_params(client_id, challenge))
+    clock.t += 601
+    reopened = await start_authorize(bridge, client_id, challenge)
+    assert refused.status_code == 302
+    assert parse_qs(urlparse(refused.headers["location"]).query)["error"] == ["temporarily_unavailable"]
+    assert urlparse(reopened).path == "/oauth/consent"
 
 
 async def test_too_many_wrong_secrets_burn_the_request(bridge):
