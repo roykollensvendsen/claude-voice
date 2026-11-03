@@ -203,3 +203,56 @@ def test_the_background_start_passes_model_and_effort_to_claude_code():
         "--effort",
         "max",
     ]
+
+
+async def test_starting_the_same_session_twice_gives_back_the_one_already_running(tmp_path, world):
+    """A retry after an answer lost on the way must not open a second window."""
+    starter = Starter(world[1])
+    async with Client(bridge(tmp_path, world, starter)) as c:
+        first = (
+            await c.call_tool("start_active_session", {"project": "billing", "name": "invoices"})
+        ).structured_content
+        again = (
+            await c.call_tool("start_active_session", {"project": "billing", "name": "invoices"})
+        ).structured_content
+    assert len(starter.calls) == 1
+    assert again["claude_session_id"] == first["claude_session_id"] and again["already_running"] is True
+
+
+class Windows:
+    """Stands in for closing a terminal window: records the process and removes its registry entry."""
+
+    def __init__(self, live):
+        self.live, self.closed = live, []
+
+    def __call__(self, pid):
+        self.closed.append(pid)
+        for f in self.live.glob("*.json"):
+            if json.loads(f.read_text(encoding="utf-8")).get("pid") == pid:
+                f.unlink()
+
+
+async def test_a_window_the_bridge_opened_can_be_stopped_by_the_bridge(tmp_path, world):
+    root, live = world
+
+    async def in_a_window(cwd, name, **how):
+        (live / f"{name}.json").write_text(
+            json.dumps({"pid": 4242, "sessionId": f"sid-{name}", "cwd": cwd, "name": name, "kind": "interactive"})
+        )
+
+    windows, stopper = Windows(live), Stopper(live)
+    m = SessionManager(Store(tmp_path / "b.db"), project_root=root, client_factory=FakeClaude())
+    server = build_server(
+        m,
+        conversations=lambda **k: [],
+        live_dir=live,
+        start_background=in_a_window,
+        stop_background=stopper,
+        stop_window=windows,
+        start_seconds=1.0,
+        find_program=lambda n: None,
+    )
+    async with Client(server) as c:
+        await c.call_tool("start_active_session", {"project": "billing", "name": "inv"})
+        out = (await c.call_tool("stop_active_session", {"name": "inv"})).structured_content
+    assert out["status"] == "stopped" and windows.closed == [4242] and stopper.calls == []
