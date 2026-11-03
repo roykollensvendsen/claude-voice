@@ -20,6 +20,11 @@ runs from, so the file is only needed to change something:
     remote_control = true                       # a session the bridge starts is reachable from the Claude app
     launch = "terminal"                         # or "background": where a started session runs
     terminal_command = "kitty --directory {cwd}"  # default: the first of gnome-terminal, kgx, konsole, xterm
+
+    [budgets]                                   # seconds each client is answered within
+    claude_app = 20                             # the Claude app drops a call after about 30 s
+    voice_app = 120
+    default = 60
 """
 
 from __future__ import annotations
@@ -66,12 +71,35 @@ class Sessions:
     terminal_command: str | None = None
 
 
+BUDGETS = {"claude_app": 20.0, "voice_app": 120.0, "default": 60.0}
+
+
+class Budgets:
+    """How long each client is answered within, in seconds: the Claude app drops a tool call
+    after about 30 seconds, the voice app waits longer. Slow work goes on in the background."""
+
+    def __init__(self, seconds: Mapping[str, float] | None = None) -> None:
+        self._seconds = {**BUDGETS, **(seconds or {})}
+
+    def seconds(self, client: str) -> float:
+        return self._seconds.get(client, self._seconds["default"])
+
+
+def _budgets(raw: dict[str, Any]) -> Budgets:
+    for key, value in raw.items():
+        # RULE: a time budget that is not a positive number is refused
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+            raise ConfigError(f"[budgets] {key} = {value!r} is not a positive number of seconds")
+    return Budgets({k: float(v) for k, v in raw.items()})
+
+
 @dataclass
 class Config:
     repos: Repos
     paths: Paths
     file: Path | None
     sessions: Sessions = field(default_factory=Sessions)
+    budgets: Budgets = field(default_factory=Budgets)
 
 
 def _repo(value: Any, key: str) -> str:
@@ -112,7 +140,13 @@ def load(path: Path | None = FILE, own_clone: Path | None = None, env: Mapping[s
         or (ui / "dist" if ui else None)
     )
     contribute = _path(paths_raw.get("contribute"), home) or voice
-    return Config(repos, Paths(voice, ui, dist, contribute), file, _sessions(raw.get("sessions") or {}))
+    return Config(
+        repos,
+        Paths(voice, ui, dist, contribute),
+        file,
+        _sessions(raw.get("sessions") or {}),
+        _budgets(raw.get("budgets") or {}),
+    )
 
 
 def _sessions(raw: dict[str, Any]) -> Sessions:

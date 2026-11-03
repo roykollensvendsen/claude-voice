@@ -141,7 +141,7 @@ def sse(body: str) -> list[tuple[str, dict]]:
     out = []
     for block in body.strip().split("\n\n"):
         lines = dict(line.split(": ", 1) for line in block.splitlines() if ": " in line and not line.startswith(":"))
-        if "event" in lines:
+        if "event" in lines and lines["event"] != "hello":  # every connect starts with hello
             out.append((lines["event"], json.loads(lines["data"])))
     return out
 

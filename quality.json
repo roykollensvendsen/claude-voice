@@ -3,7 +3,7 @@
     "claude_voice/api.py": 13,
     "claude_voice/approvals.py": 4,
     "claude_voice/cli.py": 19,
-    "claude_voice/config.py": 17,
+    "claude_voice/config.py": 18,
     "claude_voice/detail.py": 40,
     "claude_voice/doctor.py": 19,
     "claude_voice/events.py": 15,
@@ -25,20 +25,20 @@
     "claude_voice/updater.py": 12,
     "claude_voice/usage.py": 11
   },
-  "coverage": 91.37,
+  "coverage": 91.51,
   "cycles": 0,
-  "duplication": 2.12,
+  "duplication": 2.09,
   "layer_violations": 0,
   "lint_errors": 0,
   "mutation": {
-    "killed": 28,
-    "total": 28
+    "killed": 31,
+    "total": 31
   },
   "test_budget": {
     "seconds": 180,
     "tolerance": 0.25
   },
-  "test_seconds": 66.9,
-  "tests": 497,
+  "test_seconds": 90.2,
+  "tests": 505,
   "type_errors": 0
 }

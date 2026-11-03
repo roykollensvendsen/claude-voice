@@ -6,6 +6,7 @@ the voice app waits longer. So a message that takes Claude Code long to deliver 
 """
 
 import asyncio
+import contextlib
 import json
 import os
 
@@ -42,7 +43,7 @@ def test_a_budget_is_set_per_client_in_the_settings_file(tmp_path):
     assert budgets.seconds("in_process") == 30
 
 
-def test_a_budget_that_is_not_a_positive_number_is_refused(tmp_path):
+def test_a_time_budget_that_is_not_a_positive_number_is_refused(tmp_path):
     f = tmp_path / "c.toml"
     f.write_text('[budgets]\nclaude_app = "soon"\n')
     with pytest.raises(config.ConfigError, match="claude_app"):
@@ -60,7 +61,9 @@ class SlowCourier:
 
     async def __call__(self, name, text):
         self.calls.append((name, text))
-        await self.release.wait()
+        # Never wait for ever: with a rule switched off, a test must fail, not hang.
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(self.release.wait(), 5)
         return {"delivered": self.delivered, "detail": "" if self.delivered else "the courier did not send it"}
 
 
@@ -104,7 +107,7 @@ async def test_a_message_sent_in_time_is_answered_as_delivered(world):
     assert out["status"] == "delivered" and out["delivered"] is True
 
 
-async def test_a_slow_delivery_is_answered_as_sending_within_the_budget_and_reported_when_done(world):
+async def test_a_delivery_slower_than_the_clients_budget_is_answered_as_sending(world):
     courier = SlowCourier()
     server = bridge(world, courier)
     async with Client(server) as c:
@@ -156,13 +159,11 @@ async def test_the_app_can_tell_a_restart_from_a_dropped_connection(world):
     bearer = {"Authorization": f"Bearer {SECRET}"}
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=HOST) as c:
         started = (await c.get("/api/v1/bridge", headers=bearer)).json()["started_at"]
-        async with c.stream("GET", "/api/v1/events", headers=bearer) as stream:
-            lines = []
-            async for line in stream.aiter_lines():
-                lines.append(line)
-                if line.startswith("data:"):
-                    break
-    assert started
-    events = [line for line in lines if line.startswith("event:")]
-    assert events == ["event: hello"]  # the first event on every connect
-    assert json.loads(lines[-1].removeprefix("data:").strip()) == {"started_at": started}
+        stream = asyncio.create_task(c.get("/api/v1/events?max_events=1", headers=bearer))
+        await asyncio.sleep(0.3)
+        api.HUB.publish("ping", {})
+        body = (await asyncio.wait_for(stream, 10)).text
+    events = [line.removeprefix("event: ") for line in body.splitlines() if line.startswith("event: ")]
+    first = next(line for line in body.splitlines() if line.startswith("data: "))
+    assert started and events[0] == "hello"  # the first event on every connect
+    assert json.loads(first.removeprefix("data: ")) == {"started_at": started}

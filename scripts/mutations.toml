@@ -182,3 +182,21 @@ name = "a window runs Claude Code through the owners login shell"
 file = "src/claude_voice/transcripts.py"
 find = 'through = \[shell, "-lic", .exec "\$@"., "claude-voice"\] if terminal and shell else \[\]'
 replace = 'through = []'
+
+[[rule]]
+name = "a time budget that is not a positive number is refused"
+file = "src/claude_voice/config.py"
+find = 'if isinstance\(value, bool\) or not isinstance\(value, \(int, float\)\) or value <= 0:'
+replace = 'if False:'
+
+[[rule]]
+name = "a delivery slower than the clients budget is answered as sending"
+file = "src/claude_voice/server.py"
+find = 'return sending_on\(sid, str\(target\["name"\]\), message, delivery\)'
+replace = 'return await delivery'
+
+[[rule]]
+name = "a wait never runs past the callers time budget"
+file = "src/claude_voice/server.py"
+find = 'deadline = started \+ max\(min\(wait_seconds, 300, budget\), 0\)'
+replace = 'deadline = started + max(min(wait_seconds, 300), 0)'

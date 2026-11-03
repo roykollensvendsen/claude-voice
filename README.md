@@ -108,7 +108,7 @@ the bridge says which are missing, with the exact fix, through its
 | `start_active_session` | start a new Claude Code session in the background, ready to talk to at once |
 | `start_role` | start a session for a role, such as `contribute`: say what to change in claude-voice and get a pull request |
 | `stop_active_session` | stop such a session again; sessions the bridge did not start are never stopped |
-| `message_active_session` | send a message into a session that is open in a terminal |
+| `message_active_session` | send a message into a session that is open in a terminal; answered `sending` when delivery outlasts the caller's time budget, and finished in the background |
 | `ask_active_session` | ask such a session something and wait for its answer, as if talking to it directly |
 | `side_question` | a quick answer about a busy session, read from what it wrote lately, never sent into it |
 | `digest_session` | a long conversation summed up, or a question about it answered, in a few sentences |
@@ -317,6 +317,11 @@ contribute = "~/src/claude-voice"            # the contribute session's clone; d
 remote_control = true                        # a started session can be opened in the Claude app
 launch = "terminal"                          # or "background"
 terminal_command = "kitty --directory {cwd}" # default: gnome-terminal, kgx, konsole or xterm, the first found
+
+[budgets]                                    # seconds each kind of client is answered within
+claude_app = 20
+voice_app = 120
+default = 60
 ```
 
 A session the bridge starts opens in a terminal window on your desktop, so you
@@ -325,6 +330,13 @@ your phone can open it too. Without a desktop it opens in tmux (`tmux attach`
 reaches it), and with no terminal at all in the background. The companion
 app's settings page changes `remote_control` and where sessions start, and one
 start can ask otherwise; the terminal command is set only here.
+
+Each kind of client is answered within its own time budget, set in a `[budgets]`
+section: the Claude app drops a tool call after about 30 seconds, so it gets 20
+(`claude_app`); the voice app waits longer and gets 120 (`voice_app`); anything
+else gets `default`, 60. A message that takes Claude Code longer to deliver is
+answered "sending" and delivered in the background, and a wait for a session's
+answer ends at the budget with "still working".
 
 The update works in `claude_voice`. The contribute session works in
 `contribute`, and sends its pull request to `repos.claude_voice`; it may push
@@ -352,6 +364,15 @@ short:
 ```
 uv run pytest -m e2e
 ```
+
+## Acknowledgements
+
+- [kelno](https://github.com/kelno) measured that the Claude app drops a tool call
+  after about 30 seconds, and capped waiting calls in their fork; the time budgets
+  here come from that idea. Several earlier changes came from their fork too.
+- [AndresSM415](https://github.com/AndresSM415) reported, with care and with fixes,
+  that the sign-in could be guessed at without end and that strangers could
+  register apps without limit (issues #75 and #76).
 
 ## Licence
 

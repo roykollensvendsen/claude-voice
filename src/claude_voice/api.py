@@ -129,6 +129,8 @@ class EventHub:
 
 
 HUB = EventHub()
+# When this bridge started: a stream that sees it change knows the bridge restarted.
+STARTED_AT = datetime.now(UTC).isoformat(timespec="seconds")
 log = logging.getLogger("claude_voice")
 
 
@@ -622,6 +624,7 @@ class EventApi:
         quiet = 0.0
         with HUB.subscribe() as queue:
             yield ": connected\n\n"
+            yield f"event: hello\ndata: {json.dumps({'started_at': STARTED_AT})}\n\n"
             while not limit or sent < limit:
                 try:
                     event, data = await asyncio.wait_for(queue.get(), NEWS_SECONDS)
