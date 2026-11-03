@@ -3,6 +3,7 @@
 The MCP SDK supplies the protocol (registration, PKCE, token endpoint,
 metadata); this supplies the decisions. Any client may register, but a client
 only gets a code after the owner types the login secret on the consent page.
+A client that never signs in is forgotten, and only so many may wait at once.
 Access and refresh tokens are stored as SHA-256 hashes; refresh tokens rotate.
 """
 
@@ -23,7 +24,9 @@ from mcp.server.auth.provider import (
     AccessToken,
     AuthorizationCode,
     AuthorizationParams,
+    AuthorizeError,
     RefreshToken,
+    RegistrationError,
     TokenError,
     construct_redirect_uri,
 )
@@ -48,6 +51,11 @@ REUSE_GRACE = 60
 # Wrong secrets counted across every attempt, since anyone can start a new one.
 MAX_FAILURES = 5
 FAILURE_WINDOW = 600.0
+# Anyone may register and start a sign-in, so neither may pile up: a registered client
+# is a row on disk, an open sign-in is held in memory until it expires.
+UNUSED_CLIENT_TTL = 3600
+MAX_UNUSED_CLIENTS = 20
+MAX_OPEN_SIGN_INS = 20
 SCOPE = "claude"
 # A client that cannot refresh its tokens gives the bridge up for good, so every token
 # refresh and its outcome is logged: a dropped connector is diagnosed from here.
@@ -66,6 +74,12 @@ CREATE TABLE IF NOT EXISTS oauth_tokens(
   family TEXT NOT NULL         -- tokens issued together are revoked together
 );
 """
+# A client with no tokens has never signed in, or its sign-in has long expired.
+UNUSED = "client_id NOT IN (SELECT client_id FROM oauth_tokens)"
+FORGET_UNUSED = (
+    f"DELETE FROM oauth_clients WHERE {UNUSED} AND COALESCE(json_extract(info, '$.client_id_issued_at'), 0) < ?"
+)
+COUNT_UNUSED = f"SELECT COUNT(*) FROM oauth_clients WHERE {UNUSED}"
 
 
 def _hash(token: str) -> str:
@@ -108,16 +122,32 @@ class OAuthProvider:
         return OAuthClientInformationFull.model_validate_json(row[0]) if row else None
 
     async def register_client(self, client_info: OAuthClientInformationFull) -> None:
+        waiting = self._forget_unused_clients()
+        # RULE: registering stops while twenty apps wait to sign in
+        if waiting >= MAX_UNUSED_CLIENTS:
+            raise RegistrationError(
+                "invalid_client_metadata", "Too many apps are waiting to sign in; try again in an hour."
+            )
         with self.db:
             self.db.execute(
                 "INSERT OR REPLACE INTO oauth_clients VALUES(?,?)",
                 (client_info.client_id, client_info.model_dump_json()),
             )
 
+    def _forget_unused_clients(self) -> int:
+        """Forget the clients that never signed in within the hour; count those still waiting."""
+        with self.db:
+            # RULE: an app that never signs in is forgotten after an hour
+            self.db.execute(FORGET_UNUSED, (self.clock() - UNUSED_CLIENT_TTL,))
+        return int(self.db.execute(COUNT_UNUSED).fetchone()[0])
+
     # -- authorization -------------------------------------------------------
 
     async def authorize(self, client: OAuthClientInformationFull, params: AuthorizationParams) -> str:
         self._expire()
+        # RULE: a sign-in is refused while twenty are open
+        if len(self._consents) >= MAX_OPEN_SIGN_INS:
+            raise AuthorizeError("temporarily_unavailable", "Too many sign-ins are open; try again in ten minutes.")
         request_id = secrets.token_urlsafe(24)
         self._consents[request_id] = _PendingConsent(client, params, self.clock() + CONSENT_TTL)
         return f"{self.public_url}/oauth/consent?request={request_id}"

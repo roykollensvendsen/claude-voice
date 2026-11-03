@@ -241,6 +241,11 @@ the bridge. You type the login secret there once.
   secrets in ten minutes, across every attempt, the page refuses every try,
   the right secret too, for up to ten minutes. Apps already signed in keep
   working; only a new sign-in waits.
+- Anyone may register an app, so the bridge keeps no endless list of strangers:
+  an app that never signs in is forgotten after an hour; while twenty such apps
+  wait, registering stops; and while twenty sign-ins are open, a new one is
+  refused until they expire ten minutes later. Apps already signed in are never
+  affected.
 - Access tokens last an hour.
 - Refresh tokens last 90 days and are replaced each time they are used. A replaced one
   still works for a minute, because an app may refresh twice at once.
