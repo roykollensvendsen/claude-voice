@@ -105,6 +105,22 @@ MEASURES: tuple[tuple[str, str, str, Callable[..., Any], Callable[..., str], Cal
         lambda q, v: "ok" if v == 0 else "warn",
     ),
     (
+        "layers",
+        "Modules in their layers",
+        "",
+        lambda q: q["layer_violations"],
+        lambda q, v: "every module keeps to its layer" if v == 0 else f"{v} imports reach a higher layer",
+        lambda q, v: "ok" if v == 0 else "bad",
+    ),
+    (
+        "duplication",
+        "Copied code",
+        "%",
+        lambda q: q["duplication"],
+        lambda q, v: f"{v:.1f} % of the lines sit in repeated blocks",
+        lambda q, v: _status(v, 3, 6, higher=False),
+    ),
+    (
         "complexity",
         "Most tangled function",
         "",

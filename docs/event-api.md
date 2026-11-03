@@ -215,7 +215,8 @@ One entry for claude-voice and one for claude-voice-ui, read from each clone's
 `quality.json` (the quality ratchet's record, see CONTRIBUTING) and from the
 latest run of the checks on main; kept for ten minutes. The measures, by `id`:
 `coverage`, `mutation` (rules proven by a test, in percent), `tests`, `problems`
-(lint and type errors), `cycles`, `complexity` (the most tangled function),
+(lint and type errors), `cycles`, `layers` (imports that break the layer order),
+`duplication` (the share of lines in repeated blocks), `complexity` (the most tangled function),
 `test_time` (against its budget) and `ci` (the checks on main, with the run as
 `url`). The trend is each recorded version of `quality.json` in git, so it moves
 change by change. A repository with nothing recorded has every measure

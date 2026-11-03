@@ -59,8 +59,17 @@ worse, so `quality.json` at the root records the levels it has reached:
 | `tests`: how many tests pass | higher |
 | `lint_errors`, `type_errors` | lower |
 | `cycles`: groups of modules that import each other in a circle when they load | lower |
-| `complexity`: per module, the McCabe count of its most tangled function, not counting functions defined inside it | lower |
+| `layer_violations`: imports, made when a module loads, that reach a module in the same or a higher layer (`LAYERS` in `scripts/ratchet.py`), plus modules given no layer | lower |
+| `duplication`: the share of non-blank source lines, in percent, in a block of six or more lines that appears more than once, ignoring indentation | lower |
+| `complexity`: per module, the McCabe count of its most tangled function, not counting functions defined inside it; a new module keeps every function at 15 or below | lower |
 | `test_seconds`: how long the suite takes, against `test_budget` | inside the budget plus its tolerance |
+
+The layers, from the bottom: foundations (`procs`, `config`, `store`, `metrics`,
+`titles`); parts, each about one thing; parts built from parts (`events`,
+`tree`, `approvals`); the doors in from outside (`api`, `phone_hook`); `server`,
+where it is all put together; and `cli`. A new module is given its layer in
+`LAYERS`. When code is needed twice, it goes into a function both places call,
+rather than being copied.
 
 `scripts/ratchet.py check` fails a change that makes any of them worse than the
 base branch, and a change whose `quality.json` does not record the levels it
