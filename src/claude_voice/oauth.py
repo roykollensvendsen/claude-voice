@@ -45,6 +45,9 @@ MAX_SECRET_ATTEMPTS = 5
 # A client may refresh twice at once with the same token (the Claude app's connector does);
 # a spent refresh token stays usable this long, so the second refresh is not refused.
 REUSE_GRACE = 60
+# Wrong secrets counted across every attempt, since anyone can start a new one.
+MAX_FAILURES = 5
+FAILURE_WINDOW = 600.0
 SCOPE = "claude"
 # A client that cannot refresh its tokens gives the bridge up for good, so every token
 # refresh and its outcome is logged: a dropped connector is diagnosed from here.
@@ -96,6 +99,7 @@ class OAuthProvider:
         self.static_token = static_token
         self._consents: dict[str, _PendingConsent] = {}
         self._codes: dict[str, AuthorizationCode] = {}
+        self._failures: list[float] = []
 
     # -- clients -------------------------------------------------------------
 
@@ -125,6 +129,11 @@ class OAuthProvider:
         for key in [k for k, c in self._codes.items() if c.expires_at < now]:
             del self._codes[key]
 
+    def _too_many_failures(self, now: float) -> bool:
+        self._failures = [t for t in self._failures if now - t < FAILURE_WINDOW]
+        # RULE: a new sign-in attempt does not reset the count of wrong secrets
+        return len(self._failures) >= MAX_FAILURES
+
     async def consent_page(self, request: Request) -> Response:
         self._expire()
         pending = self._consents.get(request.query_params.get("request", ""))
@@ -149,9 +158,14 @@ class OAuthProvider:
                 302,
             )
 
+        now = self.clock()
+        if self._too_many_failures(now):
+            return HTMLResponse(_page("Too many wrong tries. Wait ten minutes and start again."), 429)
+
         if not hmac.compare_digest(str(form.get("secret", "")).encode(), self.login_secret.encode()):
             pending.attempts += 1
-            left = MAX_SECRET_ATTEMPTS - pending.attempts
+            self._failures.append(now)
+            left = min(MAX_SECRET_ATTEMPTS - pending.attempts, MAX_FAILURES - len(self._failures))
             return HTMLResponse(_consent_form(request_id, pending, error=f"Wrong secret. {left} tries left."), 401)
 
         del self._consents[request_id]

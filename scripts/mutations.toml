@@ -64,6 +64,12 @@ find = 'if len\(self\._failures\) >= MAX_FAILURES:'
 replace = 'if False:'
 
 [[rule]]
+name = "a new sign-in attempt does not reset the count of wrong secrets"
+file = "src/claude_voice/oauth.py"
+find = 'return len\(self\._failures\) >= MAX_FAILURES'
+replace = 'return False'
+
+[[rule]]
 name = "a change sent from another site is refused"
 file = "src/claude_voice/api.py"
 find = 'if not self\._same_site\(request\):  # a page elsewhere'
