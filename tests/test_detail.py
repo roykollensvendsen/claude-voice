@@ -225,3 +225,18 @@ def test_a_commit_message_given_on_the_lines_after_the_command_is_its_text():
 def test_a_command_only_mentioned_in_text_is_not_counted():
     written = "cat >> notes.txt <<'EOF'\nmerge = \"gh pr merge 3\" and then git commit\nEOF"
     assert detail.digest([tool("Bash", 1, "b1", command=written)])["timeline"] == []
+
+
+def test_a_copy_of_a_turn_kept_for_the_api_is_not_counted_again():
+    turn = tool("Bash", 1, "b1", command='git commit -m "fix: Once"')
+    copy = {"type": "api-request-blob", "message": turn["message"]}
+    got = detail.digest([turn, copy])
+    assert [i["text"] for i in got["timeline"]] == ["fix: Once"] and got["tool_calls"]["total"] == 1
+
+
+def test_a_commit_message_is_never_taken_from_text_written_before_the_commit():
+    command = "cat > a.py <<'EOF'\nimport pathlib\nEOF\ngit add a.py && git commit -q -m \"feat: Add a\""
+    sneaky = "cat > a.py <<'EOF'\nimport pathlib\nEOF\ngit commit -q"
+    texts = [i["text"] for i in detail.digest([tool("Bash", 1, "b1", command=command)])["timeline"]]
+    assert texts == ["feat: Add a"]
+    assert [i["text"] for i in detail.digest([tool("Bash", 1, "b2", command=sneaky)])["timeline"]] == ["a commit"]
