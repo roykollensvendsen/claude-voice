@@ -158,3 +158,9 @@ name = "a second request for a summary joins the one already running"
 file = "src/claude_voice/detail.py"
 find = 'if current is not None and not current\.done\(\):'
 replace = 'if False:'
+
+[[rule]]
+name = "a transcript keeps only what a person reads not tool output"
+file = "src/claude_voice/transcripts.py"
+find = 'if isinstance\(content, list\):'
+replace = 'if False:'

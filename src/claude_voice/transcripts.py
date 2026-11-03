@@ -271,21 +271,58 @@ def read_raw_transcript(session_id: str, cwd: str, projects_dir: Path = PROJECTS
     """
     path = projects_dir / project_key_for_directory(cwd) / f"{session_id}.jsonl"
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        size = path.stat().st_size
     except OSError:
         return []
-    out = []
-    for line in lines:
-        try:
-            entry = json.loads(line)
-        except ValueError:
-            continue  # a line still being written
-        if entry.get("type") not in ("user", "assistant") or entry.get("isSidechain"):
-            continue
-        if entry.get("isMeta") and (entry.get("origin") or {}).get("kind") != "peer":
-            continue
-        out.append(SimpleNamespace(type=entry["type"], message=entry.get("message") or {}))
-    return out
+    offset, kept = _read_so_far.pop(path, (0, []))
+    if size < offset:  # rewritten from the start
+        offset, kept = 0, []
+    try:
+        with path.open("rb") as f:
+            f.seek(offset)
+            for raw in f:
+                if not raw.endswith(b"\n"):
+                    break  # a line still being written: read it next time
+                offset += len(raw)
+                entry = _lean(raw)
+                if entry is not None:
+                    kept.append(entry)
+    except OSError:
+        return []
+    _read_so_far[path] = (offset, kept)
+    while len(_read_so_far) > READ_CACHE:
+        _read_so_far.pop(next(iter(_read_so_far)))  # the least recently read
+    return list(kept)
+
+
+READ_CACHE = 32  # transcripts whose reading is kept, to go on from where it left off
+_read_so_far: dict[Path, tuple[int, list[Any]]] = {}
+
+
+def _lean(raw: bytes) -> Any:
+    """One transcript line as a turn, keeping only what a person reads: prompts, Claude's
+    text, and the names of the tools it used. Tool input and output, nearly all of a long
+    transcript, are dropped."""
+    try:
+        entry = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(entry, dict) or entry.get("type") not in ("user", "assistant") or entry.get("isSidechain"):
+        return None
+    if entry.get("isMeta") and (entry.get("origin") or {}).get("kind") != "peer":
+        return None
+    message = entry.get("message") or {}
+    content = message.get("content")
+    # RULE: a transcript keeps only what a person reads not tool output
+    if isinstance(content, list):
+        content = [
+            {"type": "text", "text": b.get("text", "")}
+            if b.get("type") == "text"
+            else {"type": "tool_use", "name": b.get("name", "?")}
+            for b in content
+            if isinstance(b, dict) and b.get("type") in ("text", "tool_use")
+        ]
+    return SimpleNamespace(type=entry["type"], message={"role": message.get("role"), "content": content})
 
 
 def read_transcript(session_id: str, directory: str | None) -> list[Any]:

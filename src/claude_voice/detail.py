@@ -10,7 +10,7 @@ import asyncio
 import json
 import re
 from collections import Counter
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -26,21 +26,20 @@ HEREDOC = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?[^\n]*\n(.*?)\n")  # the first li
 MERGE = re.compile(STEP + r"gh\s+pr\s+merge\b(?:\s+(?!-)(\S+))?")
 
 
-def read(path: Path) -> list[dict[str, Any]]:
-    """Every entry of a transcript, skipping a line still being written."""
+def read(path: Path) -> Iterator[dict[str, Any]]:
+    """Every entry of a transcript, one line at a time, so a transcript of hundreds of
+    megabytes is never held whole; a line still being written is skipped."""
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        with path.open("rb") as f:
+            for raw in f:
+                try:
+                    entry = json.loads(raw)
+                except ValueError:
+                    continue
+                if isinstance(entry, dict):
+                    yield entry
     except OSError:
-        return []
-    out = []
-    for line in lines:
-        try:
-            entry = json.loads(line)
-        except ValueError:
-            continue
-        if isinstance(entry, dict):
-            out.append(entry)
-    return out
+        return
 
 
 def _short(text: str) -> str:
@@ -95,7 +94,7 @@ def _from_command(command: str) -> tuple[str, str] | None:
     return "commit", "a commit"
 
 
-def digest(entries: list[dict[str, Any]]) -> dict[str, Any]:
+def digest(entries: Iterable[dict[str, Any]]) -> dict[str, Any]:
     """Tool calls per tool, helpers running and in all, and the newest timeline items."""
     timeline: list[dict[str, Any]] = []
     tools: Counter[str] = Counter()
