@@ -176,3 +176,9 @@ name = "a refresh token stays usable for a minute after it is spent"
 file = "src/claude_voice/oauth.py"
 find = '\(self\.clock\(\) \+ REUSE_GRACE, _hash\(refresh_token\.token\)\),'
 replace = '(self.clock(), _hash(refresh_token.token)),'
+
+[[rule]]
+name = "a window runs Claude Code through the owners login shell"
+file = "src/claude_voice/transcripts.py"
+find = 'through = \[shell, "-lic", .exec "\$@"., "claude-voice"\] if terminal and shell else \[\]'
+replace = 'through = []'
