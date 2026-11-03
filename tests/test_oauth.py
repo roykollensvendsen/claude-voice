@@ -211,6 +211,22 @@ async def test_wrong_secret_gives_no_code(bridge):
     assert "location" not in r.headers
 
 
+async def test_a_new_sign_in_attempt_does_not_reset_the_count_of_wrong_secrets(bridge, clock):
+    # Anyone may register and start an attempt, so five tries per attempt alone
+    # would let a script guess forever by starting a new one every five.
+    client_id = await register(bridge)
+    _, challenge = pkce()
+    codes = []
+    for _ in range(6):
+        url = await start_authorize(bridge, client_id, challenge)
+        codes.append((await consent(bridge, url, secret="guess")).status_code)
+    refused = await consent(bridge, await start_authorize(bridge, client_id, challenge))
+    clock.t += 601
+    allowed = await consent(bridge, await start_authorize(bridge, client_id, challenge))
+    assert codes == [401] * 5 + [429] and refused.status_code == 429
+    assert allowed.status_code == 302 and "code=" in allowed.headers["location"]
+
+
 async def test_too_many_wrong_secrets_burn_the_request(bridge):
     client_id = await register(bridge)
     _, challenge = pkce()
