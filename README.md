@@ -238,7 +238,8 @@ When an app connects, it registers itself and sends you to a sign-in page on
 the bridge. You type the login secret there once.
 - Each sign-in attempt allows five tries.
 - Access tokens last an hour.
-- Refresh tokens last 90 days and are replaced each time they are used.
+- Refresh tokens last 90 days and are replaced each time they are used. A replaced one
+  still works for a minute, because an app may refresh twice at once.
 - Tokens are stored only as hashes.
 
 ## Run it as a service and reach it from the phone

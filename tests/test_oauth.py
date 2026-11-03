@@ -266,13 +266,14 @@ async def test_a_refresh_token_stays_usable_for_a_minute_after_it_is_spent(bridg
     assert (await token(bridge, **form)).status_code == 400  # a minute later it is spent for good
 
 
-async def test_every_token_refresh_is_logged_with_its_outcome(bridge, caplog):
+async def test_every_token_refresh_is_logged_with_its_outcome(bridge, caplog, clock):
     import logging
 
     client_id, tokens = await login(bridge)
     form = dict(grant_type="refresh_token", client_id=client_id)
     with caplog.at_level(logging.INFO, logger="claude_voice.oauth"):
         assert (await token(bridge, **form, refresh_token=tokens["refresh_token"])).status_code == 200
+        clock.t += 61
         assert (await token(bridge, **form, refresh_token=tokens["refresh_token"])).status_code == 400
     lines = [r.getMessage() for r in caplog.records if r.name == "claude_voice.oauth"]
     assert any(line.startswith(f"oauth refresh ok for client {client_id[:8]}") for line in lines), lines

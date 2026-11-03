@@ -42,6 +42,9 @@ REFRESH_TTL = 90 * 24 * 3600
 CODE_TTL = 300
 CONSENT_TTL = 600
 MAX_SECRET_ATTEMPTS = 5
+# A client may refresh twice at once with the same token (the Claude app's connector does);
+# a spent refresh token stays usable this long, so the second refresh is not refused.
+REUSE_GRACE = 60
 SCOPE = "claude"
 # A client that cannot refresh its tokens gives the bridge up for good, so every token
 # refresh and its outcome is logged: a dropped connector is diagnosed from here.
@@ -268,8 +271,12 @@ class OAuthProvider:
         row = self._load(refresh_token.token, "refresh")
         family = row[4] if row else None
         with self.db:
-            # Rotation: the presented refresh token is spent.
-            self.db.execute("DELETE FROM oauth_tokens WHERE hash=?", (_hash(refresh_token.token),))
+            # Rotation: the presented refresh token is spent, after a short grace.
+            # RULE: a refresh token stays usable for a minute after it is spent
+            self.db.execute(
+                "UPDATE oauth_tokens SET expires_at = MIN(expires_at, ?) WHERE hash=?",
+                (self.clock() + REUSE_GRACE, _hash(refresh_token.token)),
+            )
         log.info("oauth refresh ok for client %s (family %s)", client.client_id[:8], (family or "")[:6])
         return await self.issue_tokens(client.client_id, scopes or refresh_token.scopes, refresh_token.resource, family)
 
