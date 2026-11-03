@@ -77,7 +77,7 @@ ran in the last day, with the session the owner talks to:
   started runs on in the background; its `state` is `idle`), `waiting` (for its owner)
   or `moved` (its conversation continues in `moved_to`).
 - `doing`: one line on what it is doing, fit to show or say. It starts
-  `venter på valg:` when it waits on a question.
+  `waiting on a choice:` when it waits on a question.
 - `question` and `waiting_for` appear only while it waits.
 - `app_url`: the address that opens the session in the Claude app, such as
   `https://claude.ai/code/session_…`, while it is connected to Remote Control;
