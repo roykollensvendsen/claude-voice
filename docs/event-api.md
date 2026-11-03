@@ -79,6 +79,9 @@ ran in the last day, with the session the owner talks to:
 - `doing`: one line on what it is doing, fit to show or say. It starts
   `waiting on a choice:` when it waits on a question.
 - `question` and `waiting_for` appear only while it waits.
+- `sending`: messages still being handed to the session, `[{"id", "text" (at most 80
+  characters), "at"}]`, empty when none. A message lands here when Claude Code takes
+  longer to deliver it than the sender's time budget (see `message_sent` below).
 - `app_url`: the address that opens the session in the Claude app, such as
   `https://claude.ai/code/session_…`, while it is connected to Remote Control;
   otherwise `null`. A terminal session gets one when it is started with
@@ -165,7 +168,7 @@ esac
 
 | Call | Answer |
 | --- | --- |
-| `GET /api/v1/bridge` | `{"version": "<short commit>", "git": {...}}`: the version running, and where the bridge's own folder stands, in the same `git` shape as a session's. `git.tracking.behind` above 0 means an update is waiting (as of the last fetch) |
+| `GET /api/v1/bridge` | `{"version": "<short commit>", "git": {...}, "started_at": "<iso>"}`: the version running, when this bridge started, and where the bridge's own folder stands, in the same `git` shape as a session's. `git.tracking.behind` above 0 means an update is waiting (as of the last fetch) |
 | `POST /api/v1/update` | starts an update and answers `202 {"started": true, "note"}`; `409` while one runs, `404` when the bridge does not run from a git clone. A change: with the cookie it needs an allowed `Origin` |
 | `GET /api/v1/update` | the latest update: `{"running", "started_at", "from", "to", "steps": [{"step", "ok", "detail", "at"}], "result", "detail"}` |
 | `GET /api/v1/update/changes` | what an update would bring: `{"current", "latest", "behind", "groups": [{"type": "feat"\|"fix"\|…\|"other", "title", "commits": [{"sha", "subject", "breaking"}]}], "fetched", "note"?, "checked_at"}`. The commits on GitHub this clone has not pulled, oldest first, grouped by the kind their subject names, new things first; no model is involved. It fetches from GitHub, so it takes a moment; `note` says when GitHub could not be reached |
@@ -297,7 +300,9 @@ that must send a bearer token reads the stream with `fetch`.
 | --- | --- | --- |
 | `focus` | `{"session": "<id or name>", "tool": "ask_active_session", "client", "at": "<iso>"}` | the voice, or any MCP client, just talked to a session: asked it, messaged it, gave it a task, stopped it |
 | `peek` | the same fields | a caller only looked at a session: read it, searched it, summed it up, asked a side question about it. Not talking to it |
+| `hello` | `{"started_at": "<iso>"}` | first, on every connect. A `started_at` other than the last one seen means the bridge restarted, not that the network dropped |
 | `active` | the `active` object | the session the owner talks to changed |
+| `message_sent` | `{"session": "<id>", "id", "delivered": true\|false, "detail"}` | a message that was answered `sending` has been handed over (or not), and left the session's `sending` list. Delivered means into Claude Code's inbox for that session, not yet read |
 | `status` | `{"session": "<id>", "name", "state", "previous", "since", "doing", "at"}` | a session's `state` changed |
 | `git` | `{"session": "<id>", "git": {...}}` | a session's git status changed |
 | `output` | `{"session": "<id>", "index", "role"}` | a running session wrote a new turn; read it with `/sessions/{id}/output?after=` |

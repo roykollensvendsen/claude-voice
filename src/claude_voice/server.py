@@ -221,6 +221,7 @@ async def log_requests(ctx, call_next):
     meta = params.get("_meta") if isinstance(params.get("_meta"), dict) else {}
     trace = str(meta.get("trace_id") or "") or None
     token = transcripts.current_trace.set(trace)
+    client_token = transcripts.current_client.set(caller_kind(ctx, trace))
     started = time.monotonic()
     try:
         result = await call_next(ctx)
@@ -232,6 +233,7 @@ async def log_requests(ctx, call_next):
         raise
     finally:
         transcripts.current_trace.reset(token)
+        transcripts.current_client.reset(client_token)
     ms = (time.monotonic() - started) * 1000
     if ctx.method == "tools/call":
         api.publish_focus(tool, params.get("arguments"), caller_kind(ctx, trace))
@@ -545,6 +547,9 @@ def build_server(
             )
         return now
 
+    sending: dict[str, list[dict[str, Any]]] = {}  # messages still being delivered, by session id
+    in_flight: set[asyncio.Future[Any]] = set()
+
     @tool(annotations=READ_ONLY)
     def fleet_recap() -> dict[str, Any]:
         """Every session in one call: running Claude Code sessions and the bridge's own
@@ -579,6 +584,7 @@ def build_server(
                 "app_url": app_url(d.get("bridgeSessionId")),
                 "doing": doing,
                 "minutes_since_update": row["minutes_since_update"],
+                "sending": list(sending.get(str(row["claude_session_id"]), [])),
             }
             for key in ("waiting_for", "question", "moved_to"):
                 if key in row:
@@ -606,6 +612,7 @@ def build_server(
                     "app_url": None,
                     "doing": transcripts.first_sentence(words) if words else "",
                     "minutes_since_update": round((manager.clock() - s["updated_at"]) / 60),
+                    "sending": [],
                 }
             )
         return {"sessions": sessions}
@@ -860,7 +867,11 @@ def build_server(
 
     def bridge_now() -> dict[str, Any]:
         folder = bridge_folder or repos.paths.claude_voice
-        return {"version": running_version, "git": gitstatus.cached(folder) if folder else None}
+        return {
+            "version": running_version,
+            "git": gitstatus.cached(folder) if folder else None,
+            "started_at": api.STARTED_AT,
+        }
 
     def doctor_report() -> dict[str, Any]:
         report = doctor.examine(host, role_table().get("contribute"), port=bridge_port)
@@ -1062,10 +1073,39 @@ def build_server(
         moved = moved_to(target)
         if moved:
             return {"session": target["name"], "delivered": False, "status": "moved", "moved_to": moved}
-        out = await deliver(target["name"], message)
+        sid = str(target["sessionId"])
+        budget = repos.budgets.seconds(transcripts.current_client.get())
+        delivery = asyncio.ensure_future(deliver(target["name"], message))
+        try:
+            out = await asyncio.wait_for(asyncio.shield(delivery), budget)
+        except TimeoutError:
+            # RULE: a delivery slower than the clients budget is answered as sending
+            return sending_on(sid, str(target["name"]), message, delivery)
         if not out.get("delivered"):
             raise ToolError(f"Could not deliver: {out.get('detail') or 'unknown reason'}")
         return {"session": target["name"], "status": "delivered", "delivered": True}
+
+    def sending_on(sid: str, name: str, message: str, delivery: asyncio.Future[Any]) -> dict[str, Any]:
+        """Leave a slow delivery running; it shows on the session's card until Claude Code has sent
+        it, and open streams hear how it went."""
+        item = {"id": secrets.token_hex(6), "text": transcripts.clip(message, 80), "at": api.now_iso()}
+        sending.setdefault(sid, []).append(item)
+        in_flight.add(delivery)
+
+        def done(task: asyncio.Future[Any]) -> None:
+            in_flight.discard(task)
+            with contextlib.suppress(ValueError):
+                sending.get(sid, []).remove(item)
+            result = task.result() if not task.cancelled() and task.exception() is None else {}
+            delivered = bool(result.get("delivered"))
+            detail = str(result.get("detail") or ("" if delivered else "the courier broke"))
+            outcome = "delivered" if delivered else f"not delivered: {detail}"
+            log.info("message %s to %s -> %s", item["id"], name, outcome)
+            report = {"session": sid, "id": item["id"], "delivered": delivered, "detail": detail}
+            api.HUB.publish("message_sent", report)
+
+        delivery.add_done_callback(done)
+        return {"session": name, "status": "sending", "delivered": None, "id": item["id"]}
 
     def numbered_turns(target: dict[str, Any]) -> list[dict[str, Any]]:
         msgs = read_transcript(target["sessionId"], target.get("cwd"))
@@ -1126,7 +1166,9 @@ def build_server(
 
         pid, status, seen_busy = target.get("pid"), "still_working", False
         started = asyncio.get_running_loop().time()
-        deadline = started + max(min(wait_seconds, 300), 0)
+        # RULE: a wait never runs past the callers time budget
+        budget = repos.budgets.seconds(transcripts.current_client.get())
+        deadline = started + max(min(wait_seconds, 300, budget), 0)
         probe = message.strip()[:80]
         while True:
             now = next((d for d in live_sessions() if d.get("pid") == pid), None)

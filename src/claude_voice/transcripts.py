@@ -333,6 +333,8 @@ def read_transcript(session_id: str, directory: str | None) -> list[Any]:
 
 # The trace id of the call being served, set by the server's request middleware.
 current_trace: contextvars.ContextVar[str | None] = contextvars.ContextVar("current_trace", default=None)
+# Who is calling (claude_app, voice_app, local, in_process), set by the same middleware.
+current_client: contextvars.ContextVar[str] = contextvars.ContextVar("current_client", default="in_process")
 log = logging.getLogger("claude_voice")
 
 COURIER_NAME = "Owner via claude-voice"

@@ -417,3 +417,35 @@ async def test_a_reply_is_final_only_once_the_turn_has_ended(tmp_path, root, liv
     assert so_far["reply_final"] is False
     assert done["status"] == "answered"
     assert done["reply_final"] is True
+
+
+async def test_a_wait_never_runs_past_the_callers_time_budget(tmp_path, root, live):
+    """Asked to wait a minute, the bridge still answers within the client's budget, saying it works on."""
+    import time
+
+    from claude_voice import config
+
+    target = Target(live, str(root / "billing"))
+
+    async def deliver(name, text):
+        target.set("busy")
+        return {"delivered": True, "detail": "DELIVERED"}
+
+    m = SessionManager(Store(tmp_path / "b.db"), project_root=root, client_factory=FakeClaude())
+    repos = config.Config(
+        config.Repos(), config.Paths(None, None, None, None), None, budgets=config.Budgets({"default": 0.5})
+    )
+    server = build_server(
+        m,
+        conversations=lambda directory=None, limit=None: [],
+        live_dir=live,
+        deliver=deliver,
+        read_transcript=lambda sid, directory: list(target.transcript),
+        poll_seconds=0.01,
+        projects_dir=tmp_path / "projects",
+        repo_config=repos,
+    )
+    async with Client(server) as c:
+        started = time.monotonic()
+        out = await call(c, "ask_active_session", session="billing-ab", message="go", wait_seconds=60)
+    assert out["status"] == "still_working" and time.monotonic() - started < 5

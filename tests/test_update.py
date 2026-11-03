@@ -227,7 +227,7 @@ async def test_the_bridge_says_which_version_runs_and_where_its_folder_stands(tm
     _, app = bridge_with_update(tmp_path, Launcher())
     async with client(app) as c:
         out = (await c.get("/api/v1/bridge", headers=BEARER)).json()
-    assert set(out) == {"version", "git"}
+    assert set(out) == {"version", "git", "started_at"}
 
 
 async def test_the_update_runs_in_the_clone_the_settings_name(tmp_path):
