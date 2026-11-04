@@ -3,7 +3,7 @@
     "claude_voice/api.py": 13,
     "claude_voice/approvals.py": 4,
     "claude_voice/cli.py": 19,
-    "claude_voice/config.py": 18,
+    "claude_voice/config.py": 17,
     "claude_voice/detail.py": 40,
     "claude_voice/doctor.py": 19,
     "claude_voice/events.py": 15,
