@@ -165,6 +165,7 @@ def _parse_cursor(cursor: str | None) -> tuple[int | None, int | None]:
 
 REMOTE_ID = re.compile(r"session_[A-Za-z0-9]+")
 # A session named by its short number, as said aloud: "3", "nr 3", "nr. 3", "nummer 3", "number 3".
+SIMPLE_FOLDER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")  # a new project folder: one plain name
 SPOKEN_NUMBER = re.compile(r"(?:nr\.?|nummer|number)?\s*(\d{1,4})", re.IGNORECASE)
 
 
@@ -647,11 +648,14 @@ def build_server(
         effort: str | None = None,
         start_in: str | None = None,
         remote_control: bool | None = None,
+        create_folder: bool = False,
     ) -> dict[str, Any]:
         """Start a new Claude Code session in a project (from list_projects), named `name` or
         after the project. It is listed at once, so ask_active_session reaches it. It opens in a
         terminal window or in the background, with or without Remote Control, as the settings
         say; `start_in` ("terminal" or "background") and `remote_control` change that once.
+        `create_folder=true` first makes the project folder under the root when it does not
+        exist; only for a plain name (letters, digits, '.', '_', '-'), never by default.
         Optional: `model` (an alias such as opus or sonnet, or a full name) and `effort` (low,
         medium, high, xhigh or max); left out, Claude Code's defaults apply."""
         # RULE: only a well-formed model name and a known effort reach Claude Code
@@ -659,6 +663,15 @@ def build_server(
             raise ToolError(f"Not a model name: {model!r}. Use an alias such as opus, or a full model name.")
         if effort is not None and effort not in transcripts.EFFORTS:
             raise ToolError(f"Unknown effort {effort!r}; use one of: {', '.join(transcripts.EFFORTS)}.")
+        folder_created = False
+        if create_folder:
+            # RULE: a new folder must be a simple name under the root
+            if not SIMPLE_FOLDER.fullmatch(project):
+                raise ToolError(f"{project!r} is not a simple name; use letters, digits, '.', '_' or '-' only.")
+            new = manager.root / project
+            if not new.exists():
+                new.mkdir()  # never over something that exists
+                folder_created = True
         try:
             path = manager.resolve_project(project)
         except ValueError as exc:
@@ -674,6 +687,7 @@ def build_server(
                 "project": under_root(str(path)),
                 "status": same.get("status") or "idle",
                 "already_running": True,
+                "folder_created": folder_created,
             }
         taken = {str(d.get("name")) for d in live_sessions()}
         wanted = (name or "").strip() or f"{path.name}-{secrets.token_hex(2)}"
@@ -704,6 +718,7 @@ def build_server(
                     "project": under_root(str(path)),
                     "status": found.get("status") or "idle",
                     "started_in": started_in,
+                    "folder_created": folder_created,
                     **({"note": " ".join(notes)} if notes else {}),
                 }
             await asyncio.sleep(0.2)
