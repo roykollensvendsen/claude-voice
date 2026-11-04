@@ -85,7 +85,8 @@ class Budgets:
         return self._seconds.get(client, self._seconds["default"])
 
 
-def _budgets(raw: dict[str, Any]) -> Budgets:
+def _budgets(raw: dict[str, Any] | None) -> Budgets:
+    raw = raw or {}
     for key, value in raw.items():
         # RULE: a time budget that is not a positive number is refused
         if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
@@ -145,7 +146,7 @@ def load(path: Path | None = FILE, own_clone: Path | None = None, env: Mapping[s
         Paths(voice, ui, dist, contribute),
         file,
         _sessions(raw.get("sessions") or {}),
-        _budgets(raw.get("budgets") or {}),
+        _budgets(raw.get("budgets")),
     )
 
 
