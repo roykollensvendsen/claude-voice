@@ -212,3 +212,9 @@ name = "the updater reaches github over https not the owners ssh key"
 file = "src/claude_voice/updater.py"
 find = 'command = \[git, \*OVER_HTTPS, "-C", str\(repo\), \*args\]'
 replace = 'command = [git, "-C", str(repo), *args]'
+
+[[rule]]
+name = "only a folder the bridge just made is trusted for claude code"
+file = "src/claude_voice/server.py"
+find = 'trust_folder\(new\)'
+replace = 'pass'

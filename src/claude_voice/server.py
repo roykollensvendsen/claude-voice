@@ -273,6 +273,7 @@ def build_server(
     start_background: Callable[..., Awaitable[None]] = transcripts.start_background,
     stop_background: Callable[[str], Awaitable[None]] = transcripts.stop_background,
     stop_window: Callable[[int], None] = transcripts.stop_window,
+    trust_folder: Callable[[Path], None] = transcripts.trust_folder,
     start_seconds: float = 20.0,
     list_prs: Callable[[str], list[dict[str, Any]]] | None = None,
     ui_origins: list[str] | None = None,
@@ -672,6 +673,8 @@ def build_server(
             if not new.exists():
                 new.mkdir()  # never over something that exists
                 folder_created = True
+                # RULE: only a folder the bridge just made is trusted for claude code
+                trust_folder(new)
         try:
             path = manager.resolve_project(project)
         except ValueError as exc:

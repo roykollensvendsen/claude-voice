@@ -771,6 +771,26 @@ def login_shell(env: Mapping[str, str] = os.environ) -> str | None:
     return shell if Path(shell).name in LOGIN_SHELLS else None
 
 
+CLAUDE_CONFIG = Path("~/.claude.json")
+
+
+def trust_folder(folder: Path, config: Path = CLAUDE_CONFIG) -> None:
+    """Tell Claude Code that `folder` may be worked in, as answering yes to its "Do you trust
+    this folder?" question does. The owner approved this only for a folder the bridge has just
+    made on request; every other folder is left for the owner to answer in the window."""
+    path = config.expanduser()
+    try:
+        body = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return  # no Claude Code settings to add to: it will ask in the window
+    body.setdefault("projects", {}).setdefault(str(folder), {})["hasTrustDialogAccepted"] = True
+    spare = path.with_name(path.name + ".claude-voice.tmp")
+    spare.write_text(json.dumps(body, indent=2), encoding="utf-8")
+    os.chmod(spare, path.stat().st_mode & 0o777)
+    os.replace(spare, path)  # in one step, so Claude Code never reads half a file
+    log.info("trusted the new folder %s for Claude Code", folder)
+
+
 def stop_window(pid: int) -> None:
     """End the Claude Code process of a session the bridge opened in a terminal window; the
     window closes with it, as when its owner quits."""
