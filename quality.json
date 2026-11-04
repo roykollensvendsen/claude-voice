@@ -31,14 +31,14 @@
   "layer_violations": 0,
   "lint_errors": 0,
   "mutation": {
-    "killed": 33,
-    "total": 33
+    "killed": 34,
+    "total": 34
   },
   "test_budget": {
     "seconds": 180,
     "tolerance": 0.25
   },
-  "test_seconds": 46.6,
-  "tests": 516,
+  "test_seconds": 47.4,
+  "tests": 518,
   "type_errors": 0
 }
