@@ -38,7 +38,7 @@
     "seconds": 180,
     "tolerance": 0.25
   },
-  "test_seconds": 90.2,
+  "test_seconds": 47.0,
   "tests": 505,
   "type_errors": 0
 }

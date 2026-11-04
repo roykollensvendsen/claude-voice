@@ -61,8 +61,8 @@ ran in the last day, with the session the owner talks to:
 ```
 
 - `number`: the session's short number, for saying it aloud ("number 3"). A
-  new session gets the smallest free one and keeps it while it lives; a number
-  whose session ended is not given to another for a day. Every place that takes
+  new session gets the smallest number no running session uses, and keeps it while
+  it lives; a number is free again as soon as its session ends. Every place that takes
   a session, in this API and in the voice tools, also takes its number as `3`,
   `nr 3`, `nummer 3` or `number 3`. It is on the `active` object and the
   `status` event too.
