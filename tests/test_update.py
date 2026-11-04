@@ -252,3 +252,25 @@ async def test_the_update_runs_in_the_clone_the_settings_name(tmp_path):
     async with Client(server) as mcp:
         await mcp.call_tool("update_bridge", {})
     assert launcher.started[0][0] == clone
+
+
+def test_the_updater_reaches_github_over_https_not_the_owners_ssh_key(monkeypatch, tmp_path):
+    """The service cannot reach the owner's ssh-agent, so GitHub's ssh addresses are read over HTTPS."""
+    seen = []
+
+    def run(command, **kwargs):
+        seen.append(command)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(updater.subprocess, "run", run)
+    updater._git(tmp_path, "fetch", "--quiet")
+    assert seen[0][1:5] == ["-c", "url.https://github.com/.insteadOf=git@github.com:", "-C", str(tmp_path)]
+
+
+def test_a_refused_fetch_says_why_and_what_to_do():
+    said = updater.fetch_failure("git@github.com: Permission denied (publickey).\nfatal: Could not read")
+    assert "GitHub refused" in said and "private" in said
+    assert (
+        updater.fetch_failure("fatal: unable to access: Could not resolve host")
+        == "Could not fetch the latest version."
+    )
