@@ -255,3 +255,34 @@ async def test_a_window_the_bridge_opened_can_be_stopped_by_the_bridge(tmp_path,
         await c.call_tool("start_active_session", {"project": "billing", "name": "inv"})
         out = (await c.call_tool("stop_active_session", {"name": "inv"})).structured_content
     assert out["status"] == "stopped" and windows.closed == [PID] and stopper.calls == []
+
+
+async def test_a_new_project_folder_is_made_only_when_asked(tmp_path, world):
+    root, live = world
+    starter = Starter(live)
+    async with Client(bridge(tmp_path, world, starter)) as c:
+        refused = await c.call_tool("start_active_session", {"project": "utgifter", "name": "u"})
+        made = (
+            await c.call_tool("start_active_session", {"project": "utgifter", "name": "u", "create_folder": True})
+        ).structured_content
+    assert refused.is_error  # not made by default
+    assert (root / "utgifter").is_dir() and made["folder_created"] is True and made["project"] == "utgifter"
+
+
+@pytest.mark.parametrize("name", ["../escape", "a/b", "/etc", "..", ".hidden", "x" * 80, "with space"])
+async def test_a_new_folder_must_be_a_simple_name_under_the_root(tmp_path, world, name):
+    root, live = world
+    async with Client(bridge(tmp_path, world, Starter(live))) as c:
+        out = await c.call_tool("start_active_session", {"project": name, "create_folder": True})
+    assert out.is_error and "simple name" in out.content[0].text
+    assert sorted(p.name for p in root.iterdir()) == ["billing"]
+
+
+async def test_an_existing_folder_is_used_as_it_is_and_nothing_is_made(tmp_path, world):
+    root, live = world
+    (root / "billing" / "keep.txt").write_text("mine")
+    async with Client(bridge(tmp_path, world, Starter(live))) as c:
+        out = (
+            await c.call_tool("start_active_session", {"project": "billing", "name": "b", "create_folder": True})
+        ).structured_content
+    assert out["folder_created"] is False and (root / "billing" / "keep.txt").read_text() == "mine"
