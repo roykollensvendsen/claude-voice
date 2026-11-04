@@ -63,7 +63,8 @@ async def test_each_session_gets_the_smallest_free_number_and_keeps_it(world):
     assert second["alpha"] == first["alpha"] and second["beta"] == first["beta"] and second["gamma"] == 3
 
 
-async def test_a_number_is_not_given_to_another_session_until_a_day_after_its_owner_ended(world):
+async def test_a_new_session_gets_the_lowest_number_no_running_session_uses(world):
+    """A number is free again as soon as its session ends, so the numbers stay small."""
     clock = Clock()
     running(world, "alpha", "s1")
     running(world, "beta", "s2")
@@ -72,14 +73,8 @@ async def test_a_number_is_not_given_to_another_session_until_a_day_after_its_ow
     gone(world, "alpha")
     await numbers(server)
     running(world, "delta", "s4")
-    soon = await numbers(server)
-    assert soon["delta"] != before["alpha"]  # not straight away
-    gone(world, "delta")
-    await numbers(server)
-    clock.at += 25 * 3600
-    running(world, "epsilon", "s5")
-    later = await numbers(server)
-    assert later["epsilon"] == before["alpha"]  # a day later the small number is free again
+    after = await numbers(server)
+    assert after["delta"] == before["alpha"] and after["beta"] == before["beta"]
 
 
 async def test_the_numbers_survive_a_restart_of_the_bridge(world):
