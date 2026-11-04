@@ -200,3 +200,9 @@ name = "a wait never runs past the callers time budget"
 file = "src/claude_voice/server.py"
 find = 'deadline = started \+ max\(min\(wait_seconds, 300, budget\), 0\)'
 replace = 'deadline = started + max(min(wait_seconds, 300), 0)'
+
+[[rule]]
+name = "a new folder must be a simple name under the root"
+file = "src/claude_voice/server.py"
+find = 'if not SIMPLE_FOLDER\.fullmatch\(project\):'
+replace = 'if False:'
