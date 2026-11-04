@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS voice_calls(
   chars INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS voice_calls_ts ON voice_calls(ts);
--- Each session's short number; a released number is held back for a day.
+-- Each session's short number, kept while it runs; a released one is free again at once.
 CREATE TABLE IF NOT EXISTS session_numbers(
   session_id TEXT PRIMARY KEY,
   number INTEGER NOT NULL,
@@ -121,14 +121,15 @@ class Store:
         ).fetchall()
         return [(float(r[0]), str(r[1]), str(r[2]), int(r[3])) for r in rows]
 
-    def number_sessions(self, session_ids: list[str], hold_seconds: float = 86400) -> dict[str, int]:
+    def number_sessions(self, session_ids: list[str], hold_seconds: float = 0) -> dict[str, int]:
         """Each session's short number: kept while it lives, the smallest free one for a new
-        session, and a number whose session ended held back for `hold_seconds`."""
+        session, and a number whose session ended free again after `hold_seconds` (at once
+        by default, so the numbers stay small)."""
         now = self.clock()
         wanted = set(session_ids)
         with self.db:
             self.db.execute(
-                "DELETE FROM session_numbers WHERE released_at IS NOT NULL AND released_at < ?", (now - hold_seconds,)
+                "DELETE FROM session_numbers WHERE released_at IS NOT NULL AND released_at <= ?", (now - hold_seconds,)
             )
             rows = self.db.execute("SELECT session_id, number, released_at FROM session_numbers").fetchall()
             known = {str(r[0]): (int(r[1]), r[2]) for r in rows}
