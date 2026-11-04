@@ -330,3 +330,17 @@ async def test_a_read_from_a_point_says_how_many_turns_it_left_for_later(tmp_pat
     assert [t["index"] for t in first["turns"]] == [2, 3, 4]
     assert first["turns_left"] == 5
     assert rest["turns_left"] == 0
+
+
+async def test_a_read_that_leaves_turns_for_later_still_shows_the_newest_reply(tmp_path, root, live):
+    """A caller many turns behind must not miss what the session said last."""
+    turns = [
+        msg("user", f"turn {i}") if i % 2 == 0 else msg("assistant", [{"type": "text", "text": f"turn {i}"}])
+        for i in range(10)
+    ]
+    _, srv = server_for(tmp_path, root, live, read=lambda sid, directory: turns)
+    async with Client(srv) as c:
+        behind = await call(c, "read_session_output", session="billing-ab", after=1, limit=3)
+        caught_up = await call(c, "read_session_output", session="billing-ab", after=6, limit=30)
+    assert behind["latest"] == {"index": 9, "role": "assistant", "text": "turn 9"}
+    assert "latest" not in caught_up  # nothing left to read: the turns already end with it
