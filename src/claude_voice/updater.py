@@ -43,10 +43,18 @@ def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
+# The bridge runs as a systemd user service, which cannot reach the owner's ssh-agent. So the
+# updater's own git commands read GitHub's ssh addresses over HTTPS: a public repository needs
+# no key at all. Only these commands; the owner's remotes and terminals keep using ssh.
+OVER_HTTPS = ("-c", "url.https://github.com/.insteadOf=git@github.com:")
+
+
 def _git(repo: Path, *args: str) -> tuple[bool, str]:
     git = procs.find("git") or "git"
     try:
-        out = subprocess.run([git, "-C", str(repo), *args], capture_output=True, text=True, timeout=120, check=False)
+        # RULE: the updater reaches github over https not the owners ssh key
+        command = [git, *OVER_HTTPS, "-C", str(repo), *args]
+        out = subprocess.run(command, capture_output=True, text=True, timeout=120, check=False)
     except (OSError, subprocess.SubprocessError) as exc:
         return False, str(exc)
     return out.returncode == 0, (out.stdout or out.stderr).strip()
@@ -105,7 +113,7 @@ def run(
     _, behind = _git(repo, "rev-list", "--count", "HEAD..@{upstream}")
     if not ok:
         log.step("fetch", False, out)
-        return log.finish("stopped", "Could not fetch the latest version.")
+        return log.finish("stopped", fetch_failure(out))
     log.step("fetch", True, f"{behind or 0} new commits")
     if (behind or "0") == "0":
         log.step("done", True, "already up to date")
@@ -148,6 +156,20 @@ def run(
 
 
 # -- the real computer ---------------------------------------------------------------
+
+
+REFUSED = ("Permission denied", "Authentication failed", "could not read Username", "Repository not found")
+
+
+def fetch_failure(output: str) -> str:
+    """What to tell the owner when fetching the latest version failed."""
+    if any(sign in output for sign in REFUSED):
+        return (
+            "Could not fetch the latest version: GitHub refused. The bridge reads GitHub over HTTPS "
+            "without a key, which works for a public repository; a private repository or fork needs "
+            "its own read-only access set up for the bridge's service."
+        )
+    return "Could not fetch the latest version."
 
 
 def _uv(repo: Path, *args: str) -> tuple[bool, str]:
