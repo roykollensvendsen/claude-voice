@@ -286,3 +286,33 @@ async def test_an_existing_folder_is_used_as_it_is_and_nothing_is_made(tmp_path,
             await c.call_tool("start_active_session", {"project": "billing", "name": "b", "create_folder": True})
         ).structured_content
     assert out["folder_created"] is False and (root / "billing" / "keep.txt").read_text() == "mine"
+
+
+def test_trusting_a_folder_marks_only_that_folder_and_keeps_every_other_setting(tmp_path):
+    from claude_voice import transcripts
+
+    config = tmp_path / ".claude.json"
+    config.write_text(json.dumps({"theme": "dark", "projects": {"/old": {"hasTrustDialogAccepted": False, "x": 1}}}))
+    transcripts.trust_folder(tmp_path / "new", config)
+    after = json.loads(config.read_text())
+    assert after["theme"] == "dark" and after["projects"]["/old"] == {"hasTrustDialogAccepted": False, "x": 1}
+    assert after["projects"][str(tmp_path / "new")]["hasTrustDialogAccepted"] is True
+
+
+async def test_only_a_folder_the_bridge_just_made_is_trusted_for_claude_code(tmp_path, world):
+    root, live = world
+    trusted = []
+    m = SessionManager(Store(tmp_path / "b.db"), project_root=root, client_factory=FakeClaude())
+    server = build_server(
+        m,
+        conversations=lambda **k: [],
+        live_dir=live,
+        start_background=Starter(live),
+        start_seconds=1.0,
+        find_program=lambda n: None,
+        trust_folder=trusted.append,
+    )
+    async with Client(server) as c:
+        await c.call_tool("start_active_session", {"project": "utgifter", "name": "u", "create_folder": True})
+        await c.call_tool("start_active_session", {"project": "billing", "name": "b", "create_folder": True})
+    assert trusted == [root / "utgifter"]  # an existing folder is never trusted on its own
