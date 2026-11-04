@@ -224,3 +224,9 @@ name = "only a folder the bridge just made is trusted for claude code"
 file = "src/claude_voice/server.py"
 find = 'trust_folder\(new\)'
 replace = 'pass'
+
+[[rule]]
+name = "a read that leaves turns for later still shows the newest reply"
+file = "src/claude_voice/server.py"
+find = 'if left and newest is not None:'
+replace = 'if False:'
