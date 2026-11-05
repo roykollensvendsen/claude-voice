@@ -117,7 +117,7 @@ async def test_a_turn_still_going_when_the_wait_ends_says_so_with_the_latest_wor
     target = Target(live, str(root / "billing"), status="busy")
     target.says("Starting on it.")
     async with Client(bridge(tmp_path, root, live, target, None)) as c:
-        out = await call(c, "wait_for_session", session="billing-ab", wait_seconds=0.2)
+        out = await call(c, "wait_for_session", session="billing-ab", after=1, wait_seconds=0.2)
     assert out["status"] == "still_working"
     assert out["reply"] == "Starting on it." and out["reply_final"] is False
 
