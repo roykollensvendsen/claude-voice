@@ -122,20 +122,7 @@ def main(
         return plugins_command(parsed.action, parsed.name, env)
 
     if parsed.command == "check":
-        cfg, found = checks(env, parsed.transport, login)
-        ready = all(c["ok"] for c in found if c["required"])
-        if parsed.json:
-            sys.stdout.write(json.dumps({"ready": ready, "checks": found}, indent=2) + "\n")
-        elif not ready:
-            first = next(c for c in found if c["required"] and not c["ok"])
-            sys.stderr.write(f"claude-voice: {first['detail']}. {first['fix']}".rstrip() + "\n")
-        else:
-            assert cfg is not None
-            sys.stdout.write(f"claude-voice: ready to serve over {cfg.transport}; projects under {cfg.root}\n")
-            for c in found:
-                if not c["ok"]:
-                    sys.stdout.write(f"claude-voice: note: {c['detail']}. {c['fix']}\n")
-        return 0 if ready else 1
+        return check_command(env, parsed.transport, parsed.json, login)
 
     try:
         cfg = load_config(env, parsed.transport)
@@ -144,6 +131,24 @@ def main(
         return 1
     serve(cfg)
     return 0
+
+
+def check_command(env: Mapping[str, str], transport: str, as_json: bool, login: Callable[[], tuple[bool, str]]) -> int:
+    """Say whether the bridge could start, and what to fix first."""
+    cfg, found = checks(env, transport, login)
+    ready = all(c["ok"] for c in found if c["required"])
+    if as_json:
+        sys.stdout.write(json.dumps({"ready": ready, "checks": found}, indent=2) + "\n")
+    elif not ready:
+        first = next(c for c in found if c["required"] and not c["ok"])
+        sys.stderr.write(f"claude-voice: {first['detail']}. {first['fix']}".rstrip() + "\n")
+    else:
+        assert cfg is not None
+        sys.stdout.write(f"claude-voice: ready to serve over {cfg.transport}; projects under {cfg.root}\n")
+        for c in found:
+            if not c["ok"]:
+                sys.stdout.write(f"claude-voice: note: {c['detail']}. {c['fix']}\n")
+    return 0 if ready else 1
 
 
 def plugins_command(action: str, name: str | None, env: Mapping[str, str]) -> int:
