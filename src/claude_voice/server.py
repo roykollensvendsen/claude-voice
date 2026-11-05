@@ -453,7 +453,7 @@ def build_server(
 
     @tool(annotations=READ_ONLY)
     def list_projects(query: str | None = None) -> dict[str, Any]:
-        """Folders Claude can be started in: those used in the last 30 days, newest first.
+        """Folders Claude can be started in, used in the last 30 days, newest first.
         A word from a name (`query`) searches every folder. At most 20."""
         rows = []
         for p in manager.root.iterdir():
@@ -491,8 +491,9 @@ def build_server(
 
     @tool(annotations=READ_ONLY)
     def list_sessions() -> dict[str, Any]:
-        """Sessions this bridge started (`sessions`, newest 20) and every Claude Code session
-        running on the machine (`running_claude_code_sessions`)."""
+        """Sessions this bridge started, and every Claude Code session on the machine.
+        `sessions` holds the bridge's own (newest 20), `running_claude_code_sessions` every one
+        running on the machine."""
         rows = [s for s in store.list_sessions(limit=100) if s["status"] != "closed"][:20]
         return {"sessions": rows, "running_claude_code_sessions": running()}
 
@@ -500,7 +501,8 @@ def build_server(
         annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True),
     )
     async def send_task(session_id: str, prompt: str) -> dict[str, Any]:
-        """Give Claude a task or follow-up. Returns at once; poll session_recap for progress."""
+        """Give Claude a task or follow-up; returns at once.
+        Poll session_recap for progress."""
         session_id = known(session_id)
         try:
             return await manager.send(session_id, prompt)
@@ -510,7 +512,7 @@ def build_server(
 
     @tool(annotations=READ_ONLY)
     def session_recap(session_id: str, max_chars: int = 400) -> dict[str, Any]:
-        """Short status of one session: running or not, last prompt, latest words, result.
+        """Status of one session: running or not, last prompt, latest words, result.
         Texts are cut to max_chars each."""
         session_id = known(session_id)
         recap = manager.recap(session_id)
@@ -581,9 +583,10 @@ def build_server(
 
     @tool(annotations=READ_ONLY)
     def fleet_recap() -> dict[str, Any]:
-        """Every session in one call: running Claude Code sessions and the bridge's own
-        (active in the last day), each with status and `doing`, one line on what it is
-        doing. Answers "what are my sessions up to?" without reading each one."""
+        """Every session in one call, with its status and what it is doing.
+        It covers running Claude Code sessions and the bridge's own (active in the last day);
+        `doing` is one line each. Answers "what are my sessions up to?" without
+        reading each one."""
         sessions = []
         live_by_id = {str(d.get("sessionId")): d for d in live_sessions()}
         live_rows = running()
@@ -648,8 +651,9 @@ def build_server(
 
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
     async def cancel(session_id: str) -> dict[str, Any]:
-        """Stop the current turn of a session; the session stays usable. `status` says whether
-        it was interrupted, not running, or not_supported (a terminal session: stop it there)."""
+        """Stop the current turn of a session; the session stays usable.
+        `status` says whether it was interrupted, not running, or not_supported (a terminal session:
+        stop it there)."""
         try:
             session_id = known(session_id)
         except ToolError:
@@ -678,14 +682,14 @@ def build_server(
         remote_control: bool | None = None,
         create_folder: bool = False,
     ) -> dict[str, Any]:
-        """Start a new Claude Code session in a project (from list_projects), named `name` or
-        after the project. It is listed at once, so ask_active_session reaches it. It opens in a
-        terminal window or in the background, with or without Remote Control, as the settings
-        say; `start_in` ("terminal" or "background") and `remote_control` change that once.
-        `create_folder=true` first makes the project folder under the root when it does not
-        exist; only for a plain name (letters, digits, '.', '_', '-'), never by default.
-        Optional: `model` (an alias such as opus or sonnet, or a full name) and `effort` (low,
-        medium, high, xhigh or max); left out, Claude Code's defaults apply."""
+        """Start a new Claude Code session in a project (from list_projects).
+        It is named `name` or after the project, and listed at once, so ask_active_session reaches it.
+        It opens in a terminal window or in the background, with or without Remote Control, as the
+        settings say; `start_in` ("terminal" or "background") and `remote_control` change that once.
+        `create_folder=true` first makes the project folder under the root when it does not exist;
+        only for a plain name (letters, digits, '.', '_', '-'), never by default.
+        Optional: `model` (an alias such as opus or sonnet, or a full name) and `effort` (low, medium,
+        high, xhigh or max); left out, Claude Code's defaults apply."""
         # RULE: only a well-formed model name and a known effort reach Claude Code
         if model is not None and not transcripts.MODEL_NAME.fullmatch(model):
             raise ToolError(f"Not a model name: {model!r}. Use an alias such as opus, or a full model name.")
@@ -801,8 +805,9 @@ def build_server(
 
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
     async def start_role(role: str, task: str | None = None) -> dict[str, Any]:
-        """Start a background session for a role, such as "contribute" (change claude-voice and
-        open a pull request), with `task` as what the owner wants; reach it with ask_active_session."""
+        """Start a background session for a role, such as "contribute".
+        A contribute session changes claude-voice and opens a pull request; `task` is what the owner
+        wants. Reach it with ask_active_session."""
         try:
             return await launch_role(role, task)
         except LookupError as exc:
@@ -868,8 +873,9 @@ def build_server(
 
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
     def update_bridge() -> dict[str, Any]:
-        """Update claude-voice to the latest version: pull, install, test, restart, and roll back
-        if any of it fails. Say first that the voice drops for a few seconds while it restarts."""
+        """Update claude-voice to the latest version, rolling back if anything fails.
+        It pulls, installs, tests and restarts.
+        Say first that the voice drops for a few seconds while it restarts."""
         try:
             return start_update()
         except (LookupError, RuntimeError) as exc:
@@ -883,8 +889,9 @@ def build_server(
 
     @tool(annotations=READ_ONLY)
     def update_changes() -> dict[str, Any]:
-        """What updating claude-voice would bring: the new commits on GitHub, grouped by kind
-        (new, fixed, and so on), newest last. Say the groups in a sentence or two."""
+        """What updating claude-voice would bring: the new commits on GitHub.
+        Grouped by kind (new, fixed, and so on), newest last.
+        Say the groups in a sentence or two."""
         try:
             return update_changes_now()
         except LookupError as exc:
@@ -925,9 +932,9 @@ def build_server(
 
     @tool(annotations=READ_ONLY)
     def check_dependencies() -> dict[str, Any]:
-        """Which of the bridge's dependencies are missing, what each costs, and the exact fix:
-        Claude Code's sign-in, git, the GitHub CLI, uv, Tailscale, the tailnet port, the
-        status line figures, and the contribute session's clone."""
+        """Which of the bridge's dependencies are missing, and the exact fix for each.
+        Each also says what it costs. Checked: Claude Code's sign-in, git, the GitHub CLI, uv,
+        Tailscale, the tailnet port, the status line figures, and the contribute session's clone."""
         return doctor_report()
 
     def roles_now() -> dict[str, Any]:
@@ -942,8 +949,9 @@ def build_server(
 
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
     async def stop_active_session(name: str) -> dict[str, Any]:
-        """Stop a session that start_active_session started, in the background or in a window it
-        opened. Any other session, such as one the owner opened, is refused (status not_started_here)."""
+        """Stop a session that start_active_session started.
+        It stops whether it runs in the background or in a window it opened. Any other session,
+        such as one the owner opened, is refused (status not_started_here)."""
         target = renames.find(live_sessions(), name)
         if target is None:
             return {"name": name, "status": "not_running"}
@@ -988,9 +996,9 @@ def build_server(
 
     @tool(annotations=READ_ONLY)
     def list_active_sessions() -> dict[str, Any]:
-        """Claude Code sessions running on this machine right now, with whether each is
-        busy or waiting for input. kind: "interactive" is a terminal window the user
-        types in; "bg" is a background or remote-controlled session."""
+        """Claude Code sessions running on this machine now, busy or waiting for input.
+        kind: "interactive" is a terminal window the user types in; "bg" is a background or
+        remote-controlled session."""
         return {"sessions": running()}
 
     def moved_to(d: dict[str, Any]) -> dict[str, Any] | None:
@@ -1036,8 +1044,9 @@ def build_server(
 
     @tool(annotations=READ_ONLY)
     def list_claude_conversations(project: str | None = None, limit: int = 10) -> dict[str, Any]:
-        """Recent Claude Code conversations on this machine, newest first, including ones
-        started in a terminal. Optionally only for one project."""
+        """Recent Claude Code conversations on this machine, newest first.
+        Includes ones started in a terminal.
+        Optionally only for one project."""
         directory = None
         if project:
             try:
@@ -1073,7 +1082,7 @@ def build_server(
     def attach_conversation(
         claude_session_id: str, project: str | None = None, label: str | None = None
     ) -> dict[str, Any]:
-        """Continue an existing Claude Code conversation (from list_claude_conversations).
+        """Continue a Claude Code conversation from list_claude_conversations.
         If it is still open in a terminal, both copies will carry on separately."""
         if project is None:
             live = next((d for d in live_sessions() if d.get("sessionId") == claude_session_id), None)
@@ -1117,9 +1126,10 @@ def build_server(
 
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
     async def rename_session(session: str, new_name: str) -> dict[str, Any]:
-        """Give a running session a new name (letters, digits, '.', '_', '-'); its old name
-        still reaches it. Claude Code itself is renamed too when the session is idle in tmux;
-        otherwise `note` says what to do (claude_code: renamed, sent, busy, not_in_tmux, already)."""
+        """Give a running session a new name; its old name still reaches it.
+        The name takes letters, digits, '.', '_' and '-'. Claude Code itself is renamed too when the
+        session is idle in tmux; otherwise `note` says what to do (claude_code: renamed, sent, busy,
+        not_in_tmux, already)."""
         new_name = new_name.strip()
         if not renames.valid(new_name):
             raise ToolError(
@@ -1167,8 +1177,9 @@ def build_server(
         annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True),
     )
     async def message_active_session(session: str, message: str) -> dict[str, Any]:
-        """Send a message into a running Claude Code session (name or id from
-        list_active_sessions); read its answer later with read_session_output."""
+        """Send a message into a running Claude Code session.
+        `session` is a name or id from list_active_sessions; read its answer later with
+        read_session_output."""
         target = find_live(session)
         moved = moved_to(target)
         if moved:
@@ -1339,12 +1350,12 @@ def build_server(
         turn: int | None = None,
         offset: int = 0,
     ) -> dict[str, Any]:
-        """The latest turns of a running Claude Code session (name or id from
-        list_active_sessions). Turns are numbered: pass next_after back as `after` to get
-        only new ones, and read on while turns_left is above 0; until then `latest` holds the
-        session's newest reply, so say that first when far behind. A turn longer than max_chars
-        is cut and says so (cut, length); read it whole with `turn` (its index) and `offset`,
-        page by page via next_offset."""
+        """The latest turns of a running Claude Code session, numbered to read on.
+        `session` is a name or id from list_active_sessions.
+        Pass next_after back as `after` to get only new ones, and read on while turns_left is above
+        0; until then `latest` holds the session's newest reply, so say that first when far behind.
+        A turn longer than max_chars is cut and says so (cut, length); read it whole with `turn` (its
+        index) and `offset`, page by page via next_offset."""
         target = find_live(session)
         turns = every = numbered_turns(target)
         size = max(max_chars, 20)
@@ -1414,8 +1425,8 @@ def build_server(
 
     @tool(annotations=READ_ONLY)
     async def side_question(session: str, question: str, language: str | None = None) -> dict[str, Any]:
-        """A quick answer (usually three to seven seconds) to a question about a running session, read from
-        what it has written lately. The question is never sent into the session."""
+        """A quick answer to a question about a running session, never sent into it.
+        Read from what it has written lately; usually three to seven seconds."""
         target = find_live(session)
         kept, skipped = conversation_end(target, side_chars)
         answer = await side_answer("\n".join(kept), question, language)
@@ -1423,8 +1434,8 @@ def build_server(
 
     @tool(annotations=READ_ONLY)
     async def digest_session(session: str, question: str | None = None, language: str | None = None) -> dict[str, Any]:
-        """Sum up a running session's conversation, or answer `question` about it, in a few
-        speakable sentences, in `language` if given (e.g. "norsk"); takes about ten seconds.
+        """Sum up a running session's conversation, or answer `question` about it.
+        A few speakable sentences, in `language` if given (e.g. "norsk"); takes about ten seconds.
         A separate model reads it, so none of it fills your context."""
         target = find_live(session)
         kept, skipped = conversation_end(target, digest_chars)
@@ -1440,8 +1451,8 @@ def build_server(
 
     @tool(annotations=READ_ONLY)
     def search_session_history(session: str, query: str, max_chars: int = 300) -> dict[str, Any]:
-        """Search the whole conversation of a running Claude Code session (name or id from
-        list_active_sessions) for keywords; returns only the most relevant excerpts.
+        """Search the whole conversation of a running Claude Code session for keywords.
+        `session` is a name or id from list_active_sessions; returns only the most relevant excerpts.
         Use instead of reading long output when looking for something said earlier."""
         target = find_live(session)
         turns = transcripts.recent_turns(read_transcript(target["sessionId"], target.get("cwd")), None)
@@ -1453,9 +1464,9 @@ def build_server(
 
     @tool(annotations=READ_ONLY)
     def whats_new(cursor: str | None = None) -> dict[str, Any]:
-        """Has anything happened since I last asked? Returns only new events (a session
-        finished, failed, needs approval or input, started, ended) and a cursor to pass
-        next time. Call without a cursor first; cheap enough to poll."""
+        """Has anything happened since I last asked? Returns only new events.
+        An event is a session that finished, failed, needs approval or input, started or ended.
+        Each answer carries a cursor to pass next time; call without one first. Cheap enough to poll."""
         check()
         b, f = _parse_cursor(cursor)
         latest_b, latest_f = events.last_bridge_seq(manager.store), watcher.last_seq()
@@ -1471,16 +1482,17 @@ def build_server(
 
     @tool(annotations=READ_ONLY)
     def session_tree() -> dict[str, Any]:
-        """The sessions to choose from, as a tree: the bridge, the Claude Code sessions
-        running on this machine, the sessions the bridge runs, helper agents, and for each
-        which others it has sent messages to in the last day (talks_to). `version` changes
-        when the shape changes; whats_new reports that as kind "tree_changed"."""
+        """The sessions to choose from, as a tree, with which ones message each other.
+        The bridge, the Claude Code sessions running on this machine, the sessions the bridge runs,
+        helper agents, and for each which others it has sent messages to in the last day (talks_to).
+        `version` changes when the shape changes; whats_new reports that as kind "tree_changed"."""
         return tree.build()
 
     @tool(annotations=READ_ONLY)
     def health() -> dict[str, Any]:
-        """The bridge's own state: since when and which version, memory, the last restart,
-        calls/errors/latency per tool since start, the latest errors, courier and watcher."""
+        """The bridge's own state: version, memory, calls and errors per tool.
+        Also since when it runs, its last restart, the latency per tool since start, the latest
+        errors, and the state of the courier and the watcher."""
         snap = METRICS.snapshot()
         courier = transcripts.shared_courier()
         offered = [p.status() for p in active_plugins]
@@ -1552,14 +1564,16 @@ def build_server(
 
     @tool(annotations=READ_ONLY)
     def get_active_session() -> dict[str, Any]:
-        """The session the owner chose to talk to, on the companion page or by voice:
-        send there by default. Null fields when none is chosen."""
+        """The session the owner chose to talk to: send there by default.
+        Chosen on the companion page or by voice.
+        Null fields when none is chosen."""
         return store.get_setting("active_session") or {"id": None, "name": None, "set_by": None, "set_at": None}
 
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
     def set_active_session(session: str) -> dict[str, Any]:
-        """Make `session` (a name or id from fleet_recap) the one the owner talks to, so the
-        companion page shows it. Call it when the owner switches session by voice."""
+        """Make `session` the one the owner talks to, shown on the companion page.
+        `session` is a name or id from fleet_recap.
+        Call it when the owner switches session by voice."""
         try:
             return set_active(session, "voice")
         except LookupError as exc:
@@ -1634,9 +1648,9 @@ def build_server(
 
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
     async def refresh_session_summary(session: str | None = None, language: str | None = None) -> dict[str, Any]:
-        """Make a fresh summary of a running session (the chosen one if `session` is left out),
-        in `language` if given (e.g. "norsk"), read by a small model; the companion app's
-        session page shows it too. Takes about ten seconds."""
+        """Make a fresh summary of a running session, read by a small model.
+        The chosen one if `session` is left out, in `language` if given (e.g. "norsk"); the companion
+        app's session page shows it too. Takes about ten seconds."""
         if not session:
             session = str((store.get_setting("active_session") or {}).get("id") or "")
             if not session:

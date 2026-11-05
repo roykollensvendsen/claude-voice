@@ -31,7 +31,7 @@
     "claude_voice/updater.py": 12,
     "claude_voice/usage.py": 11
   },
-  "coverage": 92.2,
+  "coverage": 92.22,
   "cycles": 0,
   "duplication": 1.66,
   "layer_violations": 0,
@@ -45,6 +45,6 @@
     "tolerance": 0.25
   },
   "test_seconds": 66.1,
-  "tests": 613,
+  "tests": 614,
   "type_errors": 0
 }
