@@ -3,6 +3,7 @@
 import asyncio
 import json
 import stat
+import sys
 
 import pytest
 from fakes import FakeClaude
@@ -83,7 +84,8 @@ def test_a_plugin_runs_only_as_the_owner_approved_it(tmp_path):
     assert not plugins.approved(GARAGE, approvals)
     plugins.approve(GARAGE, approvals)
     assert plugins.approved(GARAGE, approvals)
-    assert stat.S_IMODE(approvals.stat().st_mode) == 0o600
+    if sys.platform != "win32":  # Windows has no owner-only file mode to set
+        assert stat.S_IMODE(approvals.stat().st_mode) == 0o600
     widened = config.PluginSpec(**{**GARAGE.__dict__, "tools": [*GARAGE.tools, "garage_arm"]})
     moved = config.PluginSpec(**{**GARAGE.__dict__, "command": "other-program"})
     assert not plugins.approved(widened, approvals) and not plugins.approved(moved, approvals)
@@ -100,8 +102,8 @@ def test_the_owner_approves_a_plugin_by_typing_its_name(tmp_path, monkeypatch, c
     monkeypatch.setattr("builtins.input", lambda prompt="": "garage")
     assert cli.main(["plugins", "approve", "garage"], env=env) == 0
     shown = capsys.readouterr().out
-    assert "garage-door-mcp" in shown and "garage_status" in shown and "/g" in shown
     spec = config.load(f, env=env).plugins[0]
+    assert "garage-door-mcp" in shown and "garage_status" in shown and spec.cwd in shown
     assert plugins.approved(spec, approvals)
 
 
