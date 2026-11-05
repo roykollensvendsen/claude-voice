@@ -110,6 +110,7 @@ the bridge says which are missing, with the exact fix, through its
 | `stop_active_session` | stop such a session again; sessions the bridge did not start are never stopped |
 | `message_active_session` | send a message into a session that is open in a terminal; answered `sending` when delivery outlasts the caller's time budget, and finished in the background |
 | `ask_active_session` | ask such a session something and wait for its answer, as if talking to it directly |
+| `wait_for_session` | wait, sending nothing, until such a session's turn ends or it needs its user, then hear its reply |
 | `side_question` | a quick answer about a busy session, read from what it wrote lately, never sent into it |
 | `digest_session` | a long conversation summed up, or a question about it answered, in a few sentences |
 | `refresh_session_summary` | a fresh summary of a session (the chosen one by default), shown on its page in the companion app too |
