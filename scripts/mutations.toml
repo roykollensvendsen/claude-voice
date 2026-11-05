@@ -54,8 +54,8 @@ replace = 'if False:'
 [[rule]]
 name = "a reply is final only once the turn has ended"
 file = "src/claude_voice/server.py"
-find = '"reply_final": bool\(new\) and status in'
-replace = '"reply_final": True,'
+find = 'return bool\(new\) and status in'
+replace = 'return True'
 
 [[rule]]
 name = "guessing the secret on the page stops after five wrong tries"
@@ -222,8 +222,8 @@ replace = 'return await delivery'
 [[rule]]
 name = "a wait never runs past the callers time budget"
 file = "src/claude_voice/server.py"
-find = 'deadline = started \+ max\(min\(wait_seconds, 300, budget\), 0\)'
-replace = 'deadline = started + max(min(wait_seconds, 300), 0)'
+find = 'return started \+ max\(min\(wait_seconds, 300, budget\), 0\)'
+replace = 'return started + max(min(wait_seconds, 300), 0)'
 
 [[rule]]
 name = "a new folder must be a simple name under the root"

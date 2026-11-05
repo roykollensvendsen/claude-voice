@@ -21,4 +21,6 @@ versions follow [semantic versioning](https://semver.org/spec/v2.0.0.html).
 - The log is kept in `bridge.log` next to the database as well as on the console,
   with the outcome of every token refresh, so a connector that dropped while
   nobody watched can be diagnosed afterwards.
+- `wait_for_session` waits, sending nothing, until a running session's turn ends
+  or it needs its user, so a voice assistant can wait for a reply instead of polling.
 - `claude-voice check` and `claude-voice serve`, and a user service installer.

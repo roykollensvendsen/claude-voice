@@ -1222,6 +1222,89 @@ def build_server(
         msgs = read_transcript(target["sessionId"], target.get("cwd"))
         return [{"index": i, **turn} for i, turn in enumerate(transcripts.recent_turns(msgs, None))]
 
+    def waiting(d: dict[str, Any]) -> dict[str, Any] | None:
+        """Why a session can take nothing in right now: an open question, or other input."""
+        if d.get("status") != "waiting":
+            return None
+        question = transcripts.open_question(str(d.get("sessionId")), str(d.get("cwd")), projects_dir)
+        return {"status": "needs_choice", "question": question} if question else {"status": "needs_input"}
+
+    def deadline_after(started: float, wait_seconds: float) -> float:
+        """When a wait begun at `started` ends: as asked, at most five minutes, within the caller's budget."""
+        budget = repos.budgets.seconds(transcripts.current_client.get())
+        # RULE: a wait never runs past the callers time budget
+        return started + max(min(wait_seconds, 300, budget), 0)
+
+    def reply_is_final(status: str, new: list[dict[str, Any]]) -> bool:
+        """Whether a reply is the session's last word on it."""
+        # RULE: a reply is final only once the turn has ended
+        return bool(new) and status in ("answered", "idle", "needs_input", "needs_choice")
+
+    def live_by_pid(pid: Any) -> dict[str, Any] | None:
+        """The running session with this process id now, or None once it has exited."""
+        return next((d for d in live_sessions() if d.get("pid") == pid), None)
+
+    @tool(annotations=READ_ONLY)
+    async def wait_for_session(
+        session: str, wait_seconds: float = 60, after: int | None = None, max_chars: int = 600
+    ) -> dict[str, Any]:
+        """Wait for a running session's turn to end or need its user, sending nothing.
+        Pass a next_after you were given as `after` to wait for a reply past that turn, even
+        while the session has not picked a message up yet; without it only what the session
+        writes during the wait comes back, so an idle session returns at once with no reply.
+        At most 30 turns come back; read on from next_after while turns_left is above 0, and
+        `latest` holds the newest reply until then. status: "idle" (its turn has ended; reply
+        is empty if it wrote nothing), "needs_input", "needs_choice", "still_working" (call
+        again), "session_ended" or "moved"; the other fields are as for ask_active_session."""
+        target = find_live(session)
+        moved = moved_to(target)
+        if moved:
+            return {"session": target["name"], "status": "moved", "moved_to": moved, "session_ended": False}
+        # Without `after`, the wait starts where the transcript ends now: an answer from before
+        # it is never handed back as the reply.
+        start = after if after is not None else len(numbered_turns(target)) - 1
+
+        def past(d: dict[str, Any], role: str) -> list[dict[str, Any]]:
+            """The session's turns in this role after `start`."""
+            return [t for t in numbered_turns(d) if t["role"] == role and t["index"] > start]
+
+        pid, blocked, done, taken = target.get("pid"), None, False, False
+        deadline = deadline_after(asyncio.get_running_loop().time(), wait_seconds)
+        while (now := live_by_pid(pid)) is not None:
+            target, blocked = now, waiting(now)
+            idle = now.get("status") == "idle"
+            # A message is in the transcript and the session idle on two looks running, or after
+            # it was seen busy: its turn has ended, even if it wrote nothing.
+            ended_silent = idle and taken and bool(past(now, "user"))
+            taken = not idle or bool(past(now, "user"))
+            done = blocked is not None or (idle and (after is None or bool(past(now, "assistant")) or ended_silent))
+            if done or asyncio.get_running_loop().time() >= deadline:
+                break
+            await asyncio.sleep(poll_seconds)
+        if now is None:
+            status = "session_ended"
+        else:
+            status = blocked["status"] if blocked else ("idle" if done else "still_working")
+        # A session that ended keeps its transcript, so what it wrote before it went is still read.
+        written = past(target, "assistant")
+        size = max(max_chars, 20)
+        shown = written[:30]
+        new = [{**t, "text": transcripts.clip(t["text"], size)} for t in shown]
+        left = len(written) - len(shown)
+        last = transcripts.clip(written[-1]["text"], size) if written else ""
+        return {
+            "status": status,
+            "session": target["name"],
+            "reply": last,
+            "reply_final": reply_is_final(status, new),
+            "session_ended": now is None,
+            "turns": new,
+            "turns_left": left,
+            **({"latest": {"index": written[-1]["index"], "role": "assistant", "text": last}} if left else {}),
+            "next_after": new[-1]["index"] if new else start,
+            **({"question": blocked["question"]} if status == "needs_choice" and blocked else {}),
+        }
+
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
     async def ask_active_session(
         session: str, message: str, wait_seconds: float = 60, max_chars: int = 600
@@ -1250,13 +1333,6 @@ def build_server(
                 "next_after": -1,
             }
 
-        def waiting(d: dict[str, Any]) -> dict[str, Any] | None:
-            """Why a session can take nothing in right now: an open question, or other input."""
-            if d.get("status") != "waiting":
-                return None
-            question = transcripts.open_question(str(d.get("sessionId")), str(d.get("cwd")), projects_dir)
-            return {"status": "needs_choice", "question": question} if question else {"status": "needs_input"}
-
         blocked = waiting(target)
         if blocked:
             # A message would only queue behind what it waits for; send nothing.
@@ -1277,12 +1353,10 @@ def build_server(
 
         pid, status, seen_busy = target.get("pid"), "still_working", False
         started = asyncio.get_running_loop().time()
-        # RULE: a wait never runs past the callers time budget
-        budget = repos.budgets.seconds(transcripts.current_client.get())
-        deadline = started + max(min(wait_seconds, 300, budget), 0)
+        deadline = deadline_after(started, wait_seconds)
         probe = message.strip()[:80]
         while True:
-            now = next((d for d in live_sessions() if d.get("pid") == pid), None)
+            now = live_by_pid(pid)
             if now is None:
                 status = "session_ended"
                 break
@@ -1334,8 +1408,7 @@ def build_server(
             "status": status,
             "session_ended": status == "session_ended",
             "reply": new[-1]["text"] if new else "",
-            # RULE: a reply is final only once the turn has ended
-            "reply_final": bool(new) and status in ("answered", "needs_input", "needs_choice"),
+            "reply_final": reply_is_final(status, new),
             "turns": new,
             "next_after": new[-1]["index"] if new else start,
             **({"question": blocked["question"]} if status == "needs_choice" and blocked else {}),
