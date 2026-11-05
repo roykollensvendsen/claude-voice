@@ -374,6 +374,43 @@ short:
 uv run pytest -m e2e
 ```
 
+## Plugins: other local tools for the voice
+
+A plugin is another MCP server on this computer whose tools the voice may call
+through the bridge, behind the same sign-in. Nothing changes until you add one.
+Name it in the settings file, with the tools the voice may call; any other
+tool it has stays out of reach:
+
+<!-- not run: a configuration example, not commands -->
+```toml
+[plugins.garage]
+command = "uv"
+args = ["run", "garage-door-mcp", "--secrets-file", "firmware/secrets.yaml", "--host", "192.168.0.46"]
+cwd = "~/garage-door"
+tools = ["garage_status", "garage_request", "garage_confirm"]
+timeout = 30          # seconds a call may take
+```
+
+Then approve it by typing its name, and restart the bridge:
+
+<!-- not run: it asks for typed input -->
+```
+claude-voice plugins approve garage
+```
+
+The approval covers exactly that command, folder and list of tools; change any
+of them and it must be approved again. The bridge never holds a plugin's secrets:
+the plugin reads its own, and starts with only a small default environment. Each
+plugin runs as a process of its own, started again after a failure, and a call
+that runs past `timeout` is cut off. Its tools reach the voice named after it
+(`garage_status`), its safety rules stay inside it, and the health report shows
+each plugin's state. To list them:
+
+```console
+$ claude-voice plugins
+No plugins in the settings file.
+```
+
 ## Acknowledgements
 
 - [kelno](https://github.com/kelno) measured that the Claude app drops a tool call

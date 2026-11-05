@@ -24,9 +24,12 @@ GARAGE = config.PluginSpec(
 )
 
 
+RULES = "Call garage_confirm only after the owner's own spoken yes."
+
+
 def stand_in(slow=False):
     """A stand-in for garage-door's MCP server, with one tool the voice must never get."""
-    server = MCPServer("garage")
+    server = MCPServer("garage", instructions=RULES)
     asked = []
 
     @server.tool()
@@ -207,3 +210,14 @@ def test_the_approvals_file_holds_no_secret_only_a_fingerprint(tmp_path):
     plugins.approve(GARAGE, approvals)
     body = json.loads(approvals.read_text())
     assert set(body) == {"garage"} and len(body["garage"]) == 64
+
+
+async def test_a_plugins_own_instructions_reach_the_voice(tmp_path):
+    """garage-door's rule that a confirmation needs the owner's own yes lives in its instructions."""
+    fake, _ = stand_in()
+    server = bridge(tmp_path, [GARAGE], factory=lambda params: Client(fake))
+    async with Client(server) as c:
+        tools = {t.name: t for t in (await c.list_tools()).tools}
+        said = c.instructions or ""
+    assert RULES in said
+    assert RULES in tools["garage_request"].description and RULES in tools["garage_status"].description
