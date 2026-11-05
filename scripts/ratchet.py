@@ -58,6 +58,7 @@ LAYERS = {
             "usage",
             "updater",
             "software",
+            "plugins",
             "detail",
             "oauth",
         ),

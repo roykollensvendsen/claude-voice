@@ -16,7 +16,7 @@ from .server import Config, ConfigError, load_config, serve_forever
 
 #: Every verb this command has. The documentation test requires each one to
 #: appear in a worked example, so a verb cannot be added without one.
-COMMANDS: tuple[str, ...] = ("serve", "check")
+COMMANDS: tuple[str, ...] = ("serve", "check", "plugins")
 
 SIGN_IN = (
     "Run `claude`, type /login and sign in with your Claude account, then check again. If `claude` "
@@ -113,7 +113,13 @@ def main(
         p.add_argument("--transport", choices=["stdio", "http"], default="stdio")
         if name == "check":
             p.add_argument("--json", action="store_true", help="answer in JSON, for an assistant doing the setup")
+    plugin_cmd = sub.add_parser("plugins", help="list plugins, or approve one by typing its name")
+    plugin_cmd.add_argument("action", nargs="?", choices=["list", "approve"], default="list")
+    plugin_cmd.add_argument("name", nargs="?")
     parsed = parser.parse_args(args)
+
+    if parsed.command == "plugins":
+        return plugins_command(parsed.action, parsed.name, env)
 
     if parsed.command == "check":
         cfg, found = checks(env, parsed.transport, login)
@@ -137,6 +143,41 @@ def main(
         sys.stderr.write(f"claude-voice: {exc}\n")
         return 1
     serve(cfg)
+    return 0
+
+
+def plugins_command(action: str, name: str | None, env: Mapping[str, str]) -> int:
+    """List the plugins in the settings file, or approve one: the owner types its name."""
+    from . import config as settings
+    from . import plugins
+
+    try:
+        specs = settings.load(settings.FILE, env=env).plugins
+    except settings.ConfigError as exc:
+        sys.stderr.write(f"claude-voice: {exc}\n")
+        return 1
+    if action == "list":
+        if not specs:
+            sys.stdout.write("No plugins in the settings file.\n")
+        for spec in specs:
+            state = "approved" if plugins.approved(spec) else "not approved"
+            sys.stdout.write(f"{spec.name}: {state}; tools {', '.join(spec.tools)}\n")
+        return 0
+    chosen = next((s for s in specs if s.name == name), None)
+    if chosen is None:
+        sys.stderr.write(f"claude-voice: no plugin {name!r} in the settings file\n")
+        return 1
+    spec = chosen
+    sys.stdout.write(
+        f"Plugin {spec.name}\n  runs: {' '.join([spec.command, *spec.args])}\n  in:   {spec.cwd}\n"
+        f"  the voice may call: {', '.join(spec.tools)}\n"
+    )
+    # RULE: the owner approves a plugin by typing its name
+    if input(f"Type {spec.name} to approve it, anything else to stop: ").strip() != spec.name:
+        sys.stdout.write("Not approved.\n")
+        return 1
+    plugins.approve(spec)
+    sys.stdout.write(f"Approved. Restart the bridge to offer {spec.name}'s tools.\n")
     return 0
 
 

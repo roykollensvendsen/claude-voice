@@ -248,3 +248,33 @@ name = "a read that leaves turns for later still shows the newest reply"
 file = "src/claude_voice/server.py"
 find = 'if left and newest is not None:'
 replace = 'if False:'
+
+[[rule]]
+name = "a plugin without a command or any allowed tool is refused"
+file = "src/claude_voice/config.py"
+find = 'if not PLUGIN_NAME\.fullmatch\(str\(name\)\) or not body\.get\("command"\) or not body\.get\("cwd"\) or not tools:'
+replace = 'if False:'
+
+[[rule]]
+name = "a plugin runs only as the owner approved it"
+file = "src/claude_voice/plugins.py"
+find = 'return _approvals\(path or APPROVALS\)\.get\(spec\.name\) == fingerprint\(spec\)'
+replace = 'return True'
+
+[[rule]]
+name = "a plugin call that runs too long is cut off"
+file = "src/claude_voice/plugins.py"
+find = 'return await asyncio\.wait_for\(client\.call_tool\(tool, arguments\), self\.spec\.timeout\)'
+replace = 'return await client.call_tool(tool, arguments)'
+
+[[rule]]
+name = "the owner approves a plugin by typing its name"
+file = "src/claude_voice/cli.py"
+find = 'if input\(f"Type \{spec\.name\} to approve it, anything else to stop: "\)\.strip\(\) != spec\.name:'
+replace = 'if False:'
+
+[[rule]]
+name = "a plugins own instructions reach the voice"
+file = "src/claude_voice/plugins.py"
+find = 'if plugin\.instructions:$'
+replace = 'if False:'

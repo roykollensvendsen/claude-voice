@@ -2,7 +2,7 @@
   "complexity": {
     "claude_voice/api.py": 13,
     "claude_voice/approvals.py": 4,
-    "claude_voice/cli.py": 19,
+    "claude_voice/cli.py": 20,
     "claude_voice/config.py": 17,
     "claude_voice/detail.py": 40,
     "claude_voice/doctor.py": 19,
@@ -13,6 +13,7 @@
     "claude_voice/metrics.py": 7,
     "claude_voice/oauth.py": 7,
     "claude_voice/phone_hook.py": 17,
+    "claude_voice/plugins.py": 9,
     "claude_voice/procs.py": 2,
     "claude_voice/roles.py": 12,
     "claude_voice/server.py": 52,
@@ -25,20 +26,20 @@
     "claude_voice/updater.py": 12,
     "claude_voice/usage.py": 11
   },
-  "coverage": 91.68,
+  "coverage": 91.75,
   "cycles": 0,
-  "duplication": 2.06,
+  "duplication": 1.98,
   "layer_violations": 0,
   "lint_errors": 0,
   "mutation": {
-    "killed": 39,
-    "total": 39
+    "killed": 44,
+    "total": 44
   },
   "test_budget": {
     "seconds": 180,
     "tolerance": 0.25
   },
-  "test_seconds": 43.0,
-  "tests": 523,
+  "test_seconds": 57.3,
+  "tests": 538,
   "type_errors": 0
 }

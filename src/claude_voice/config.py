@@ -71,6 +71,42 @@ class Sessions:
     terminal_command: str | None = None
 
 
+PLUGIN_NAME = re.compile(r"[a-z][a-z0-9_]{0,31}")
+
+
+@dataclass
+class PluginSpec:
+    """Another local MCP server whose approved tools the voice may call through the bridge."""
+
+    name: str
+    command: str
+    args: list[str]
+    cwd: str
+    tools: list[str]
+    timeout: float = 30.0
+
+
+def _plugins(raw: Any, home: str) -> list[PluginSpec]:
+    out = []
+    for name, body in (raw or {}).items():
+        body = body if isinstance(body, dict) else {}
+        tools = body.get("tools")
+        # RULE: a plugin without a command or any allowed tool is refused
+        if not PLUGIN_NAME.fullmatch(str(name)) or not body.get("command") or not body.get("cwd") or not tools:
+            raise ConfigError(f"[plugins.{name}] needs a lowercase name, a command, a cwd and at least one tool")
+        out.append(
+            PluginSpec(
+                name=str(name),
+                command=str(body["command"]),
+                args=[str(a) for a in body.get("args") or []],
+                cwd=str(_path(body["cwd"], home)),
+                tools=[str(t) for t in tools],
+                timeout=float(body.get("timeout", 30.0)),
+            )
+        )
+    return out
+
+
 BUDGETS = {"claude_app": 20.0, "voice_app": 120.0, "default": 60.0}
 
 
@@ -101,6 +137,7 @@ class Config:
     file: Path | None
     sessions: Sessions = field(default_factory=Sessions)
     budgets: Budgets = field(default_factory=Budgets)
+    plugins: list[PluginSpec] = field(default_factory=list)
 
 
 def _repo(value: Any, key: str) -> str:
@@ -147,6 +184,7 @@ def load(path: Path | None = FILE, own_clone: Path | None = None, env: Mapping[s
         file,
         _sessions(raw.get("sessions") or {}),
         _budgets(raw.get("budgets")),
+        _plugins(raw.get("plugins"), home),
     )
 
 

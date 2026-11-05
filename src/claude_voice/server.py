@@ -38,6 +38,7 @@ from . import (
     gitstatus,
     launch,
     metrics,
+    plugins,
     procs,
     roles,
     software,
@@ -274,6 +275,8 @@ def build_server(
     stop_background: Callable[[str], Awaitable[None]] = transcripts.stop_background,
     stop_window: Callable[[int], None] = transcripts.stop_window,
     trust_folder: Callable[[Path], None] = transcripts.trust_folder,
+    plugin_approvals: Path | None = None,
+    plugin_client: Callable[[Any], Any] | None = None,
     start_seconds: float = 20.0,
     list_prs: Callable[[str], list[dict[str, Any]]] | None = None,
     ui_origins: list[str] | None = None,
@@ -551,6 +554,19 @@ def build_server(
 
     sending: dict[str, list[dict[str, Any]]] = {}  # messages still being delivered, by session id
     in_flight: set[asyncio.Future[Any]] = set()
+
+    active_plugins: list[plugins.Plugin] = []
+    if repos.plugins:
+        from mcp.client import Client as plugin_client_default
+
+        for spec in repos.plugins:
+            if not plugins.approved(spec, plugin_approvals):
+                log.info("plugin %s is not approved; run: claude-voice plugins approve %s", spec.name, spec.name)
+                continue
+            plugin = plugins.Plugin(spec, plugin_client or plugin_client_default)
+            names = plugins.offer(mcp, plugin, plugin.listing())
+            active_plugins.append(plugin)
+            log.info("plugin %s offers %s", spec.name, ", ".join(names))
 
     @tool(annotations=READ_ONLY)
     def fleet_recap() -> dict[str, Any]:
@@ -1401,7 +1417,9 @@ def build_server(
         calls/errors/latency per tool since start, the latest errors, courier and watcher."""
         snap = METRICS.snapshot()
         courier = transcripts.shared_courier()
+        offered = [p.status() for p in active_plugins]
         return {
+            "plugins": offered,
             "now": {
                 "up_since": started_at,
                 "version": running_version,
