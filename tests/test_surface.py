@@ -79,3 +79,18 @@ async def test_tools_covered_by_others_are_gone_and_the_rest_take_few_parameters
     assert set(tools["list_projects"].input_schema["properties"]) == {"query"}
     long = [n for n, t in tools.items() if len((t.description or "").split(". ")) > 3]
     assert long == []
+
+
+# The Claude app shows an assistant each connector tool by the first line of its description,
+# cut at about 79 characters, until the assistant loads the tool. kelno measured it in the
+# app's voice mode on 2026-11-01. So the first line has to say, on its own, what the tool is for.
+FIRST_LINE_CHARS = 78
+
+
+async def test_every_tool_says_what_it_is_for_in_its_first_line_within_the_cut(world):
+    async with Client(world[2]) as c:
+        tools = (await c.list_tools()).tools
+    for t in tools:
+        first = (t.description or "").split("\n")[0]
+        assert first.endswith("."), f"{t.name}: the first line is not a whole sentence: {first!r}"
+        assert len(first) <= FIRST_LINE_CHARS, f"{t.name}: {len(first)} characters: {first!r}"
