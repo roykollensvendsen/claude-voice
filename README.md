@@ -263,8 +263,13 @@ the bridge. You type the login secret there once.
 - Each sign-in attempt allows five tries.
 - Starting a new attempt does not start the count again: after five wrong
   secrets in ten minutes, across every attempt, the page refuses every try,
-  the right secret too, for up to ten minutes. Apps already signed in keep
+  the right secret too, for ten minutes. Apps already signed in keep
   working; only a new sign-in waits.
+- A lockout within a day of the last one lasts twice as long: ten minutes,
+  then twenty, forty and so on, up to a day. A day without a lockout starts
+  again from ten minutes. The page says how long is left.
+- The bridge keeps the lockout and the count of wrong secrets only in
+  memory, so restarting the bridge ends a lockout at once.
 - Anyone may register an app, so the bridge keeps no endless list of strangers:
   an app that never signs in is forgotten after an hour; while twenty such apps
   wait, registering stops; and while twenty sign-ins are open, a new one is
