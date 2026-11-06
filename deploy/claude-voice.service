@@ -10,6 +10,10 @@ ExecStart=%h/claude-voice/.venv/bin/claude-voice serve --transport http
 EnvironmentFile=%h/.config/claude-voice/env
 Restart=on-failure
 RestartSec=5
+# The bridge gives open requests 5 seconds, then closes them; after this, systemd
+# kills whatever is left in the service, plugin children included.
+TimeoutStopSec=15
+KillMode=mixed
 
 [Install]
 WantedBy=default.target

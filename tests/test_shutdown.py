@@ -22,9 +22,11 @@ UNIT = Path(__file__).parent.parent / "deploy" / "claude-voice.service"
 async def endless(scope, receive, send):
     """An app whose one response never ends, like the event stream."""
     if scope["type"] == "lifespan":
-        while (await receive())["type"] != "lifespan.shutdown":
-            pass
-        return
+        while True:
+            kind = (await receive())["type"]
+            await send({"type": f"{kind}.complete"})
+            if kind == "lifespan.shutdown":
+                return
     await send({"type": "http.response.start", "status": 200, "headers": [(b"content-type", b"text/event-stream")]})
     while True:
         await send({"type": "http.response.body", "body": b": ping\n\n", "more_body": True})
