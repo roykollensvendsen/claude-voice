@@ -181,7 +181,14 @@ def plugins_command(action: str, name: str | None, env: Mapping[str, str]) -> in
     if input(f"Type {spec.name} to approve it, anything else to stop: ").strip() != spec.name:
         sys.stdout.write("Not approved.\n")
         return 1
-    plugins.approve(spec)
+    listing = plugins.Plugin(spec, plugins.CLIENT).listing()
+    if not listing:
+        sys.stdout.write(f"{spec.name} did not start, so nothing was approved. Check its command and folder.\n")
+        return 1
+    plugins.approve(spec, listing)
+    for tool in spec.tools:
+        found = listing.get(tool)
+        sys.stdout.write(f"  {tool} takes: {plugins.takes(found['schema'])}\n" if found else f"  {tool}: not in it\n")
     sys.stdout.write(f"Approved. Restart the bridge to offer {spec.name}'s tools.\n")
     return 0
 
