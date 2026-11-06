@@ -229,6 +229,62 @@ async def test_a_new_sign_in_attempt_does_not_reset_the_count_of_wrong_secrets(b
     assert allowed.status_code == 302 and "code=" in allowed.headers["location"]
 
 
+async def lock_out(http, client_id, challenge):
+    """Five wrong secrets, each in a sign-in attempt of its own: enough to lock the page."""
+    for _ in range(5):
+        await consent(http, await start_authorize(http, client_id, challenge), secret="guess")
+
+
+async def right_secret(http, client_id, challenge):
+    return await consent(http, await start_authorize(http, client_id, challenge))
+
+
+async def test_a_lockout_soon_after_another_lasts_twice_as_long(bridge, clock):
+    # A script that waited out each ten-minute lockout could still guess 720 times a day.
+    client_id = await register(bridge)
+    _, challenge = pkce()
+    await lock_out(bridge, client_id, challenge)
+    clock.t += 601
+    await lock_out(bridge, client_id, challenge)
+    clock.t += 601
+    refused = await right_secret(bridge, client_id, challenge)
+    clock.t += 600
+    allowed = await right_secret(bridge, client_id, challenge)
+    assert refused.status_code == 429 and "Wait 10 minutes" in refused.text
+    assert allowed.status_code == 302, allowed.text
+
+
+async def test_no_lockout_lasts_longer_than_a_day(bridge, clock):
+    # Doubling without end would shut the owner out for weeks after one long attack.
+    client_id = await register(bridge)
+    _, challenge = pkce()
+    for minutes in (10, 20, 40, 80, 160, 320, 640, 1280):
+        await lock_out(bridge, client_id, challenge)
+        clock.t += minutes * 60 + 1
+    await lock_out(bridge, client_id, challenge)
+    refused = await right_secret(bridge, client_id, challenge)
+    clock.t += 24 * 3600 + 1
+    allowed = await right_secret(bridge, client_id, challenge)
+    assert refused.status_code == 429 and "Wait 24 hours" in refused.text
+    assert allowed.status_code == 302, allowed.text
+
+
+async def test_a_day_without_a_lockout_starts_the_doubling_over(bridge, clock):
+    # Otherwise every lockout would count for good, and the owner's own typos, months
+    # apart, would add up until one mistake cost a whole day.
+    client_id = await register(bridge)
+    _, challenge = pkce()
+    await lock_out(bridge, client_id, challenge)
+    clock.t += 601
+    await lock_out(bridge, client_id, challenge)
+    longer = await right_secret(bridge, client_id, challenge)
+    clock.t += 1201 + 24 * 3600
+    await lock_out(bridge, client_id, challenge)
+    refused = await right_secret(bridge, client_id, challenge)
+    assert longer.status_code == 429 and "Wait 20 minutes" in longer.text
+    assert refused.status_code == 429 and "Wait 10 minutes" in refused.text
+
+
 def an_hour_after_now():
     # An app's registration time is the MCP SDK's, read from the real clock while the test
     # runs, so the hour is counted from now and not from when the test clock was made.

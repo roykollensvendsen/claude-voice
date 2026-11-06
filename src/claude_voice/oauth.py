@@ -14,6 +14,7 @@ import hmac
 import html
 import json
 import logging
+import math
 import secrets
 import time
 from collections.abc import Callable
@@ -48,9 +49,13 @@ MAX_SECRET_ATTEMPTS = 5
 # A client may refresh twice at once with the same token (the Claude app's connector does);
 # a spent refresh token stays usable this long, so the second refresh is not refused.
 REUSE_GRACE = 60
-# Wrong secrets counted across every attempt, since anyone can start a new one.
+# Wrong secrets counted across every attempt, since anyone can start a new one: five in
+# ten minutes lock the sign-in page. A lockout within a day of the last lasts twice as
+# long, up to a day, so a script that waits each one out slows to five guesses a day.
 MAX_FAILURES = 5
 FAILURE_WINDOW = 600.0
+FIRST_LOCKOUT = 600.0
+MAX_LOCKOUT = 24 * 3600.0
 # Anyone may register and start a sign-in, so neither may pile up: a registered client
 # is a row on disk, an open sign-in is held in memory until it expires.
 UNUSED_CLIENT_TTL = 3600
@@ -114,6 +119,8 @@ class OAuthProvider:
         self._consents: dict[str, _PendingConsent] = {}
         self._codes: dict[str, AuthorizationCode] = {}
         self._failures: list[float] = []
+        self._locked_until = 0.0
+        self._lockout = 0.0
 
     # -- clients -------------------------------------------------------------
 
@@ -159,10 +166,27 @@ class OAuthProvider:
         for key in [k for k, c in self._codes.items() if c.expires_at < now]:
             del self._codes[key]
 
-    def _too_many_failures(self, now: float) -> bool:
-        self._failures = [t for t in self._failures if now - t < FAILURE_WINDOW]
+    def _count_wrong_secret(self, pending: _PendingConsent, now: float) -> int:
+        """Count a wrong secret against this attempt and every attempt; return the tries left."""
+        pending.attempts += 1
+        self._failures = [t for t in self._failures if now - t < FAILURE_WINDOW] + [now]
+        left = min(MAX_SECRET_ATTEMPTS - pending.attempts, MAX_FAILURES - len(self._failures))
         # RULE: a new sign-in attempt does not reset the count of wrong secrets
-        return len(self._failures) >= MAX_FAILURES
+        if len(self._failures) >= MAX_FAILURES:
+            self._lock_out(now)
+        return left
+
+    def _lock_out(self, now: float) -> None:
+        """Refuse every secret for a while: ten minutes, doubled while lockouts keep coming."""
+        lockout = FIRST_LOCKOUT
+        # RULE: a day without a lockout starts the doubling over
+        if now - self._locked_until < MAX_LOCKOUT:
+            # RULE: a lockout soon after another lasts twice as long
+            lockout = max(lockout, 2 * self._lockout)
+        # RULE: no lockout lasts longer than a day
+        self._lockout = min(lockout, MAX_LOCKOUT)
+        self._locked_until = now + self._lockout
+        self._failures.clear()
 
     async def consent_page(self, request: Request) -> Response:
         self._expire()
@@ -189,13 +213,12 @@ class OAuthProvider:
             )
 
         now = self.clock()
-        if self._too_many_failures(now):
-            return HTMLResponse(_page("Too many wrong tries. Wait ten minutes and start again."), 429)
+        if now < self._locked_until:
+            wait = _how_long(self._locked_until - now)
+            return HTMLResponse(_page(f"Too many wrong tries. Wait {wait} and start again."), 429)
 
         if not hmac.compare_digest(str(form.get("secret", "")).encode(), self.login_secret.encode()):
-            pending.attempts += 1
-            self._failures.append(now)
-            left = min(MAX_SECRET_ATTEMPTS - pending.attempts, MAX_FAILURES - len(self._failures))
+            left = self._count_wrong_secret(pending, now)
             return HTMLResponse(_consent_form(request_id, pending, error=f"Wrong secret. {left} tries left."), 401)
 
         del self._consents[request_id]
@@ -369,6 +392,14 @@ class PublicClientMetadata:
             start = {**start, "headers": [*headers, (b"content-length", str(len(body)).encode())]}
         await send(start)
         await send({"type": "http.response.body", "body": body})
+
+
+def _how_long(seconds: float) -> str:
+    """A wait in words, rounded up: "1 minute", "20 minutes", "24 hours"."""
+    minutes = math.ceil(seconds / 60)
+    if minutes >= 120:
+        return f"{math.ceil(minutes / 60)} hours"
+    return "1 minute" if minutes == 1 else f"{minutes} minutes"
 
 
 def _page(body: str) -> str:
