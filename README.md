@@ -398,8 +398,11 @@ Then approve it by typing its name, and restart the bridge:
 claude-voice plugins approve garage
 ```
 
-The approval covers exactly that command, folder and list of tools; change any
-of them and it must be approved again. The bridge never holds a plugin's secrets:
+The approval covers exactly that command, folder and list of tools, and what each
+tool takes as the plugin describes it then; once approved, the command starts the
+plugin and prints those inputs. Change any of them, or let the plugin give a tool a
+new input, and it must be approved again: until then the bridge offers none of its
+tools and logs why. The bridge never holds a plugin's secrets:
 the plugin reads its own, and starts with only a small default environment. Each
 plugin runs as a process of its own, started again after a failure, and a call
 that runs past `timeout` is cut off. Its tools reach the voice named after it
