@@ -284,3 +284,9 @@ name = "a plugin tool whose inputs changed is not offered until approved again"
 file = "src/claude_voice/plugins.py"
 find = 'return _approval\(spec, path\)\.get\("inputs"\) == input_fingerprint\(spec, listing\)'
 replace = 'return True'
+
+[[rule]]
+name = "the bridge stops within seconds even with a stream open"
+file = "src/claude_voice/server.py"
+find = 'timeout_graceful_shutdown=SHUTDOWN_SECONDS,'
+replace = 'timeout_graceful_shutdown=None,'

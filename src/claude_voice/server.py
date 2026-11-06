@@ -1716,8 +1716,6 @@ def serve_forever(cfg: Config) -> None:
         build_server(manager).run("stdio")
         return
 
-    import uvicorn
-
     token = cfg.token or ""
     # The token doubles as the login secret on the OAuth consent page and as a
     # static bearer token for local MCP clients.
@@ -1730,5 +1728,25 @@ def serve_forever(cfg: Config) -> None:
     )
     app = build_app(server, cfg.public_hosts, ui_origins=cfg.ui_origins, ui_dir=cfg.ui_dir)
     configure_logging(cfg.db.parent / LOG_FILE)
+    web_server(app, cfg.host, cfg.port).run()
+
+
+SHUTDOWN_SECONDS = 5  # how long a stop waits for open requests; event streams never end
+
+
+def web_server(app: Any, host: str, port: int) -> Any:
+    """The HTTP server, which stops within seconds of being asked: it waits that long for
+    open requests, then closes the rest, so a restart never hangs on a stream."""
+    import uvicorn
+
     # No log config of its own, so uvicorn's lines, the request log included, reach the file.
-    uvicorn.run(app, host=cfg.host, port=cfg.port, log_level="info", log_config=None)
+    config = uvicorn.Config(
+        app,
+        host=host,
+        port=port,
+        log_level="info",
+        log_config=None,
+        # RULE: the bridge stops within seconds even with a stream open
+        timeout_graceful_shutdown=SHUTDOWN_SECONDS,
+    )
+    return uvicorn.Server(config)
