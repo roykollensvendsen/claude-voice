@@ -26,10 +26,12 @@ GARAGE = config.PluginSpec(
 
 
 RULES = "Call garage_confirm only after the owner's own spoken yes."
+LISTING = {"garage_status": {"description": "", "schema": {"type": "object", "properties": {}}}}
 
 
-def stand_in(slow=False):
-    """A stand-in for garage-door's MCP server, with one tool the voice must never get."""
+def stand_in(slow=False, phrase=False):
+    """A stand-in for garage-door's MCP server, with one tool the voice must never get; with
+    `phrase`, garage_request takes one input more than before."""
     server = MCPServer("garage", instructions=RULES)
     asked = []
 
@@ -40,11 +42,21 @@ def stand_in(slow=False):
             await asyncio.sleep(10)
         return {"door": "closed"}
 
-    @server.tool()
-    async def garage_request(action: str) -> dict:
-        """Ask to open or close the door."""
-        asked.append(action)
-        return {"token": f"t{len(asked)}", "action": action}
+    if phrase:
+
+        @server.tool()
+        async def garage_request(action: str, phrase: str = "") -> dict:
+            """Ask to open or close the door, or press at once on a magic phrase."""
+            asked.append(action)
+            return {"token": f"t{len(asked)}", "action": action}
+
+    else:
+
+        @server.tool()
+        async def garage_request(action: str) -> dict:
+            """Ask to open or close the door."""
+            asked.append(action)
+            return {"token": f"t{len(asked)}", "action": action}
 
     @server.tool()
     async def garage_arm() -> dict:
@@ -82,7 +94,7 @@ def test_a_plugin_without_a_command_or_any_allowed_tool_is_refused(tmp_path, bod
 def test_a_plugin_runs_only_as_the_owner_approved_it(tmp_path):
     approvals = tmp_path / "approved.json"
     assert not plugins.approved(GARAGE, approvals)
-    plugins.approve(GARAGE, approvals)
+    plugins.approve(GARAGE, LISTING, approvals)
     assert plugins.approved(GARAGE, approvals)
     if sys.platform != "win32":  # Windows has no owner-only file mode to set
         assert stat.S_IMODE(approvals.stat().st_mode) == 0o600
@@ -97,6 +109,7 @@ def test_the_owner_approves_a_plugin_by_typing_its_name(tmp_path, monkeypatch, c
     approvals = tmp_path / "approved.json"
     env = {"HOME": str(tmp_path), "CLAUDE_VOICE_CONFIG": str(f)}
     monkeypatch.setattr(plugins, "APPROVALS", approvals)
+    monkeypatch.setattr(plugins, "CLIENT", lambda params: Client(stand_in()[0]))
     monkeypatch.setattr("builtins.input", lambda prompt="": "no")
     assert cli.main(["plugins", "approve", "garage"], env=env) == 1
     monkeypatch.setattr("builtins.input", lambda prompt="": "garage")
@@ -104,7 +117,9 @@ def test_the_owner_approves_a_plugin_by_typing_its_name(tmp_path, monkeypatch, c
     shown = capsys.readouterr().out
     spec = config.load(f, env=env).plugins[0]
     assert "garage-door-mcp" in shown and "garage_status" in shown and spec.cwd in shown
+    assert "takes: nothing" in shown  # what each tool takes, as the plugin says now
     assert plugins.approved(spec, approvals)
+    assert plugins.inputs_approved(spec, plugins.Plugin(spec, plugins.CLIENT).listing(), approvals)
 
 
 # -- through the bridge ------------------------------------------------------------------
@@ -113,7 +128,7 @@ def test_the_owner_approves_a_plugin_by_typing_its_name(tmp_path, monkeypatch, c
 def bridge(tmp_path, specs, approve=True, factory=None):
     approvals = tmp_path / "approved.json"
     for spec in specs if approve else []:
-        plugins.approve(spec, approvals)
+        plugins.approve(spec, plugins.Plugin(spec, factory).listing(), approvals)
     store = Store(tmp_path / "b.db")
     (tmp_path / "home").mkdir(exist_ok=True)
     m = SessionManager(store, project_root=tmp_path / "home", client_factory=FakeClaude())
@@ -177,7 +192,7 @@ async def test_a_plugin_that_crashes_is_started_again(tmp_path):
             return await self.inner.list_tools()
 
         async def call_tool(self, name, arguments):
-            if len(starts) <= 2:  # the listing at start, then the first live process: it dies
+            if len(starts) <= 3:  # listed to approve and at start, then the first live process: it dies
                 raise ConnectionError("the plugin went away")
             return await self.inner.call_tool(name, arguments)
 
@@ -209,9 +224,10 @@ async def test_the_health_report_shows_each_plugin_and_its_tools(tmp_path):
 
 def test_the_approvals_file_holds_no_secret_only_a_fingerprint(tmp_path):
     approvals = tmp_path / "approved.json"
-    plugins.approve(GARAGE, approvals)
+    plugins.approve(GARAGE, LISTING, approvals)
     body = json.loads(approvals.read_text())
-    assert set(body) == {"garage"} and len(body["garage"]) == 64
+    assert set(body) == {"garage"} and set(body["garage"]) == {"runs", "inputs"}
+    assert all(len(v) == 64 for v in body["garage"].values())
 
 
 async def test_a_plugins_own_instructions_reach_the_voice(tmp_path):
@@ -223,3 +239,17 @@ async def test_a_plugins_own_instructions_reach_the_voice(tmp_path):
         said = c.instructions or ""
     assert RULES in said
     assert RULES in tools["garage_request"].description and RULES in tools["garage_status"].description
+
+
+async def test_a_plugin_tool_whose_inputs_changed_is_not_offered_until_approved_again(tmp_path):
+    """garage_request learning a new input changes what one call can do, so the owner sees it first."""
+    before, _ = stand_in()
+    after, _ = stand_in(phrase=True)
+    approvals = tmp_path / "approved.json"
+    server = bridge(tmp_path, [GARAGE], factory=lambda params: Client(before))
+    assert "garage_request" in await tool_names(server)
+    changed = bridge(tmp_path, [GARAGE], approve=False, factory=lambda params: Client(after))
+    assert not any(n.startswith("garage") for n in await tool_names(changed))
+    plugins.approve(GARAGE, plugins.Plugin(GARAGE, lambda params: Client(after)).listing(), approvals)
+    again = bridge(tmp_path, [GARAGE], approve=False, factory=lambda params: Client(after))
+    assert "garage_request" in await tool_names(again)
