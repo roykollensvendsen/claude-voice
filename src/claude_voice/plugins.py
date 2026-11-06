@@ -2,8 +2,9 @@
 
 A plugin is named in the settings file's ``[plugins.<name>]`` section (its command, folder
 and the tools allowed to the voice), and runs only once the owner has approved it by typing
-its name (``claude-voice plugins approve <name>``). The approval is a fingerprint of the
-command, folder and tools, so a changed plugin needs approving again. Each plugin runs as its
+its name (``claude-voice plugins approve <name>``). The approval is two fingerprints: one of
+the command, folder and tools, checked before the plugin is started, and one of what each
+allowed tool takes, checked once it has said so. A change to either needs approving again. Each plugin runs as its
 own long-lived child process, started again with a growing pause when it fails; every call
 has a time limit. Only the allowed tools are offered to the voice, named after the plugin,
 and the plugin's own safety rules stay in the plugin.
@@ -29,27 +30,52 @@ APPROVALS = Path("~/.config/claude-voice/plugins-approved.json")
 START_SECONDS = 15.0  # how long a plugin may take to start
 
 
-def fingerprint(spec: PluginSpec) -> str:
-    """What the owner approved: the command, folder and tools, never anything secret."""
-    shape = {"command": spec.command, "args": spec.args, "cwd": spec.cwd, "tools": sorted(spec.tools)}
+def _hash(shape: Any) -> str:
     return hashlib.sha256(json.dumps(shape, sort_keys=True).encode()).hexdigest()
 
 
-def _approvals(path: Path) -> dict[str, str]:
+def fingerprint(spec: PluginSpec) -> str:
+    """What the owner approved to run: the command, folder and tools, never anything secret."""
+    return _hash({"command": spec.command, "args": spec.args, "cwd": spec.cwd, "tools": sorted(spec.tools)})
+
+
+def input_fingerprint(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> str:
+    """What the owner approved each allowed tool to take, as the plugin described it."""
+    return _hash({tool: listing.get(tool, {}).get("schema") for tool in sorted(spec.tools)})
+
+
+def _approvals(path: Path) -> dict[str, Any]:
     try:
         return dict(json.loads(path.expanduser().read_text()))
     except (OSError, ValueError):
         return {}
 
 
+def _approval(spec: PluginSpec, path: Path | None) -> dict[str, Any]:
+    found = _approvals(path or APPROVALS).get(spec.name)
+    return found if isinstance(found, dict) else {}  # an approval from before inputs counted is none
+
+
 def approved(spec: PluginSpec, path: Path | None = None) -> bool:
     # RULE: a plugin runs only as the owner approved it
-    return _approvals(path or APPROVALS).get(spec.name) == fingerprint(spec)
+    return _approval(spec, path).get("runs") == fingerprint(spec)
 
 
-def approve(spec: PluginSpec, path: Path | None = None) -> None:
+def inputs_approved(spec: PluginSpec, listing: dict[str, dict[str, Any]], path: Path | None = None) -> bool:
+    # RULE: a plugin tool whose inputs changed is not offered until approved again
+    return _approval(spec, path).get("inputs") == input_fingerprint(spec, listing)
+
+
+def takes(schema: Any) -> str:
+    """What a tool takes, in a few words: its inputs' names, a ? on the optional ones."""
+    properties = (schema or {}).get("properties") or {}
+    needed = set((schema or {}).get("required") or [])
+    return ", ".join(name if name in needed else f"{name}?" for name in properties) or "nothing"
+
+
+def approve(spec: PluginSpec, listing: dict[str, dict[str, Any]], path: Path | None = None) -> None:
     target = (path or APPROVALS).expanduser()
-    body = {**_approvals(target), spec.name: fingerprint(spec)}
+    body = {**_approvals(target), spec.name: {"runs": fingerprint(spec), "inputs": input_fingerprint(spec, listing)}}
     target.parent.mkdir(parents=True, exist_ok=True)
     spare = target.with_name(target.name + ".tmp")
     spare.write_text(json.dumps(body, indent=2) + "\n")
@@ -61,6 +87,13 @@ def approve(spec: PluginSpec, path: Path | None = None) -> None:
 def exposed_name(plugin: str, tool: str) -> str:
     """The name the voice sees: the plugin's name in front, once."""
     return tool if tool.startswith(f"{plugin}_") else f"{plugin}_{tool}"
+
+
+def CLIENT(params: Any) -> Any:  # noqa: N802 - a stand-in for the MCP client class, replaced in tests
+    """How the bridge talks to a plugin: the MCP library's own client."""
+    from mcp.client import Client
+
+    return Client(params)
 
 
 def parameters(spec: PluginSpec) -> Any:
