@@ -11,6 +11,7 @@ import httpx
 import pytest
 from mcp.client import Client
 from mcp.server import MCPServer
+from test_agent import private
 
 from claude_voice import agent, machines
 from claude_voice.config import ConfigError, MachineSpec, PluginSpec, load
@@ -100,7 +101,7 @@ async def test_a_machine_is_approved_by_typing_its_pairing_code_and_then_its_nam
         assert not out["approved"] and not key.exists()
         out, shown = await approve(laptop, folder)
         assert out["approved"] and "hjemme" in shown and "agent_info" in shown
-        assert key.stat().st_mode & 0o077 == 0
+        assert private(key)
         server, started = hub(laptop, folder)
         assert [m.offered for m in started] == [["lukas-laptop_agent_info"]]
         res = await call(server, "lukas-laptop_agent_info")
