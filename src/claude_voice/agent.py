@@ -40,7 +40,8 @@ CODE_SECONDS = 10 * 60
 CODE_TRIES = 5
 
 # What the hub may do with this machine's Claude Code sessions: see them, read them, talk to
-# them, start, rename and stop them, and answer what they ask. Nothing about the bridge itself.
+# them, start, rename and stop them, and answer what they ask. Nothing about the bridge itself:
+# not updating it, not handing out access to it, not its health or its own settings.
 SESSION_TOOLS = (
     "list_projects",
     "list_active_sessions",
@@ -56,6 +57,12 @@ SESSION_TOOLS = (
     "list_pending_approvals",
     "approve",
     "deny",
+    # Sessions the agent's own bridge runs: the only ones whose questions the voice answers.
+    "create_session",
+    "send_task",
+    "session_recap",
+    "cancel",
+    "close_session",
 )
 
 Whois = Callable[[str], "tuple[str, str] | None"]
