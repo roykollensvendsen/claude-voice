@@ -123,6 +123,7 @@ class Plugin:
         self.instructions: str | None = None
         self.offered: list[str] = []
         self._failure: Exception | None = None
+        self.last_failure: Exception | None = None  # what made the latest call fail, for a caller to tell apart
         self._client: Any = None
         self._lock = asyncio.Lock()
         self._runner: asyncio.Task[None] | None = None
@@ -206,11 +207,13 @@ class Plugin:
                 client = await self._connect()
                 # RULE: a plugin call that runs too long is cut off
                 return await asyncio.wait_for(client.call_tool(tool, arguments), self.spec.timeout)
-            except TimeoutError:
+            except TimeoutError as exc:
+                self.last_failure = exc
                 await self._drop()
                 self.state = "restarting"
                 raise RuntimeError(f"{self.spec.name} took longer than {self.spec.timeout:g} s") from None
             except Exception as exc:
+                self.last_failure = exc
                 await self._drop()
                 self.state = "restarting"
                 log.info("plugin %s failed: %s", self.spec.name, exc)

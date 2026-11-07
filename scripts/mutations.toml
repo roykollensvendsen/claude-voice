@@ -374,3 +374,15 @@ name = "an agent offers only the session tools on its list"
 file = "src/claude_voice/agent.py"
 find = 'if name not in SESSION_TOOLS and "plugin" not in \(tools\[name\].meta or \{\}\):'
 replace = 'if False:'
+
+[[rule]]
+name = "looking across machines never waits long for one"
+file = "src/claude_voice/fleet.py"
+find = 'answer = await asyncio.wait_for\(machine.call\("fleet_recap", \{\}\), ASK_SECONDS\)'
+replace = 'answer = await machine.call("fleet_recap", {})'
+
+[[rule]]
+name = "a session on another machine is reached by the machine name in front"
+file = "src/claude_voice/fleet.py"
+find = 'target = fleet.split\(arguments.get\(key\)\) if key else None'
+replace = 'target = None'

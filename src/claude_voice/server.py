@@ -35,6 +35,7 @@ from . import (
     detail,
     doctor,
     events,
+    fleet,
     gitstatus,
     launch,
     machines,
@@ -402,6 +403,7 @@ def build_server(
             if task:
                 task.cancel()
 
+    across = fleet.Fleet()  # the other machines, filled in once they are started below
     mcp = MCPServer(
         "claude-voice",
         title="Claude voice bridge",
@@ -409,7 +411,7 @@ def build_server(
         instructions=INSTRUCTIONS,
         auth_server_provider=oauth,
         auth=auth,
-        middleware=[log_requests],
+        middleware=[log_requests, fleet.middleware(across)],
         lifespan=lifespan,
     )
     tool = titles.titled(mcp, titles.load())  # each tool's display title, from the shared table
@@ -570,7 +572,9 @@ def build_server(
     in_flight: set[asyncio.Future[Any]] = set()
 
     active_plugins = plugins.start_approved(mcp, repos.plugins, plugin_approvals, plugin_client)
-    machines.start_approved(mcp, repos.machines, machine_folder, http=machine_http, whois=machine_whois)
+    across.machines = machines.start_approved(
+        mcp, repos.machines, machine_folder, http=machine_http, whois=machine_whois
+    )
 
     @tool(annotations=READ_ONLY)
     def fleet_recap() -> dict[str, Any]:
