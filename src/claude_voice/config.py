@@ -127,19 +127,16 @@ def _machines(raw: Any) -> list[MachineSpec]:
     for name, body in (raw or {}).items():
         body = body if isinstance(body, dict) else {}
         port = body.get("port", 8812)
+        whole = isinstance(port, int) and not isinstance(port, bool)
         # RULE: a machine without a tailnet address is refused
-        if (
-            not MACHINE_NAME.fullmatch(str(name))
-            or not tailnet.on_tailnet(str(body.get("address", "")))
-            or isinstance(port, bool)
-            or not isinstance(port, int)
-        ):
+        if not (MACHINE_NAME.fullmatch(str(name)) and tailnet.on_tailnet(str(body.get("address", ""))) and whole):
             raise ConfigError(f"[machines.{name}] needs a lowercase name and a tailnet address, such as 100.86.231.118")
         out.append(MachineSpec(str(name), str(body["address"]), port, float(body.get("timeout", 30.0))))
     return out
 
 
-def _agent(raw: dict[str, Any], home: str) -> tuple[bool, Path]:
+def _agent(raw: dict[str, Any] | None, home: str) -> tuple[bool, Path]:
+    raw = raw or {}
     sessions = raw.get("sessions", False)
     if not isinstance(sessions, bool):
         raise ConfigError(f"[agent] sessions = {sessions!r} is not true or false")
@@ -228,7 +225,7 @@ def load(path: Path | None = FILE, own_clone: Path | None = None, env: Mapping[s
         _budgets(raw.get("budgets")),
         _plugins(raw.get("plugins"), home),
         _machines(raw.get("machines")),
-        *_agent(raw.get("agent") or {}, home),
+        *_agent(raw.get("agent"), home),
     )
 
 
