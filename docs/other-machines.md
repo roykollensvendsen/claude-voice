@@ -9,6 +9,12 @@ the private network between your own devices. Why it works this way is in
 When it is set up, the voice gets that machine's tools with its name in front:
 `lukas-laptop_list_active_sessions`, `lukas-laptop_start_active_session` and so on.
 
+Its sessions are also in the hub's own lists, `list_active_sessions` and
+`fleet_recap`, named with the machine in front: `lukas-laptop/hub-test`. The
+session tools take that name, so "message lukas-laptop/hub-test" reaches it. The
+same lists say whether each machine is online, slow, offline or not approved. A
+machine that does not answer within two seconds is reported, not waited for.
+
 ## What keeps it safe
 
 - **The agent listens on its Tailscale address only.** It refuses to start
