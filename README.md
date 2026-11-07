@@ -447,7 +447,7 @@ On the other machine, `claude-voice agent pair` shows a code that works once, fo
 ten minutes, and `claude-voice agent` serves:
 
 ```console
-$ COLUMNS=80 claude-voice agent --help
+$ claude-voice agent --help
 usage: claude-voice agent [-h] [{serve,pair}]
 
 positional arguments:

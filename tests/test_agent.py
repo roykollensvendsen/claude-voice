@@ -4,6 +4,7 @@ The hub here is a stand-in: an HTTP client that says which tailnet address it ca
 """
 
 import json
+import os
 
 import httpx
 import pytest
@@ -18,6 +19,11 @@ HUB_NODE = "nHUBstable"
 OTHER = "100.79.48.77"  # the phone: on the tailnet, never paired
 NODES = {HUB: (HUB_NODE, "precision7530-arch-roy"), OTHER: ("nPHONEstable", "roy-sin-xcover7-pro")}
 HERE = "100.86.231.118"
+
+
+def private(path):
+    """Readable by its owner alone; Windows has no such file modes, only its own access lists."""
+    return os.name == "nt" or path.stat().st_mode & 0o077 == 0
 
 
 def whois(address):
@@ -142,7 +148,7 @@ async def test_the_key_is_stored_only_as_a_hash(pairing, tmp_path):
     key = await paired(pairing, application)
     for f in (tmp_path / "agent").iterdir():
         assert key not in f.read_text()
-        assert f.stat().st_mode & 0o077 == 0
+        assert private(f)
 
 
 async def test_pairing_again_replaces_the_old_hub(pairing):
@@ -241,4 +247,4 @@ def test_agent_pair_shows_a_code_and_what_to_run_on_the_hub(tmp_path, capsys):
     out = capsys.readouterr().out
     code = out.split("Pairing code: ")[1].split()[0]
     assert len(code) == 8 and "claude-voice machines approve" in out
-    assert (tmp_path / ".config/claude-voice/agent/pairing.json").stat().st_mode & 0o077 == 0
+    assert private(tmp_path / ".config/claude-voice/agent/pairing.json")
