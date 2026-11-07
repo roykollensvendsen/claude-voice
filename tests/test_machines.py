@@ -24,10 +24,16 @@ SPEC = MachineSpec(name="lukas-laptop", address=LAPTOP)
 class Laptop:
     """Lukas's laptop: its agent, and what the hub's Tailscale says is at its address."""
 
-    def __init__(self, tmp_path, specs=(), approvals=None, client=None):
+    def __init__(self, tmp_path, specs=(), approvals=None, client=None, bridge=None):
         self.pairing = agent.Pairing(tmp_path / "agent")
         server = agent.build_agent(
-            "hjemme", self.pairing, specs=list(specs), plugin_approvals=approvals, plugin_client=client, address=LAPTOP
+            "hjemme",
+            self.pairing,
+            specs=list(specs),
+            plugin_approvals=approvals,
+            plugin_client=client,
+            address=LAPTOP,
+            bridge=bridge,
         )
         self.app = agent.build_agent_app(server, self.pairing, whois=NODES.get, address=LAPTOP)
         self.seen_as = dict(NODES)

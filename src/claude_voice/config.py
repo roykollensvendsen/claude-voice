@@ -139,6 +139,13 @@ def _machines(raw: Any) -> list[MachineSpec]:
     return out
 
 
+def _agent(raw: dict[str, Any], home: str) -> tuple[bool, Path]:
+    sessions = raw.get("sessions", False)
+    if not isinstance(sessions, bool):
+        raise ConfigError(f"[agent] sessions = {sessions!r} is not true or false")
+    return sessions, _path(raw.get("root"), home) or Path(home)
+
+
 BUDGETS = {"claude_app": 20.0, "voice_app": 120.0, "default": 60.0}
 
 
@@ -171,6 +178,8 @@ class Config:
     budgets: Budgets = field(default_factory=Budgets)
     plugins: list[PluginSpec] = field(default_factory=list)
     machines: list[MachineSpec] = field(default_factory=list)
+    agent_sessions: bool = False  # on another machine: whether its agent offers its sessions
+    agent_root: Path = field(default_factory=Path.home)  # where that agent starts sessions
 
 
 def _repo(value: Any, key: str) -> str:
@@ -219,6 +228,7 @@ def load(path: Path | None = FILE, own_clone: Path | None = None, env: Mapping[s
         _budgets(raw.get("budgets")),
         _plugins(raw.get("plugins"), home),
         _machines(raw.get("machines")),
+        *_agent(raw.get("agent") or {}, home),
     )
 
 

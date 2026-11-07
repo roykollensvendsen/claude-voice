@@ -224,7 +224,7 @@ def agent_command(action: str, env: Mapping[str, str]) -> int:
         )
         return 0
     try:
-        agent.serve(machine, settings.load(settings.FILE, env=env).plugins, pairing)
+        agent.serve(machine, settings.load(settings.FILE, env=env), pairing)
     except (agent.AgentError, settings.ConfigError) as exc:
         sys.stderr.write(f"claude-voice: {exc}\n")
         return 1

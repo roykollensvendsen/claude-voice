@@ -440,7 +440,14 @@ bridge on this laptop calls over Tailscale. How it works and why is in
 agent listens on that machine's tailnet address only, and answers only the hub it
 was paired with: every call needs the key it handed out at pairing, from the
 machine Tailscale says that hub is. It offers the plugins its own owner approved.
-Its Claude Code sessions are not offered yet.
+With `sessions = true` in its own settings file, it offers that machine's Claude
+Code sessions too: listing, reading, messaging, starting, renaming and stopping
+them, and answering what they ask. Nothing about the bridge itself is offered.
+
+```toml
+[agent]
+sessions = true
+```
 
 On the other machine, `claude-voice agent pair` shows a code that works once, for
 ten minutes, and `claude-voice agent` serves:
