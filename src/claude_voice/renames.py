@@ -55,13 +55,19 @@ def find(rows: list[dict[str, Any]], session: str) -> dict[str, Any] | None:
     return None
 
 
+def answers_to(d: dict[str, Any]) -> list[str]:
+    """Every name a running session answers to: its own, a name it had, and Claude Code's."""
+    return [str(n) for n in (*d.get("aliases", []), d.get("deliver_to"), d.get("name")) if n]
+
+
+def by_name(rows: Iterable[dict[str, Any]]) -> dict[str, str]:
+    """Each name a running session answers to, and that session's id."""
+    return {name: str(d.get("sessionId")) for d in rows for name in answers_to(d)}
+
+
 def taken(rows: Iterable[dict[str, Any]], but: str | None = None) -> set[str]:
     """Every name a running session answers to, other than session `but`'s."""
-    out: set[str] = set()
-    for d in rows:
-        if str(d.get("sessionId")) != but:
-            out |= {str(d.get("name")), *d.get("aliases", []), *([d["deliver_to"]] if "deliver_to" in d else [])}
-    return out
+    return {name for name, sid in by_name(rows).items() if sid != but}
 
 
 class Tmux:

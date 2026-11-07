@@ -22,7 +22,7 @@ from typing import Any
 
 from claude_agent_sdk import list_subagents, project_key_for_directory
 
-from . import procs
+from . import procs, renames
 from .store import Store
 from .transcripts import PROJECTS_DIR
 
@@ -179,12 +179,7 @@ class SessionTree:
                 "talks_to": set(),
             }
         }
-        by_name = {
-            str(name): str(d["sessionId"])
-            for d in live
-            for name in [*d.get("aliases", []), d.get("deliver_to"), d.get("name")]
-            if name
-        }
+        by_name = renames.by_name(live)
         by_pid = {int(d["pid"]): str(d["sessionId"]) for d in live}
 
         for d in live:
