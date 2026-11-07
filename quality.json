@@ -8,9 +8,11 @@
     "claude_voice/detail.py": 40,
     "claude_voice/doctor.py": 19,
     "claude_voice/events.py": 15,
+    "claude_voice/fleet.py": 14,
     "claude_voice/gitstatus.py": 13,
     "claude_voice/guard.py": 10,
     "claude_voice/launch.py": 10,
+    "claude_voice/machines.py": 6,
     "claude_voice/metrics.py": 7,
     "claude_voice/oauth.py": 7,
     "claude_voice/phone_hook.py": 17,
@@ -22,15 +24,16 @@
     "claude_voice/sessions.py": 16,
     "claude_voice/software.py": 11,
     "claude_voice/store.py": 13,
+    "claude_voice/tailnet.py": 4,
     "claude_voice/titles.py": 4,
     "claude_voice/transcripts.py": 18,
     "claude_voice/tree.py": 23,
     "claude_voice/updater.py": 12,
     "claude_voice/usage.py": 11
   },
-  "coverage": 91.82,
+  "coverage": 92.12,
   "cycles": 0,
-  "duplication": 1.85,
+  "duplication": 1.71,
   "layer_violations": 0,
   "lint_errors": 0,
   "mutation": {
@@ -42,6 +45,6 @@
     "tolerance": 0.25
   },
   "test_seconds": 66.1,
-  "tests": 573,
+  "tests": 602,
   "type_errors": 0
 }
