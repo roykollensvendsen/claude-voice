@@ -6,7 +6,7 @@ import json
 import sqlite3
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +63,19 @@ CREATE TABLE IF NOT EXISTS started(
   name TEXT NOT NULL,
   cwd TEXT NOT NULL,
   started_at REAL NOT NULL
+);
+-- Running sessions renamed by voice: the name Claude Code had then, and the new one.
+CREATE TABLE IF NOT EXISTS renamed(
+  claude_session_id TEXT PRIMARY KEY,
+  was TEXT NOT NULL,
+  name TEXT NOT NULL,
+  renamed_at REAL NOT NULL
+);
+-- Names a renamed session had before, which still reach it.
+CREATE TABLE IF NOT EXISTS old_names(
+  name TEXT PRIMARY KEY,
+  claude_session_id TEXT NOT NULL,
+  renamed_at REAL NOT NULL
 );
 """
 
@@ -180,6 +193,27 @@ class Store:
     def was_started(self, claude_session_id: str) -> bool:
         row = self.db.execute("SELECT 1 FROM started WHERE claude_session_id = ?", (claude_session_id,)).fetchone()
         return row is not None
+
+    def rename(self, claude_session_id: str, was: str, name: str, old: Iterable[str]) -> None:
+        """Session `claude_session_id`, which Claude Code calls `was`, is now `name`; the
+        names in `old` still reach it."""
+        now = self.clock()
+        with self.db:
+            self.db.execute("INSERT OR REPLACE INTO renamed VALUES (?, ?, ?, ?)", (claude_session_id, was, name, now))
+            for alias in set(old) - {name}:
+                self.db.execute("INSERT OR REPLACE INTO old_names VALUES (?, ?, ?)", (alias, claude_session_id, now))
+            self.db.execute("DELETE FROM old_names WHERE name = ?", (name,))
+            self.db.execute("UPDATE started SET name = ? WHERE claude_session_id = ?", (name, claude_session_id))
+
+    def renamed(self) -> dict[str, tuple[str, str]]:
+        rows = self.db.execute("SELECT claude_session_id, was, name FROM renamed").fetchall()
+        return {r[0]: (r[1], r[2]) for r in rows}
+
+    def old_names(self) -> dict[str, list[str]]:
+        out: dict[str, list[str]] = {}
+        for r in self.db.execute("SELECT name, claude_session_id FROM old_names ORDER BY renamed_at").fetchall():
+            out.setdefault(r[1], []).append(r[0])
+        return out
 
     def create_session(self, project_path: str, label: str | None = None) -> dict[str, Any]:
         now = self.clock()

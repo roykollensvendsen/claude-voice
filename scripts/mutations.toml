@@ -290,3 +290,27 @@ name = "the bridge stops within seconds even with a stream open"
 file = "src/claude_voice/server.py"
 find = 'timeout_graceful_shutdown=SHUTDOWN_SECONDS,'
 replace = 'timeout_graceful_shutdown=None,'
+
+[[rule]]
+name = "a session name is letters, digits, dots, underscores and dashes"
+file = "src/claude_voice/renames.py"
+find = 'return NAME.fullmatch\(name\) is not None'
+replace = 'return True'
+
+[[rule]]
+name = "a message to an old name reaches the renamed session"
+file = "src/claude_voice/renames.py"
+find = 'return old_names and \(session in d.get\("aliases", \[\]\) or session == d.get\("deliver_to"\)\)'
+replace = 'return False'
+
+[[rule]]
+name = "a new name already in use is refused"
+file = "src/claude_voice/server.py"
+find = 'if new_name in renames.taken\(rows, but=sid\):'
+replace = 'if False:'
+
+[[rule]]
+name = "a busy session is never typed into"
+file = "src/claude_voice/server.py"
+find = 'if d.get\("status"\) != "idle":'
+replace = 'if False:'

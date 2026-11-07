@@ -40,6 +40,7 @@ from . import (
     metrics,
     plugins,
     procs,
+    renames,
     roles,
     software,
     titles,
@@ -298,6 +299,7 @@ def build_server(
     find_program: Callable[[str], str | None] = procs.find,
     desktop_env: Mapping[str, str] | None = None,
     ci_status: Callable[[str], dict[str, Any] | None] = software.latest_run,
+    tmux: Any = None,
 ) -> MCPServer:
     auth = None
     if oauth is not None:
@@ -317,7 +319,14 @@ def build_server(
             return transcripts.read_raw_transcript(sid, directory or "", projects_dir)
 
     watcher = events.LiveWatcher(manager.store, live_dir, manager.root, clock=manager.clock)
-    tree = SessionTree(manager.store, live_dir, manager.root, projects_dir=projects_dir, clock=manager.clock)
+    tmux = tmux or renames.Tmux()
+
+    def renamed(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return renames.apply(rows, manager.store.renamed(), manager.store.old_names())
+
+    tree = SessionTree(
+        manager.store, live_dir, manager.root, projects_dir=projects_dir, clock=manager.clock, rename=renamed
+    )
     side_answer = side_answer or transcripts.shared_reader()
     host: doctor.Host = doctor_host or doctor.RealHost()
     repos = repo_config or config.load(config.FILE, own_clone=roles.own_clone())
@@ -423,7 +432,7 @@ def build_server(
         if adopted:
             open_ = [s for s in adopted if s["status"] != "closed"]
             return (open_ or adopted)[0]["id"]
-        if any(session_id in (d.get("sessionId"), d.get("name")) for d in live_sessions()):
+        if renames.find(live_sessions(), session_id) is not None:
             raise ToolError(
                 f"{session_id} is a Claude Code session running on this machine (in a "
                 "terminal or in the background), not one this bridge started or attached. "
@@ -643,7 +652,7 @@ def build_server(
         try:
             session_id = known(session_id)
         except ToolError:
-            target = next((d for d in live_sessions() if session_id in (d.get("sessionId"), d.get("name"))), None)
+            target = renames.find(live_sessions(), session_id)
             if target is None:
                 raise
             # Only Esc in its own window stops a turn there; a signal from outside ends the session.
@@ -709,7 +718,7 @@ def build_server(
                 "already_running": True,
                 "folder_created": folder_created,
             }
-        taken = {str(d.get("name")) for d in live_sessions()}
+        taken = renames.taken(live_sessions())
         wanted = (name or "").strip() or f"{path.name}-{secrets.token_hex(2)}"
         while wanted in taken:
             wanted = f"{wanted}-{secrets.token_hex(2)}"
@@ -745,7 +754,7 @@ def build_server(
         raise ToolError(f"{wanted} was started but did not appear among the running sessions")
 
     def unused_name(wanted: str) -> str:
-        taken = {str(d.get("name")) for d in live_sessions()}
+        taken = renames.taken(live_sessions())
         while wanted in taken:
             wanted = f"{wanted}-{secrets.token_hex(2)}"
         return wanted
@@ -934,7 +943,7 @@ def build_server(
     async def stop_active_session(name: str) -> dict[str, Any]:
         """Stop a session that start_active_session started, in the background or in a window it
         opened. Any other session, such as one the owner opened, is refused (status not_started_here)."""
-        target = next((d for d in live_sessions() if name in (d.get("name"), d.get("sessionId"))), None)
+        target = renames.find(live_sessions(), name)
         if target is None:
             return {"name": name, "status": "not_running"}
         sid = str(target.get("sessionId"))
@@ -974,7 +983,7 @@ def build_server(
             return None
 
     def live_sessions() -> list[dict[str, Any]]:
-        return events.read_live(live_dir)
+        return renamed(events.read_live(live_dir))
 
     @tool(annotations=READ_ONLY)
     def list_active_sessions() -> dict[str, Any]:
@@ -1088,15 +1097,70 @@ def build_server(
         return manager.attach(claude_session_id, path, label, history=history)
 
     def find_live(session: str) -> dict[str, Any]:
-        session = by_number(session)
-        for d in live_sessions():
-            if str(d.get("name", "")).startswith(COURIER_PREFIX) or Path(str(d.get("cwd"))).name.startswith(
-                COURIER_PREFIX
-            ):
-                continue  # the bridge's own messengers, gone as soon as they deliver
-            if session in (d.get("name"), d.get("sessionId")) and under_root(d.get("cwd")):
-                return d
+        rows = [
+            d
+            for d in live_sessions()
+            # the bridge's own messengers, gone as soon as they deliver
+            if not str(d.get("name", "")).startswith(COURIER_PREFIX)
+            and not Path(str(d.get("cwd"))).name.startswith(COURIER_PREFIX)
+            and under_root(d.get("cwd"))
+        ]
+        found = renames.find(rows, by_number(session))
+        if found is not None:
+            return found
         raise ToolError(f"No running session called {session!r}; see list_active_sessions")
+
+    def address(d: dict[str, Any]) -> str:
+        """The name Claude Code itself answers to, which a rename may not have reached yet."""
+        return str(d.get("deliver_to") or d["name"])
+
+    @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
+    async def rename_session(session: str, new_name: str) -> dict[str, Any]:
+        """Give a running session a new name (letters, digits, '.', '_', '-'); its old name
+        still reaches it. Claude Code itself is renamed too when the session is idle in tmux;
+        otherwise `note` says what to do (claude_code: renamed, sent, busy, not_in_tmux, already)."""
+        new_name = new_name.strip()
+        if not renames.valid(new_name):
+            raise ToolError(
+                "A session name is letters, digits, '.', '_' and '-', at most 64, starting with a letter or digit"
+            )
+        rows = [d for d in live_sessions() if under_root(d.get("cwd"))]
+        target = renames.find(rows, by_number(session))
+        if target is None:
+            raise ToolError(f"No running session called {session!r}; see list_active_sessions")
+        sid, old = str(target["sessionId"]), str(target["name"])
+        # RULE: a new name already in use is refused
+        if new_name in renames.taken(rows, but=sid):
+            raise ToolError(f"{new_name!r} is already in use by another session")
+        claude_name = address(target)
+        manager.store.rename(sid, claude_name, new_name, [old, claude_name, *target.get("aliases", [])])
+        claude_code, note = await rename_in_claude(target, claude_name, new_name)
+        log.info("renamed %s -> %s (%s); Claude Code: %s", old, new_name, sid, claude_code)
+        return {"name": new_name, "was": old, "claude_session_id": sid, "claude_code": claude_code, "note": note}
+
+    async def rename_in_claude(d: dict[str, Any], claude_name: str, new: str) -> tuple[str, str]:
+        """Type /rename into the session's own tmux pane, only while it waits idle."""
+        if claude_name == new:
+            return "already", "Claude Code already has this name."
+        pane = tmux.pane(int(d.get("pid") or 0))
+        if pane is None:
+            where = "background" if d.get("kind") == "bg" else "not in tmux"
+            return "not_in_tmux", (
+                f"Renamed in the bridge only: the session is {where}, so nothing can type into it. "
+                f"Type /rename {new} in it to rename it in Claude Code too."
+            )
+        # RULE: a busy session is never typed into
+        if d.get("status") != "idle":
+            return "busy", "Renamed in the bridge; Claude Code is mid-turn, so rename it again once it is idle."
+        tmux.type(pane[1], f"/rename {new}")
+        if pane[0] == claude_name:
+            tmux.rename(claude_name, new)
+        for _ in range(25):
+            now = next((x for x in events.read_live(live_dir) if x.get("sessionId") == d.get("sessionId")), {})
+            if now.get("name") == new:
+                return "renamed", "Renamed in Claude Code too."
+            await asyncio.sleep(0.2)
+        return "sent", f"/rename {new} was typed into the session; Claude Code has not shown the new name yet."
 
     @tool(
         annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True),
@@ -1110,7 +1174,7 @@ def build_server(
             return {"session": target["name"], "delivered": False, "status": "moved", "moved_to": moved}
         sid = str(target["sessionId"])
         budget = repos.budgets.seconds(transcripts.current_client.get())
-        delivery = asyncio.ensure_future(deliver(target["name"], message))
+        delivery = asyncio.ensure_future(deliver(address(target), message))
         try:
             out = await asyncio.wait_for(asyncio.shield(delivery), budget)
         except TimeoutError:
@@ -1195,7 +1259,7 @@ def build_server(
             }
         before = len(numbered_turns(target))
         was_busy = target.get("status") in ("busy", "shell")
-        out = await deliver(target["name"], message)
+        out = await deliver(address(target), message)
         if not out.get("delivered"):
             raise ToolError(f"Could not deliver: {out.get('detail') or 'unknown reason'}")
 
@@ -1517,9 +1581,9 @@ def build_server(
     def lookup(session: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         """The running session, or else the bridge's own, named `session` (name or id)."""
         session = by_number(session)
-        for d in live_sessions():
-            if session in (d.get("name"), str(d.get("sessionId"))) and under_root(d.get("cwd")):
-                return d, None
+        found = renames.find([d for d in live_sessions() if under_root(d.get("cwd"))], session)
+        if found is not None:
+            return found, None
         for s in store.list_sessions(limit=200):
             if session in (s["id"], s["label"]) and s["status"] != "closed":
                 return None, s
