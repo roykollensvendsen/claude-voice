@@ -1538,7 +1538,7 @@ def build_server(
         raise LookupError(f"No session called {session!r}")
 
     def set_active(session: str, by: str) -> dict[str, Any]:
-        found = resolve_session(session)
+        found = across.active_row(session) if across.split(session) else resolve_session(session)
         active = {**found, "set_by": by, "set_at": datetime.now(UTC).isoformat(timespec="seconds")}
         store.set_setting("active_session", active)
         api.HUB.publish("active", active)

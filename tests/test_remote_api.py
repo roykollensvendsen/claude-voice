@@ -162,3 +162,17 @@ async def test_the_event_api_takes_an_id_with_the_machine_in_front(bridge):  # n
     assert read.status_code == 200 and read.json()["status"] == "idle"
     assert [p["id"] for p in prompts] == ["lukas-laptop/3"]
     assert answered.status_code == 200
+
+
+async def test_a_session_on_another_machine_can_be_the_one_the_voice_talks_to(bridge):  # noqa: F811
+    server, app, _, _ = bridge
+    server.fleet.machines = [FakeMachine(sessions=[MOD])]
+    await server.fleet.refresh()
+    async with client(app) as http:
+        chosen = await http.put("/api/v1/active", headers=BEARER, json={"session": "lukas-laptop/840ab631"})
+        gone = await http.put("/api/v1/active", headers=BEARER, json={"session": "lukas-laptop/nope"})
+    assert chosen.status_code == 200, chosen.text
+    assert {"id": "lukas-laptop/840ab631", "name": "lukas-laptop/mod", "machine": "lukas-laptop"}.items() <= (
+        chosen.json().items()
+    )
+    assert gone.status_code == 404

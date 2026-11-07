@@ -259,6 +259,13 @@ class Fleet:
                 return self._page_row(name, row)
         raise LookupError(f"no session {session}")
 
+    def active_row(self, session: str) -> dict[str, Any]:
+        """A session on another machine as the one the owner talks to: its id and the name
+        the voice reaches it by, both with the machine in front."""
+        row = self.detail(session)
+        name = f"{row['machine']}/{row.get('name')}"
+        return {"id": row["id"], "name": name, "kind": row.get("kind"), "number": None, "machine": row["machine"]}
+
     async def answer(self, prompt: str, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         """Pass a yes or no from the page to the machine the question is on."""
         target = self.split(prompt)

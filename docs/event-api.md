@@ -73,6 +73,9 @@ ran in the last day, with the session the owner talks to:
   endpoint below takes, as a slash or as `%2F`. Its `name` is the machine's own
   name for it, and its `number` is `null`. One whose questions can only be answered
   in the Claude app carries `answer_in: "claude_app"`.
+  `PUT /api/v1/active` takes it too; the `active` object then has the prefixed
+  `id`, `machine`, and a `name` with the machine in front, the name the voice
+  reaches it by.
 - `state`: one of `working`, `idle`, `answer` (waiting for an answer to a
   question), `approval` (waiting for permission to use a tool), `input`
   (waiting for something else), `moved` or `stopped`; the same set for
