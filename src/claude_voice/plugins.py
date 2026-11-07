@@ -30,6 +30,10 @@ APPROVALS = Path("~/.config/claude-voice/plugins-approved.json")
 START_SECONDS = 15.0  # how long a plugin may take to start
 
 
+class NotReady(ConnectionError):
+    """A plugin or machine that did not start or answer in time."""
+
+
 def _hash(shape: Any) -> str:
     return hashlib.sha256(json.dumps(shape, sort_keys=True).encode()).hexdigest()
 
@@ -111,11 +115,14 @@ def parameters(spec: PluginSpec) -> Any:
 class Plugin:
     """One plugin's child process: started on first use, kept, and started again after a failure."""
 
+    start_seconds = START_SECONDS
+
     def __init__(self, spec: PluginSpec, client_factory: Callable[[Any], Any]) -> None:
         self.spec, self.client_factory = spec, client_factory
         self.state = "not started"
         self.instructions: str | None = None
         self.offered: list[str] = []
+        self._failure: Exception | None = None
         self._client: Any = None
         self._lock = asyncio.Lock()
         self._runner: asyncio.Task[None] | None = None
@@ -128,7 +135,7 @@ class Plugin:
         found: dict[str, dict[str, Any]] = {}
 
         async def read() -> None:
-            async with self.client_factory(parameters(self.spec)) as client:
+            async with self.open() as client:
                 self.instructions = getattr(client, "instructions", None) or None
                 for tool in (await client.list_tools()).tools:
                     if tool.name in self.spec.tools:
@@ -150,31 +157,45 @@ class Plugin:
         """Hold the connection open in a task of its own: the client must be closed in the
         task that opened it."""
         try:
-            async with self.client_factory(parameters(self.spec)) as client:
+            async with self.open() as client:
                 self._client, self.state = client, "running"
                 self._ready.set()
                 log.info("plugin %s started", self.spec.name)
                 await self._closing.wait()
         except Exception as exc:
+            self._failure = exc
             log.info("plugin %s ended: %s", self.spec.name, exc)
         finally:
             self._client = None
             self._ready.set()  # wake a caller waiting for a start that failed
 
+    def open(self) -> Any:
+        """A connection to the plugin, to use with `async with`."""
+        return self.client_factory(parameters(self.spec))
+
+    def trouble(self, exc: Exception) -> str:
+        """What to tell the voice when a call failed with `exc`."""
+        return f"{self.spec.name} stopped working; it starts again on the next call"
+
     async def _connect(self) -> Any:
         if self._runner is None or self._runner.done():
             self._ready, self._closing = asyncio.Event(), asyncio.Event()
             self._runner = asyncio.create_task(self._run())
-        await asyncio.wait_for(self._ready.wait(), START_SECONDS)
+        try:
+            await asyncio.wait_for(self._ready.wait(), self.start_seconds)
+        except TimeoutError:
+            raise NotReady(f"{self.spec.name} did not start in {self.start_seconds:g} s") from None
         if self._client is None:
-            raise ConnectionError(f"{self.spec.name} did not start")
+            raise self._failure or NotReady(f"{self.spec.name} did not start")
         return self._client
 
     async def _drop(self) -> None:
         self._closing.set()
         runner = self._runner
+        if runner is not None and self._client is None:
+            runner.cancel()  # still connecting: nothing to close cleanly, so do not wait for it
         if runner is not None:
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(Exception, asyncio.CancelledError):
                 await asyncio.wait_for(asyncio.shield(runner), 5)
 
     async def call(self, tool: str, arguments: dict[str, Any]) -> Any:
@@ -193,7 +214,7 @@ class Plugin:
                 await self._drop()
                 self.state = "restarting"
                 log.info("plugin %s failed: %s", self.spec.name, exc)
-                raise RuntimeError(f"{self.spec.name} stopped working; it starts again on the next call") from None
+                raise RuntimeError(self.trouble(exc)) from None
 
     def status(self) -> dict[str, Any]:
         return {"name": self.spec.name, "state": self.state, "tools": list(self.spec.tools)}

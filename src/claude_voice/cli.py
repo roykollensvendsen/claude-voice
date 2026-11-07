@@ -16,7 +16,7 @@ from .server import Config, ConfigError, load_config, serve_forever
 
 #: Every verb this command has. The documentation test requires each one to
 #: appear in a worked example, so a verb cannot be added without one.
-COMMANDS: tuple[str, ...] = ("serve", "check", "plugins", "agent")
+COMMANDS: tuple[str, ...] = ("serve", "check", "plugins", "agent", "machines")
 
 SIGN_IN = (
     "Run `claude`, type /login and sign in with your Claude account, then check again. If `claude` "
@@ -120,7 +120,13 @@ def main(
     agent_cmd.add_argument(
         "action", nargs="?", choices=["serve", "pair"], default="serve", help="serve (the default), or pair"
     )
+    machine_cmd = sub.add_parser("machines", help="list other machines, or pair with one by typing its code")
+    machine_cmd.add_argument("action", nargs="?", choices=["list", "approve"], default="list")
+    machine_cmd.add_argument("name", nargs="?")
     parsed = parser.parse_args(args)
+
+    if parsed.command == "machines":
+        return machines_command(parsed.action, parsed.name, env)
 
     if parsed.command == "agent":
         return agent_command(parsed.action, env)
@@ -223,6 +229,32 @@ def agent_command(action: str, env: Mapping[str, str]) -> int:
         sys.stderr.write(f"claude-voice: {exc}\n")
         return 1
     return 0
+
+
+def machines_command(action: str, name: str | None, env: Mapping[str, str]) -> int:
+    """List the machines in the settings file, or pair with one: Roy types its code and name."""
+    import asyncio
+
+    from . import config as settings
+    from . import machines
+
+    try:
+        specs = settings.load(settings.FILE, env=env).machines
+    except settings.ConfigError as exc:
+        sys.stderr.write(f"claude-voice: {exc}\n")
+        return 1
+    folder = Path(env.get("HOME") or Path.home()) / ".config/claude-voice"
+    if action == "list":
+        if not specs:
+            sys.stdout.write("No machines in the settings file.\n")
+        for spec in specs:
+            sys.stdout.write(f"{spec.name} at {spec.address}: {machines.state(spec, folder)}\n")
+        return 0
+    chosen = next((s for s in specs if s.name == name), None)
+    if chosen is None:
+        sys.stderr.write(f"claude-voice: no machine {name!r} in the settings file\n")
+        return 1
+    return 0 if asyncio.run(machines.pair(chosen, folder=folder))["approved"] else 1
 
 
 def entry() -> None:

@@ -318,7 +318,7 @@ replace = 'if False:'
 [[rule]]
 name = "the agent listens on its tailnet address only"
 file = "src/claude_voice/agent.py"
-find = 'if address is None or address not in TAILNET:'
+find = 'if address is None or address not in tailnet.TAILNET:'
 replace = 'if address is None:'
 
 [[rule]]
@@ -338,3 +338,33 @@ name = "a call needs the key and the tailnet identity of the paired hub"
 file = "src/claude_voice/agent.py"
 find = 'right_key = hmac.compare_digest\(_hash\(key\), str\(found\["key"\]\)\)'
 replace = 'right_key = True'
+
+[[rule]]
+name = "a machine without a tailnet address is refused"
+file = "src/claude_voice/config.py"
+find = 'or not tailnet.on_tailnet\(str\(body.get\("address", ""\)\)\)'
+replace = 'or False'
+
+[[rule]]
+name = "a machine is approved by typing its pairing code and then its name"
+file = "src/claude_voice/machines.py"
+find = 'if ask\(f"Type \{spec.name\} to approve it, anything else to stop: "\).strip\(\) != spec.name:'
+replace = 'if False:'
+
+[[rule]]
+name = "the hub talks only to the machine Tailscale says it approved"
+file = "src/claude_voice/machines.py"
+find = 'if node is None or node\[0\] != self.approval\["node"\]:'
+replace = 'if False:'
+
+[[rule]]
+name = "a machine whose tools changed is not called until approved again"
+file = "src/claude_voice/machines.py"
+find = 'if tools_fingerprint\(await _listing\(client\)\) != tools_fingerprint\(self.approval\["listing"\]\):'
+replace = 'if False:'
+
+[[rule]]
+name = "a machine that does not answer in two seconds is reported, not waited for"
+file = "src/claude_voice/machines.py"
+find = 'start_seconds = CONNECT_SECONDS'
+replace = 'start_seconds = 30.0'

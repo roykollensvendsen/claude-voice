@@ -27,6 +27,7 @@ from typing import Any
 
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from . import tailnet
 from .config import PluginSpec
 
 log = logging.getLogger("claude_voice")
@@ -36,7 +37,6 @@ STATE = Path("~/.config/claude-voice/agent")
 CODE_LETTERS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # nothing that reads as another letter aloud
 CODE_SECONDS = 10 * 60
 CODE_TRIES = 5
-TAILNET = ipaddress.ip_network("100.64.0.0/10")
 
 Whois = Callable[[str], "tuple[str, str] | None"]
 
@@ -60,22 +60,9 @@ def listen_address(ask: Callable[[], str] = _tailscale_ip) -> str:
         address = ipaddress.ip_address(answer[0]) if answer else None
     except ValueError:
         address = None
-    if address is None or address not in TAILNET:
+    if address is None or address not in tailnet.TAILNET:
         raise AgentError("this machine has no tailnet address; run: sudo tailscale up")
     return str(address)
-
-
-def tailscale_whois(address: str) -> tuple[str, str] | None:
-    """(stable node id, machine name) of the tailnet node at `address`, or None."""
-    try:
-        ipaddress.ip_address(address)
-        out = subprocess.run(
-            ["tailscale", "whois", "--json", address], check=True, capture_output=True, text=True, timeout=5
-        ).stdout
-        node = json.loads(out)["Node"]
-        return str(node["StableID"]), str(node.get("ComputedName") or node["Name"].split(".")[0])
-    except (OSError, ValueError, KeyError, subprocess.SubprocessError):
-        return None
 
 
 def _hash(text: str) -> str:
@@ -203,7 +190,7 @@ class Gate:
 
         request = Request(scope, receive)
         caller = request.client.host if request.client else ""
-        node = await anyio.to_thread.run_sync(self.whois, caller) if _on_tailnet(caller) else None
+        node = await anyio.to_thread.run_sync(self.whois, caller) if tailnet.on_tailnet(caller) else None
         if scope.get("path") == "/pair" and request.method == "POST":
             response = await self._pair(request, node)
         elif self.pairing.allows(_bearer(request), node[0] if node else None):
@@ -229,19 +216,12 @@ class Gate:
         return JSONResponse({"key": key, "hub": node[1]})
 
 
-def _on_tailnet(address: str) -> bool:
-    try:
-        return ipaddress.ip_address(address) in TAILNET
-    except ValueError:
-        return False
-
-
 def _bearer(request: Any) -> str:
     scheme, _, value = request.headers.get("authorization", "").partition(" ")
     return value.strip() if scheme.lower() == "bearer" else ""
 
 
-def build_agent_app(server: Any, pairing: Pairing, whois: Whois = tailscale_whois, address: str = "127.0.0.1") -> Any:
+def build_agent_app(server: Any, pairing: Pairing, whois: Whois = tailnet.whois, address: str = "127.0.0.1") -> Any:
     """The agent's HTTP app, answering only requests addressed to its tailnet address."""
     from mcp.server.transport_security import TransportSecuritySettings
 
