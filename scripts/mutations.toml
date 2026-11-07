@@ -342,8 +342,8 @@ replace = 'right_key = True'
 [[rule]]
 name = "a machine without a tailnet address is refused"
 file = "src/claude_voice/config.py"
-find = 'or not tailnet.on_tailnet\(str\(body.get\("address", ""\)\)\)'
-replace = 'or False'
+find = 'and tailnet.on_tailnet\(str\(body.get\("address", ""\)\)\)'
+replace = 'and True'
 
 [[rule]]
 name = "a machine is approved by typing its pairing code and then its name"
