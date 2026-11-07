@@ -33,6 +33,25 @@ wants to reach the bridge from a phone.
   `CLAUDE_VOICE_ALLOW_API_KEY=1` is for a person who has chosen that, not for
   you.
 
+## When the person wants another machine reached
+
+The steps are in [docs/other-machines.md](docs/other-machines.md). On the other
+machine, `claude-voice agent install --sessions` checks what is missing and says
+what to add on the hub. Then:
+
+- **Pairing is the person's.** They type the code the machine shows, and then its
+  name, in `claude-voice machines approve <name>` on the hub. Never type either
+  for them, and never pipe the code into it. A changed tool list makes the hub
+  refuse the machine until they approve it again; that is the check working, not
+  a fault to work around.
+- **Never widen what an agent offers** to get something done: it offers its
+  session tools and its own approved plugins, nothing about the bridge.
+- **Never copy a key between machines.** The hub's key for a machine is in
+  `~/.config/claude-voice/machines/<name>/key`; do not print it, move it or put it
+  in a message.
+- **Ask before installing** the agent on a machine, before `sudo` of any kind
+  there, and before keeping a shell login on it once the agent is set up.
+
 ## When something fails
 
 - **`check` is not ready:** do its `fix`.

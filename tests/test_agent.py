@@ -248,3 +248,86 @@ def test_agent_pair_shows_a_code_and_what_to_run_on_the_hub(tmp_path, capsys):
     code = out.split("Pairing code: ")[1].split()[0]
     assert len(code) == 8 and "claude-voice machines approve" in out
     assert private(tmp_path / ".config/claude-voice/agent/pairing.json")
+
+
+# -- installing it ----------------------------------------------------------------
+
+
+class Machine:
+    """A machine being set up: what Tailscale says, whether Claude Code is signed in, and
+    every command run on it."""
+
+    def __init__(self, tmp_path, address="100.86.231.118\n", signed_in=True):
+        self.home, self.address, self.signed_in, self.ran, self.said = tmp_path, address, signed_in, [], []
+
+    def install(self, sessions=False):
+        return agent.install(
+            self.home,
+            ["/venv/bin/python", "-m", "claude_voice.cli", "agent"],
+            sessions=sessions,
+            run=self.ran.append,
+            address_of=lambda: self.address,
+            login=lambda: (self.signed_in, "Claude Code is signed in" if self.signed_in else "not signed in"),
+            say=self.said.append,
+            machine="hjemme",
+        )
+
+    @property
+    def unit(self):
+        return self.home / ".config/systemd/user/claude-voice-agent.service"
+
+    @property
+    def settings(self):
+        return self.home / ".config/claude-voice/config.toml"
+
+
+def test_agent_install_writes_a_user_service_and_says_what_to_run_on_the_hub(tmp_path):
+    m = Machine(tmp_path)
+    assert m.install() == 0
+    assert "ExecStart=/venv/bin/python -m claude_voice.cli agent" in m.unit.read_text()
+    assert ["systemctl", "--user", "enable", "--now", "claude-voice-agent.service"] in m.ran
+    told = "\n".join(m.said)
+    assert '[machines.hjemme]\naddress = "100.86.231.118"' in told
+    assert "claude-voice agent pair" in told and "claude-voice machines approve hjemme" in told
+    assert not m.settings.exists()
+
+
+def test_agent_install_with_sessions_turns_them_on_and_keeps_the_rest(tmp_path):
+    m = Machine(tmp_path)
+    m.settings.parent.mkdir(parents=True)
+    m.settings.write_text('[plugins.door]\ncommand = "door-mcp"\n')
+    assert m.install(sessions=True) == 0
+    text = m.settings.read_text()
+    assert text.startswith('[plugins.door]\ncommand = "door-mcp"\n')
+    import tomllib
+
+    parsed = tomllib.loads(text)
+    assert parsed["agent"]["sessions"] is True and parsed["sessions"]["launch"] == "background"
+    assert m.install(sessions=True) == 0  # a second time changes nothing
+    assert m.settings.read_text() == text
+
+
+def test_agent_install_stops_when_tailscale_is_not_up(tmp_path):
+    m = Machine(tmp_path, address="")
+    assert m.install() == 1
+    assert "tailscale up" in "\n".join(m.said)
+    assert not m.unit.exists() and m.ran == []
+
+
+def test_agent_install_with_sessions_needs_claude_code_signed_in(tmp_path):
+    m = Machine(tmp_path, signed_in=False)
+    assert m.install(sessions=True) == 1
+    assert "/login" in "\n".join(m.said)
+    assert not m.unit.exists()
+
+
+def test_an_installed_copy_says_its_version_without_git(monkeypatch):
+    import subprocess
+
+    from claude_voice import metrics
+
+    def no_git(*a, **k):
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr(subprocess, "run", no_git)
+    assert metrics.version() not in ("", "unknown")
