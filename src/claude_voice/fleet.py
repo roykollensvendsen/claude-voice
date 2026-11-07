@@ -53,6 +53,8 @@ class Fleet:
         self.machines: list[machines.Machine] = []
         self.clock = clock
         self._seen: dict[str, dict[str, Any]] = {}  # per machine: its state and sessions
+        self._asked_at: dict[str, str] = {}  # when the hub first saw each remote question
+        self.publish: Callable[[str, dict[str, Any]], None] = lambda event, data: None
 
     def _machine(self, name: str) -> machines.Machine | None:
         return next((m for m in self.machines if m.machine.name == name), None)
@@ -71,16 +73,63 @@ class Fleet:
         started = time.monotonic()
         try:
             # RULE: looking across machines never waits long for one
-            answer = await asyncio.wait_for(machine.call("fleet_recap", {}), ASK_SECONDS)
-            rows = list((answer.structured_content or {}).get("sessions") or [])
-            seen = {"state": "online", "error": None, "last_seen": now, "sessions": rows}
+            recap, asks = await asyncio.wait_for(
+                asyncio.gather(machine.call("fleet_recap", {}), self._approvals(machine)), ASK_SECONDS
+            )
+            rows = list((recap.structured_content or {}).get("sessions") or [])
+            seen = {"state": "online", "error": None, "last_seen": now, "sessions": rows, "approvals": asks}
             seen["latency_ms"] = round((time.monotonic() - started) * 1000)
         except (TimeoutError, RuntimeError) as exc:
             seen = {**self._trouble(machine, exc, before, now), "last_seen": before.get("last_seen"), "sessions": []}
-            seen["latency_ms"] = None
+            seen["latency_ms"], seen["approvals"] = None, before.get("approvals", [])
         self._seen[name] = {**seen, "checked_at": now}
-        if before.get("state") != seen["state"]:
-            log.info("machine %s is %s", name, seen["state"])
+        self._tell(name, before, self._seen[name])
+
+    @staticmethod
+    async def _approvals(machine: machines.Machine) -> list[dict[str, Any]]:
+        """The questions the machine's own bridge waits on; none when it cannot say."""
+        try:
+            answer = await machine.call("list_pending_approvals", {})
+        except RuntimeError:
+            return []
+        return [] if answer.is_error else list((answer.structured_content or {}).get("approvals") or [])
+
+    def _tell(self, name: str, before: dict[str, Any], now: dict[str, Any]) -> None:
+        """Tell the page what changed on a machine since it was last asked."""
+        if before.get("state", "online") != now["state"] or (not before and now["state"] != "online"):
+            log.info("machine %s is %s", name, now["state"])
+            if before:
+                self.publish("machine", next(r for r in self.rows() if r["name"] == name))
+        if now["state"] != "online":
+            return  # what a machine away is doing is not known, so nothing else is said
+        self._tell_sessions(name, before, now)
+        self._tell_prompts(name, before, now)
+
+    def _tell_sessions(self, name: str, before: dict[str, Any], now: dict[str, Any]) -> None:
+        was = {str(r.get("id")): r for r in before.get("sessions", [])}
+        for row in now["sessions"]:
+            old = was.get(str(row.get("id")))
+            if old is None or old.get("state") == row.get("state"):
+                continue
+            self.publish(
+                "status",
+                {
+                    **self._page_row(name, row),
+                    "session": f"{name}/{row.get('id')}",
+                    "previous": old.get("state"),
+                    "at": _now_iso(self.clock()),
+                },
+            )
+
+    def _tell_prompts(self, name: str, before: dict[str, Any], now: dict[str, Any]) -> None:
+        asked = {str(a.get("id")) for a in before.get("approvals", [])}
+        open_now = {str(a.get("id")) for a in now["approvals"]}
+        for prompt in self._prompts_of(name, now):
+            if prompt["id"].partition("/")[2] not in asked:
+                self.publish("prompt", prompt)
+        for gone in sorted(asked - open_now):
+            self._asked_at.pop(f"{name}/{gone}", None)
+            self.publish("prompt_closed", {"id": f"{name}/{gone}", "how": "screen"})
 
     def _trouble(self, machine: machines.Machine, exc: Exception, before: dict[str, Any], now: float) -> dict[str, Any]:
         cause = machine.last_failure
@@ -132,6 +181,108 @@ class Fleet:
             for row in self._seen.get(m.machine.name, {}).get("sessions", []):
                 out.append({**row, "name": f"{m.machine.name}/{row.get('name')}", "machine": m.machine.name})
         return out
+
+    # -- what the phone page reads --------------------------------------------------------
+    def _page_row(self, machine: str, row: dict[str, Any]) -> dict[str, Any]:
+        out = {**row, "id": f"{machine}/{row.get('id')}", "machine": machine, "number": None}
+        if row.get("kind") != "bridge-session":
+            out["answer_in"] = "claude_app"  # its questions are answered through Remote Control
+        return out
+
+    def listing(self, local: dict[str, Any]) -> dict[str, Any]:
+        """The hub's own session list for the page, with every reachable machine's added."""
+        here = [{**row, "machine": None} for row in local.get("sessions", [])]
+        there = [
+            self._page_row(m.machine.name, row)
+            for m in self.machines
+            for row in self._seen.get(m.machine.name, {}).get("sessions", [])
+        ]
+        return {**local, "sessions": [*here, *there], "machines": self.rows()}
+
+    def _prompts_of(self, name: str, seen: dict[str, Any]) -> list[dict[str, Any]]:
+        if seen.get("state") != "online":
+            return []
+        out = []
+        for ask in seen.get("approvals", []):
+            pid = f"{name}/{ask.get('id')}"
+            asked_at = self._asked_at.setdefault(pid, _now_iso(self.clock()))
+            out.append(
+                {
+                    "id": pid,
+                    "session": f"{name}/{ask.get('session_id')}",
+                    "machine": name,
+                    "kind": "approval",
+                    "tool": str(ask.get("tool", "")),
+                    "input": str(ask.get("input", "")),
+                    "cut": False,
+                    "asked_at": asked_at,
+                }
+            )
+        return out
+
+    def prompts(self) -> list[dict[str, Any]]:
+        """The questions on other machines the hub can answer, in the page's shape."""
+        return [p for m in self.machines for p in self._prompts_of(m.machine.name, self._seen.get(m.machine.name, {}))]
+
+    def _target(self, prefixed: str) -> tuple[machines.Machine, str]:
+        target = self.split(prefixed)
+        if target is None:
+            raise LookupError(f"no session {prefixed}")
+        return target
+
+    async def output(self, session: str, limit: int, after: int | None) -> dict[str, Any]:
+        machine, own = self._target(session)
+        arguments: dict[str, Any] = {"session": own, "limit": limit}
+        if after is not None:
+            arguments["after"] = after
+        try:
+            answer = await machine.call("read_session_output", arguments)
+        except RuntimeError as exc:
+            raise LookupError(str(exc)) from None
+        body = answer.structured_content or {}
+        if answer.is_error:
+            raise LookupError(str(body.get("error") or f"no session {session}"))
+        return {k: body.get(k) for k in ("status", "turns", "next_after", "turns_left")}
+
+    def pending(self, session: str) -> dict[str, Any]:
+        machine, own = self._target(session)
+        prompts = [p for p in self.prompts() if p["session"] == session]
+        approvals = [{"id": p["id"], "number": None, "tool": p["tool"], "summary": p["input"]} for p in prompts]
+        return {"waiting": bool(approvals), "question": None, "approvals": approvals}
+
+    def detail(self, session: str) -> dict[str, Any]:
+        """What the hub last heard about a session on another machine."""
+        machine, own = self._target(session)
+        name = machine.machine.name
+        for row in self._seen.get(name, {}).get("sessions", []):
+            if own in (str(row.get("id")), str(row.get("name"))):
+                return self._page_row(name, row)
+        raise LookupError(f"no session {session}")
+
+    async def answer(self, prompt: str, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+        """Pass a yes or no from the page to the machine the question is on."""
+        target = self.split(prompt)
+        if target is None or prompt not in {p["id"] for p in self.prompts()}:
+            return 404, {"error": "this prompt is gone"}
+        machine, own = target
+        decision = body.get("decision")
+        if decision not in ("allow", "deny"):
+            return 409, {"error": "an approval is answered with decision allow or deny"}
+        arguments: dict[str, Any] = {"approval_id": own}
+        if decision == "deny" and body.get("reason"):
+            arguments["reason"] = str(body["reason"])
+        try:
+            # RULE: an answer from the page reaches the machine the question is on
+            answer = await machine.call("approve" if decision == "allow" else "deny", arguments)
+        except RuntimeError:
+            return 502, {"error": f"{machine.machine.name} did not answer"}
+        if answer.is_error:
+            return 404, {"error": "this prompt is gone"}
+        seen = self._seen.get(machine.machine.name, {})
+        seen["approvals"] = [a for a in seen.get("approvals", []) if str(a.get("id")) != own]
+        self._asked_at.pop(prompt, None)
+        self.publish("prompt_closed", {"id": prompt, "how": "phone"})
+        return 200, {"ok": True}
 
 
 def _result(body: dict[str, Any]) -> Any:

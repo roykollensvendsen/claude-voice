@@ -170,7 +170,7 @@ class EventApi:
         sessions: Callable[[], dict[str, Any]],
         get_active: Callable[[], dict[str, Any] | None],
         set_active: Callable[[str, str], dict[str, Any]],
-        output: Callable[[str, int, int | None], dict[str, Any]],
+        output: Callable[[str, int, int | None], dict[str, Any] | Awaitable[dict[str, Any]]],
         pending: Callable[[str], dict[str, Any]],
         prs: Callable[[str], Awaitable[dict[str, Any]]],
         news: Callable[[str | None], dict[str, Any]],
@@ -188,6 +188,8 @@ class EventApi:
         summary: Callable[[str, str | None], Awaitable[dict[str, Any]]] | None = None,
         update_changes: Callable[[], dict[str, Any]] | None = None,
         ui_origins: list[str] | None = None,
+        remote_prompts: Callable[[], list[dict[str, Any]]] | None = None,
+        answer_remote: Callable[[str, dict[str, Any]], Awaitable[tuple[int, dict[str, Any]]]] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.store = store
@@ -208,6 +210,9 @@ class EventApi:
         self.detail, self.summary = detail, summary
         self.update_changes = update_changes
         self.prompts: dict[str, dict[str, Any]] = {}  # open questions and approvals, by id
+        # Questions on other machines, and how to answer one (fleet.Fleet); none without machines.
+        self.remote_prompts = remote_prompts or (lambda: [])
+        self.answer_remote = answer_remote
         self.clock = clock
         self._failures: list[float] = []
 
@@ -217,18 +222,19 @@ class EventApi:
         route("/api/v1/signout", methods=["POST"])(self.signout)
         route("/api/v1/sessions", methods=["GET"])(self.list_sessions)
         route("/api/v1/active", methods=["GET", "PUT", "DELETE"])(self.active)
-        route("/api/v1/sessions/{session}/output", methods=["GET"])(self.session_output)
-        route("/api/v1/sessions/{session}/pending", methods=["GET"])(self.session_pending)
-        route("/api/v1/sessions/{session}/prs", methods=["GET"])(self.session_prs)
-        route("/api/v1/sessions/{session}/detail", methods=["GET"])(self.session_detail)
-        route("/api/v1/sessions/{session}/summary", methods=["POST"])(self.session_summary)
+        route("/api/v1/sessions/{session:path}/output", methods=["GET"])(self.session_output)
+        route("/api/v1/sessions/{session:path}/pending", methods=["GET"])(self.session_pending)
+        route("/api/v1/sessions/{session:path}/prs", methods=["GET"])(self.session_prs)
+        route("/api/v1/sessions/{session:path}/detail", methods=["GET"])(self.session_detail)
+        route("/api/v1/sessions/{session:path}/summary", methods=["POST"])(self.session_summary)
         route("/api/v1/events", methods=["GET"])(self.events)
         route("/api/v1/roles", methods=["GET"])(self.list_roles)
         route("/api/v1/prompts", methods=["GET", "POST"])(self.prompts_route)
         route("/api/v1/settings", methods=["GET", "PUT"])(self.settings_route)
-        route("/api/v1/prompts/{prompt}", methods=["POST"])(self.answer_prompt)
         route("/api/v1/prompts/{prompt}/wait", methods=["GET"])(self.wait_prompt)
         route("/api/v1/prompts/{prompt}/close", methods=["POST"])(self.close_prompt)
+        # Last, and taking a slash: a question on another machine is "lukas-laptop/3".
+        route("/api/v1/prompts/{prompt:path}", methods=["POST"])(self.answer_prompt)
         route("/api/v1/doctor", methods=["GET"])(self.dependencies)
         route("/api/v1/usage", methods=["GET"])(self.usage_now)
         route("/api/v1/update", methods=["GET", "POST"])(self.update)
@@ -488,6 +494,7 @@ class EventApi:
             if not await self._allowed(request):
                 return JSONResponse({"error": "sign in first"}, 401)
             open_ = [self._public(p) for p in self.prompts.values() if p["answer"] is None]
+            open_ += self.remote_prompts()
             return JSONResponse({"prompts": open_}, headers={"Cache-Control": "no-store"})
         if not await self._bearer(request):  # only the hook on this computer opens prompts
             return JSONResponse({"error": "sign in first"}, 401)
@@ -546,6 +553,9 @@ class EventApi:
         if refused:
             return refused
         prompt = self.prompts.get(request.path_params["prompt"])
+        if prompt is None and self.answer_remote is not None and "/" in request.path_params["prompt"]:
+            status, answer = await self.answer_remote(request.path_params["prompt"], await request.json())
+            return JSONResponse(answer, status)
         if prompt is None or prompt["answer"] is not None:
             return JSONResponse({"error": "this prompt is gone"}, 404)
         body = await request.json()
