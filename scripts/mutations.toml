@@ -386,3 +386,9 @@ name = "a session on another machine is reached by the machine name in front"
 file = "src/claude_voice/fleet.py"
 find = 'target = fleet.split\(arguments.get\(key\)\) if key else None'
 replace = 'target = None'
+
+[[rule]]
+name = "an answer from the page reaches the machine the question is on"
+file = "src/claude_voice/fleet.py"
+find = 'answer = await machine.call\("approve" if decision == "allow" else "deny", arguments\)'
+replace = 'answer = await machine.call("approve", arguments)'
