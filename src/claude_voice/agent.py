@@ -295,3 +295,67 @@ def serve(machine: str, settings: Config, pairing: Pairing | None = None) -> Non
     app = build_agent_app(built, pairing, address=address)
     log.info("agent %s listening on %s:%d", machine, address, PORT)
     uvicorn.Server(uvicorn.Config(app, host=address, port=PORT, log_level="info", log_config=None)).run()
+
+
+UNIT = "claude-voice-agent.service"
+SESSIONS_ON = '\n[agent]\nsessions = true\n\n[sessions]\nlaunch = "background"\n'
+
+
+def unit_text(command: list[str]) -> str:
+    """The user service that keeps the agent running while its owner is logged in."""
+    return (
+        "[Unit]\nDescription=claude-voice agent: answers the paired hub over Tailscale only\n"
+        "After=network-online.target\n\n"
+        f"[Service]\nExecStart={' '.join(command)}\nRestart=on-failure\nRestartSec=10\n\n"
+        "[Install]\nWantedBy=default.target\n"
+    )
+
+
+def _turn_sessions_on(settings: Path, say: Callable[[str], None]) -> None:
+    """Add `[agent] sessions = true`, and background sessions, unless the file says otherwise."""
+    text = settings.read_text() if settings.exists() else ""
+    if "[agent]" in text or "[sessions]" in text:
+        if "sessions = true" not in text:
+            say(f"{settings} already has [agent] or [sessions]; set sessions = true under [agent] yourself.")
+        return
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(settings, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    with os.fdopen(fd, "a") as f:
+        f.write(SESSIONS_ON)
+    say(f"Sessions turned on in {settings}; they start in the background, never in a window.")
+
+
+def install(
+    home: Path,
+    command: list[str],
+    sessions: bool,
+    run: Callable[[list[str]], Any],
+    address_of: Callable[[], str] = _tailscale_ip,
+    login: Callable[[], tuple[bool, str]] = lambda: (True, ""),
+    say: Callable[[str], None] = print,
+    machine: str = "this-machine",
+) -> int:
+    """Set the agent up on this machine as a user service, and say what to do on the hub."""
+    try:
+        address = listen_address(address_of)
+    except AgentError as exc:
+        say(f"Not installed: {exc}")
+        return 1
+    if sessions:
+        signed_in, detail = login()
+        if not signed_in:
+            say(f"Not installed: {detail}. Run `claude`, type /login and sign in, then install again.")
+            return 1
+        _turn_sessions_on(home / ".config/claude-voice/config.toml", say)
+    unit = home / ".config/systemd/user" / UNIT
+    unit.parent.mkdir(parents=True, exist_ok=True)
+    unit.write_text(unit_text(command))
+    run(["systemctl", "--user", "daemon-reload"])
+    run(["systemctl", "--user", "enable", "--now", UNIT])
+    say(
+        f"The agent runs on {address}:{PORT}, and answers only a paired hub.\n"
+        "It runs while you are logged in; to keep it running when nobody is: sudo loginctl enable-linger $USER\n\n"
+        f'On the hub, add to ~/.config/claude-voice/config.toml:\n\n[machines.{machine}]\naddress = "{address}"\n\n'
+        f"Then run `claude-voice agent pair` here, and on the hub: claude-voice machines approve {machine}"
+    )
+    return 0

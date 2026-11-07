@@ -5,6 +5,7 @@ Kept in memory only; the voice app stores history over time on its side.
 
 from __future__ import annotations
 
+import contextlib
 import time
 from collections import deque
 from datetime import UTC, datetime
@@ -91,9 +92,25 @@ def version() -> str:
             timeout=5,
             check=True,
         )
-        return out.stdout.strip() or "unknown"
+        return out.stdout.strip() or installed_version()
     except (OSError, subprocess.SubprocessError):
+        return installed_version()
+
+
+def installed_version() -> str:
+    """The version an installed copy was built as, with its commit when pip recorded one."""
+    import json
+    from importlib import metadata
+
+    try:
+        dist = metadata.distribution("claude-voice")
+    except metadata.PackageNotFoundError:
         return "unknown"
+    with contextlib.suppress(ValueError, TypeError, AttributeError):
+        commit = json.loads(dist.read_text("direct_url.json") or "{}").get("vcs_info", {}).get("commit_id")
+        if commit:
+            return str(commit)[:7]
+    return dist.version
 
 
 def restart_info(state_file: str, unit: str = "claude-voice") -> dict:

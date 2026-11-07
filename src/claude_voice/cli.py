@@ -118,8 +118,13 @@ def main(
     plugin_cmd.add_argument("name", nargs="?")
     agent_cmd = sub.add_parser("agent", help="on another machine: answer the paired hub, or pair with one")
     agent_cmd.add_argument(
-        "action", nargs="?", choices=["serve", "pair"], default="serve", help="serve (the default), or pair"
+        "action",
+        nargs="?",
+        choices=["serve", "pair", "install"],
+        default="serve",
+        help="serve (the default), pair, or install as a service",
     )
+    agent_cmd.add_argument("--sessions", action="store_true", help="with install: offer this machine's sessions")
     machine_cmd = sub.add_parser("machines", help="list other machines, or pair with one by typing its code")
     machine_cmd.add_argument("action", nargs="?", choices=["list", "approve"], default="list")
     machine_cmd.add_argument("name", nargs="?")
@@ -129,7 +134,7 @@ def main(
         return machines_command(parsed.action, parsed.name, env)
 
     if parsed.command == "agent":
-        return agent_command(parsed.action, env)
+        return agent_command(parsed.action, env, parsed.sessions)
 
     if parsed.command == "plugins":
         return plugins_command(parsed.action, parsed.name, env)
@@ -206,7 +211,7 @@ def plugins_command(action: str, name: str | None, env: Mapping[str, str]) -> in
     return 0
 
 
-def agent_command(action: str, env: Mapping[str, str]) -> int:
+def agent_command(action: str, env: Mapping[str, str], sessions: bool = False) -> int:
     """On another machine: show a pairing code for the hub, or serve it over the tailnet."""
     import socket
 
@@ -216,6 +221,9 @@ def agent_command(action: str, env: Mapping[str, str]) -> int:
     home = Path(env.get("HOME") or Path.home())
     pairing = agent.Pairing(home / ".config/claude-voice/agent")
     machine = socket.gethostname().split(".")[0]
+    if action == "install":
+        command = [sys.executable, "-m", "claude_voice.cli", "agent"]
+        return agent.install(home, command, sessions, run=_systemctl, login=claude_code_login, machine=machine)
     if action == "pair":
         code = pairing.start()
         sys.stdout.write(
@@ -255,6 +263,10 @@ def machines_command(action: str, name: str | None, env: Mapping[str, str]) -> i
         sys.stderr.write(f"claude-voice: no machine {name!r} in the settings file\n")
         return 1
     return 0 if asyncio.run(machines.pair(chosen, folder=folder))["approved"] else 1
+
+
+def _systemctl(command: list[str]) -> None:
+    subprocess.run(command, check=True, timeout=30)
 
 
 def entry() -> None:

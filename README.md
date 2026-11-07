@@ -432,57 +432,29 @@ $ claude-voice plugins
 No plugins in the settings file.
 ```
 
-## Another machine (being built)
+## Another machine
 
-A second computer can run its own small claude-voice, the agent, which the
-bridge on this laptop calls over Tailscale. How it works and why is in
-[ADR-CV-006](decisions/ADR-CV-006-other-machines-through-the-laptop.md). The
-agent listens on that machine's tailnet address only, and answers only the hub it
-was paired with: every call needs the key it handed out at pairing, from the
-machine Tailscale says that hub is. It offers the plugins its own owner approved.
-With `sessions = true` in its own settings file, it offers that machine's Claude
-Code sessions too: listing, reading, messaging, starting, renaming and stopping
-them, and answering what they ask. Nothing about the bridge itself is offered.
-
-```toml
-[agent]
-sessions = true
-```
-
-On the other machine, `claude-voice agent pair` shows a code that works once, for
-ten minutes, and `claude-voice agent` serves:
+Any other computer you own can be reached through this one. It runs a small
+claude-voice of its own, the agent, which this bridge calls over Tailscale; its
+tools, and with sessions turned on its Claude Code sessions, reach the voice with
+the machine's name in front. The agent listens on its Tailscale address only,
+answers only the bridge it was paired with, and offers nothing about the bridge
+itself. Setting one up, pairing it and what to do when it fails are in
+[docs/other-machines.md](docs/other-machines.md).
 
 ```console
 $ claude-voice agent --help
-usage: claude-voice agent [-h] [{serve,pair}]
+usage: claude-voice agent [-h] [--sessions] [{serve,pair,install}]
 
 positional arguments:
-  {serve,pair}  serve (the default), or pair
+  {serve,pair,install}  serve (the default), pair, or install as a service
 
 options:
-  -h, --help    show this help message and exit
+  -h, --help            show this help message and exit
+  --sessions            with install: offer this machine's sessions
 ```
 
-On this laptop, name the machine in the settings file with its tailnet address:
-
-```toml
-[machines.lukas-laptop]
-address = "100.86.231.118"
-```
-
-Then pair with it: type the code it shows, look at what it offers, and type its
-name. Restart the bridge, and its tools reach the voice named after it
-(`lukas-laptop_agent_info`).
-
-<!-- not run: it asks for typed input -->
-```
-claude-voice machines approve lukas-laptop
-```
-
-Each call asks Tailscale who is at that address first, and the machine's tools
-must still be the ones approved; otherwise the call is refused and says to approve
-it again. A machine that does not answer within two seconds is reported as not
-answering, never waited for. To list them:
+To list the machines this bridge knows:
 
 ```console
 $ claude-voice machines
