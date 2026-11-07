@@ -115,6 +115,7 @@ class Plugin:
         self.spec, self.client_factory = spec, client_factory
         self.state = "not started"
         self.instructions: str | None = None
+        self.offered: list[str] = []
         self._client: Any = None
         self._lock = asyncio.Lock()
         self._runner: asyncio.Task[None] | None = None
@@ -247,3 +248,23 @@ def offer(server: Any, plugin: Plugin, listing: dict[str, dict[str, Any]]) -> li
             f"{lowlevel.instructions or ''}\n\nThe {plugin.spec.name} plugin: {plugin.instructions}".strip()
         )
     return offered
+
+
+def start_approved(
+    server: Any, specs: list[PluginSpec], approvals: Path | None = None, client: Callable[[Any], Any] | None = None
+) -> list[Plugin]:
+    """Start each plugin its owner approved and offer its tools on `server`; the ones offered."""
+    started = []
+    for spec in specs:
+        if not approved(spec, approvals):
+            log.info("plugin %s is not approved; run: claude-voice plugins approve %s", spec.name, spec.name)
+            continue
+        plugin = Plugin(spec, client or CLIENT)
+        listing = plugin.listing()
+        if not inputs_approved(spec, listing, approvals):
+            log.info("plugin %s's tools take new inputs; run: claude-voice plugins approve %s", spec.name, spec.name)
+            continue
+        plugin.offered = offer(server, plugin, listing)
+        started.append(plugin)
+        log.info("plugin %s offers %s", spec.name, ", ".join(plugin.offered))
+    return started
