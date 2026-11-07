@@ -15,6 +15,7 @@
     "claude_voice/phone_hook.py": 17,
     "claude_voice/plugins.py": 9,
     "claude_voice/procs.py": 2,
+    "claude_voice/renames.py": 5,
     "claude_voice/roles.py": 12,
     "claude_voice/server.py": 52,
     "claude_voice/sessions.py": 16,
@@ -22,13 +23,13 @@
     "claude_voice/store.py": 13,
     "claude_voice/titles.py": 4,
     "claude_voice/transcripts.py": 18,
-    "claude_voice/tree.py": 24,
+    "claude_voice/tree.py": 23,
     "claude_voice/updater.py": 12,
     "claude_voice/usage.py": 11
   },
-  "coverage": 91.79,
+  "coverage": 91.82,
   "cycles": 0,
-  "duplication": 1.96,
+  "duplication": 1.91,
   "layer_violations": 0,
   "lint_errors": 0,
   "mutation": {
@@ -40,6 +41,6 @@
     "tolerance": 0.25
   },
   "test_seconds": 66.1,
-  "tests": 541,
+  "tests": 556,
   "type_errors": 0
 }

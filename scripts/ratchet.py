@@ -61,6 +61,7 @@ LAYERS = {
             "plugins",
             "detail",
             "oauth",
+            "renames",
         ),
         1,
     ),  # parts, each about one thing

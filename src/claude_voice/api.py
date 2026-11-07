@@ -37,7 +37,14 @@ NEWS_SECONDS = 2.0
 
 # Tools that talk to a session, by its `session`, `session_id` or `name` argument: they
 # put it in focus, the session the voice is talking to now.
-TALK_TOOLS = {"ask_active_session", "message_active_session", "send_task", "cancel", "stop_active_session"}
+TALK_TOOLS = {
+    "ask_active_session",
+    "message_active_session",
+    "send_task",
+    "cancel",
+    "stop_active_session",
+    "rename_session",
+}
 # Tools that only look at a session: a quieter `peek`, so a look never reads as talking.
 LOOK_TOOLS = {"read_session_output", "search_session_history", "digest_session", "side_question", "session_recap"}
 SESSION_TOOLS = TALK_TOOLS | LOOK_TOOLS
