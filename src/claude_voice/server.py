@@ -391,6 +391,8 @@ def build_server(
                 while True:
                     with contextlib.suppress(Exception):
                         check()
+                    with contextlib.suppress(Exception):
+                        await across.refresh()  # the other machines, asked every ten seconds
                     await asyncio.sleep(watch_interval)
 
             task = asyncio.create_task(watch())
@@ -404,6 +406,7 @@ def build_server(
                 task.cancel()
 
     across = fleet.Fleet()  # the other machines, filled in once they are started below
+    across.publish = api.HUB.publish
     mcp = MCPServer(
         "claude-voice",
         title="Claude voice bridge",
@@ -1676,6 +1679,9 @@ def build_server(
         folder = str(live.get("cwd")) if live is not None else str(own["project_path"]) if own else ""
         return {"prs": await prs_for(folder)}
 
+    async def _no_prs() -> dict[str, Any]:
+        return {"prs": []}  # another machine's pull requests are not looked up from here
+
     if oauth is not None:
 
         async def check_token(token: str) -> bool:
@@ -1686,13 +1692,15 @@ def build_server(
             oauth.login_secret,
             oauth.public_url,
             check_token,
-            sessions=fleet_recap,
+            sessions=lambda: across.listing(fleet_recap()),
             get_active=lambda: store.get_setting("active_session"),
             set_active=set_active,
             clear_active=clear_active,
-            output=api_output,
-            pending=api_pending,
-            prs=api_prs,
+            output=lambda s, limit, after: (
+                across.output(s, limit, after) if across.split(s) else api_output(s, limit, after)
+            ),
+            pending=lambda s: across.pending(s) if across.split(s) else api_pending(s),
+            prs=lambda s: _no_prs() if across.split(s) else api_prs(s),
             news=whats_new,
             roles=roles_now,
             doctor=doctor_report,
@@ -1707,12 +1715,15 @@ def build_server(
             start_role=launch_role,
             settings=start_settings,
             software=software_now,
-            detail=session_detail,
+            detail=lambda s: across.detail(s) if across.split(s) else session_detail(s),
             summary=request_summary,
             update_changes=update_changes_now,
             ui_origins=ui_origins,
+            remote_prompts=across.prompts,
+            answer_remote=across.answer,
         ).routes(mcp)
 
+    mcp.fleet = across  # type: ignore[attr-defined]  # the other machines, for tests and the CLI
     return mcp
 
 

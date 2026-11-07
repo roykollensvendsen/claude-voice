@@ -67,6 +67,12 @@ ran in the last day, with the session the owner talks to:
   `nr 3`, `nummer 3` or `number 3`. It is on the `active` object and the
   `status` event too.
 - `kind`: `terminal`, `background` or `bridge-session`.
+- `machine`: `null` for a session on this computer, or the name of the other
+  machine it runs on (see [other machines](other-machines.md)). A session there has
+  an `id` with the machine in front, `lukas-laptop/840ab631…`, which every
+  endpoint below takes, as a slash or as `%2F`. Its `name` is the machine's own
+  name for it, and its `number` is `null`. One whose questions can only be answered
+  in the Claude app carries `answer_in: "claude_app"`.
 - `state`: one of `working`, `idle`, `answer` (waiting for an answer to a
   question), `approval` (waiting for permission to use a tool), `input`
   (waiting for something else), `moved` or `stopped`; the same set for
@@ -117,6 +123,34 @@ for a session that is not in the list. `DELETE /api/v1/active` clears the choice
 
 `{id}` is a session's `id` or `name` from the list. An unknown one answers `404`.
 Turn texts are cut to 600 characters; `cut` and `length` say when.
+
+## Other machines
+
+`GET /api/v1/sessions` also carries `machines`, one per approved machine:
+
+```json
+{"machines": [{"name": "lukas-laptop", "state": "online", "reachable": true, "error": null,
+               "seen_as": "hjemme", "latency_ms": 54, "checked_at": "<iso>",
+               "last_seen": "<iso>", "sessions": true}]}
+```
+
+- `state`: `online`, `slow` (answered in the last minute, not now), `offline`,
+  `agent_down` (on, but nothing answers on the agent's port) or `not_approved`.
+- `error`: `null`, `did not answer`, `not the machine you approved` or
+  `other tools than approved`.
+
+The hub asks every machine every ten seconds, all at once, for two seconds at most,
+and answers the page from what it last heard: a machine away never delays it. A
+machine that does not answer has its sessions left out. What changed between two
+asks reaches the stream as `status` events with the prefixed `session` and
+`machine`, and a `machine` event carrying the object above when its `state`
+changes, so remote news is up to ten seconds late.
+
+`GET /api/v1/prompts` includes the questions on other machines that can be
+answered from here, with a prefixed `id` and `session` and a `machine`.
+`POST /api/v1/prompts/{id}` passes the answer on, and answers `502 {"error":
+"lukas-laptop did not answer"}` when it cannot. A question that goes away on the
+machine itself closes with `prompt_closed` and `how: "screen"`.
 
 ## Usage
 
