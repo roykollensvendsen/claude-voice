@@ -89,8 +89,19 @@ def restore(path: pathlib.Path, original: str, mutated: str) -> bool:
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
-def run_suite() -> tuple[int, list[str]]:
-    """Run the tests and give back how many failed, and which ones."""
+def files_naming(test: str) -> list[str]:
+    """The test files that define `test`; the whole suite when none does."""
+    pattern = re.compile(rf"^\s*(?:async )?def {re.escape(test)}\(", re.MULTILINE)
+    found = [
+        p.relative_to(ROOT).as_posix()
+        for p in sorted((ROOT / "tests").rglob("test_*.py"))
+        if pattern.search(p.read_text(encoding="utf-8"))
+    ]
+    return found
+
+
+def run_suite(targets: list[str] | None = None) -> tuple[int, list[str]]:
+    """Run the tests (only `targets` when given) and give back how many failed, and which ones."""
     # Two mutations that replace equal-length text leave files of identical
     # size, and CPython validates a cached .pyc from the source's modification
     # time and size -- both at one-second resolution. Inside the same second
@@ -99,7 +110,7 @@ def run_suite() -> tuple[int, list[str]]:
     # RULE: two mutations never share a bytecode cache
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     r = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "--tb=no", "--color=no", "-p", "no:cacheprovider"],
+        [sys.executable, "-m", "pytest", "-q", "--tb=no", "--color=no", "-p", "no:cacheprovider", *(targets or [])],
         capture_output=True,
         text=True,
         cwd=ROOT,
@@ -150,7 +161,9 @@ def main() -> int:
             )
             path.write_text(mutated, encoding="utf-8")
             standing = (path, text, mutated)
-            count, failed = run_suite()
+            # Only the files holding the rule's own test: the suite once per rule outgrew
+            # the time the check has. A rule with no test of its own runs the whole suite.
+            count, failed = run_suite(files_naming(test_name_for(rule["name"])))
             if not restore(path, text, mutated):
                 lost.append(rule["file"])
             standing = None
@@ -197,7 +210,8 @@ def report(results: list[tuple[str, int, str, bool]], survived: list[str], lucky
 
 *Run {dt.datetime.now(dt.UTC).date()} by `python scripts/mutate.py --write
 evidence/tests/rule-mutations.md`, which is how to repeat it. The script
-restores every file it touched before it exits.*
+restores every file it touched before it exits. Each rule runs the test files
+that hold its own test, so a count is the failures in those files.*
 
 Green on a first run proves nothing: a test that has never been red tests
 nothing. Where a rule is written before its test, the test is run red first.
