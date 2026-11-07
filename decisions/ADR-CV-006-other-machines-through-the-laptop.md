@@ -2,8 +2,7 @@
 
 ## Status
 
-Proposed, 2026-11-05. Roy asked for the design; it is his to accept before any of
-it is built.
+Accepted by Roy Kollen Svendsen, 2026-11-07. Proposed 2026-11-05.
 
 ## Context
 
