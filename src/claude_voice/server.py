@@ -37,12 +37,14 @@ from . import (
     events,
     gitstatus,
     launch,
+    machines,
     metrics,
     plugins,
     procs,
     renames,
     roles,
     software,
+    tailnet,
     titles,
     transcripts,
     updater,
@@ -278,6 +280,9 @@ def build_server(
     trust_folder: Callable[[Path], None] = transcripts.trust_folder,
     plugin_approvals: Path | None = None,
     plugin_client: Callable[[Any], Any] | None = None,
+    machine_folder: Path = machines.FOLDER,
+    machine_http: machines.Http = machines.http_client,
+    machine_whois: machines.Whois = tailnet.whois,
     start_seconds: float = 20.0,
     list_prs: Callable[[str], list[dict[str, Any]]] | None = None,
     ui_origins: list[str] | None = None,
@@ -565,6 +570,7 @@ def build_server(
     in_flight: set[asyncio.Future[Any]] = set()
 
     active_plugins = plugins.start_approved(mcp, repos.plugins, plugin_approvals, plugin_client)
+    machines.start_approved(mcp, repos.machines, machine_folder, http=machine_http, whois=machine_whois)
 
     @tool(annotations=READ_ONLY)
     def fleet_recap() -> dict[str, Any]:

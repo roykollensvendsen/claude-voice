@@ -440,8 +440,7 @@ bridge on this laptop calls over Tailscale. How it works and why is in
 agent listens on that machine's tailnet address only, and answers only the hub it
 was paired with: every call needs the key it handed out at pairing, from the
 machine Tailscale says that hub is. It offers the plugins its own owner approved.
-The laptop's side, which pairs with it and offers its tools to the voice, is not
-built yet.
+Its Claude Code sessions are not offered yet.
 
 On the other machine, `claude-voice agent pair` shows a code that works once, for
 ten minutes, and `claude-voice agent` serves:
@@ -455,6 +454,32 @@ positional arguments:
 
 options:
   -h, --help    show this help message and exit
+```
+
+On this laptop, name the machine in the settings file with its tailnet address:
+
+```toml
+[machines.lukas-laptop]
+address = "100.86.231.118"
+```
+
+Then pair with it: type the code it shows, look at what it offers, and type its
+name. Restart the bridge, and its tools reach the voice named after it
+(`lukas-laptop_agent_info`).
+
+<!-- not run: it asks for typed input -->
+```
+claude-voice machines approve lukas-laptop
+```
+
+Each call asks Tailscale who is at that address first, and the machine's tools
+must still be the ones approved; otherwise the call is refused and says to approve
+it again. A machine that does not answer within two seconds is reported as not
+answering, never waited for. To list them:
+
+```console
+$ claude-voice machines
+No machines in the settings file.
 ```
 
 ## Acknowledgements

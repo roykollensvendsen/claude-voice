@@ -45,7 +45,7 @@ NEW_MODULE_CEILING = 15  # the most tangled function a new module may have
 BLOCK = 6  # lines in a row that count as a copied block
 # Each module's layer: a module may use, when it loads, only modules in the layers below it.
 LAYERS = {
-    **dict.fromkeys(("procs", "config", "store", "metrics", "titles"), 0),  # foundations
+    **dict.fromkeys(("procs", "config", "store", "metrics", "titles", "tailnet"), 0),  # foundations
     **dict.fromkeys(
         (
             "transcripts",
@@ -65,7 +65,7 @@ LAYERS = {
         ),
         1,
     ),  # parts, each about one thing
-    **dict.fromkeys(("events", "tree", "approvals"), 2),  # parts built from parts
+    **dict.fromkeys(("events", "tree", "approvals", "machines"), 2),  # parts built from parts
     **dict.fromkeys(("api", "phone_hook", "agent"), 3),  # the doors in from outside
     "server": 4,  # where it is all put together
     "cli": 5,  # the command line that starts it
