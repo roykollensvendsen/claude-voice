@@ -368,3 +368,9 @@ name = "a machine that does not answer in two seconds is reported, not waited fo
 file = "src/claude_voice/machines.py"
 find = 'start_seconds = CONNECT_SECONDS'
 replace = 'start_seconds = 30.0'
+
+[[rule]]
+name = "an agent offers only the session tools on its list"
+file = "src/claude_voice/agent.py"
+find = 'if name not in SESSION_TOOLS and "plugin" not in \(tools\[name\].meta or \{\}\):'
+replace = 'if False:'

@@ -28,15 +28,35 @@ from typing import Any
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from . import tailnet
-from .config import PluginSpec
+from .config import Config, PluginSpec
 
 log = logging.getLogger("claude_voice")
 
 PORT = 8812
+DB = "~/.local/state/claude-voice/agent.db"
 STATE = Path("~/.config/claude-voice/agent")
 CODE_LETTERS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # nothing that reads as another letter aloud
 CODE_SECONDS = 10 * 60
 CODE_TRIES = 5
+
+# What the hub may do with this machine's Claude Code sessions: see them, read them, talk to
+# them, start, rename and stop them, and answer what they ask. Nothing about the bridge itself.
+SESSION_TOOLS = (
+    "list_projects",
+    "list_active_sessions",
+    "get_active_session",
+    "read_session_output",
+    "message_active_session",
+    "ask_active_session",
+    "start_active_session",
+    "rename_session",
+    "stop_active_session",
+    "fleet_recap",
+    "session_tree",
+    "list_pending_approvals",
+    "approve",
+    "deny",
+)
 
 Whois = Callable[[str], "tuple[str, str] | None"]
 
@@ -141,21 +161,33 @@ def build_agent(
     plugin_approvals: Path | None = None,
     plugin_client: Callable[[Any], Any] | None = None,
     address: str = "127.0.0.1",
+    bridge: Any = None,
 ) -> Any:
-    """The agent's MCP server: what this machine's owner approved, and a line about itself."""
+    """The agent's MCP server: what this machine's owner approved, and a line about itself.
+    With `bridge`, this machine's own bridge, its sessions too: the bridge is narrowed to the
+    session tools and its plugins, and serves as the agent."""
     from mcp.server import MCPServer
     from mcp.types import ToolAnnotations
 
     from . import metrics, plugins
 
-    mcp = MCPServer(
-        f"claude-voice-agent-{machine}",
-        title=f"claude-voice on {machine}",
-        version=metrics.version(),
-        instructions=f"The claude-voice agent on {machine}. Only its paired hub may call it.",
-    )
-    started = plugins.start_approved(mcp, specs or [], plugin_approvals, plugin_client)
-    offered = [name for plugin in started for name in plugin.offered]
+    if bridge is not None:
+        mcp = bridge
+        tools = mcp._tool_manager._tools
+        for name in list(tools):
+            # RULE: an agent offers only the session tools on its list
+            if name not in SESSION_TOOLS and "plugin" not in (tools[name].meta or {}):
+                del tools[name]
+        offered = sorted(tools)
+    else:
+        mcp = MCPServer(
+            f"claude-voice-agent-{machine}",
+            title=f"claude-voice on {machine}",
+            version=metrics.version(),
+            instructions=f"The claude-voice agent on {machine}. Only its paired hub may call it.",
+        )
+        started = plugins.start_approved(mcp, specs or [], plugin_approvals, plugin_client)
+        offered = [name for plugin in started for name in plugin.offered]
 
     @mcp.tool(title="About this machine", annotations=ToolAnnotations(read_only_hint=True))
     def agent_info() -> dict[str, Any]:
@@ -233,12 +265,26 @@ def build_agent_app(server: Any, pairing: Pairing, whois: Whois = tailnet.whois,
     return gate
 
 
-def serve(machine: str, specs: list[PluginSpec], pairing: Pairing | None = None) -> None:
+def own_bridge(settings: Config) -> Any:
+    """This machine's own bridge, with its own store, for its sessions."""
+    from . import server
+    from .approvals import ApprovalBroker
+    from .sessions import SessionManager
+    from .store import Store
+
+    store = Store(Path(DB).expanduser())
+    manager = SessionManager(store, project_root=settings.agent_root, approvals=ApprovalBroker(store))
+    return server.build_server(manager, repo_config=settings, watch_interval=5.0)
+
+
+def serve(machine: str, settings: Config, pairing: Pairing | None = None) -> None:
     """Run the agent on this machine's tailnet address until stopped."""
     import uvicorn
 
     address = listen_address()
     pairing = pairing or Pairing()
-    app = build_agent_app(build_agent(machine, pairing, specs, address=address), pairing, address=address)
+    bridge = own_bridge(settings) if settings.agent_sessions else None
+    built = build_agent(machine, pairing, settings.plugins, address=address, bridge=bridge)
+    app = build_agent_app(built, pairing, address=address)
     log.info("agent %s listening on %s:%d", machine, address, PORT)
     uvicorn.Server(uvicorn.Config(app, host=address, port=PORT, log_level="info", log_config=None)).run()
