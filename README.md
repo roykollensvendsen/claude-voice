@@ -301,6 +301,23 @@ only this computer and the tailnet, behind the login, and every answer is
 logged. Anyone signed in to the app can approve commands on this computer, so
 sign in only on your own devices.
 
+Only a prompt reaches the phone. In Claude Code's auto mode, most actions are
+decided without asking, and an action its safety check refuses is simply
+refused: there is nothing to answer, on the phone or anywhere else. To have such
+an action asked about instead, list it under `ask` in your settings. That is a
+choice for each owner. For example, to be asked before a force push rather than
+have it refused:
+
+<!-- not run: a settings example, not commands -->
+```json
+{ "permissions": { "ask": ["Bash(git push --force-with-lease *)"] } }
+```
+
+Keep the patterns narrow. An `ask` rule is a door the phone can open, and
+anyone signed in to the app holds the key. Put a rule meant only for you in a
+project's `.claude/settings.local.json`, which stays out of git, rather than in
+its shared `.claude/settings.json`.
+
 ## Where your clones are
 
 The bridge works out where the project's repositories are, on GitHub and on
