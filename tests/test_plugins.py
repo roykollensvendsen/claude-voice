@@ -143,6 +143,23 @@ def bridge(tmp_path, specs, approve=True, factory=None):
     )
 
 
+def bridge_with(tmp_path, machines, machine_folder, http, whois):
+    """The bridge with other machines in its settings and nothing else."""
+    store = Store(tmp_path / "b.db")
+    (tmp_path / "home").mkdir(exist_ok=True)
+    m = SessionManager(store, project_root=tmp_path / "home", client_factory=FakeClaude())
+    repos = config.Config(config.Repos(), config.Paths(None, None, None, None), None, machines=machines)
+    return build_server(
+        m,
+        conversations=lambda **k: [],
+        live_dir=tmp_path / "live",
+        repo_config=repos,
+        machine_folder=machine_folder,
+        machine_http=http,
+        machine_whois=whois,
+    )
+
+
 async def tool_names(server):
     async with Client(server) as c:
         return {t.name for t in (await c.list_tools()).tools}
