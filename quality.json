@@ -1,5 +1,6 @@
 {
   "complexity": {
+    "claude_voice/agent.py": 9,
     "claude_voice/api.py": 13,
     "claude_voice/approvals.py": 4,
     "claude_voice/cli.py": 14,
@@ -29,7 +30,7 @@
   },
   "coverage": 91.82,
   "cycles": 0,
-  "duplication": 1.91,
+  "duplication": 1.85,
   "layer_violations": 0,
   "lint_errors": 0,
   "mutation": {
@@ -41,6 +42,6 @@
     "tolerance": 0.25
   },
   "test_seconds": 66.1,
-  "tests": 556,
+  "tests": 573,
   "type_errors": 0
 }
