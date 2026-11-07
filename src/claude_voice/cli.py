@@ -16,7 +16,7 @@ from .server import Config, ConfigError, load_config, serve_forever
 
 #: Every verb this command has. The documentation test requires each one to
 #: appear in a worked example, so a verb cannot be added without one.
-COMMANDS: tuple[str, ...] = ("serve", "check", "plugins")
+COMMANDS: tuple[str, ...] = ("serve", "check", "plugins", "agent")
 
 SIGN_IN = (
     "Run `claude`, type /login and sign in with your Claude account, then check again. If `claude` "
@@ -116,7 +116,14 @@ def main(
     plugin_cmd = sub.add_parser("plugins", help="list plugins, or approve one by typing its name")
     plugin_cmd.add_argument("action", nargs="?", choices=["list", "approve"], default="list")
     plugin_cmd.add_argument("name", nargs="?")
+    agent_cmd = sub.add_parser("agent", help="on another machine: answer the paired hub, or pair with one")
+    agent_cmd.add_argument(
+        "action", nargs="?", choices=["serve", "pair"], default="serve", help="serve (the default), or pair"
+    )
     parsed = parser.parse_args(args)
+
+    if parsed.command == "agent":
+        return agent_command(parsed.action, env)
 
     if parsed.command == "plugins":
         return plugins_command(parsed.action, parsed.name, env)
@@ -190,6 +197,31 @@ def plugins_command(action: str, name: str | None, env: Mapping[str, str]) -> in
         found = listing.get(tool)
         sys.stdout.write(f"  {tool} takes: {plugins.takes(found['schema'])}\n" if found else f"  {tool}: not in it\n")
     sys.stdout.write(f"Approved. Restart the bridge to offer {spec.name}'s tools.\n")
+    return 0
+
+
+def agent_command(action: str, env: Mapping[str, str]) -> int:
+    """On another machine: show a pairing code for the hub, or serve it over the tailnet."""
+    import socket
+
+    from . import agent
+    from . import config as settings
+
+    home = Path(env.get("HOME") or Path.home())
+    pairing = agent.Pairing(home / ".config/claude-voice/agent")
+    machine = socket.gethostname().split(".")[0]
+    if action == "pair":
+        code = pairing.start()
+        sys.stdout.write(
+            f"Pairing code: {code}\n  open for {agent.CODE_SECONDS // 60} minutes, once.\n"
+            f"  On the hub, run: claude-voice machines approve {machine}\n"
+        )
+        return 0
+    try:
+        agent.serve(machine, settings.load(settings.FILE, env=env).plugins, pairing)
+    except (agent.AgentError, settings.ConfigError) as exc:
+        sys.stderr.write(f"claude-voice: {exc}\n")
+        return 1
     return 0
 
 

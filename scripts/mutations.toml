@@ -314,3 +314,27 @@ name = "a busy session is never typed into"
 file = "src/claude_voice/server.py"
 find = 'if d.get\("status"\) != "idle":'
 replace = 'if False:'
+
+[[rule]]
+name = "the agent listens on its tailnet address only"
+file = "src/claude_voice/agent.py"
+find = 'if address is None or address not in TAILNET:'
+replace = 'if address is None:'
+
+[[rule]]
+name = "a pairing code works once, for ten minutes"
+file = "src/claude_voice/agent.py"
+find = 'if not open_ or self.clock\(\) > float\(open_.get\("until", 0\)\):'
+replace = 'if not open_:'
+
+[[rule]]
+name = "five wrong pairing codes end the pairing"
+file = "src/claude_voice/agent.py"
+find = 'self._write\("pairing.json", None if tries >= CODE_TRIES else \{\*\*open_, "tries": tries\}\)'
+replace = 'self._write("pairing.json", {**open_, "tries": tries})'
+
+[[rule]]
+name = "a call needs the key and the tailnet identity of the paired hub"
+file = "src/claude_voice/agent.py"
+find = 'right_key = hmac.compare_digest\(_hash\(key\), str\(found\["key"\]\)\)'
+replace = 'right_key = True'

@@ -432,6 +432,31 @@ $ claude-voice plugins
 No plugins in the settings file.
 ```
 
+## Another machine (being built)
+
+A second computer can run its own small claude-voice, the agent, which the
+bridge on this laptop calls over Tailscale. How it works and why is in
+[ADR-CV-006](decisions/ADR-CV-006-other-machines-through-the-laptop.md). The
+agent listens on that machine's tailnet address only, and answers only the hub it
+was paired with: every call needs the key it handed out at pairing, from the
+machine Tailscale says that hub is. It offers the plugins its own owner approved.
+The laptop's side, which pairs with it and offers its tools to the voice, is not
+built yet.
+
+On the other machine, `claude-voice agent pair` shows a code that works once, for
+ten minutes, and `claude-voice agent` serves:
+
+```console
+$ COLUMNS=80 claude-voice agent --help
+usage: claude-voice agent [-h] [{serve,pair}]
+
+positional arguments:
+  {serve,pair}  serve (the default), or pair
+
+options:
+  -h, --help    show this help message and exit
+```
+
 ## Acknowledgements
 
 - [kelno](https://github.com/kelno) measured that the Claude app drops a tool call
