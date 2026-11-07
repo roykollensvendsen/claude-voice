@@ -66,7 +66,7 @@ LAYERS = {
         1,
     ),  # parts, each about one thing
     **dict.fromkeys(("events", "tree", "approvals"), 2),  # parts built from parts
-    **dict.fromkeys(("api", "phone_hook"), 3),  # the doors in from outside
+    **dict.fromkeys(("api", "phone_hook", "agent"), 3),  # the doors in from outside
     "server": 4,  # where it is all put together
     "cli": 5,  # the command line that starts it
 }
