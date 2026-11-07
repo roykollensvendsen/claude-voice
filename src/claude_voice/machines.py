@@ -109,6 +109,8 @@ async def pair(
     folder: Path = FOLDER,
 ) -> dict[str, Any]:
     """Pair with the agent on `spec`: Roy types its code, sees what it offers, types its name."""
+    import httpx
+
     node = await _whois(whois, spec.address)
     if node is None:
         say(f"{spec.address} is not a machine on your tailnet. Is Tailscale up on {spec.name}?")
@@ -124,8 +126,8 @@ async def pair(
         key = str(answer.json()["key"])
         async with _session(spec, key, http) as client:
             listing = await _listing(client)
-    except (OSError, ValueError, KeyError) as exc:
-        say(f"Could not reach the agent on {node[1]}: {exc}. Is `claude-voice agent` running there?")
+    except (OSError, ValueError, KeyError, httpx.HTTPError) as exc:
+        say(f"Could not reach the agent on {node[1]} ({exc}). Is it awake, and `claude-voice agent` running there?")
         return {"approved": False}
     say("  the voice may call:")
     for tool, found in sorted(listing.items()):

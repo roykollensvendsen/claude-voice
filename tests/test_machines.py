@@ -130,6 +130,25 @@ async def test_pairing_with_an_address_off_the_tailnet_is_refused(laptop, tmp_pa
         assert not out["approved"] and "tailnet" in shown
 
 
+async def test_pairing_with_a_machine_that_does_not_answer_says_so(laptop, tmp_path):
+    def unreachable(spec, headers):
+        def refuse(request):
+            raise httpx.ConnectError("All connection attempts failed")
+
+        return httpx.AsyncClient(transport=httpx.MockTransport(refuse), base_url=machines.url(spec), headers=headers)
+
+    lines = []
+    out = await machines.pair(
+        SPEC,
+        ask=typed("ABCDEFGH", "lukas-laptop"),
+        say=lines.append,
+        http=unreachable,
+        whois=laptop.whois,
+        folder=tmp_path / "hub",
+    )
+    assert not out["approved"] and "Could not reach" in "\n".join(lines)
+
+
 # -- calling --------------------------------------------------------------------
 
 
