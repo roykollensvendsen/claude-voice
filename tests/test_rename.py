@@ -126,7 +126,7 @@ async def test_a_session_name_is_letters_digits_dots_underscores_and_dashes(tmp_
 
 
 async def test_a_new_name_already_in_use_is_refused(tmp_path, root, live):
-    write(live, 1, "other-id", "math-quest-manager", root)
+    write(live, os.getppid(), "other-id", "math-quest-manager", root)  # a process that is alive everywhere
     async with Client(server(tmp_path, root, live)) as c:
         res = await c.call_tool("rename_session", {"session": "math-quest", "new_name": "math-quest-manager"})
         assert res.is_error and "in use" in res.content[0].text
