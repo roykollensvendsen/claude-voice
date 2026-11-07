@@ -564,19 +564,7 @@ def build_server(
     sending: dict[str, list[dict[str, Any]]] = {}  # messages still being delivered, by session id
     in_flight: set[asyncio.Future[Any]] = set()
 
-    active_plugins: list[plugins.Plugin] = []
-    for spec in repos.plugins:
-        if not plugins.approved(spec, plugin_approvals):
-            log.info("plugin %s is not approved; run: claude-voice plugins approve %s", spec.name, spec.name)
-            continue
-        plugin = plugins.Plugin(spec, plugin_client or plugins.CLIENT)
-        listing = plugin.listing()
-        if not plugins.inputs_approved(spec, listing, plugin_approvals):
-            log.info("plugin %s's tools take new inputs; run: claude-voice plugins approve %s", spec.name, spec.name)
-            continue
-        names = plugins.offer(mcp, plugin, listing)
-        active_plugins.append(plugin)
-        log.info("plugin %s offers %s", spec.name, ", ".join(names))
+    active_plugins = plugins.start_approved(mcp, repos.plugins, plugin_approvals, plugin_client)
 
     @tool(annotations=READ_ONLY)
     def fleet_recap() -> dict[str, Any]:
