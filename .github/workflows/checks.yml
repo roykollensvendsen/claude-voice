@@ -101,7 +101,7 @@ jobs:
 
   quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 50          # the mutation run is the slow part: the suite once per rule, 45 rules took 29 min
+    timeout-minutes: 50          # the mutation run is the slow part: each rule runs the test files naming it
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
