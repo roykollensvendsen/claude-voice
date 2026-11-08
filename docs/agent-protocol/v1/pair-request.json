@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/roykollensvendsen/claude-voice/blob/main/docs/agent-protocol/v1/pair-request.json",
+  "title": "Pairing request",
+  "description": "What the hub sends to POST /pair: the code the agent shows, as Roy typed it, in capitals.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "code"
+  ],
+  "properties": {
+    "code": {
+      "type": "string",
+      "pattern": "^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$",
+      "description": "Eight characters from letters and digits that do not read as one another aloud."
+    }
+  },
+  "examples": [
+    {
+      "code": "K7MP2QXR"
+    }
+  ]
+}

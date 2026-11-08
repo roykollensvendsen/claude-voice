@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/roykollensvendsen/claude-voice/blob/main/docs/agent-protocol/v1/privacy.json",
+  "title": "Privacy settings",
+  "description": "The privacy settings the machine keeps, as it reports them. Read only: they are changed on the machine itself, never by the hub, and no tool takes them as input.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "microphone",
+    "location_log"
+  ],
+  "properties": {
+    "microphone": {
+      "enum": [
+        "none",
+        "must-answer",
+        "after-warning"
+      ],
+      "description": "none: nothing here opens a microphone. must-answer: the person at the machine accepts first. after-warning: it opens after the warning sound. The sound plays under both."
+    },
+    "location_log": {
+      "type": "boolean",
+      "description": "Whether location is logged over time. Off unless switched on at the machine."
+    }
+  },
+  "examples": [
+    {
+      "microphone": "none",
+      "location_log": false
+    },
+    {
+      "microphone": "after-warning",
+      "location_log": true
+    }
+  ]
+}
