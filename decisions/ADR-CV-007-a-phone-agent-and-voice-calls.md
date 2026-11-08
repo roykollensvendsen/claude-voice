@@ -72,7 +72,7 @@ What holds today:
 
 - **In this repository.** Not taken: a Kotlin build would weigh on every Python
   change here, and the other way round.
-- **In a new repository, `roykollensvendsen/claude-voice-android`, private for
+- **In a new repository, `roykollensvendsen/claude-voice-mobile`, private for
   now.** It keeps the same standard as claude-voice and claude-voice-ui. **Chosen.**
   The protocol and the plugin format stay specified here, so the hub and the app
   cannot drift apart in private.
@@ -103,6 +103,20 @@ laptops. It is a plugin, sensor and sound agent.
 
 Each phone function is its own plugin inside the app, switched on and approved on
 its own. A plugin that fails takes nothing else down.
+
+**Who builds what.** The mobile repository is run like math-quest, but smaller:
+
+- An **architect** session owns the hub-to-phone protocol and its schemas.
+  - The protocol carries a version number, and is frozen before anything is built
+    on it.
+  - It also owns the layer rules, enforced in CI: the core never depends on a
+    plugin, and no plugin reaches another.
+- An **Android developer** session builds the app.
+- **This repository's session owns the hub side.**
+- Each session owns and develops its own skill.
+- **Merging and escalation:** a change is merged when its checks are green.
+  Only what matters goes to Roy, as an issue labelled `needs-roy`, tracked on a
+  board and in a `STATUS.md`.
 
 **Features, in this order:**
 
