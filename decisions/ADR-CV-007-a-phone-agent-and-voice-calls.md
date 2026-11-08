@@ -1,4 +1,4 @@
-# ADR-CV-007: A phone joins the hub as an agent
+# ADR-CV-007: A phone joins the hub as an agent, under privacy rules every machine keeps
 
 ## Status
 
@@ -25,6 +25,9 @@ What holds today:
 - **The agent protocol is plain MCP over HTTP** on the tailnet address. It has a
   pairing code, a long key per hub, and a Tailscale identity check on each call.
   It is not written down anywhere except in the code, and it carries no version.
+- **A phone carries more that is private than a laptop does:** where Roy is, who
+  he calls, what the microphone and camera pick up.
+
 ## Options considered
 
 **How the phone joins:**
@@ -67,6 +70,23 @@ hardware behind it differs. Each plugin is approved on its own, first on the
 machine and then on the hub. A plugin whose tools take new inputs is approved
 again, as today.
 
+**The privacy rules every machine keeps.** The hub relies on them, and no tool
+the hub offers can change them:
+
+- **A warning sound always plays before a microphone opens.** Each machine is set
+  to *must answer*, where the person there accepts first, or *opens after the
+  warning sound*. The sound plays under both.
+- **That setting is changed only on the machine itself**, never from the hub or
+  by voice.
+- **Location is read on request.** Logging over time is off by default, switched
+  on only on the phone, and its log can be deleted there. Every reading is logged
+  with its time and caller.
+- **The people who can be called straight away are a list kept on the phone**,
+  and edited only there. Calling any other number from the hub needs Roy's spoken
+  yes, as risky actions do (ADR-CV-003).
+- **The camera always shows that it is on**, on the phone, while in use.
+- **Every plugin is approved on its own**, and every call to one is logged.
+
 **Built in small pull requests, each one useful alone:**
 
 1. This record, and ADR-CVM-003 in claude-voice-mobile.
@@ -79,6 +99,9 @@ again, as today.
 
 - **The hub stays the same for every machine.** A phone, a laptop and a Pi are
   told apart by their plugins, not by the protocol.
+- **The privacy rules are promises the code must keep.** Each machine needs a test
+  that its microphone cannot open before the sound has played, and that the
+  settings above cannot be changed from the hub.
 - **Worse:** writing the protocol down means changing it is slower. A new
   version has to be drafted, reviewed and frozen before either side uses it.
 
