@@ -378,8 +378,8 @@ replace = 'if False:'
 [[rule]]
 name = "looking across machines never waits long for one"
 file = "src/claude_voice/fleet.py"
-find = 'answer = await asyncio.wait_for\(machine.call\("fleet_recap", \{\}\), ASK_SECONDS\)'
-replace = 'answer = await machine.call("fleet_recap", {})'
+find = 'asyncio.gather\(machine.call\("fleet_recap", \{\}\), self._approvals\(machine\)\), ASK_SECONDS'
+replace = 'asyncio.gather(machine.call("fleet_recap", {}), self._approvals(machine)), None'
 
 [[rule]]
 name = "a session on another machine is reached by the machine name in front"
