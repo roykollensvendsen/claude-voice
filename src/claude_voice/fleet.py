@@ -259,6 +259,25 @@ class Fleet:
                 return self._page_row(name, row)
         raise LookupError(f"no session {session}")
 
+    def detail_page(self, session: str) -> dict[str, Any]:
+        """A session on another machine in the shape of the page's detail view. Its agent
+        tells no more than its row, so the counts are empty rather than guessed."""
+        row = self.detail(session)
+        return {
+            "session": row["id"],
+            "number": None,
+            "name": row.get("name"),
+            "machine": row["machine"],
+            "context": None,
+            "tool_calls": {"total": 0, "by_tool": {}},
+            "subagents": {"running": 0, "total": 0},
+            "timeline": [],
+            "summary": None,
+            "summary_state": "none",
+            "summary_error": None,
+            "summary_at": None,
+        }
+
     def active_row(self, session: str) -> dict[str, Any]:
         """A session on another machine as the one the owner talks to: its id and the name
         the voice reaches it by, both with the machine in front."""
