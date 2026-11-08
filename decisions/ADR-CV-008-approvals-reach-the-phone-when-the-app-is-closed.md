@@ -2,8 +2,8 @@
 
 ## Status
 
-Proposed, 2026-11-07. Roy asked for the proposal. It is his to accept before any
-of it is built.
+Accepted 2026-11-08 by Roy Kollen Svendsen, by voice, after it was proposed on
+2026-11-07.
 
 ## Context
 
@@ -61,9 +61,11 @@ otherwise behaves as today:
 **When he is away, the hook waits, and the bridge sends a Web Push notification**
 to each phone that has subscribed:
 
-- The text is short and names no secret: "billing-ab asks to run Bash" or
-  "billing-ab has a question". The command itself shows only in the app, behind
-  the login, as today.
+- The text names the session and the kind of request, and nothing else:
+  "billing-ab asks to run a tool" or "billing-ab has a question". No command,
+  no file path, no tool input and no secret. Those show only in the app, behind
+  the login, as today. A test proves that a prompt's input never reaches the
+  notification.
 - Tapping it opens the app on that prompt, with Allow and Deny, or the choices.
 - It waits as today, up to five minutes. With no answer, the box shows in the
   terminal and the prompt is marked timed out.
@@ -74,6 +76,14 @@ the owner taps, never by itself. It sends its push subscription to the bridge
 over the same signed-in API. The bridge keeps its VAPID key pair (the key that
 signs Web Push messages) next to its database, readable only by its owner.
 
+**Delivery is one interface, so the phone app can carry it later.** The bridge
+hands each notification, its session name, its kind and the prompt's id, to a
+notifier. Web Push is the first notifier. The phone app of ADR-CV-007 can be a
+second one: its `notifications` plugin receives the same notification over the
+agent protocol and shows it as Android's own. The bridge then sends to every
+notifier a phone has subscribed with, and a phone answers once. Nothing in the
+notification depends on how it travels.
+
 **The voice says it too.** During a call, `whats_new` already carries
 `needs_approval`. The voice app's instructions should say to read it out and
 offer `approve` or `deny`, with the rule of ADR-CV-003: only on the owner's
@@ -83,10 +93,12 @@ clear yes.
 
 1. The bridge works out whether the owner is away, tested with stand-ins for
    `loginctl` and the clock.
-2. The bridge stores push subscriptions and sends Web Push (`pywebpush`).
-3. The app gets a service worker, a "Notify me on this phone" button and a
+2. The notifier interface, and the text it is given: session name and kind
+   only.
+3. The bridge stores push subscriptions and sends Web Push (`pywebpush`).
+4. The app gets a service worker, a "Notify me on this phone" button and a
    prompt view that opens on a tap (claude-voice-ui).
-4. The voice app's instructions read prompts out (voice-integration).
+5. The voice app's instructions read prompts out (voice-integration).
 
 ## Consequences
 
@@ -107,5 +119,6 @@ clear yes.
 ## Related
 
 `src/claude_voice/phone_hook.py`, `src/claude_voice/api.py` (prompts and
-`HUB.listening`), ADR-CV-003 (risky actions wait for a spoken yes), the
+`HUB.listening`), ADR-CV-003 (risky actions wait for a spoken yes), ADR-CV-007
+(the phone app, which can deliver the same notifications later), the
 README's "Answer questions and approvals from the phone".
