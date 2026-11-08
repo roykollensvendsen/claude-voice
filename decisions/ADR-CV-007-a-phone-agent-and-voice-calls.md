@@ -88,9 +88,22 @@ What holds today:
 
 ## Decision
 
-**The phone is one more machine.** It runs `claude-voice agent` in Termux. It is
-paired and approved like `lukas-laptop` and named, say, `roy-phone`. Its tools
-reach the voice as `roy-phone_<tool>`.
+**The phone is one more machine, for sensors and sound, never for sessions.** It
+runs `claude-voice agent` in Termux, without `--sessions`. Claude Code sessions
+stay on the laptops. The phone is paired and approved like `lukas-laptop` and
+named, say, `roy-phone`. Its tools reach the voice as `roy-phone_<tool>`.
+
+**The phone agent is a small core with plugins around it.**
+
+- **The core** is what every agent already has: pairing, listening on the tailnet
+  address only, the hub's key, the typed approval of each plugin, and the log of
+  every call. It holds no phone function itself.
+- **Each phone function is its own plugin**, a separate MCP server the core starts:
+  `location`, `call`, `notifications`, `battery`, and later others. Each is listed in
+  the phone's settings file and approved on its own, first on the phone and then
+  on the hub.
+- **A plugin that fails or is removed takes nothing else down.** The core restarts
+  it with a growing pause, as `plugins.Plugin` does today.
 
 **Its first plugin is location.** `roy-phone_where_am_i` reads the position once,
 when asked. Nothing tracks in the background, and nothing is kept. Each reading
@@ -133,6 +146,45 @@ offers:
   without a shell. Tailscale encrypts it. Opus compression comes later if the
   data use matters.
 
+### What is reused
+
+- **The agent core runs unchanged in Termux, with two exceptions to fix first.**
+  It is plain Python, and its own needs are the MCP library and `psutil`.
+  - **It asks the `tailscale` command who is calling, and for its own address.**
+    The Android Tailscale app has no command Termux can run. On the phone, the
+    agent would take its address from the network interface. It would admit a
+    caller by the hub's tailnet address together with the key. Tailscale
+    already proves that address, but this is one check fewer than on a laptop,
+    and the record says so.
+  - **The package always pulls in the Claude Agent SDK.** The SDK is needed only
+    for sessions, and has no build for Android. It would become an optional extra,
+    so `pip install claude-voice` on the phone leaves it out.
+  - Whether the MCP library's compiled parts (`pydantic-core`) install in Termux
+    is measured in step 4, not assumed.
+- **Plugins speak the same MCP on every machine.** A `call` plugin has the same
+  tools, the same chime-first rule and the same tests on a laptop and a phone.
+  Only the hardware layer differs: PipeWire's `parec` and `pacat` on a laptop, and
+  `termux-microphone-record` and `termux-media-player` (or WebRTC) on the phone.
+  The same goes for `location` (Termux:API on the phone; nothing on a laptop) and
+  `notifications`.
+- **The companion page, claude-voice-ui, is already on the phone** as an
+  installable web app. It gets the call button, and a card for the phone itself:
+  online or not, battery, and its plugins. These come from the machine rows it
+  already reads.
+- **From Roy's opencode-mobile app (read, not copied): its GPT-Live call screen.**
+  It holds a WebRTC call in a hidden web view on a secure origin. The pieces fit
+  the page's call button almost as they are:
+  - the microphone opened with echo cancellation, noise suppression and automatic
+    gain;
+  - an offer that waits up to three seconds for its network candidates;
+  - the answer from a server call;
+  - a heartbeat that keeps the call alive;
+  - hang-up and mute;
+  - the transcript lines from the data channel.
+
+  There the far end is OpenAI's model; here it would be the call plugin on a
+  laptop. The app is Apache-2.0, which can be taken into this GPL project.
+
 **Built in small pull requests, each one useful alone:**
 
 1. This record.
@@ -140,8 +192,10 @@ offers:
    against stand-in audio.
 3. The companion page's call button: WebRTC from the phone's browser to the call
    plugin on a laptop.
-4. A Termux recipe for the phone agent, with location as its plugin. It is first
-   measured for how long it stays reachable with the screen off, and how much
+4. The agent core ready for the phone: the Claude Agent SDK as an optional
+   extra, and its address and caller check without the `tailscale` command.
+   Then a Termux recipe with `location` as its first plugin. It is measured
+   first for how long it stays reachable with the screen off, and how much
    battery it uses.
 5. The phone in calls through its agent. This comes only if step 4 shows the
    microphone works in the background. Otherwise the call button stays the phone's
