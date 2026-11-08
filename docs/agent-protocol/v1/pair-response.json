@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/roykollensvendsen/claude-voice/blob/main/docs/agent-protocol/v1/pair-response.json",
+  "title": "Pairing answer",
+  "description": "What the agent answers to a right code, once: the key for this hub alone, and the hub's name as the tailnet gave it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "key",
+    "hub"
+  ],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{43,}$",
+      "description": "At least 32 random bytes in URL-safe base64. Sent as a bearer token on every later request."
+    },
+    "hub": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The hub's machine name, from the tailnet's own answer about its address."
+    }
+  },
+  "examples": [
+    {
+      "key": "example0key0only0for0the0documentation000000",
+      "hub": "laptop-a"
+    }
+  ]
+}

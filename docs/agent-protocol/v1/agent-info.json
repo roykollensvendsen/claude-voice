@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/roykollensvendsen/claude-voice/blob/main/docs/agent-protocol/v1/agent-info.json",
+  "title": "About this machine",
+  "description": "The structured answer of the agent_info tool, which every agent offers. The hub reads it when pairing and on every connection.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol",
+    "machine",
+    "address",
+    "hub",
+    "tools",
+    "version",
+    "plugins",
+    "privacy"
+  ],
+  "properties": {
+    "protocol": {
+      "const": 1
+    },
+    "machine": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,31}$",
+      "description": "The name the machine's owner gave it."
+    },
+    "address": {
+      "type": "string",
+      "format": "ipv4",
+      "description": "The tailnet address the agent listens on."
+    },
+    "hub": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The paired hub's name, or null before pairing."
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true,
+      "description": "Every tool offered, besides agent_info."
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The agent software's own version, for people; never compared."
+    },
+    "plugins": {
+      "type": "array",
+      "items": {
+        "$ref": "plugin.json"
+      }
+    },
+    "privacy": {
+      "$ref": "privacy.json"
+    }
+  },
+  "if": {
+    "required": [
+      "plugins"
+    ],
+    "properties": {
+      "plugins": {
+        "contains": {
+          "properties": {
+            "uses": {
+              "contains": {
+                "const": "microphone"
+              }
+            }
+          },
+          "required": [
+            "uses"
+          ]
+        }
+      }
+    }
+  },
+  "then": {
+    "properties": {
+      "privacy": {
+        "properties": {
+          "microphone": {
+            "not": {
+              "const": "none"
+            }
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "protocol": 1,
+      "machine": "phone-a",
+      "address": "100.64.0.10",
+      "hub": "laptop-a",
+      "tools": [
+        "status_battery",
+        "status_ring"
+      ],
+      "version": "0.1.0",
+      "plugins": [
+        {
+          "name": "status",
+          "tools": [
+            "status_battery",
+            "status_ring"
+          ],
+          "uses": []
+        }
+      ],
+      "privacy": {
+        "microphone": "must-answer",
+        "location_log": false
+      }
+    }
+  ],
+  "$comment": "A machine whose plugin uses the microphone cannot report that nothing opens one; the hub refuses it."
+}

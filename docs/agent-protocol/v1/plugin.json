@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/roykollensvendsen/claude-voice/blob/main/docs/agent-protocol/v1/plugin.json",
+  "title": "Plugin",
+  "description": "One plugin as the agent reports it in agent_info. A plugin is an MCP server on the machine: a name, its tools and their inputs. Its tools are in tools/list, each named <plugin>_<tool>, with their input schemas; this says which tools are its, and what on the machine it uses.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "tools",
+    "uses"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,31}$"
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]{0,31}$"
+      },
+      "uniqueItems": true,
+      "description": "The names of its tools as offered in tools/list, each starting with the plugin's name and an underscore."
+    },
+    "uses": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "microphone",
+          "camera",
+          "location",
+          "calls",
+          "contacts",
+          "notifications",
+          "media",
+          "sensors"
+        ]
+      },
+      "uniqueItems": true,
+      "description": "What private thing on the machine the plugin can reach. Shown to Roy when he approves it, and part of what he approves."
+    },
+    "instructions": {
+      "type": "string",
+      "description": "The plugin's own rules for the voice, passed on with its tools."
+    }
+  },
+  "examples": [
+    {
+      "name": "status",
+      "tools": [
+        "status_battery",
+        "status_ring"
+      ],
+      "uses": []
+    },
+    {
+      "name": "phone",
+      "tools": [
+        "phone_call",
+        "phone_confirm",
+        "phone_hang_up"
+      ],
+      "uses": [
+        "calls",
+        "contacts"
+      ],
+      "instructions": "A number not on the phone's own list waits for a spoken yes."
+    }
+  ]
+}
