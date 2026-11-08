@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/roykollensvendsen/claude-voice/blob/main/docs/agent-protocol/v1/needs-yes.json",
+  "title": "Waiting for a spoken yes",
+  "description": "The structured answer of a tool that will not act until Roy says yes aloud, such as calling a number not on the phone's own list. The voice reads say aloud; on a clear yes it calls confirm_with with the token, once.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "needs_yes",
+    "say",
+    "token",
+    "confirm_with",
+    "expires_in"
+  ],
+  "properties": {
+    "needs_yes": {
+      "const": true
+    },
+    "say": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The question, to be read aloud exactly."
+    },
+    "token": {
+      "type": "string",
+      "minLength": 16,
+      "description": "Works once, for this question only."
+    },
+    "confirm_with": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,31}$",
+      "description": "The tool that takes the token, from the same plugin."
+    },
+    "expires_in": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 120,
+      "description": "Seconds the token works for."
+    }
+  },
+  "examples": [
+    {
+      "needs_yes": true,
+      "say": "Call 555 0100, who is not on your list?",
+      "token": "q1example0token0",
+      "confirm_with": "phone_confirm",
+      "expires_in": 60
+    }
+  ]
+}

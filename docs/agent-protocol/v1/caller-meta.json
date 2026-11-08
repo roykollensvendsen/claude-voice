@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/roykollensvendsen/claude-voice/blob/main/docs/agent-protocol/v1/caller-meta.json",
+  "title": "Who is asking",
+  "description": "What the hub puts in a tools/call request's _meta, so the agent's log of every call says who asked.",
+  "type": "object",
+  "properties": {
+    "claude-voice/caller": {
+      "type": "string",
+      "minLength": 1,
+      "description": "voice for the voice, or the name of the Claude Code session that asked through the hub."
+    }
+  },
+  "examples": [
+    {
+      "claude-voice/caller": "voice"
+    },
+    {
+      "claude-voice/caller": "laptop-a/billing"
+    }
+  ]
+}
