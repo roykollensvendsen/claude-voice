@@ -69,7 +69,15 @@ to each phone that has subscribed:
 - Tapping it opens the app on that prompt, with Allow and Deny, or the choices.
 - It waits as today, up to five minutes. With no answer, the box shows in the
   terminal and the prompt is marked timed out.
-- A prompt answered at the terminal in the meantime closes on the phone.
+- A prompt answered elsewhere in the meantime is not closed on the phone by a
+  second push: Chrome shows something for every push, so a silent one would
+  bring up a notice of its own. Each notification is tagged with its prompt, and
+  tapping one whose prompt is gone says it is already answered.
+- Each push lives five minutes, as long as the wait, and is sent as urgent. The
+  notification carries the prompt's id, the session, its machine and the kind;
+  the page builds its own link and writes the text in the phone's language.
+- A subscription the push service reports gone (404 or 410) is removed. The page
+  removes its own on sign-out.
 
 **Subscribing.** The app asks for notification permission once, from a button
 the owner taps, never by itself. It sends its push subscription to the bridge
