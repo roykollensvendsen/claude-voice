@@ -122,6 +122,21 @@ def test_the_owner_approves_a_plugin_by_typing_its_name(tmp_path, monkeypatch, c
     assert plugins.inputs_approved(spec, plugins.Plugin(spec, plugins.CLIENT).listing(), approvals)
 
 
+def test_approving_with_nothing_typed_approves_nothing(tmp_path, monkeypatch, capsys):
+    f = tmp_path / "c.toml"
+    f.write_text('[plugins.garage]\ncommand = "garage-door-mcp"\ncwd = "/g"\ntools = ["garage_status"]\n')
+    monkeypatch.setattr(plugins, "APPROVALS", tmp_path / "approved.json")
+
+    def no_terminal(prompt=""):
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", no_terminal)
+    env = {"HOME": str(tmp_path), "CLAUDE_VOICE_CONFIG": str(f)}
+    assert cli.main(["plugins", "approve", "garage"], env=env) == 1
+    assert "no answer was typed" in capsys.readouterr().out
+    assert not (tmp_path / "approved.json").exists()
+
+
 # -- through the bridge ------------------------------------------------------------------
 
 

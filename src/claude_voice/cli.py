@@ -195,8 +195,13 @@ def plugins_command(action: str, name: str | None, env: Mapping[str, str]) -> in
         f"Plugin {spec.name}\n  runs: {' '.join([spec.command, *spec.args])}\n  in:   {spec.cwd}\n"
         f"  the voice may call: {', '.join(spec.tools)}\n"
     )
+    try:
+        typed = input(f"Type {spec.name} to approve it, anything else to stop: ")
+    except EOFError:  # run with nothing to read from, such as from inside another program
+        sys.stdout.write("\nNot approved: no answer was typed. Run it in a terminal.\n")
+        return 1
     # RULE: the owner approves a plugin by typing its name
-    if input(f"Type {spec.name} to approve it, anything else to stop: ").strip() != spec.name:
+    if typed.strip() != spec.name:
         sys.stdout.write("Not approved.\n")
         return 1
     listing = plugins.Plugin(spec, plugins.CLIENT).listing()

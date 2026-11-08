@@ -270,7 +270,7 @@ replace = 'return await client.call_tool(tool, arguments)'
 [[rule]]
 name = "the owner approves a plugin by typing its name"
 file = "src/claude_voice/cli.py"
-find = 'if input\(f"Type \{spec\.name\} to approve it, anything else to stop: "\)\.strip\(\) != spec\.name:'
+find = 'if typed\.strip\(\) != spec\.name:'
 replace = 'if False:'
 
 [[rule]]
