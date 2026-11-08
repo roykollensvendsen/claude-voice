@@ -131,6 +131,21 @@ cannot be tidied at the end by squashing it, which is why `committed.toml`
 refuses a fixup and a work-in-progress commit rather than trusting you to clean
 up later.
 
+So a pull request is not one commit either. Keep it to a few commits, each one
+coherent step a reader can follow on its own. When a later look changes an
+earlier step, fold the change into the commit it corrects instead of adding a
+"fix the last commit" commit on top:
+
+<!-- not run: it rewrites the reader's own branch -->
+```
+git commit --fixup <the commit it corrects>
+GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash origin/main
+git push --force-with-lease
+```
+
+The lease replaces the branch only if nobody has pushed to it since you last
+fetched. It is for your own pull request branch, never for `main`.
+
 ## Three more rules for every change
 
 - **One pull request per topic.** Several small changes on one subject go
