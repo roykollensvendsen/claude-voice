@@ -298,6 +298,18 @@ def _result(body: dict[str, Any]) -> Any:
     return CallToolResult(content=[TextContent(type="text", text=json.dumps(body))], structured_content=body)
 
 
+def _structured(result: Any) -> dict[str, Any]:
+    """A tool's structured answer, whichever form the server hands it on in: a result
+    object, or the plain dict the MCP server builds from it."""
+    if isinstance(result, dict):
+        return dict(result.get("structuredContent") or result.get("structured_content") or {})
+    return dict(getattr(result, "structured_content", None) or {})
+
+
+def _failed(result: Any) -> bool:
+    return bool(result.get("isError") if isinstance(result, dict) else getattr(result, "is_error", False))
+
+
 def _named_back(body: Any, machine: str, own: str) -> Any:
     """A machine's answer with the session's name as the hub knows it."""
     if not isinstance(body, dict):
@@ -334,9 +346,9 @@ def middleware(fleet: Fleet) -> Any:
                 return answer
             return _result(_named_back(answer.structured_content, machine.machine.name, own))
         result = await call_next(ctx)
-        if tool in (*LISTS, "health") and not getattr(result, "is_error", False):
+        if tool in (*LISTS, "health") and not _failed(result):
             await fleet.refresh()
-            body = dict(getattr(result, "structured_content", None) or {})
+            body = dict(_structured(result))
             if tool in LISTS:
                 body["sessions"] = [*body.get("sessions", []), *fleet.sessions()]
             body["machines"] = fleet.rows()
