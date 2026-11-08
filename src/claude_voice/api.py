@@ -191,6 +191,7 @@ class EventApi:
         remote_prompts: Callable[[], list[dict[str, Any]]] | None = None,
         answer_remote: Callable[[str, dict[str, Any]], Awaitable[tuple[int, dict[str, Any]]]] | None = None,
         clock: Callable[[], float] = time.monotonic,
+        away: Callable[[bool], bool] | None = None,
     ) -> None:
         self.store = store
         self.login_secret = login_secret
@@ -210,6 +211,7 @@ class EventApi:
         self.detail, self.summary = detail, summary
         self.update_changes = update_changes
         self.prompts: dict[str, dict[str, Any]] = {}  # open questions and approvals, by id
+        self.away = away or (lambda app_open: app_open)  # whether a question waits for the phone
         # Questions on other machines, and how to answer one (fleet.Fleet); none without machines.
         self.remote_prompts = remote_prompts or (lambda: [])
         self.answer_remote = answer_remote
@@ -527,8 +529,8 @@ class EventApi:
             return JSONResponse({"error": "kind is question or approval"}, 400)
         self.prompts[prompt["id"]] = prompt
         HUB.publish("prompt", self._public(prompt))
-        # Wait for the phone only while someone has the app open; else the box shows at once.
-        return JSONResponse({"id": prompt["id"], "wait": HUB.listening()})
+        # RULE: a question waits for the phone only while the owner is away from the laptop
+        return JSONResponse({"id": prompt["id"], "wait": self.away(HUB.listening())})
 
     def _fits(self, prompt: dict[str, Any], body: dict[str, Any]) -> str | None:
         """Why an answer does not fit its prompt, or None."""

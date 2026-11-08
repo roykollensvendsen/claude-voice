@@ -54,6 +54,7 @@ from . import (
 from .approvals import ApprovalBroker, ApprovalNotFound
 from .metrics import METRICS
 from .oauth import ACCESS_TTL, MIN_ACCESS_TTL, SCOPE, OAuthProvider, PublicClientMetadata
+from .presence import Presence
 from .sessions import SessionBusy, SessionClosed, SessionManager
 from .store import SessionNotFound, Store
 from .tree import PROJECTS_DIR, SessionTree
@@ -184,6 +185,7 @@ def app_url(bridge_session_id: Any) -> str | None:
 
 
 VOICE_STORE: list[Store] = []  # the store voice calls are counted in, set by build_server
+PRESENCE: list[Presence] = []  # what tells whether the owner is away, set by build_server
 
 
 def _result_chars(result: Any) -> int:
@@ -210,6 +212,8 @@ def note_voice_call(ctx: Any, tool: str, trace: str | None, result: Any) -> None
     client = usage.client_of(api.caller_address(scope), trace)
     if client is None:
         return
+    if client == "voice_app" and PRESENCE:
+        PRESENCE[0].heard_voice()  # a session's question now waits for the phone for a while
     connection = trace if client == "voice_app" else request.headers.get("mcp-session-id") or api.caller_address(scope)
     with contextlib.suppress(Exception):
         usage.record(VOICE_STORE[0], client, str(connection), tool, _result_chars(result))
@@ -298,6 +302,7 @@ def build_server(
     doctor_host: doctor.Host | None = None,
     bridge_port: int = 8811,
     statusline_dir: Path = usage.STATUSLINE_DIR,
+    presence: Presence | None = None,
     update_log: Path = updater.LOG,
     launch_update: Callable[[Path, Path], None] | None = None,
     bridge_folder: Path | None = None,
@@ -362,6 +367,7 @@ def build_server(
         )
 
     VOICE_STORE[:] = [manager.store]
+    PRESENCE[:] = [presence or Presence()]
     tree_version: list[str] = []  # the last shape seen, so a change can be reported
     last_check: list[str] = []
     started_at = datetime.now(UTC).isoformat(timespec="seconds")
@@ -1722,6 +1728,7 @@ def build_server(
             update_changes=update_changes_now,
             ui_origins=ui_origins,
             remote_prompts=across.prompts,
+            away=lambda app_open: PRESENCE[0].away(app_open=app_open),
             answer_remote=across.answer,
         ).routes(mcp)
 

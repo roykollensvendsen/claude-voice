@@ -17,6 +17,7 @@
     "claude_voice/oauth.py": 7,
     "claude_voice/phone_hook.py": 17,
     "claude_voice/plugins.py": 9,
+    "claude_voice/presence.py": 6,
     "claude_voice/procs.py": 2,
     "claude_voice/renames.py": 5,
     "claude_voice/roles.py": 12,
@@ -31,20 +32,20 @@
     "claude_voice/updater.py": 12,
     "claude_voice/usage.py": 11
   },
-  "coverage": 92.19,
+  "coverage": 92.24,
   "cycles": 0,
-  "duplication": 1.66,
+  "duplication": 1.65,
   "layer_violations": 0,
   "lint_errors": 0,
   "mutation": {
-    "killed": 46,
-    "total": 46
+    "killed": 66,
+    "total": 66
   },
   "test_budget": {
     "seconds": 180,
     "tolerance": 0.25
   },
   "test_seconds": 66.1,
-  "tests": 612,
+  "tests": 622,
   "type_errors": 0
 }
