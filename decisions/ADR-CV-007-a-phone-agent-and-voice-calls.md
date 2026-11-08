@@ -15,7 +15,7 @@ laptop running the bridge) dials each one over Tailscale, after Roy pairs and
 approves it by typing. A second laptop runs one today. Roy now wants his Android
 phone to join the same way, offering its own functions to the voice: its status,
 finding it, notifications, location, phone calls, playback, and later the camera
-and sensors.
+and sensors. He also wants to start voice calls between machines by voice.
 
 What holds today:
 
@@ -25,6 +25,10 @@ What holds today:
 - **The agent protocol is plain MCP over HTTP** on the tailnet address. It has a
   pairing code, a long key per hub, and a Tailscale identity check on each call.
   It is not written down anywhere except in the code, and it carries no version.
+- **A call between the laptops worked yesterday, by hand.** `parec` on one
+  machine recorded sound and piped it over SSH into `pacat` on the other. It went
+  over a shell key that reaches everything, and nobody was warned before the
+  speaker opened.
 - **A phone carries more that is private than a laptop does:** where Roy is, who
   he calls, what the microphone and camera pick up.
 
@@ -48,6 +52,15 @@ What holds today:
 - **In the app's repository.** Not taken: the hub would follow a private
   repository's drafts.
 - **Here, beside the hub that serves it.** **Chosen.**
+
+**How call sound travels:**
+
+- **The hub pipes it over SSH, as yesterday.** Not taken: it needs a shell key
+  that can do anything.
+- **Directly between the two agents** over Tailscale: the shortest path and the
+  least delay. **Chosen, as one of two.**
+- **Through the hub**, which relays it to a machine the caller cannot reach
+  directly, such as a phone on mobile data. **Chosen as the second.**
 
 ## Decision
 
@@ -87,12 +100,22 @@ the hub offers can change them:
 - **The camera always shows that it is on**, on the phone, while in use.
 - **Every plugin is approved on its own**, and every call to one is logged.
 
+**Calls between machines are an optional plugin, `call`.**
+
+- It is off unless installed and approved.
+- Sound goes directly between the two agents, or through the hub when they cannot
+  reach each other.
+- Both sides get a one-time token from the hub for each call.
+- Each call is logged with who, when, how long and how it ended. Nothing is
+  recorded.
+
 **Built in small pull requests, each one useful alone:**
 
 1. This record, and ADR-CVM-003 in claude-voice-mobile.
 2. The audio-focus prototype there, measured.
 3. `docs/agent-protocol.md` and its schemas, version 1, frozen.
-4. The hub: refusing unknown protocol versions.
+4. The hub: refusing unknown protocol versions, and the call routing through the
+   hub.
 5. The app's core and its plugins, there, in their order.
 
 ## Consequences
@@ -102,8 +125,14 @@ the hub offers can change them:
 - **The privacy rules are promises the code must keep.** Each machine needs a test
   that its microphone cannot open before the sound has played, and that the
   settings above cannot be changed from the hub.
+- **Calls cost nothing for anyone who does not want them.** The plugin is not
+  installed, listed or running.
 - **Worse:** writing the protocol down means changing it is slower. A new
   version has to be drafted, reviewed and frozen before either side uses it.
+- **Worse:** calls through the hub cost the hub's upload bandwidth and add delay.
+- **Worse:** a call to a person who has not chosen to take it is still an
+  intrusion, even with a warning sound. The *must answer* setting and the
+  on-machine-only rule keep that in the owner's hands, not the voice's.
 
 ## Related
 
