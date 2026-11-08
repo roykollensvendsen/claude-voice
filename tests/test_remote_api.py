@@ -176,3 +176,16 @@ async def test_a_session_on_another_machine_can_be_the_one_the_voice_talks_to(br
         chosen.json().items()
     )
     assert gone.status_code == 404
+
+
+async def test_the_sessions_here_stay_in_the_list_beside_another_machines(bridge):  # noqa: F811
+    from mcp.client import Client
+
+    server, _, _, _ = bridge
+    server.fleet.machines = [FakeMachine(sessions=[MOD])]
+    async with Client(server) as voice:
+        listed = (await voice.call_tool("list_active_sessions", {})).structured_content
+        recap = (await voice.call_tool("fleet_recap", {})).structured_content
+    for answer in (listed, recap):
+        names = [s["name"] for s in answer["sessions"]]
+        assert "lukas-laptop/mod" in names and any("/" not in n for n in names), names

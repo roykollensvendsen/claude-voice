@@ -8,7 +8,7 @@
     "claude_voice/detail.py": 40,
     "claude_voice/doctor.py": 19,
     "claude_voice/events.py": 15,
-    "claude_voice/fleet.py": 14,
+    "claude_voice/fleet.py": 13,
     "claude_voice/gitstatus.py": 13,
     "claude_voice/guard.py": 10,
     "claude_voice/launch.py": 10,
@@ -45,6 +45,6 @@
     "tolerance": 0.25
   },
   "test_seconds": 66.1,
-  "tests": 610,
+  "tests": 611,
   "type_errors": 0
 }
