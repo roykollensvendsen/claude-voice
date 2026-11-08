@@ -104,6 +104,13 @@ laptops. It is a plugin, sensor and sound agent.
 Each phone function is its own plugin inside the app, switched on and approved on
 its own. A plugin that fails takes nothing else down.
 
+**The companion page and the app stay separate repositories.**
+
+- claude-voice-ui is a browser window onto the hub, from any device.
+- claude-voice-mobile is an agent that offers the phone's hardware.
+- The app shows the companion page inside itself in a web view, so Roy has one
+  app on the phone, while the page's code stays in claude-voice-ui.
+
 **Who builds what.** The mobile repository is run like math-quest, but smaller:
 
 - An **architect** session owns the hub-to-phone protocol and its schemas.
