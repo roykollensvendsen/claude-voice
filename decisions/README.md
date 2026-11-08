@@ -35,7 +35,7 @@ decision nobody writes down.
 | [ADR-CV-004](ADR-CV-004-reach-open-sessions-by-messaging-not-takeover.md) | Reach sessions open elsewhere by messaging, never by taking them over | Accepted |
 | [ADR-CV-005](ADR-CV-005-how-a-change-is-made.md) | How a change is made: tests first, one pull request per change, landed by rebase | Accepted |
 | [ADR-CV-006](ADR-CV-006-other-machines-through-the-laptop.md) | Reach other machines through the laptop, with a small agent on each | Accepted |
-| [ADR-CV-007](ADR-CV-007-a-phone-agent-and-voice-calls.md) | An agent on the phone, and voice calls as an optional plugin | Proposed |
+| [ADR-CV-007](ADR-CV-007-a-phone-agent-and-voice-calls.md) | The phone joins as an Android app agent; calls between machines are an optional plugin | Proposed |
 
 What is deliberately left undone, and what would make each worth doing, is
 [`deferred.md`](deferred.md). A thing left undone with no trigger is a thing
