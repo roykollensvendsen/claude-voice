@@ -1627,6 +1627,8 @@ def build_server(
         return live, summaries.start(str(live.get("sessionId")), "\n".join(kept), language)
 
     async def request_summary(session: str, language: str | None) -> dict[str, Any]:
+        if across.split(session):
+            raise LookupError("summaries are made only for sessions on this computer")
         live, _ = summary_task(session, language)
         return {"session": str(live.get("sessionId")), "state": "generating"}
 
@@ -1715,7 +1717,7 @@ def build_server(
             start_role=launch_role,
             settings=start_settings,
             software=software_now,
-            detail=lambda s: across.detail(s) if across.split(s) else session_detail(s),
+            detail=lambda s: across.detail_page(s) if across.split(s) else session_detail(s),
             summary=request_summary,
             update_changes=update_changes_now,
             ui_origins=ui_origins,

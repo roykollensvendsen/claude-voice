@@ -189,3 +189,28 @@ async def test_the_sessions_here_stay_in_the_list_beside_another_machines(bridge
     for answer in (listed, recap):
         names = [s["name"] for s in answer["sessions"]]
         assert "lukas-laptop/mod" in names and any("/" not in n for n in names), names
+
+
+async def test_a_session_on_another_machine_has_a_detail_page_of_its_own(bridge):  # noqa: F811
+    server, app, _, _ = bridge
+    server.fleet.machines = [FakeMachine(sessions=[MOD, OWN])]
+    await server.fleet.refresh()
+    async with client(app) as http:
+        page = await http.get("/api/v1/sessions/lukas-laptop%2F840ab631/detail", headers=BEARER)
+        summary = await http.post("/api/v1/sessions/lukas-laptop%2F840ab631/summary", headers=BEARER, json={})
+    assert page.status_code == 200
+    assert page.json() == {
+        "session": "lukas-laptop/840ab631",
+        "number": None,
+        "name": "mod",
+        "machine": "lukas-laptop",
+        "context": None,
+        "tool_calls": {"total": 0, "by_tool": {}},
+        "subagents": {"running": 0, "total": 0},
+        "timeline": [],
+        "summary": None,
+        "summary_state": "none",
+        "summary_error": None,
+        "summary_at": None,
+    }
+    assert summary.status_code == 404 and "this computer" in summary.json()["error"]
