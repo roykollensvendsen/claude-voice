@@ -63,6 +63,7 @@ LAYERS = {
             "usage",
             "updater",
             "software",
+            "work",
             "plugins",
             "detail",
             "oauth",

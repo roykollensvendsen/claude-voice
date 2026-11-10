@@ -50,6 +50,7 @@ from . import (
     transcripts,
     updater,
     usage,
+    work,
 )
 from .approvals import ApprovalBroker, ApprovalNotFound
 from .metrics import METRICS
@@ -306,6 +307,7 @@ def build_server(
     desktop_env: Mapping[str, str] | None = None,
     ci_status: Callable[[str], dict[str, Any] | None] = software.latest_run,
     kept_levels: Callable[[str], list[dict[str, Any]]] = software.kept_levels,
+    work_board: work.Board | None = None,
     tmux: Any = None,
 ) -> MCPServer:
     auth = None
@@ -394,6 +396,9 @@ def build_server(
                         check()
                     with contextlib.suppress(Exception):
                         await across.refresh()  # the other machines, asked every ten seconds
+                    with contextlib.suppress(Exception):
+                        if api.HUB.listening() and (changed := await asyncio.to_thread(board.changed)):
+                            api.HUB.publish("work", changed)  # the phone page updates at once
                     await asyncio.sleep(watch_interval)
 
             task = asyncio.create_task(watch())
@@ -899,6 +904,13 @@ def build_server(
             raise ToolError(str(exc)) from None
 
     software_seen: dict[str, Any] = {}
+    # Each plugin's own repository joins the two above, on the software panel and the work page.
+    plugin_repos = work.plugin_repos(repos.plugins)
+    board = work_board or work.Board(
+        {"claude-voice": repos.repos.claude_voice, "claude-voice-ui": repos.repos.claude_voice_ui}
+        | {name: repo for name, repo, _ in plugin_repos},
+        run=software._gh,
+    )
 
     def software_now() -> dict[str, Any]:
         """Both repositories' measures and checks, kept for ten minutes: git and GitHub are slow."""
@@ -907,6 +919,7 @@ def build_server(
         listed = (
             ("claude-voice", repos.repos.claude_voice, bridge_folder or repos.paths.claude_voice),
             ("claude-voice-ui", repos.repos.claude_voice_ui, repos.paths.claude_voice_ui),
+            *plugin_repos,
         )
         report = {
             "as_of": datetime.now(UTC).isoformat(timespec="seconds"),
@@ -1805,6 +1818,7 @@ def build_server(
             start_role=launch_role,
             settings=start_settings,
             software=software_now,
+            work=board.report,
             detail=lambda s: across.detail_page(s) if across.split(s) else session_detail(s),
             summary=request_summary,
             update_changes=update_changes_now,

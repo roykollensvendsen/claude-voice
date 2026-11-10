@@ -184,6 +184,7 @@ class EventApi:
         bridge: Callable[[], dict[str, Any]] | None = None,
         settings: Any = None,
         software: Callable[[], dict[str, Any]] | None = None,
+        work: Callable[[], dict[str, Any]] | None = None,
         detail: Callable[[str], dict[str, Any]] | None = None,
         summary: Callable[[str, str | None], Awaitable[dict[str, Any]]] | None = None,
         update_changes: Callable[[], dict[str, Any]] | None = None,
@@ -207,6 +208,7 @@ class EventApi:
         self.ui_origins = [o.rstrip("/") for o in ui_origins or []]
         self.settings = settings  # how new sessions start: launch.Settings
         self.software = software
+        self.work = work  # what waits on the owner, and the open pull requests: work.Board.report
         self.detail, self.summary = detail, summary
         self.update_changes = update_changes
         self.prompts: dict[str, dict[str, Any]] = {}  # open questions and approvals, by id
@@ -239,6 +241,7 @@ class EventApi:
         route("/api/v1/usage", methods=["GET"])(self.usage_now)
         route("/api/v1/update", methods=["GET", "POST"])(self.update)
         route("/api/v1/health/software", methods=["GET"])(self.software_health)
+        route("/api/v1/work", methods=["GET"])(self.work_now)
         route("/api/v1/update/changes", methods=["GET"])(self.changes)
         route("/api/v1/bridge", methods=["GET"])(self.bridge_now)
         route("/api/v1/roles/{role}/start", methods=["POST"])(self.role_start)
@@ -420,6 +423,15 @@ class EventApi:
         if self.software is None:
             return JSONResponse({"error": "not available"}, 404)
         out = await asyncio.to_thread(self.software)  # git history and GitHub take a moment
+        return JSONResponse(out, headers={"Cache-Control": "no-store"})
+
+    async def work_now(self, request: Request) -> Response:
+        """What waits on the owner, read fresh, and every open pull request, kept a minute."""
+        if not await self._allowed(request):
+            return JSONResponse({"error": "sign in first"}, 401)
+        if self.work is None:
+            return JSONResponse({"error": "not available"}, 404)
+        out = await asyncio.to_thread(self.work)  # GitHub takes a moment
         return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
     async def update(self, request: Request) -> Response:
