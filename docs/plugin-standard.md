@@ -37,7 +37,9 @@ These hold for every plugin, wherever it lives, a fork included.
 7. **Two steps for what is risky.** Which actions are risky is the owner's
    judgement, decided per plugin and written down: a door yes, a vacuum start
    no. A risky action is a request, whose question is read aloud, and then a
-   confirm with a one-time token that expires. Nothing risky happens on the
+   confirm with a one-time token that expires. Read aloud, "Switch it off?" sounds
+   like something already happening, so the question says how things are and then
+   asks: "The garage TV is on. Do you want me to switch it off?" Nothing risky happens on the
    request alone. Nothing is retried on the plugin's own initiative. The token
    is spent only once the action has been sent, so a confirm that never arrived
    can be tried again with the same token while it is fresh. A spoken phrase the

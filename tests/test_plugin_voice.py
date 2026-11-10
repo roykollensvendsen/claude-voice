@@ -371,3 +371,18 @@ async def test_a_call_from_this_computer_cannot_switch_developer_mode_on_through
     async with Client(server) as c:
         out = (await c.call_tool("developer_mode_request", {})).structured_content
     assert not out["ok"] and "token" not in out
+
+
+async def test_a_question_read_aloud_states_how_things_are_and_then_asks(tmp_path):
+    # Read aloud, "Switch it on?" sounds like something already happening. Every question
+    # says how things are now, then asks "Do you want me to ...", like the garage door's.
+    fake, _ = stand_in()
+    made, *_ = desk(tmp_path, fake, mode_on=False)
+    switching = made.mode_request("claude_app")["say"]
+    made, *_ = await changed_desk(tmp_path / "changed")
+    approving = (await made.approve_request("claude_app", "garage"))["say"]
+    for say in (switching, approving):
+        first, _, rest = say.partition(". ")
+        assert "Do you want me to" not in first, say  # the state comes first
+        assert "Do you want me to" in rest and "?" in rest, say
+    assert switching.startswith("Developer mode is off.")

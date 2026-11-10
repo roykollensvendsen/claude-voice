@@ -112,8 +112,9 @@ class Desk:
         token = self.questions.ask("developer_mode", {})
         return {
             "ok": True,
-            "say": "Switch developer mode on for eight hours? While it is on, you can approve plugins "
-            "whose tools changed by voice. Say yes to switch it on.",
+            # RULE: a question read aloud states how things are and then asks
+            "say": "Developer mode is off. Do you want me to switch it on for eight hours? While it "
+            "is on, you can approve plugins whose tools changed by voice.",
             "token": token,
         }
 
@@ -159,7 +160,7 @@ class Desk:
         token = self.questions.ask("plugin", {"name": name, "listing": listing, "commit": commit})
         return {
             "ok": True,
-            "say": f"{name} at commit {commit} has changed tools: {'; '.join(said)}. Approve them?",
+            "say": f"{name} at commit {commit} has changed tools: {'; '.join(said)}. Do you want me to approve them?",
             "changes": said,
             "token": token,
         }
