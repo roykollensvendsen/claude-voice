@@ -84,6 +84,7 @@ class PluginSpec:
     cwd: str
     tools: list[str]
     timeout: float = 30.0
+    branch: str = "main"  # the branch its checkout follows; a voice approval needs it level with this
 
 
 def _plugins(raw: Any, home: str) -> list[PluginSpec]:
@@ -102,6 +103,7 @@ def _plugins(raw: Any, home: str) -> list[PluginSpec]:
                 cwd=str(_path(body["cwd"], home)),
                 tools=[str(t) for t in tools],
                 timeout=float(body.get("timeout", 30.0)),
+                branch=str(body.get("branch") or "main"),
             )
         )
     return out
