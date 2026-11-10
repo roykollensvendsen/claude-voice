@@ -349,13 +349,17 @@ def offer(server: Any, plugin: Plugin, listing: dict[str, dict[str, Any]]) -> li
         made.parameters = known.get("schema") or {"type": "object", "properties": {}}
         server._tool_manager._tools[name] = made
         offered.append(name)
+    _instruct(server._lowlevel_server, plugin)
+    return offered
+
+
+def _instruct(lowlevel: Any, plugin: Plugin) -> None:
+    """Add the plugin's own rules to what the voice is told, once, however often it starts."""
     # RULE: a plugins own instructions reach the voice
-    if plugin.instructions and plugin.instructions not in (server._lowlevel_server.instructions or ""):
-        lowlevel = server._lowlevel_server
+    if plugin.instructions and plugin.instructions not in (lowlevel.instructions or ""):
         lowlevel.instructions = (
             f"{lowlevel.instructions or ''}\n\nThe {plugin.spec.name} plugin: {plugin.instructions}".strip()
         )
-    return offered
 
 
 def withdraw(server: Any, plugin: Plugin) -> None:
