@@ -28,9 +28,17 @@ What every plugin must do once built, and which plugin does each thing best, is
 
 ## Wiring it in
 
-1. `[plugins.<name>]` in `~/.config/claude-voice/config.toml`.
+1. `[plugins.<name>]` in `~/.config/claude-voice/config.toml`, with `branch` if
+   its checkout follows a branch other than `main`.
 2. The owner runs `claude-voice plugins approve <name>` and types the name.
 3. Restart the bridge; `health` shows the plugin `running` after its first call.
+
+After that, the plugin's own session never asks the owner to type again for new
+code: merged code with the same tools runs after `plugin_restart`. A tool that is
+added, removed, takes new inputs or changes its read-only mark is approved by the
+owner's voice in developer mode (ADR-CV-010), once the change is merged and the
+plugin's checkout is clean and level with its branch. Only a new command or folder
+is typed again.
 4. Simulated mode first, then the real thing, after the plugin's own session
    agrees.
 

@@ -43,7 +43,9 @@ a go-between for those; it needs only the outcome.
 The manager arranges these, but the owner does them, by a command the manager
 gives:
 
-- approving a plugin, by typing its name (`claude-voice plugins approve`);
+- approving a new plugin, by typing its name (`claude-voice plugins approve`), and
+  approving a plugin whose tools changed, by voice in developer mode or by typing.
+  No session can approve: the bridge refuses every caller on this computer;
 - anything that moves something physical outside the plugin's own two-step
   question, such as arming the garage door;
 - secrets, which never pass through a session;

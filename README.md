@@ -99,7 +99,10 @@ the bridge says which are missing, with the exact fix, through its
 | `check_dependencies` | which dependencies are missing for full use of the bridge, and the exact fix for each |
 | `update_bridge` | update claude-voice: pull, install, test, restart, and roll back if anything fails |
 | `update_changes` | what an update would bring: the new commits on GitHub, grouped by kind |
-| `health` | the bridge's own state: uptime, version, memory, calls and errors per tool, courier and watcher |
+| `health` | the bridge's own state: uptime, version, memory, calls and errors per tool, courier and watcher, and whether developer mode is on |
+| `plugin_restart` | start one plugin again with its new code, without restarting the bridge; its tools come back only if they take what was approved |
+| `developer_mode_request`, `developer_mode_confirm`, `developer_mode_off` | switch developer mode on by voice with a question and your yes (only from the Claude app; it ends by itself after eight hours), or off at once |
+| `plugin_approve_request`, `plugin_approve_confirm` | in developer mode, approve a plugin whose tools changed: the voice names each changed tool and approves on your yes |
 | `list_pending_approvals`, `approve`, `deny` | answer Claude's requests to edit files, run commands and so on |
 | `cancel`, `close_session` | stop a turn, retire a session |
 | `list_sessions` | the sessions this bridge started, and every one running on the computer |
@@ -408,6 +411,7 @@ args = ["run", "garage-door-mcp", "--secrets-file", "firmware/secrets.yaml", "--
 cwd = "~/garage-door"
 tools = ["garage_status", "garage_request", "garage_confirm"]
 timeout = 30          # seconds a call may take
+branch = "main"       # the branch its checkout follows, for approving by voice (default main)
 ```
 
 Then approve it by typing its name, and restart the bridge:
@@ -426,7 +430,24 @@ the plugin reads its own, and starts with only a small default environment. Each
 plugin runs as a process of its own, started again after a failure, and a call
 that runs past `timeout` is cut off. Its tools reach the voice named after it
 (`garage_status`), its safety rules stay inside it, and the health report shows
-each plugin's state. To list them:
+each plugin's state.
+
+Once a plugin is approved, three things can happen to it
+([ADR-CV-010](decisions/ADR-CV-010-a-known-plugin-is-approved-again-by-voice.md)):
+
+- **New code, the same tools taking the same inputs.** It runs without asking, and
+  the log names the commit. `plugin_restart` starts one plugin again with its new
+  code, without restarting the bridge or dropping the call.
+- **A tool added, removed, taking new inputs, or with a changed read-only mark.** You
+  can type the approval as above, or approve it by voice in **developer mode**. You
+  switch that on by voice: the voice asks, you say yes. It ends by itself after eight
+  hours, can be switched off at once from anywhere, and `health` and the work page
+  show it. The voice then names each changed tool and approves on your yes. It works
+  only from the Claude app, never from a program on this computer, and only when the
+  plugin's checkout is clean and level with the branch it follows (`branch`).
+- **A new plugin, or a new command or folder.** Always typed, as above.
+
+To list them:
 
 ```console
 $ claude-voice plugins
