@@ -79,5 +79,8 @@ If you are a session working on this repository, rather than installing it:
 - Push only to your owner's fork; a pull request goes to
   `roykollensvendsen/claude-voice` with `gh pr create --repo`.
 - Never rename or remove a tool or field that Hermes or the voice app uses.
+- When an outside contributor's pull request lands, thank them in it and say
+  concretely what was good. Hold your own pull requests to what contributions
+  have taught (CONTRIBUTING, "When someone else's change comes in").
 - Never put a `Claude-Session:` line or a claude.ai/code session address in a
   commit message; the checks refuse it. Credit with `Co-Authored-By:` only.
