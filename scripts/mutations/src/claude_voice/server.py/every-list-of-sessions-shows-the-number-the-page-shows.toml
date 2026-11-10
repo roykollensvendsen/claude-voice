@@ -1,0 +1,5 @@
+[[rule]]
+name = "every list of sessions shows the number the page shows"
+file = "src/claude_voice/server.py"
+find = 'return \{"sessions": \[\{\*\*r, "number": numbers.get\(str\(r\["claude_session_id"\]\)\)\} for r in rows\]\}'
+replace = 'return {"sessions": rows}'

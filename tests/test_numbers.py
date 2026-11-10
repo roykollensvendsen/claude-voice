@@ -3,15 +3,20 @@
 import json
 import os
 
+import httpx
 import pytest
 from fakes import FakeClaude
 from mcp.client import Client
 
-from claude_voice.server import build_server
+from claude_voice.oauth import OAuthProvider
+from claude_voice.server import build_app, build_server
 from claude_voice.sessions import SessionManager
-from claude_voice.store import Store
+from claude_voice.store import QUIET, Store
 
 PID = os.getpid()
+SECRET = "s3cret-token-for-the-number-tests-x"
+BEARER = {"Authorization": f"Bearer {SECRET}"}
+HOST = "https://bridge.example"
 
 
 class Clock:
@@ -64,7 +69,7 @@ async def test_each_session_gets_the_smallest_free_number_and_keeps_it(world):
 
 
 async def test_a_new_session_gets_the_lowest_number_no_running_session_uses(world):
-    """A number is free again as soon as its session ends, so the numbers stay small."""
+    """A number whose session ended is free again after a short quiet time, so the numbers stay small."""
     clock = Clock()
     running(world, "alpha", "s1")
     running(world, "beta", "s2")
@@ -72,9 +77,59 @@ async def test_a_new_session_gets_the_lowest_number_no_running_session_uses(worl
     before = await numbers(server)
     gone(world, "alpha")
     await numbers(server)
+    clock.at += QUIET + 1
     running(world, "delta", "s4")
     after = await numbers(server)
     assert after["delta"] == before["alpha"] and after["beta"] == before["beta"]
+
+
+async def test_a_freed_number_is_not_given_to_another_session_for_ten_minutes(world):
+    """So "five" does not change meaning in the middle of a conversation."""
+    clock = Clock()
+    running(world, "alpha", "s1")
+    running(world, "beta", "s2")
+    server = bridge(world, clock)
+    before = await numbers(server)
+    gone(world, "alpha")
+    await numbers(server)
+    clock.at += QUIET - 60
+    running(world, "delta", "s4")
+    after = await numbers(server)
+    assert after["delta"] not in before.values()
+    assert QUIET == 600
+
+
+async def test_every_list_of_sessions_shows_the_number_the_page_shows(world):
+    clock = Clock()
+    running(world, "alpha", "s1")
+    running(world, "beta", "s2")
+    server = bridge(world, clock)
+    async with Client(server) as c:
+        listed = (await c.call_tool("list_active_sessions", {})).structured_content["sessions"]
+        tree = (await c.call_tool("session_tree", {})).structured_content["nodes"]
+        page = await numbers(server)
+    assert {r["name"]: r["number"] for r in listed} == page
+    assert {n["name"]: n["number"] for n in tree if n["name"] in page} == page
+
+
+async def test_opening_a_sessions_page_leaves_every_number_as_it_was(world):
+    clock = Clock()
+    running(world, "alpha", "s1")
+    store = Store(world / "b.db", clock=clock)
+    m = SessionManager(store, project_root=world / "home", client_factory=FakeClaude(), clock=clock)
+    oauth = OAuthProvider(store, SECRET, HOST, static_token=SECRET)
+    server = build_server(
+        m, oauth=oauth, conversations=lambda **k: [], live_dir=world / "live", projects_dir=world / "projects"
+    )
+    async with Client(server) as c:
+        await c.call_tool("create_session", {"project": "app", "label": "helper"})
+    before = await numbers(server)
+    transport = httpx.ASGITransport(app=build_app(server))
+    async with httpx.AsyncClient(transport=transport, base_url=HOST) as web:
+        assert (await web.get("/api/v1/sessions/alpha/detail", headers=BEARER)).status_code == 200
+    running(world, "gamma", "s3")
+    after = await numbers(server)
+    assert {name: after[name] for name in before} == before
 
 
 async def test_the_numbers_survive_a_restart_of_the_bridge(world):
@@ -98,3 +153,10 @@ async def test_a_session_can_be_named_by_its_number_wherever_a_tool_takes_a_sess
         read = (await c.call_tool("read_session_output", {"session": spoken})).structured_content
     assert active["id"] == wanted["id"] and active["number"] == 2
     assert read["session"] == wanted["name"]
+
+
+def test_a_list_of_sessions_frees_only_the_numbers_of_the_sessions_it_speaks_for(tmp_path):
+    store = Store(tmp_path / "b.db")
+    here = store.number_sessions(["s1"], scope=lambda sid: "/" not in sid)
+    store.number_sessions(["laptop/s9"], scope=lambda sid: "/" in sid)
+    assert store.session_by_number(here["s1"]) == "s1"

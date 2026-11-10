@@ -99,3 +99,17 @@ async def test_looking_across_machines_never_waits_long_for_one():
     await across.refresh()
     assert time.monotonic() - started < fleet.ASK_SECONDS + 1  # both asked at once, each cut off
     assert [m["error"] for m in across.rows()] == ["did not answer", "did not answer"]
+
+
+async def test_a_session_on_another_machine_gets_its_number_from_the_same_pool_as_the_hub(tmp_path):
+    laptop, deliver = await hub_with_laptop(tmp_path)
+    async with laptop:
+        await approve(laptop, tmp_path / "hub")
+        hub = the_hub(tmp_path, laptop)
+        listed = (await call(hub, "list_active_sessions")).structured_content["sessions"]
+        again = (await call(hub, "list_active_sessions")).structured_content["sessions"]
+        there = next(s for s in listed if s["name"] == "lukas-laptop/mod")
+        sent = await call(hub, "message_active_session", session=f"nummer {there['number']}", message="hei")
+    assert isinstance(there["number"], int)
+    assert [s["number"] for s in again] == [s["number"] for s in listed]
+    assert not sent.is_error and deliver.sent == [("mod", "hei")]
