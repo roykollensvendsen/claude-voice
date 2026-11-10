@@ -446,8 +446,15 @@ Once a plugin is approved, three things can happen to it
   hours, can be switched off at once from anywhere, and `health` and the work page
   show it. The voice then names each changed tool and approves on your yes. It works
   only from the Claude app, never from a program on this computer, and only when the
-  plugin's checkout is clean and level with the branch it follows (`branch`).
+  plugin's checkout is clean and level with the branch it follows (`branch`). Any
+  file git does not know about counts as unclean, a backup included, so keep such
+  files out of the plugin's folder or list them in its `.git/info/exclude`.
 - **A new plugin, or a new command or folder.** Always typed, as above.
+
+An approval typed before developer mode existed recorded less about the plugin. The
+first time the bridge finds the plugin exactly as that approval allowed, it completes
+the approval by itself and logs `plugin <name> approval upgraded`; from then on a
+changed tool can be approved by voice. Nothing more is allowed than before.
 
 To list them:
 

@@ -78,6 +78,8 @@ class Desk:
         plugin, why = await asyncio.to_thread(
             plugins.start_one, self.server, spec, self.approvals, self.client, self._commit
         )
+        # Starting it may have upgraded its approval; that is not a new approval to pick up.
+        self._seen = {**self._seen, name: plugins.read_approvals(self.approvals).get(name)}
         if self.announce is not None:
             with contextlib.suppress(Exception):
                 await self.announce()
