@@ -102,21 +102,46 @@ jobs:
   quality:
     runs-on: ubuntu-latest
     timeout-minutes: 50          # the mutation run is the slow part: each rule runs the test files naming it
+    permissions:
+      contents: read
+      actions: read              # to fetch the levels main kept with its own run
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0         # the ratchet reads the base's quality.json
+          fetch-depth: 0         # the base is measured in a copy when main's levels are missing
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
           version: "0.12.13"
           python-version: "3.12"
       - run: uv sync --locked --all-extras
+      # Main keeps its levels with each of its runs (ADR-CV-009). Missing ones, from a run
+      # cancelled or expired, leave no file, and the ratchet then measures the base itself.
+      - name: The levels main kept for the base
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          for run in $(gh run list --repo "$GITHUB_REPOSITORY" --workflow checks.yml --commit "$BASE" \
+                         --event push --json databaseId -q '.[].databaseId'); do
+            gh run download "$run" --repo "$GITHUB_REPOSITORY" --name quality-levels --dir "$RUNNER_TEMP/base" \
+              && break
+          done
+          ls "$RUNNER_TEMP/base" 2>/dev/null || echo "Main kept no levels for $BASE; the ratchet will measure it."
       - name: The quality ratchet
         env:                     # the pull request's text, for its Ratchet-Exception lines
           RATCHET_EXCEPTIONS: ${{ github.event.pull_request.body }}
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: uv run python scripts/ratchet.py check --base "$BASE"
+          LEVELS: ${{ runner.temp }}/base/levels.json
+          OUT: ${{ runner.temp }}/levels.json
+        run: uv run python scripts/ratchet.py check --base "$BASE" --levels "$LEVELS" --out "$OUT"
+      - name: Keep main's levels with this run
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: quality-levels
+          path: ${{ runner.temp }}/levels.json
+          if-no-files-found: ignore
 
   checks:
     runs-on: ubuntu-latest
