@@ -40,6 +40,7 @@ decision nobody writes down.
 | [ADR-CV-009](ADR-CV-009-main-keeps-the-quality-levels.md) | Main keeps the quality levels, so a pull request never records them | Accepted |
 | [ADR-CV-010](ADR-CV-010-a-known-plugin-is-approved-again-by-voice.md) | A plugin already approved is updated without typing, or approved again by voice | Accepted |
 | [ADR-CV-011](ADR-CV-011-a-short-list-of-owner-actions-is-approved-by-voice.md) | A short, fixed list of the owner's own actions is approved by voice | Accepted |
+| [ADR-CV-012](ADR-CV-012-a-session-opens-where-the-owner-is.md) | A session opens where the owner is | Proposed |
 
 What is deliberately left undone, and what would make each worth doing, is
 [`deferred.md`](deferred.md). A thing left undone with no trigger is a thing
