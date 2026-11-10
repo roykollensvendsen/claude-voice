@@ -28,8 +28,11 @@ def measured(**changes):
     return {**json.loads(json.dumps(BASE)), **changes}
 
 
-def problems(base, now, committed=None, exceptions=()):
-    return ratchet.compare(base, now, committed if committed is not None else now, set(exceptions))
+BUDGET = {"seconds": 100, "tolerance": 0.25}
+
+
+def problems(base, now, exceptions=()):
+    return ratchet.compare(base, now, set(exceptions), BUDGET)
 
 
 # -- what gets worse ----------------------------------------------------------------------
@@ -78,11 +81,9 @@ def test_an_exception_is_written_in_the_pull_request_as_a_line_of_its_own():
 # -- the baseline moves with the code ----------------------------------------------------
 
 
-def test_a_baseline_that_was_not_raised_fails_the_check():
-    better = measured(coverage=88.0, tests=410)
-    found = problems(BASE, better, committed=BASE)
-    assert found and any("ratchet.py update" in p for p in found)
-    assert problems(BASE, better, committed=better) == []
+def test_a_pull_request_need_not_record_the_levels_it_reached():
+    better = measured(coverage=88.0, tests=410, complexity={"pkg/a.py": 8, "pkg/b.py": 5})
+    assert problems(BASE, better) == []
 
 
 def test_the_suite_must_stay_inside_its_time_budget():
@@ -91,12 +92,31 @@ def test_the_suite_must_stay_inside_its_time_budget():
     assert found and "test_seconds" in found[0]
 
 
-def test_updating_records_the_new_measures_and_keeps_the_budget(tmp_path):
+def test_the_time_budget_is_the_one_thing_quality_json_keeps(tmp_path):
     path = tmp_path / "quality.json"
-    path.write_text(json.dumps(BASE))
-    ratchet.write(path, {**measured(coverage=90.0), "test_budget": None})
-    after = json.loads(path.read_text())
-    assert after["coverage"] == 90.0 and after["test_budget"] == BASE["test_budget"]
+    path.write_text(json.dumps({"test_budget": {"seconds": 90, "tolerance": 0.1}}))
+    assert ratchet.budget(path) == {"seconds": 90, "tolerance": 0.1}
+    assert ratchet.budget(tmp_path / "missing.json") == ratchet.DEFAULT_BUDGET
+
+
+def test_measured_levels_are_written_for_main_to_keep(tmp_path):
+    out = tmp_path / "levels.json"
+    ratchet.write_levels(out, {**measured(), "test_budget": None})
+    assert json.loads(out.read_text()) == {k: v for k, v in BASE.items() if k != "test_budget"}
+
+
+def test_mains_kept_levels_are_the_base_when_they_are_there(tmp_path):
+    kept = tmp_path / "levels.json"
+    kept.write_text(json.dumps(BASE))
+    asked = []
+    assert ratchet.base_levels(kept, lambda: asked.append(1) or {}) == BASE
+    assert asked == []
+
+
+def test_when_mains_levels_are_missing_the_base_is_measured(tmp_path):
+    for kept in (None, tmp_path / "missing.json", tmp_path / "broken.json"):
+        (tmp_path / "broken.json").write_text("{not json")
+        assert ratchet.base_levels(kept, lambda: BASE) == BASE
 
 
 # -- what is measured --------------------------------------------------------------------
