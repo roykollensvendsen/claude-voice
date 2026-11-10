@@ -285,3 +285,13 @@ async def test_every_change_of_the_chosen_session_is_logged_with_who_made_it(bri
             await mcp.call_tool("set_active_session", {"session": "billing-ab"})
     lines = [r.getMessage() for r in caplog.records if r.name == "claude_voice" and r.getMessage().startswith("active")]
     assert lines == ["active -> billing-ab by page", "active -> none by page", "active -> billing-ab by voice"]
+
+
+async def test_the_plain_address_sends_a_browser_to_the_phone_page(bridge, tmp_path):
+    server, _, _, _ = bridge
+    page = tmp_path / "ui"
+    page.mkdir()
+    (page / "index.html").write_text("<html>page</html>")
+    async with client(build_app(server, ui_dir=page)) as c:
+        r = await c.get("/", follow_redirects=False)
+    assert r.status_code in (302, 307) and r.headers["location"] == "/ui/"
