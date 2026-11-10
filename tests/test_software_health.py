@@ -131,6 +131,17 @@ def test_the_levels_main_kept_are_the_value_now_and_extend_the_trend(tmp_path):
     assert "200 s budget" in metrics["test_time"]["text"]
 
 
+def test_a_repository_with_no_time_budget_still_shows_how_long_its_tests_take(tmp_path):
+    empty = tmp_path / "plugin"
+    empty.mkdir()
+    kept = [{**QUALITY, "tests": 470, "test_budget": None}]
+    metrics = by_id(software.repo_report("tv-mcp", "https://github.com/o/tv-mcp", empty, kept=kept))
+    assert metrics["tests"]["value"] == 470
+    assert metrics["test_time"]["value"] == 103.4
+    assert metrics["test_time"]["text"] == "103 s"
+    assert metrics["test_time"]["status"] == "unknown"
+
+
 def fake_gh(levels_by_run, calls):
     """GitHub's command line as far as kept_levels uses it: listing main's runs and downloading one's levels."""
 
