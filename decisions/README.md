@@ -37,6 +37,7 @@ decision nobody writes down.
 | [ADR-CV-006](ADR-CV-006-other-machines-through-the-laptop.md) | Reach other machines through the laptop, with a small agent on each | Accepted |
 | [ADR-CV-007](ADR-CV-007-a-phone-agent-and-voice-calls.md) | A phone joins the hub as an agent, under privacy rules every machine keeps | Proposed |
 | [ADR-CV-008](ADR-CV-008-approvals-reach-the-phone-when-the-app-is-closed.md) | Approvals reach the phone when the app is closed | Accepted |
+| [ADR-CV-009](ADR-CV-009-main-keeps-the-quality-levels.md) | Main keeps the quality levels, so a pull request never records them | Accepted |
 
 What is deliberately left undone, and what would make each worth doing, is
 [`deferred.md`](deferred.md). A thing left undone with no trigger is a thing
