@@ -40,8 +40,7 @@ Docker and about two minutes. Run it when you touch the README's first steps,
 the setup check or the packaging.
 
 The ratchet takes about ten minutes, because it switches every rule off in
-turn; `--skip-mutation` gives a quick look that keeps the recorded mutation
-figures.
+turn; `--skip-mutation` gives a quick look that keeps main's mutation figures.
 
 Run them after the last edit, not before it. A file edited after the format
 gate ran will fail in continuous integration, which is the cheapest possible
@@ -50,7 +49,7 @@ way to learn that the gates are not a ritual performed once.
 ## The quality ratchet
 
 The gates above pass or fail. None of them notices the code slowly getting
-worse, so `quality.json` at the root records the levels it has reached:
+worse, so the ratchet compares these levels with the ones main has reached:
 
 | Measure | Better is |
 | --- | --- |
@@ -71,20 +70,21 @@ where it is all put together; and `cli`. A new module is given its layer in
 `LAYERS`. When code is needed twice, it goes into a function both places call,
 rather than being copied.
 
-`scripts/ratchet.py check` fails a change that makes any of them worse than the
-base branch, and a change whose `quality.json` does not record the levels it
-reached. So a change that improves something runs
-`uv run python scripts/ratchet.py update` and commits `quality.json` with it,
-and the level can never slip back. A change that must make a measure worse
-says so in its pull request, on a line of its own:
+`scripts/ratchet.py check` fails a change that makes any of them worse than
+main. Main's levels are measured by continuous integration after every merge
+and kept with that run, so a pull request never records them, and merging one
+never makes another stale ([ADR-CV-009](decisions/ADR-CV-009-main-keeps-the-quality-levels.md)).
+When main's levels for that commit are missing, the check measures the commit
+itself, which takes about ten minutes more. A change that must make a measure
+worse says so in its pull request, on a line of its own:
 
 <!-- not run: an example line in a pull request -->
 ```
 Ratchet-Exception: coverage - the module it covered was deleted
 ```
 
-and records the new level with `update` like any other change. The time budget
-is a limit, not a level: it changes only by hand, in `quality.json`.
+The time budget is a limit, not a level: it is the one thing in `quality.json`,
+and it changes only by hand.
 
 ## How a change is made
 
