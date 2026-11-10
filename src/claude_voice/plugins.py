@@ -62,6 +62,11 @@ def tool_fingerprints(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> d
     return {tool: _hash({"schema": t.get("schema"), "read_only": t.get("read_only")}) for tool, t in shown.items()}
 
 
+def mark_fingerprint(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> str:
+    """Which allowed tools say they only read, as the plugin described them."""
+    return _hash({tool: listing.get(tool, {}).get("read_only") for tool in sorted(spec.tools)})
+
+
 def _approvals(path: Path) -> dict[str, Any]:
     try:
         return dict(json.loads(path.expanduser().read_text()))
@@ -89,9 +94,8 @@ def inputs_approved(spec: PluginSpec, listing: dict[str, dict[str, Any]], path: 
     # RULE: a plugin tool whose inputs changed is not offered until approved again
     if found.get("inputs") != input_fingerprint(spec, listing):
         return False
-    each = found.get("tools")  # an approval from before read-only marks counted has none
     # RULE: a changed read only mark needs approving again
-    return each is None or each == tool_fingerprints(spec, listing)
+    return found.get("marks") in (None, mark_fingerprint(spec, listing))  # None: approved before marks counted
 
 
 def known_place(spec: PluginSpec, path: Path | None = None) -> bool:
@@ -102,23 +106,22 @@ def known_place(spec: PluginSpec, path: Path | None = None) -> bool:
 
 
 def changes(spec: PluginSpec, listing: dict[str, dict[str, Any]], path: Path | None = None) -> list[str]:
-    """Each tool that differs from what the owner approved, in a few words to read aloud."""
-    each = _approval(spec, path).get("tools")
+    """Each tool that differs from what the owner approved, in a few words to read aloud.
+    An approval from before tools were counted one by one names every tool."""
+    stored = _approval(spec, path).get("tools")
+    each: dict[str, str] = stored if isinstance(stored, dict) else {}
     now = tool_fingerprints(spec, listing)
-    said = []
-    for tool in spec.tools:
-        if isinstance(each, dict) and each.get(tool) == now[tool]:
-            continue
-        found = listing.get(tool)
-        if found is None:
-            said.append(f"{tool} is gone from the plugin")
-            continue
-        new = "new: " if isinstance(each, dict) and tool not in each else ""
-        mark = ", only reads" if found.get("read_only") else ""
-        said.append(f"{new}{tool} takes {takes(found.get('schema'))}{mark}")
-    if isinstance(each, dict):
-        said += [f"{tool} is no longer offered" for tool in each if tool not in now]
-    return said
+    said = [_change(tool, listing.get(tool), new=bool(each) and tool not in each) for tool in spec.tools]
+    said = [s for tool, s in zip(spec.tools, said, strict=True) if not each or each.get(tool) != now[tool]]
+    return said + [f"{tool} is no longer offered" for tool in each if tool not in now]
+
+
+def _change(tool: str, found: dict[str, Any] | None, new: bool) -> str:
+    """One changed tool, in a few words."""
+    if found is None:
+        return f"{tool} is gone from the plugin"
+    mark = ", only reads" if found.get("read_only") else ""
+    return f"{'new: ' if new else ''}{tool} takes {takes(found.get('schema'))}{mark}"
 
 
 def checkout_refusal(status: dict[str, Any] | None, branch: str) -> str | None:
@@ -153,6 +156,7 @@ def approve(spec: PluginSpec, listing: dict[str, dict[str, Any]], path: Path | N
             "inputs": input_fingerprint(spec, listing),
             "place": place_fingerprint(spec),
             "tools": tool_fingerprints(spec, listing),
+            "marks": mark_fingerprint(spec, listing),
         },
     }
     target.parent.mkdir(parents=True, exist_ok=True)

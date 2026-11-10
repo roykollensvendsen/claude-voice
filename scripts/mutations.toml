@@ -288,7 +288,7 @@ replace = 'if False:'
 [[rule]]
 name = "a changed read only mark needs approving again"
 file = "src/claude_voice/plugins.py"
-find = 'return each is None or each == tool_fingerprints\(spec, listing\)'
+find = 'return found\.get\("marks"\) in \(None, mark_fingerprint\(spec, listing\)\)'
 replace = 'return True'
 
 [[rule]]
