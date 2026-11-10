@@ -268,7 +268,7 @@ than a guess.
 
 | Call | Answer |
 | --- | --- |
-| `GET /api/v1/work` | `{"as_of", "waiting_on_owner": [{"id", "text", "command"\|null, "since", "repo"\|null, "session"\|null}], "open_prs": [{"repo", "number", "title", "url", "checks": "pass"\|"fail"\|"pending", "draft"}], "unreadable": ["<repo>"]}` |
+| `GET /api/v1/work` | `{"as_of", "waiting_on_owner": [{"id", "text", "command"\|null, "since", "repo"\|null, "session"\|null}], "open_prs": [{"repo", "number", "title", "url", "checks": "pass"\|"fail"\|"pending", "draft"}], "unreadable": ["<repo>"], "developer_mode": {"on", "until"\|null}}` |
 
 What waits on the owner is the manager session's own list, read fresh on every
 call from `~/.local/state/claude-voice/waiting.json`; an item with no `id` or
@@ -276,7 +276,8 @@ call from `~/.local/state/claude-voice/waiting.json`; an item with no `id` or
 claude-voice-ui and every plugin's repository, asked of GitHub at most once a
 minute; a repository whose pull requests could not be read is named in
 `unreadable` rather than shown as having none. `text` and `command` are plain
-text, never markup.
+text, never markup. `developer_mode` says whether the owner's voice may approve a
+plugin whose tools changed, and until when (ADR-CV-010); it ends by itself.
 
 ## A session's own page
 
