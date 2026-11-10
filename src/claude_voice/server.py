@@ -280,6 +280,71 @@ async def log_requests(ctx, call_next):
     return result
 
 
+BUSY = ("busy", "shell")  # a session's statuses while it works
+
+
+def _not_sent(target: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
+    """The answer to a question that was never sent: the session, why, and no reply."""
+    return {
+        "session": target["name"],
+        **outcome,
+        "session_ended": False,
+        "reply": "",
+        "reply_final": False,
+        "turns": [],
+        "next_after": -1,
+    }
+
+
+def _asked_at(turns: list[dict[str, Any]], probe: str) -> dict[str, Any] | None:
+    """Our own message among a session's new turns, or None while it is not in view."""
+    return next((t for t in turns if t["role"] == "user" and probe in t["text"]), None)
+
+
+def _settled(
+    now: dict[str, Any],
+    new_turns: list[dict[str, Any]],
+    probe: str,
+    was_busy: bool,
+    seen_busy: bool,
+    receive_ran_out: bool,
+) -> str | None:
+    """What one look at an asked session shows: answered, not_received, waiting, or None to look again."""
+    asked = _asked_at(new_turns, probe)
+    answers = [t for t in new_turns if t["role"] == "assistant"]
+    if was_busy and asked is not None and any(t["index"] > asked["index"] for t in answers):
+        # Asked mid-work: its first words after our question are the answer; the
+        # rest of its turn belongs to whatever it was doing.
+        return "answered"
+    replied = seen_busy or bool(answers)
+    arrived = replied or asked is not None
+    if not arrived and receive_ran_out:
+        return "not_received"  # handed over, yet never reached the conversation
+    if replied and now.get("status") == "idle":
+        return "answered"
+    if now.get("status") == "waiting" and arrived:
+        return "waiting"
+    return None
+
+
+def _reply_turns(
+    fresh: list[dict[str, Any]], probe: str, before: int, status: str, was_busy: bool, max_chars: int
+) -> tuple[list[dict[str, Any]], int]:
+    """The turns that answer our message, clipped, and the index they follow."""
+    # Only what answers our message counts: what the session wrote after it. Its
+    # last words are the reply; the rest of its turn is how it got there.
+    anchor = _asked_at(fresh, probe)
+    start = anchor["index"] if anchor else before - 1
+    new = [t for t in fresh if t["role"] == "assistant" and t["index"] > start]
+    if anchor is None and status != "still_working":
+        new = new[-1:]  # the message is not in view: only the session's final words
+    elif anchor is not None and was_busy and new:
+        new = new[:1]
+    for turn in new:
+        turn["text"] = transcripts.clip(turn["text"], max(max_chars, 20))
+    return new, start
+
+
 def build_server(
     manager: SessionManager,
     oauth: OAuthProvider | None = None,
@@ -1324,6 +1389,36 @@ def build_server(
         """The running session with this process id now, or None once it has exited."""
         return next((d for d in live_sessions() if d.get("pid") == pid), None)
 
+    async def await_reply(
+        target: dict[str, Any], before: int, was_busy: bool, probe: str, wait_seconds: float
+    ) -> tuple[dict[str, Any], str, dict[str, Any] | None]:
+        """Watch a session we just sent a message until it settles, ends or the wait runs out.
+
+        Gives back the session as last seen, the status, and what it waits for, if anything."""
+        pid, seen_busy = target.get("pid"), False
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        deadline = deadline_after(started, wait_seconds)
+        while True:
+            now = live_by_pid(pid)
+            if now is None:
+                return target, "session_ended", None
+            target = now
+            # A quick turn can start and end between two looks, so a new reply
+            # counts as much as having seen the session busy.
+            seen_busy = seen_busy or now.get("status") in BUSY
+            new_turns = numbered_turns(now)[before:]
+            received_late = loop.time() - started >= receive_seconds
+            settled = _settled(now, new_turns, probe, was_busy, seen_busy, received_late)
+            if settled == "waiting":
+                blocked = waiting(now)
+                return target, (blocked["status"] if blocked else "needs_input"), blocked
+            if settled:
+                return target, settled, None
+            if loop.time() >= deadline:
+                return target, "still_working", None
+            await asyncio.sleep(poll_seconds)
+
     @tool(annotations=READ_ONLY)
     async def wait_for_session(
         session: str, wait_seconds: float = 60, after: int | None = None, max_chars: int = 600
@@ -1402,87 +1497,21 @@ def build_server(
         target = find_live(session)
         moved = moved_to(target)
         if moved:
-            return {
-                "session": target["name"],
-                "status": "moved",
-                "moved_to": moved,
-                "session_ended": False,
-                "reply": "",
-                "reply_final": False,
-                "turns": [],
-                "next_after": -1,
-            }
-
+            return _not_sent(target, {"status": "moved", "moved_to": moved})
         blocked = waiting(target)
         if blocked:
             # A message would only queue behind what it waits for; send nothing.
-            return {
-                "session": target["name"],
-                **blocked,
-                "session_ended": False,
-                "reply": "",
-                "reply_final": False,
-                "turns": [],
-                "next_after": -1,
-            }
+            return _not_sent(target, blocked)
         before = len(numbered_turns(target))
-        was_busy = target.get("status") in ("busy", "shell")
+        was_busy = target.get("status") in BUSY
         out = await deliver(address(target), message)
         if not out.get("delivered"):
             raise ToolError(f"Could not deliver: {out.get('detail') or 'unknown reason'}")
 
-        pid, status, seen_busy = target.get("pid"), "still_working", False
-        started = asyncio.get_running_loop().time()
-        deadline = deadline_after(started, wait_seconds)
         probe = message.strip()[:80]
-        while True:
-            now = live_by_pid(pid)
-            if now is None:
-                status = "session_ended"
-                break
-            target = now
-            # A quick turn can start and end between two looks, so a new reply
-            # counts as much as having seen the session busy.
-            seen_busy = seen_busy or now.get("status") in ("busy", "shell")
-            new_turns = numbered_turns(now)[before:]
-            anchor_at = next((t["index"] for t in new_turns if t["role"] == "user" and probe in t["text"]), None)
-            if (
-                was_busy
-                and anchor_at is not None
-                and any(t["role"] == "assistant" and t["index"] > anchor_at for t in new_turns)
-            ):
-                # Asked mid-work: its first words after our question are the answer; the
-                # rest of its turn belongs to whatever it was doing.
-                status = "answered"
-                break
-            replied = seen_busy or any(t["role"] == "assistant" for t in new_turns)
-            arrived = replied or any(t["role"] == "user" and probe in t["text"] for t in new_turns)
-            if not arrived and asyncio.get_running_loop().time() - started >= receive_seconds:
-                status = "not_received"  # handed over, yet never reached the conversation
-                break
-            if replied and now.get("status") == "idle":
-                status = "answered"
-                break
-            if now.get("status") == "waiting" and (seen_busy or replied or arrived):
-                blocked = waiting(now)
-                status = blocked["status"] if blocked else "needs_input"
-                break
-            if asyncio.get_running_loop().time() >= deadline:
-                break
-            await asyncio.sleep(poll_seconds)
-
+        target, status, blocked = await await_reply(target, before, was_busy, probe, wait_seconds)
         fresh = numbered_turns(target)[before:] if status != "session_ended" else []
-        # Only what answers our message counts: what the session wrote after it. Its
-        # last words are the reply; the rest of its turn is how it got there.
-        anchor = next((t for t in fresh if t["role"] == "user" and probe in t["text"]), None)
-        start = anchor["index"] if anchor else before - 1
-        new = [t for t in fresh if t["role"] == "assistant" and t["index"] > start]
-        if anchor is None and status != "still_working":
-            new = new[-1:]  # the message is not in view: only the session's final words
-        elif anchor is not None and was_busy and new:
-            new = new[:1]
-        for turn in new:
-            turn["text"] = transcripts.clip(turn["text"], max(max_chars, 20))
+        new, start = _reply_turns(fresh, probe, before, status, was_busy, max_chars)
         return {
             "session": target["name"],
             "status": status,
