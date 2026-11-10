@@ -251,16 +251,17 @@ not on every refresh.
 | --- | --- |
 | `GET /api/v1/health/software` | `{"as_of", "repos": [{"name", "url", "as_of", "metrics": [{"id", "label", "value", "unit", "text", "status": "ok"\|"warn"\|"bad"\|"unknown", "url", "trend": [≤30 values, oldest first]}]}]}` |
 
-One entry for claude-voice and one for claude-voice-ui, read from each clone's
-`quality.json` (the quality ratchet's record, see CONTRIBUTING) and from the
-latest run of the checks on main; kept for ten minutes. The measures, by `id`:
+One entry for claude-voice and one for claude-voice-ui, read from the levels
+main keeps with each run of its checks (see CONTRIBUTING, "The quality ratchet"),
+from each clone's `quality.json` for the time before that, and from the latest
+run of the checks on main; kept for ten minutes. The measures, by `id`:
 `coverage`, `mutation` (rules proven by a test, in percent), `tests`, `problems`
 (lint and type errors), `cycles`, `layers` (imports that break the layer order),
 `duplication` (the share of lines in repeated blocks), `complexity` (the most tangled function),
 `test_time` (against its budget) and `ci` (the checks on main, with the run as
-`url`). The trend is each recorded version of `quality.json` in git, so it moves
-change by change. A repository with nothing recorded has every measure
-`unknown` rather than a guess.
+`url`). The trend is each measured version, oldest first, so it moves change by
+change. A repository with nothing measured has every measure `unknown` rather
+than a guess.
 
 ## A session's own page
 
