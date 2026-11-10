@@ -59,6 +59,33 @@ def line_of(text: str, pattern: str, occurrence: int) -> int:
     raise SystemExit(msg)
 
 
+def switched_off(text: str, rule: dict[str, object]) -> str:
+    """The file's text with the rule's whole line replaced, keeping its indentation."""
+    lines = text.splitlines()
+    i = line_of(text, str(rule["find"]), int(str(rule.get("occurrence", 1))))
+    # Keep the line's own indentation: a replacement that carries its own
+    # would have to be kept in step with the source, and silently would not be.
+    indent = lines[i][: len(lines[i]) - len(lines[i].lstrip())]
+    lines[i] = indent + str(rule["replace"]).strip()
+    return "\n".join(lines) + "\n"
+
+
+def broken(file: str, mutated: str) -> str | None:
+    """Why a mutated Python file no longer compiles, or None when it does.
+
+    A replacement cut off mid-expression stops the module importing, so every
+    test in its files errors and none is the rule's own: the run would call the
+    rule killed by another test when the row itself is wrong.
+    """
+    if not file.endswith(".py"):
+        return None
+    try:
+        compile(mutated, file, "exec")
+    except SyntaxError as e:
+        return f"line {e.lineno}: {e.msg}"
+    return None
+
+
 def repair() -> None:
     """Put back a file an earlier run was killed in the middle of mutating."""
     if not RECOVERY.is_file():
@@ -141,6 +168,7 @@ def main() -> int:
         return 0
     results = []
     lost: list[str] = []
+    bad_rows: list[str] = []
     standing: tuple[pathlib.Path, str, str] | None = None
     try:
         for rule in rules:
@@ -149,13 +177,12 @@ def main() -> int:
             # bulk snapshot taken up front is restored over anything edited
             # since, and losing an edit that way costs more than the run.
             text = path.read_text(encoding="utf-8")
-            lines = text.splitlines()
-            i = line_of(text, rule["find"], rule.get("occurrence", 1))
-            # Keep the line's own indentation: a replacement that carries its own
-            # would have to be kept in step with the source, and silently would not be.
-            indent = lines[i][: len(lines[i]) - len(lines[i].lstrip())]
-            lines[i] = indent + rule["replace"].strip()
-            mutated = "\n".join(lines) + "\n"
+            mutated = switched_off(text, rule)
+            why = broken(rule["file"], mutated)
+            if why:
+                bad_rows.append(rule["name"])
+                print(f"BROKEN   {rule['name']}: the replacement is not valid code ({why})")  # noqa: T201
+                continue
             RECOVERY.write_text(
                 json.dumps({"file": rule["file"], "original": text, "mutated": mutated}), encoding="utf-8"
             )
@@ -187,12 +214,14 @@ def main() -> int:
         print("SURVIVED, so nothing protects them:", ", ".join(survived))  # noqa: T201
     if lucky:
         print("KILLED BY ANOTHER TEST, so the evidence is not about them:", ", ".join(lucky))  # noqa: T201
+    if bad_rows:
+        print("BROKEN ROW, so nothing was tested; make the replacement a whole valid line:", ", ".join(bad_rows))  # noqa: T201
     if lost:
         print("CHANGED WHILE MUTATED, so left as they are:", ", ".join(sorted(set(lost))))  # noqa: T201
         print("Edit the tree while this runs and the result is not about your code.")  # noqa: T201
     if args.write:
         args.write.write_text(report(results, survived, lucky), encoding="utf-8")
-    return 1 if survived or lucky or lost else 0
+    return 1 if survived or lucky or lost or bad_rows else 0
 
 
 def report(results: list[tuple[str, int, str, bool]], survived: list[str], lucky: list[str]) -> str:
