@@ -13,6 +13,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import re
 import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
@@ -40,6 +41,8 @@ ROUTED = {
     "close_session": "session_id",
 }
 LISTS = ("list_active_sessions", "fleet_recap")
+# A session named by its short number, as said aloud: "3", "nr 3", "nr. 3", "nummer 3", "number 3".
+SPOKEN_NUMBER = re.compile(r"(?:nr\.?|nummer|number)?\s*(\d{1,4})", re.IGNORECASE)
 
 
 def _now_iso(at: float) -> str:
@@ -55,9 +58,31 @@ class Fleet:
         self._seen: dict[str, dict[str, Any]] = {}  # per machine: its state and sessions
         self._asked_at: dict[str, str] = {}  # when the hub first saw each remote question
         self.publish: Callable[[str, dict[str, Any]], None] = lambda event, data: None
+        self.numbers: Any = None  # the hub's Store, which hands out the short session numbers
 
     def _machine(self, name: str) -> machines.Machine | None:
         return next((m for m in self.machines if m.machine.name == name), None)
+
+    def numbered(self) -> dict[str, int]:
+        """The hub's short number for every session it knows on the other machines."""
+        ids = [
+            f"{m.machine.name}/{row.get('id') or row.get('claude_session_id')}"
+            for m in self.machines
+            for row in self._seen.get(m.machine.name, {}).get("sessions", [])
+        ]
+        if self.numbers is None:
+            return {}
+        # RULE: a session on another machine gets its number from the same pool as the hub
+        return dict(self.numbers.number_sessions(ids, scope=lambda sid: "/" in sid))
+
+    def _number_of(self, numbers: dict[str, int], machine: str, row: dict[str, Any]) -> int | None:
+        return numbers.get(f"{machine}/{row.get('id') or row.get('claude_session_id')}")
+
+    def resolve(self, session: Any) -> Any:
+        """`session`, or the session elsewhere that its spoken number names."""
+        match = SPOKEN_NUMBER.fullmatch(str(session).strip()) if isinstance(session, str) else None
+        found = self.numbers.session_by_number(int(match.group(1))) if match and self.numbers else None
+        return found if found and "/" in found else session
 
     def split(self, session: Any) -> tuple[machines.Machine, str] | None:
         """(machine, its own name for the session) when `session` names one elsewhere."""
@@ -177,14 +202,17 @@ class Fleet:
     def sessions(self) -> list[dict[str, Any]]:
         """Every session on the other machines, named with the machine in front."""
         out = []
+        numbers = self.numbered()
         for m in self.machines:
             for row in self._seen.get(m.machine.name, {}).get("sessions", []):
-                out.append({**row, "name": f"{m.machine.name}/{row.get('name')}", "machine": m.machine.name})
+                name = f"{m.machine.name}/{row.get('name')}"
+                number = self._number_of(numbers, m.machine.name, row)
+                out.append({**row, "name": name, "machine": m.machine.name, "number": number})
         return out
 
     # -- what the phone page reads --------------------------------------------------------
-    def _page_row(self, machine: str, row: dict[str, Any]) -> dict[str, Any]:
-        out = {**row, "id": f"{machine}/{row.get('id')}", "machine": machine, "number": None}
+    def _page_row(self, machine: str, row: dict[str, Any], number: int | None = None) -> dict[str, Any]:
+        out = {**row, "id": f"{machine}/{row.get('id')}", "machine": machine, "number": number}
         if row.get("kind") != "bridge-session":
             out["answer_in"] = "claude_app"  # its questions are answered through Remote Control
         return out
@@ -192,8 +220,9 @@ class Fleet:
     def listing(self, local: dict[str, Any]) -> dict[str, Any]:
         """The hub's own session list for the page, with every reachable machine's added."""
         here = [{**row, "machine": None} for row in local.get("sessions", [])]
+        numbers = self.numbered()
         there = [
-            self._page_row(m.machine.name, row)
+            self._page_row(m.machine.name, row, self._number_of(numbers, m.machine.name, row))
             for m in self.machines
             for row in self._seen.get(m.machine.name, {}).get("sessions", [])
         ]
@@ -340,6 +369,17 @@ def _named_back(body: Any, machine: str, own: str) -> Any:
     return out
 
 
+def _routed(fleet: Fleet, tool: str, arguments: dict[str, Any]) -> tuple[str | None, Any]:
+    """The argument naming the session, and its machine if that is another one. A spoken
+    number is turned into the session's name first."""
+    key = ROUTED.get(tool)
+    if not key:
+        return None, None
+    arguments[key] = fleet.resolve(arguments.get(key))
+    # RULE: a session on another machine is reached by the machine name in front
+    return key, fleet.split(arguments.get(key))
+
+
 def middleware(fleet: Fleet) -> Any:
     """Pass a call that names a session elsewhere to its machine, and add the other
     machines' sessions and states to the tools that look across sessions."""
@@ -350,11 +390,9 @@ def middleware(fleet: Fleet) -> Any:
         if ctx.method != "tools/call" or not fleet.machines:
             return await call_next(ctx)
         arguments = dict(params.get("arguments") or {})
-        key = ROUTED.get(tool)
-        target = fleet.split(arguments.get(key)) if key else None
+        key, target = _routed(fleet, tool, arguments)
         if target is not None and key is not None:
             machine, own = target
-            # RULE: a session on another machine is reached by the machine name in front
             try:
                 answer = await machine.call(tool, {**arguments, key: own})
             except RuntimeError as exc:

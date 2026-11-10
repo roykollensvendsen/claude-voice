@@ -10,6 +10,8 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
+QUIET = 600.0  # seconds a freed session number rests before another session gets it
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions(
   id TEXT PRIMARY KEY,
@@ -134,10 +136,14 @@ class Store:
         ).fetchall()
         return [(float(r[0]), str(r[1]), str(r[2]), int(r[3])) for r in rows]
 
-    def number_sessions(self, session_ids: list[str], hold_seconds: float = 0) -> dict[str, int]:
+    def number_sessions(
+        self, session_ids: list[str], hold_seconds: float = QUIET, scope: Callable[[str], bool] | None = None
+    ) -> dict[str, int]:
         """Each session's short number: kept while it lives, the smallest free one for a new
-        session, and a number whose session ended free again after `hold_seconds` (at once
-        by default, so the numbers stay small)."""
+        session, and a number whose session ended free again after `hold_seconds`.
+
+        `scope` says which sessions this list speaks for: one that is in scope and missing
+        has ended. Sessions outside it (another machine's) keep their numbers."""
         now = self.clock()
         wanted = set(session_ids)
         with self.db:
@@ -146,23 +152,32 @@ class Store:
             )
             rows = self.db.execute("SELECT session_id, number, released_at FROM session_numbers").fetchall()
             known = {str(r[0]): (int(r[1]), r[2]) for r in rows}
-            for sid, (_, released) in known.items():
-                if sid not in wanted and released is None:
-                    self.db.execute("UPDATE session_numbers SET released_at = ? WHERE session_id = ?", (now, sid))
-                elif sid in wanted and released is not None:
-                    self.db.execute("UPDATE session_numbers SET released_at = NULL WHERE session_id = ?", (sid,))
-            taken = {number for number, _ in known.values()}
+            self._mark_ended(known, wanted, now, scope)
             out = {sid: known[sid][0] for sid in session_ids if sid in known}
-            for sid in session_ids:
-                if sid in out:
-                    continue
-                n = 1
-                while n in taken:
-                    n += 1
-                taken.add(n)
-                out[sid] = n
-                self.db.execute("INSERT OR REPLACE INTO session_numbers VALUES (?, ?, NULL)", (sid, n))
+            self._give_numbers(session_ids, out, {number for number, _ in known.values()})
         return out
+
+    def _mark_ended(
+        self, known: dict[str, tuple[int, Any]], wanted: set[str], now: float, scope: Callable[[str], bool] | None
+    ) -> None:
+        for sid, (_, released) in known.items():
+            # RULE: a list of sessions frees only the numbers of the sessions it speaks for
+            if sid not in wanted and released is None and (scope is None or scope(sid)):
+                self.db.execute("UPDATE session_numbers SET released_at = ? WHERE session_id = ?", (now, sid))
+            elif sid in wanted and released is not None:
+                self.db.execute("UPDATE session_numbers SET released_at = NULL WHERE session_id = ?", (sid,))
+
+    def _give_numbers(self, session_ids: list[str], out: dict[str, int], taken: set[int]) -> None:
+        """Give each session in `session_ids` without a number the smallest one not taken."""
+        for sid in session_ids:
+            if sid in out:
+                continue
+            n = 1
+            while n in taken:
+                n += 1
+            taken.add(n)
+            out[sid] = n
+            self.db.execute("INSERT OR REPLACE INTO session_numbers VALUES (?, ?, NULL)", (sid, n))
 
     def number_sessions_peek(self, session_id: str) -> int | None:
         row = self.db.execute(
