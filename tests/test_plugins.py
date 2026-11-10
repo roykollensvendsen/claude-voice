@@ -258,8 +258,10 @@ def test_the_approvals_file_holds_no_secret_only_a_fingerprint(tmp_path):
     approvals = tmp_path / "approved.json"
     plugins.approve(GARAGE, LISTING, approvals)
     body = json.loads(approvals.read_text())
-    assert set(body) == {"garage"} and set(body["garage"]) == {"runs", "inputs"}
-    assert all(len(v) == 64 for v in body["garage"].values())
+    assert set(body) == {"garage"} and set(body["garage"]) == {"runs", "inputs", "place", "tools"}
+    each = body["garage"].pop("tools")  # one fingerprint per tool, so a change can be named
+    assert set(each) == set(GARAGE.tools)
+    assert all(len(v) == 64 for v in [*body["garage"].values(), *each.values()])
 
 
 async def test_a_plugins_own_instructions_reach_the_voice(tmp_path):

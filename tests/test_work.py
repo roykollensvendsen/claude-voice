@@ -149,3 +149,24 @@ async def test_the_phone_page_reads_the_work_with_the_token_and_not_without(tmp_
         page = (await c.get("/api/v1/work", headers=BEARER)).json()
     assert refused.status_code == 401
     assert page["waiting_on_owner"][0]["text"] == "One thing." and page["as_of"]
+
+
+async def test_the_work_page_says_whether_developer_mode_is_on(tmp_path, monkeypatch):
+    from claude_voice import devmode
+
+    monkeypatch.setattr(devmode, "STATE", tmp_path / "developer-mode.json")
+    path = write_waiting(tmp_path / "waiting.json", [])
+    store = Store(tmp_path / "b.db")
+    m = SessionManager(store, project_root=tmp_path, client_factory=FakeClaude())
+    server = build_server(
+        m,
+        oauth=OAuthProvider(store, SECRET, HOST, static_token=SECRET),
+        conversations=lambda **k: [],
+        live_dir=tmp_path / "live",
+        repo_config=config.Config(config.Repos(), config.Paths(None, None, None, None), None),
+        kept_levels=lambda repo: [],
+        work_board=work.Board({}, lambda args: "[]", waiting_file=path),
+    )
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=build_app(server)), base_url=HOST) as c:
+        page = (await c.get("/api/v1/work", headers=BEARER)).json()
+    assert page["developer_mode"] == {"on": False, "until": None}

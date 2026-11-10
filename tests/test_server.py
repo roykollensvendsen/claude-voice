@@ -260,6 +260,8 @@ async def test_status_tools_are_marked_read_only_so_clients_need_no_confirmation
         "digest_session",
         "side_question",
         "wait_for_session",
+        "developer_mode_request",  # a question only; the confirm is what switches
+        "plugin_approve_request",
     }
     for name in read_only:
         ann = tools[name].annotations
