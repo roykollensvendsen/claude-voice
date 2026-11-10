@@ -165,7 +165,9 @@ this, and continuous integration still refuses one that reaches a pull request.
 - **Never break what Hermes or the voice app uses.** Other programs call the
   bridge's tools by name and read their fields. Add a tool or a field rather
   than renaming or removing one, and say in the pull request which callers it
-  touches. A change that must break one is agreed with that caller first.
+  touches. A change that must break one is agreed with that caller first. The
+  voice is the main caller, so once a tool changes, ask it what it needs, as
+  [docs/voice-feedback.md](docs/voice-feedback.md) describes.
 - **No links to a Claude session in a commit message.** A `Claude-Session:`
   line, or any `claude.ai/code/session_` address, points into one person's
   account and is a dead link to everyone else. `scripts/no_session_links.py`

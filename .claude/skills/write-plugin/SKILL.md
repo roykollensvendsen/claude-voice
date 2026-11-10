@@ -127,7 +127,10 @@ these, in order, so a new plugin starts at the level the others reached:
 5. **Wired in** as in "Wiring it in" above. The owner's approval is one command
    the manager gives them.
 6. **Checked by voice**: after the restart, one of its tools is called through
-   the bridge and its first lines are what the voice sees.
+   the bridge and its first lines are what the voice sees. Then the voice is
+   asked what it needs, as
+   [docs/voice-feedback.md](../../../docs/voice-feedback.md) describes, and each
+   point becomes an issue or a pull request.
 
 Never approve a plugin for the owner, and never put a tool on the allow-list
 that the plugin's own session has not called safe for voice.

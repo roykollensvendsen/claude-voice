@@ -34,6 +34,9 @@ item as soon as the owner has done it. Never put a secret in it.
 
 - A report: note it; restart the bridge if the change needs it, and check by
   calling one of that plugin's tools through the bridge.
+- A new or changed tool is running: ask the voice what it needs, as
+  [docs/voice-feedback.md](../../../docs/voice-feedback.md) describes, and send
+  each point to the session that owns the tool.
 - A question: decide it yourself when the owner's earlier decisions or the
   standard settle it, and say so in your next report. Otherwise put it on the
   owner's list, and send the answer back as soon as it comes.

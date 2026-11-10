@@ -12,7 +12,9 @@ says how to build one; this page says what it must do once built.
 
 ## A. How a plugin behaves towards the voice
 
-These hold for every plugin, wherever it lives, a fork included.
+These hold for every plugin, wherever it lives, a fork included. Whether they
+are met is decided by the voice that uses the tools, so it is asked after every
+new or changed tool, as [voice-feedback.md](voice-feedback.md) describes.
 
 1. **Names the voice can tell apart.** A tool's name says what it does, and no
    two names sound alike. The pairs that must not be confused (`vacuum_start`
