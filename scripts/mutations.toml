@@ -440,3 +440,9 @@ name = "an answer from the page reaches the machine the question is on"
 file = "src/claude_voice/fleet.py"
 find = 'answer = await machine.call\("approve" if decision == "allow" else "deny", arguments\)'
 replace = 'answer = await machine.call("approve", arguments)'
+
+[[rule]]
+name = "a question read aloud states how things are and then asks"
+file = "src/claude_voice/plugin_desk.py"
+find = '"say": "Developer mode is off\. Do you want me to switch it on for eight hours\? While it "'
+replace = '"say": "Switch developer mode on for eight hours? While it "'
