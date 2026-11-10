@@ -446,3 +446,9 @@ name = "a question read aloud states how things are and then asks"
 file = "src/claude_voice/plugin_desk.py"
 find = '"say": "Developer mode is off\. Do you want me to switch it on for eight hours\? While it "'
 replace = '"say": "Switch developer mode on for eight hours? While it "'
+
+[[rule]]
+name = "a repository with no time budget still shows how long its tests take"
+file = "src/claude_voice/software.py"
+find = 'return f"\{v:\.0f\} s of a \{budget\[.seconds.\]\} s budget" if budget else f"\{v:\.0f\} s"'
+replace = 'return f"{v:.0f} s of a {budget.get("seconds")} s budget"'
