@@ -79,20 +79,25 @@ def _read_saved(saved: Path) -> dict[str, Any] | None:
 
 
 def kept_levels(
-    repo: str, cache: Path | None = None, limit: int = TREND, run: Callable[[list[str]], str | None] = _gh
+    repo: str,
+    cache: Path | None = None,
+    limit: int = TREND,
+    run: Callable[[list[str]], str | None] = _gh,
+    branch: str = "main",
 ) -> list[dict[str, Any]]:
-    """The levels main kept with its latest runs, oldest first.
+    """The levels the followed branch kept with its latest runs, oldest first.
 
     Only finished runs: a finished run's levels never change, so each is downloaded once
-    and then read from disk, and one that kept none is remembered as having none.
+    and then read from disk, and one that kept none is remembered as having none. The newest
+    are downloaded first, so a page shows today's numbers before it fills in their history.
     """
     folder = (cache or _cache()) / repo.replace("/", "__")
     listed = run(
-        ["run", "list", "--repo", repo, "--branch", "main", "--event", "push", "--workflow", "checks"]
+        ["run", "list", "--repo", repo, "--branch", branch, "--event", "push", "--workflow", "checks"]
         + ["--status", "completed", "--limit", str(limit), "--json", "databaseId"]
     )
     out, fetched = [], 0
-    for run_id in reversed(_run_ids(listed)):
+    for run_id in _run_ids(listed):  # newest first
         saved = folder / f"{run_id}.json"
         if not saved.exists() and fetched < NEW_PER_LOOK:
             fetched += 1
@@ -100,7 +105,7 @@ def kept_levels(
         levels = _read_saved(saved)
         if levels is not None:
             out.append(levels)
-    return out
+    return out[::-1]
 
 
 def history(repo: Path, limit: int = TREND) -> list[dict[str, Any]]:
@@ -280,17 +285,18 @@ def repo_report(
     folder: Path | None,
     ci: dict[str, Any] | None = None,
     kept: list[dict[str, Any]] | None = None,
+    branch: str = "main",
 ) -> dict[str, Any]:
     """One repository's measures, each with its value, status and trend."""
     past = _measured(folder, kept)
-    link = f"{url}/actions/workflows/checks.yml?query=branch%3Amain" if kept else f"{url}/blob/main/{FILE}"
+    link = f"{url}/actions/workflows/checks.yml?query=branch%3A{branch}" if kept else f"{url}/blob/{branch}/{FILE}"
     metrics = [_metric(measure, past, link) for measure in MEASURES]
     metrics.append(ci_metric(ci))
     return {"name": name, "url": url, "metrics": metrics, "as_of": _now()}
 
 
-def latest_run(repo: str) -> dict[str, Any] | None:
-    """The latest run of the checks on main, from GitHub's command line, or None."""
+def latest_run(repo: str, branch: str = "main") -> dict[str, Any] | None:
+    """The latest run of the checks on the followed branch, from GitHub's command line, or None."""
     gh = procs.find("gh")
     if not gh:
         return None
@@ -303,7 +309,7 @@ def latest_run(repo: str) -> dict[str, Any] | None:
                 "--repo",
                 repo,
                 "--branch",
-                "main",
+                branch,
                 "--workflow",
                 "checks",
                 "--limit",

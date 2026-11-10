@@ -318,8 +318,8 @@ def build_server(
     repo_config: config.Config | None = None,
     find_program: Callable[[str], str | None] = procs.find,
     desktop_env: Mapping[str, str] | None = None,
-    ci_status: Callable[[str], dict[str, Any] | None] = software.latest_run,
-    kept_levels: Callable[[str], list[dict[str, Any]]] = software.kept_levels,
+    ci_status: Callable[..., dict[str, Any] | None] = software.latest_run,
+    kept_levels: Callable[..., list[dict[str, Any]]] = software.kept_levels,
     work_board: work.Board | None = None,
     tmux: Any = None,
 ) -> MCPServer:
@@ -973,6 +973,8 @@ def build_server(
         """Both repositories' measures and checks, kept for ten minutes: git and GitHub are slow."""
         if software_seen and time.monotonic() - software_seen["at"] < 600:
             return software_seen["report"]
+        # A plugin may follow another branch than main (dreame-mcp's voice plugin lives on "voice").
+        followed = {str(Path(spec.cwd)): spec.branch for spec in repos.plugins}
         listed = (
             ("claude-voice", repos.repos.claude_voice, bridge_folder or repos.paths.claude_voice),
             ("claude-voice-ui", repos.repos.claude_voice_ui, repos.paths.claude_voice_ui),
@@ -981,7 +983,14 @@ def build_server(
         report = {
             "as_of": datetime.now(UTC).isoformat(timespec="seconds"),
             "repos": [
-                software.repo_report(name, f"https://github.com/{repo}", folder, ci_status(repo), kept_levels(repo))
+                software.repo_report(
+                    name,
+                    f"https://github.com/{repo}",
+                    folder,
+                    ci_status(repo, branch=followed.get(str(folder), "main")),
+                    kept_levels(repo, branch=followed.get(str(folder), "main")),
+                    branch=followed.get(str(folder), "main"),
+                )
                 for name, repo, folder in listed
             ],
         }
