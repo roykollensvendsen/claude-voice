@@ -414,7 +414,9 @@ timeout = 30          # seconds a call may take
 branch = "main"       # the branch its checkout follows, for approving by voice (default main)
 ```
 
-Then approve it by typing its name, and restart the bridge:
+Then approve it by typing its name. A bridge that is running picks the approval up
+within a few seconds and offers the plugin's tools without restarting; connected
+clients are told the tool list changed:
 
 <!-- not run: it asks for typed input -->
 ```

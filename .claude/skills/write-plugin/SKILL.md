@@ -31,7 +31,9 @@ What every plugin must do once built, and which plugin does each thing best, is
 1. `[plugins.<name>]` in `~/.config/claude-voice/config.toml`, with `branch` if
    its checkout follows a branch other than `main`.
 2. The owner runs `claude-voice plugins approve <name>` and types the name.
-3. Restart the bridge; `health` shows the plugin `running` after its first call.
+3. A plugin newly in the settings file needs one bridge restart to be read; after
+   that, the running bridge picks up each approval by itself. `health` shows the
+   plugin `running` after its first call.
 
 After that, the plugin's own session never asks the owner to type again for new
 code: merged code with the same tools runs after `plugin_restart`. A tool that is
