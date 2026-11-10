@@ -49,8 +49,15 @@ when the owner has approved its command and folder before.
 The voice approval is accepted only from a call through the Claude app's
 connector, the way the owner talks. A call from this computer, which is where
 other Claude Code sessions and scripts run, is refused, so no message relayed
-between sessions can approve. It is opt-in: off until the owner sets
-`voice_approval = true` under `[plugins]` in the settings file.
+between sessions can approve.
+
+Rule 2 works only in **developer mode**, which is off by default. Outside it, a
+changed tool waits for the owner to type, as today; rules 1 and 3 do not change.
+The owner switches developer mode on by voice the way the garage controller is
+armed: a question read aloud, a spoken yes, a one-time token, and only from the
+Claude app. Switching it off is at once, from anywhere. It switches itself off
+after eight hours, so a forgotten mode does not stay open. The work page and
+`health` show when it is on and until when, and the log records each switch.
 
 ## Consequences
 
@@ -61,6 +68,8 @@ between sessions can approve. It is opt-in: off until the owner sets
 - The voice model holds the token between request and confirm, as it does for
   the garage door. The same rule applies: confirm only on the owner's clear yes
   to the question just read.
+- Day to day nothing changes: with developer mode off, voice cannot approve
+  any tool change. The window where it can is one the owner opened and can see.
 - The log names each automatic restart and each voice approval, with the
   plugin's commit, so the owner can see afterwards what changed.
 
