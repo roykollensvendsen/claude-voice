@@ -74,3 +74,22 @@ def test_every_rule_has_a_test_named_after_it():
     missing = sorted(rule for rule in marked_rules() if name_for(rule) not in named)
     wanted = ", ".join(f"{name_for(rule)}()" for rule in missing)
     assert not missing, f"rules with no test named after them — write {wanted}"
+
+
+def test_every_row_in_the_mutation_table_leaves_code_that_compiles():
+    """The runner replaces the whole line, keeping only its indentation.
+
+    A row written as if it swapped part of the line leaves a line cut off
+    mid-expression: the module no longer imports, every test in the file errors,
+    and the run reports the rule as killed by another test instead of naming the
+    row. Checked here, the slip shows on any run of the suite.
+    """
+    mutate = _mutate()
+    table = tomllib.loads((ROOT / "scripts/mutations.toml").read_text(encoding="utf-8"))
+    broken = []
+    for rule in table.get("rule", []):
+        text = (ROOT / rule["file"]).read_text(encoding="utf-8")
+        why = mutate.broken(rule["file"], mutate.switched_off(text, rule))
+        if why:
+            broken.append(f"{rule['name']}: {why}")
+    assert not broken, "rows whose replacement is not a whole line of valid code: " + "; ".join(broken)
