@@ -1,0 +1,5 @@
+[[rule]]
+name = "a list of sessions frees only the numbers of the sessions it speaks for"
+file = "src/claude_voice/store.py"
+find = 'if sid not in wanted and released is None and \(scope is None or scope\(sid\)\):'
+replace = 'if sid not in wanted and released is None:'

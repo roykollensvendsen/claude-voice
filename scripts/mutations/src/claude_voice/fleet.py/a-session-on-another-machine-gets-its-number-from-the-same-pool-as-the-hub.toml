@@ -1,0 +1,5 @@
+[[rule]]
+name = "a session on another machine gets its number from the same pool as the hub"
+file = "src/claude_voice/fleet.py"
+find = 'return dict\(self.numbers.number_sessions\(ids, scope=lambda sid: "/" in sid\)\)'
+replace = 'return {}'
