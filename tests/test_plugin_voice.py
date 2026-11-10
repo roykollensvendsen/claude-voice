@@ -229,6 +229,64 @@ async def test_a_new_command_or_folder_is_never_approved_by_voice(tmp_path):
     assert not out["ok"] and "claude-voice plugins approve toaster" in out["say"]
 
 
+def old_format(approvals):
+    """Cut every approval in `approvals` back to what the bridge wrote before developer mode:
+    the plugin's start and its tools' inputs, nothing else."""
+    body = json.loads(approvals.read_text())
+    approvals.write_text(json.dumps({n: {"runs": a["runs"], "inputs": a["inputs"]} for n, a in body.items()}))
+
+
+async def test_an_approval_from_before_developer_mode_is_upgraded_once_found_unchanged(tmp_path, caplog):
+    fake, _ = stand_in()
+    made, holder, server, approvals = desk(tmp_path, fake)
+    old_format(approvals)
+    assert set(json.loads(approvals.read_text())["garage"]) == {"runs", "inputs"}
+    with caplog.at_level(logging.INFO, logger="claude_voice"):
+        out = await made.restart("garage")
+    assert out["ok"]
+    entry = json.loads(approvals.read_text())["garage"]
+    assert {"place", "tools", "marks"} <= set(entry)
+    assert "plugin garage approval upgraded" in [r.getMessage() for r in caplog.records]
+    assert await made.pick_up() == []  # writing the upgrade does not restart the plugin again
+    # The owner adds a tool in the settings file: once upgraded, the plugin is known, so the
+    # change is approved by voice rather than typed.
+    wider = PluginSpec(
+        name="garage",
+        command=GARAGE.command,
+        args=GARAGE.args,
+        cwd=GARAGE.cwd,
+        tools=[*GARAGE.tools, "garage_arm"],
+        timeout=GARAGE.timeout,
+    )
+    made.specs = lambda: [wider]
+    asked = await made.approve_request("claude_app", "garage")
+    assert asked["ok"] and "garage_arm" in asked["say"]
+
+
+async def test_an_approval_from_before_developer_mode_is_upgraded_only_when_nothing_differs(tmp_path):
+    before, _ = stand_in()
+    made, holder, server, approvals = desk(tmp_path, before)
+    old_format(approvals)
+    holder["fake"], _ = stand_in(phrase=True)  # garage_request now takes one input more
+    out = await made.restart("garage")
+    assert not out["ok"]
+    assert set(json.loads(approvals.read_text())["garage"]) == {"runs", "inputs"}
+    changed = plugins.Plugin(GARAGE, lambda params: Client(holder["fake"])).listing()
+    assert not plugins.upgrade(GARAGE, changed, approvals)  # asked directly, it still refuses
+    assert set(json.loads(approvals.read_text())["garage"]) == {"runs", "inputs"}
+    moved = PluginSpec(
+        name="garage",
+        command=GARAGE.command,
+        args=GARAGE.args,
+        cwd=GARAGE.cwd,
+        tools=[*GARAGE.tools, "garage_arm"],
+        timeout=GARAGE.timeout,
+    )
+    made.specs = lambda: [moved]
+    out = await made.approve_request("claude_app", "garage")
+    assert not out["ok"] and "claude-voice plugins approve garage" in out["say"]
+
+
 async def test_an_unchanged_plugin_needs_no_approval(tmp_path):
     fake, _ = stand_in()
     made, *_ = desk(tmp_path, fake)
