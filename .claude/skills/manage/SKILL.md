@@ -17,6 +17,10 @@ reaches them except through you.
 2. Say what changed and what is running, in plain words.
 3. End with **one** list of what waits on the owner, each with a recommendation,
    and with the exact command where their hands are needed.
+4. **Show that list only when it has changed**, or when the owner asks what
+   you are waiting for. A plugin session's small report that changes nothing
+   for the owner gets one line, or none. The same list sent again and again
+   buries what is new.
 
 ## Handling a plugin session's message
 
