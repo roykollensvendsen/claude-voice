@@ -22,6 +22,14 @@ reaches them except through you.
    for the owner gets one line, or none. The same list sent again and again
    buries what is new.
 
+## Keep the owner's list where they can see it
+
+Write what waits on the owner to `~/.local/state/claude-voice/waiting.json`
+whenever it changes, as a JSON list of `{"id", "text", "command", "repo",
+"session", "since"}`, with only `id` and `text` required. The phone page shows
+it first, live, so it no longer scrolls away in the conversation. Remove an
+item as soon as the owner has done it. Never put a secret in it.
+
 ## Handling a plugin session's message
 
 - A report: note it; restart the bridge if the change needs it, and check by
