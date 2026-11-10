@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 import json
 import logging
 import logging.handlers
@@ -13,6 +14,7 @@ import secrets
 import subprocess
 import sys
 import time
+import weakref
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -23,8 +25,10 @@ from claude_agent_sdk import SDKSessionInfo, project_key_for_directory
 from claude_agent_sdk import list_sessions as list_claude_sessions
 from mcp.server import MCPServer
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
+from mcp.server.lowlevel.server import NotificationOptions
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
+from mcp.shared.subscriptions import ToolsListChanged
 from mcp.types import ToolAnnotations
 from pydantic import AnyHttpUrl
 from starlette.types import ASGIApp
@@ -187,6 +191,10 @@ def app_url(bridge_session_id: Any) -> str | None:
 
 
 VOICE_STORE: list[Store] = []  # the store voice calls are counted in, set by build_server
+# Clients connected the older way (an initialize handshake), told when the tool list
+# changes; one is known once it has made a call. Newer clients listen on the server's
+# subscription stream instead.
+LISTENERS: weakref.WeakSet[Any] = weakref.WeakSet()
 
 
 def _result_chars(result: Any) -> int:
@@ -229,6 +237,9 @@ async def log_requests(ctx, call_next):
     what = f"{ctx.method} {tool}".rstrip()
     meta = params.get("_meta") if isinstance(params.get("_meta"), dict) else {}
     trace = str(meta.get("trace_id") or "") or None
+    with contextlib.suppress(TypeError):
+        if (session := getattr(ctx, "session", None)) is not None:
+            LISTENERS.add(session)
     token = transcripts.current_trace.set(trace)
     client_token = transcripts.current_client.set(caller_kind(ctx, trace))
     started = time.monotonic()
@@ -399,6 +410,8 @@ def build_server(
                     with contextlib.suppress(Exception):
                         await across.refresh()  # the other machines, asked every ten seconds
                     with contextlib.suppress(Exception):
+                        await desk.pick_up()  # an approval typed while the bridge runs
+                    with contextlib.suppress(Exception):
                         if api.HUB.listening() and (changed := await asyncio.to_thread(board.changed)):
                             api.HUB.publish("work", changed)  # the phone page updates at once
                     await asyncio.sleep(watch_interval)
@@ -426,6 +439,22 @@ def build_server(
         lifespan=lifespan,
     )
     tool = titles.titled(mcp, titles.load())  # each tool's display title, from the shared table
+    # The tool list changes when a plugin is started again or approved, so say so up front
+    # (tools.listChanged), and tell connected clients each time it does.
+    lowlevel = mcp._lowlevel_server
+    lowlevel.create_initialization_options = functools.partial(  # type: ignore[method-assign]
+        lowlevel.create_initialization_options, NotificationOptions(tools_changed=True)
+    )
+
+    async def tools_changed() -> None:
+        with contextlib.suppress(Exception):
+            await mcp._subscriptions.publish(ToolsListChanged())
+        for session in list(LISTENERS):
+            try:
+                await session.send_tool_list_changed()
+            except Exception:  # a client that has gone away is forgotten
+                LISTENERS.discard(session)
+
     if oauth is not None:
         mcp.custom_route("/oauth/consent", methods=["GET"])(oauth.consent_page)
         mcp.custom_route("/oauth/consent", methods=["POST"])(oauth.consent_submit)
@@ -608,7 +637,9 @@ def build_server(
         git=gitstatus.read,
         mode=developer_mode,
         questions=devmode.Questions(),
+        announce=tools_changed,
     )
+    mcp.plugin_desk = desk  # type: ignore[attr-defined]  # for tests
     across.machines = machines.start_approved(
         mcp, repos.machines, machine_folder, http=machine_http, whois=machine_whois
     )
