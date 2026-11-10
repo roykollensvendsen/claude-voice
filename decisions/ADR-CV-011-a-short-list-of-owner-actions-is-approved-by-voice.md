@@ -2,8 +2,7 @@
 
 ## Status
 
-Proposed 2026-11-10, asked for by the owner by voice. Nothing is built until the
-owner accepts this record. It builds on
+Accepted 2026-11-10 by the owner, by voice. It builds on
 [ADR-CV-010](ADR-CV-010-a-known-plugin-is-approved-again-by-voice.md).
 
 ## Context
