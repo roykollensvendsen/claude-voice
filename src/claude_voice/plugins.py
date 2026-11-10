@@ -2,9 +2,11 @@
 
 A plugin is named in the settings file's ``[plugins.<name>]`` section (its command, folder
 and the tools allowed to the voice), and runs only once the owner has approved it by typing
-its name (``claude-voice plugins approve <name>``). The approval is two fingerprints: one of
+its name (``claude-voice plugins approve <name>``). The approval is fingerprints: one of
 the command, folder and tools, checked before the plugin is started, and one of what each
-allowed tool takes, checked once it has said so. A change to either needs approving again. Each plugin runs as its
+allowed tool takes and whether it only reads, checked once it has said so. A change to
+either needs approving again: typed, or by voice in developer mode when only the tools
+changed (ADR-CV-010). Each plugin runs as its
 own long-lived child process, started again with a growing pause when it fails; every call
 has a time limit. Only the allowed tools are offered to the voice, named after the plugin,
 and the plugin's own safety rules stay in the plugin.
@@ -43,9 +45,21 @@ def fingerprint(spec: PluginSpec) -> str:
     return _hash({"command": spec.command, "args": spec.args, "cwd": spec.cwd, "tools": sorted(spec.tools)})
 
 
+def place_fingerprint(spec: PluginSpec) -> str:
+    """Where the plugin runs from: its command and folder, without its tools."""
+    return _hash({"command": spec.command, "args": spec.args, "cwd": spec.cwd})
+
+
 def input_fingerprint(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> str:
     """What the owner approved each allowed tool to take, as the plugin described it."""
     return _hash({tool: listing.get(tool, {}).get("schema") for tool in sorted(spec.tools)})
+
+
+def tool_fingerprints(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> dict[str, str]:
+    """Each allowed tool's inputs and read-only mark, one fingerprint per tool, so a later
+    change can be named tool by tool."""
+    shown = {tool: listing.get(tool, {}) for tool in spec.tools}
+    return {tool: _hash({"schema": t.get("schema"), "read_only": t.get("read_only")}) for tool, t in shown.items()}
 
 
 def _approvals(path: Path) -> dict[str, Any]:
@@ -66,8 +80,56 @@ def approved(spec: PluginSpec, path: Path | None = None) -> bool:
 
 
 def inputs_approved(spec: PluginSpec, listing: dict[str, dict[str, Any]], path: Path | None = None) -> bool:
+    found = _approval(spec, path)
     # RULE: a plugin tool whose inputs changed is not offered until approved again
-    return _approval(spec, path).get("inputs") == input_fingerprint(spec, listing)
+    if found.get("inputs") != input_fingerprint(spec, listing):
+        return False
+    each = found.get("tools")  # an approval from before read-only marks counted has none
+    # RULE: a changed read only mark needs approving again
+    return each is None or each == tool_fingerprints(spec, listing)
+
+
+def known_place(spec: PluginSpec, path: Path | None = None) -> bool:
+    """Whether the owner once typed approval for this plugin's command and folder."""
+    found = _approval(spec, path)
+    # RULE: a new command or folder is never approved by voice
+    return found.get("place") == place_fingerprint(spec) or found.get("runs") == fingerprint(spec)
+
+
+def changes(spec: PluginSpec, listing: dict[str, dict[str, Any]], path: Path | None = None) -> list[str]:
+    """Each tool that differs from what the owner approved, in a few words to read aloud."""
+    each = _approval(spec, path).get("tools")
+    now = tool_fingerprints(spec, listing)
+    said = []
+    for tool in spec.tools:
+        if isinstance(each, dict) and each.get(tool) == now[tool]:
+            continue
+        found = listing.get(tool)
+        if found is None:
+            said.append(f"{tool} is gone from the plugin")
+            continue
+        new = "new: " if isinstance(each, dict) and tool not in each else ""
+        mark = ", only reads" if found.get("read_only") else ""
+        said.append(f"{new}{tool} takes {takes(found.get('schema'))}{mark}")
+    if isinstance(each, dict):
+        said += [f"{tool} is no longer offered" for tool in each if tool not in now]
+    return said
+
+
+def checkout_refusal(status: dict[str, Any] | None, branch: str) -> str | None:
+    """Why the plugin's checkout may not be approved by voice, or None when it may: clean,
+    on the branch it follows, and level with that branch as last fetched."""
+    if status is None:
+        return "its folder is not a git checkout"
+    tracking = status.get("tracking") or {}
+    # RULE: only a clean checkout level with its followed branch is approved by voice
+    if status.get("dirty"):
+        return "its checkout has changes that are not committed"
+    if status.get("branch") != branch or not str(tracking.get("name", "")).endswith(f"/{branch}"):
+        return f"its checkout is not on {branch}"
+    if tracking.get("ahead") or tracking.get("behind"):
+        return f"its checkout is not level with {tracking.get('name')}"
+    return None
 
 
 def takes(schema: Any) -> str:
@@ -79,7 +141,15 @@ def takes(schema: Any) -> str:
 
 def approve(spec: PluginSpec, listing: dict[str, dict[str, Any]], path: Path | None = None) -> None:
     target = (path or APPROVALS).expanduser()
-    body = {**_approvals(target), spec.name: {"runs": fingerprint(spec), "inputs": input_fingerprint(spec, listing)}}
+    body = {
+        **_approvals(target),
+        spec.name: {
+            "runs": fingerprint(spec),
+            "inputs": input_fingerprint(spec, listing),
+            "place": place_fingerprint(spec),
+            "tools": tool_fingerprints(spec, listing),
+        },
+    }
     target.parent.mkdir(parents=True, exist_ok=True)
     spare = target.with_name(target.name + ".tmp")
     spare.write_text(json.dumps(body, indent=2) + "\n")
@@ -140,7 +210,12 @@ class Plugin:
                 self.instructions = getattr(client, "instructions", None) or None
                 for tool in (await client.list_tools()).tools:
                     if tool.name in self.spec.tools:
-                        found[tool.name] = {"description": tool.description or "", "schema": tool.input_schema}
+                        marks = getattr(tool, "annotations", None)
+                        found[tool.name] = {
+                            "description": tool.description or "",
+                            "schema": tool.input_schema,
+                            "read_only": getattr(marks, "read_only_hint", None),
+                        }
 
         def run() -> None:
             try:
@@ -266,7 +341,7 @@ def offer(server: Any, plugin: Plugin, listing: dict[str, dict[str, Any]]) -> li
         server._tool_manager._tools[name] = made
         offered.append(name)
     # RULE: a plugins own instructions reach the voice
-    if plugin.instructions:
+    if plugin.instructions and plugin.instructions not in (server._lowlevel_server.instructions or ""):
         lowlevel = server._lowlevel_server
         lowlevel.instructions = (
             f"{lowlevel.instructions or ''}\n\nThe {plugin.spec.name} plugin: {plugin.instructions}".strip()
@@ -274,21 +349,48 @@ def offer(server: Any, plugin: Plugin, listing: dict[str, dict[str, Any]]) -> li
     return offered
 
 
+def withdraw(server: Any, plugin: Plugin) -> None:
+    """Take the plugin's tools back from the voice."""
+    for name in plugin.offered:
+        server._tool_manager._tools.pop(name, None)
+    plugin.offered = []
+
+
+def start_one(
+    server: Any,
+    spec: PluginSpec,
+    approvals: Path | None = None,
+    client: Callable[[Any], Any] | None = None,
+    commit_of: Callable[[str], str | None] | None = None,
+) -> tuple[Plugin | None, str]:
+    """Start one plugin and offer its tools if it is as the owner approved it: the plugin,
+    or None, and in a word why."""
+    if not approved(spec, approvals):
+        log.info("plugin %s is not approved; run: claude-voice plugins approve %s", spec.name, spec.name)
+        return None, "not approved"
+    plugin = Plugin(spec, client or CLIENT)
+    listing = plugin.listing()
+    if not inputs_approved(spec, listing, approvals):
+        log.info("plugin %s's tools changed; run: claude-voice plugins approve %s", spec.name, spec.name)
+        return None, "tools changed"
+    plugin.offered = offer(server, plugin, listing)
+    commit = (commit_of(spec.cwd) if commit_of else None) or "an unknown commit"
+    log.info("plugin %s accepted again unchanged at %s", spec.name, commit)
+    log.info("plugin %s offers %s", spec.name, ", ".join(plugin.offered))
+    return plugin, "started"
+
+
 def start_approved(
-    server: Any, specs: list[PluginSpec], approvals: Path | None = None, client: Callable[[Any], Any] | None = None
+    server: Any,
+    specs: list[PluginSpec],
+    approvals: Path | None = None,
+    client: Callable[[Any], Any] | None = None,
+    commit_of: Callable[[str], str | None] | None = None,
 ) -> list[Plugin]:
     """Start each plugin its owner approved and offer its tools on `server`; the ones offered."""
     started = []
     for spec in specs:
-        if not approved(spec, approvals):
-            log.info("plugin %s is not approved; run: claude-voice plugins approve %s", spec.name, spec.name)
-            continue
-        plugin = Plugin(spec, client or CLIENT)
-        listing = plugin.listing()
-        if not inputs_approved(spec, listing, approvals):
-            log.info("plugin %s's tools take new inputs; run: claude-voice plugins approve %s", spec.name, spec.name)
-            continue
-        plugin.offered = offer(server, plugin, listing)
-        started.append(plugin)
-        log.info("plugin %s offers %s", spec.name, ", ".join(plugin.offered))
+        plugin, _ = start_one(server, spec, approvals, client, commit_of)
+        if plugin is not None:
+            started.append(plugin)
     return started

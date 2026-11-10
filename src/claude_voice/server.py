@@ -33,6 +33,7 @@ from . import (
     api,
     config,
     detail,
+    devmode,
     doctor,
     events,
     fleet,
@@ -40,6 +41,7 @@ from . import (
     launch,
     machines,
     metrics,
+    plugin_desk,
     plugins,
     procs,
     renames,
@@ -582,7 +584,31 @@ def build_server(
     sending: dict[str, list[dict[str, Any]]] = {}  # messages still being delivered, by session id
     in_flight: set[asyncio.Future[Any]] = set()
 
-    active_plugins = plugins.start_approved(mcp, repos.plugins, plugin_approvals, plugin_client)
+    def commit_of(folder: str) -> str | None:
+        return ((gitstatus.read(folder) or {}).get("commit") or {}).get("hash")
+
+    def plugin_specs() -> list[config.PluginSpec]:
+        """The plugins as the settings file names them now, so a tool added there is seen
+        without restarting the bridge; the ones read at start when it is given or unreadable."""
+        if repo_config is not None:
+            return repos.plugins
+        try:
+            return config.load(config.FILE, own_clone=roles.own_clone()).plugins
+        except config.ConfigError:
+            return repos.plugins
+
+    active_plugins = plugins.start_approved(mcp, repos.plugins, plugin_approvals, plugin_client, commit_of)
+    developer_mode = devmode.DeveloperMode()
+    desk = plugin_desk.Desk(
+        mcp,
+        active_plugins,
+        specs=plugin_specs,
+        approvals=plugin_approvals,
+        client=plugin_client,
+        git=gitstatus.read,
+        mode=developer_mode,
+        questions=devmode.Questions(),
+    )
     across.machines = machines.start_approved(
         mcp, repos.machines, machine_folder, http=machine_http, whois=machine_whois
     )
@@ -1585,6 +1611,7 @@ def build_server(
         offered = [p.status() for p in active_plugins]
         return {
             "plugins": offered,
+            "developer_mode": developer_mode.state(),
             "now": {
                 "up_since": started_at,
                 "version": running_version,
@@ -1600,6 +1627,46 @@ def build_server(
                 "tree_version": tree_version[0] if tree_version else tree.build()["version"],
             },
         }
+
+    def caller() -> str:
+        return transcripts.current_client.get()
+
+    @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
+    async def plugin_restart(name: str) -> dict[str, Any]:
+        """Start one plugin again so its new code is used, without restarting the bridge.
+        Its tools come back only if they still take what the owner approved. Read 'say' aloud."""
+        return await desk.restart(name)
+
+    @tool(annotations=ToolAnnotations(read_only_hint=True))
+    def developer_mode_request() -> dict[str, Any]:
+        """Ask the owner to switch developer mode on: read 'say' aloud exactly.
+        Call developer_mode_confirm with the token only if the owner clearly answers yes.
+        Developer mode lets the owner approve changed plugin tools by voice; it ends after 8 hours."""
+        return desk.mode_request(caller())
+
+    @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
+    def developer_mode_confirm(token: str) -> dict[str, Any]:
+        """Switch developer mode on, with the token from developer_mode_request.
+        Only after the owner's own clear yes to the question just read."""
+        return desk.mode_confirm(caller(), token)
+
+    @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
+    def developer_mode_off() -> dict[str, Any]:
+        """Switch developer mode off at once. No question is needed."""
+        return desk.mode_off(caller())
+
+    @tool(annotations=ToolAnnotations(read_only_hint=True))
+    async def plugin_approve_request(name: str) -> dict[str, Any]:
+        """Ask the owner to approve a plugin whose tools changed: read 'say' aloud.
+        It names each changed tool. Call plugin_approve_confirm with the token only on the
+        owner's clear yes. Works only in developer mode."""
+        return await desk.approve_request(caller(), name)
+
+    @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+    async def plugin_approve_confirm(token: str) -> dict[str, Any]:
+        """Approve the changed plugin, with the token from plugin_approve_request.
+        Only after the owner's own clear yes to the question just read."""
+        return await desk.approve_confirm(caller(), token)
 
     @tool(annotations=READ_ONLY)
     def list_pending_approvals(session_id: str | None = None) -> dict[str, Any]:
@@ -1818,7 +1885,7 @@ def build_server(
             start_role=launch_role,
             settings=start_settings,
             software=software_now,
-            work=board.report,
+            work=lambda: {**board.report(), "developer_mode": developer_mode.state()},
             detail=lambda s: across.detail_page(s) if across.split(s) else session_detail(s),
             summary=request_summary,
             update_changes=update_changes_now,
