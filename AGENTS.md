@@ -69,6 +69,10 @@ what to add on the hub. Then:
 
 ## When you are changing claude-voice itself
 
+If you are the session working in this repository on the owner's own machine,
+you are the manager for the bridge and every plugin: see
+[docs/organisation.md](docs/organisation.md) and the `manage` skill.
+
 If you are a session working on this repository, rather than installing it:
 
 - Follow [CONTRIBUTING.md](CONTRIBUTING.md): the gates, a failing test before
