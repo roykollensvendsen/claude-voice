@@ -138,6 +138,19 @@ def _status(value: float, ok: float, warn: float, higher: bool = True) -> str:
 
 
 # id, label, unit, how to read the value, how to word it, how to judge it
+# RULE: a repository with no time budget still shows how long its tests take
+def _time_text(q: dict[str, Any], v: float) -> str:
+    budget = q.get("test_budget")
+    return f"{v:.0f} s of a {budget['seconds']} s budget" if budget else f"{v:.0f} s"
+
+
+def _time_status(q: dict[str, Any], v: float) -> str:
+    budget = q.get("test_budget")
+    if not budget:
+        return "unknown"
+    return _status(v, budget["seconds"], budget["seconds"] * (1 + budget["tolerance"]), False)
+
+
 MEASURES: tuple[tuple[str, str, str, Callable[..., Any], Callable[..., str], Callable[..., str]], ...] = (
     (
         "coverage",
@@ -208,10 +221,8 @@ MEASURES: tuple[tuple[str, str, str, Callable[..., Any], Callable[..., str], Cal
         "Time the tests take",
         "s",
         lambda q: q["test_seconds"],
-        lambda q, v: f"{v:.0f} s of a {q['test_budget']['seconds']} s budget",
-        lambda q, v: _status(
-            v, q["test_budget"]["seconds"], q["test_budget"]["seconds"] * (1 + q["test_budget"]["tolerance"]), False
-        ),
+        _time_text,
+        _time_status,
     ),
 )
 
