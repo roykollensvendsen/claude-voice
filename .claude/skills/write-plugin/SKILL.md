@@ -11,6 +11,9 @@ plugin's own instructions, and leaves every safety rule to the plugin. The
 README's "Plugins" section is the reference for the settings; a worked example
 and the lessons from building this are in [reference.md](reference.md).
 
+What every plugin must do once built, and which plugin does each thing best, is
+[the plugin standard](../../../docs/plugin-standard.md).
+
 ## The plugin
 
 1. A few tools, each safe to call by voice. What cannot be undone asks first and
