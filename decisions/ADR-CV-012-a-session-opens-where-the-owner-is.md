@@ -2,8 +2,7 @@
 
 ## Status
 
-Proposed 2026-11-10, asked for by the owner. Nothing is built until the owner
-accepts this record.
+Accepted 2026-11-10 by the owner.
 
 ## Context
 
