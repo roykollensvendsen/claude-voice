@@ -104,6 +104,21 @@ def _loopback(address: str) -> bool:
         return False
 
 
+def _header(headers: list[tuple[bytes, bytes]], wanted: bytes) -> str | None:
+    """The first value of header `wanted`, or None when the request has none."""
+    return next((v.decode("latin-1") for n, v in headers if n == wanted), None)
+
+
+def _forwarded(headers: list[tuple[bytes, bytes]]) -> bool:
+    """Whether something, Tailscale included, says it passed the request on."""
+    return any(name in FORWARDING or name.startswith(b"tailscale-user-") for name, _ in headers)
+
+
+def _own(port: Any, scheme: str = "") -> set[str]:
+    """The bridge's own local addresses on `port`, each after `scheme`."""
+    return {f"{scheme}{name}:{port}" for name in LOCAL_NAMES}
+
+
 def from_here(scope: Scope) -> bool:
     """Whether a request comes from this computer itself (ADR-CV-012). Tailscale and a
     preview server forward the phone's requests from this computer too, so the peer alone
@@ -116,15 +131,14 @@ def from_here(scope: Scope) -> bool:
     if not _loopback(peer):
         return False
     # RULE: a forwarded request is not from here
-    if any(name in FORWARDING or name.startswith(b"tailscale-user-") for name, _ in headers):
+    if _forwarded(headers):
         return False
-    host = next((v.decode("latin-1") for n, v in headers if n == b"host"), None)
     # RULE: a request to another address is not from here
-    if host not in {f"{name}:{port}" for name in LOCAL_NAMES}:
+    if _header(headers, b"host") not in _own(port):
         return False
-    origin = next((v.decode("latin-1") for n, v in headers if n == b"origin"), None)
+    origin = _header(headers, b"origin")
     # RULE: a request sent by another website is not from here
-    return origin is None or origin in {f"http://{name}:{port}" for name in LOCAL_NAMES}
+    return origin is None or origin in _own(port, "http://")
 
 
 def _scheme(request: Request) -> str:
