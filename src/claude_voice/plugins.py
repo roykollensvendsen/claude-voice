@@ -69,6 +69,11 @@ def _approvals(path: Path) -> dict[str, Any]:
         return {}
 
 
+def read_approvals(path: Path | None = None) -> dict[str, Any]:
+    """Every plugin's approval as the file holds it now, read fresh."""
+    return _approvals(path or APPROVALS)
+
+
 def _approval(spec: PluginSpec, path: Path | None) -> dict[str, Any]:
     found = _approvals(path or APPROVALS).get(spec.name)
     return found if isinstance(found, dict) else {}  # an approval from before inputs counted is none

@@ -12,8 +12,9 @@ Every answer has `ok` and `say`, a sentence for the voice to read out as it is.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
@@ -46,10 +47,13 @@ class Desk:
         git: Callable[[str], dict[str, Any] | None],
         mode: DeveloperMode,
         questions: Questions,
+        announce: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         self.server, self.active, self.specs = server, active, specs
         self.approvals, self.client, self.git = approvals, client, git
         self.mode, self.questions = mode, questions
+        self.announce = announce  # tells connected clients that the tool list changed
+        self._seen = plugins.read_approvals(approvals)
 
     def _spec(self, name: str) -> PluginSpec | None:
         return next((s for s in self.specs() if s.name == name), None)
@@ -74,6 +78,9 @@ class Desk:
         plugin, why = await asyncio.to_thread(
             plugins.start_one, self.server, spec, self.approvals, self.client, self._commit
         )
+        if self.announce is not None:
+            with contextlib.suppress(Exception):
+                await self.announce()
         if plugin is None:
             log.info("plugin %s restarted but not offered: %s", name, why)
             how = "approve it by voice in developer mode, or " if why == "tools changed" else ""
@@ -81,6 +88,18 @@ class Desk:
         self.active.append(plugin)
         log.info("plugin %s restarted by voice", name)
         return {"ok": True, "say": f"{name} started again with its new code.", "tools": plugin.offered}
+
+    async def pick_up(self) -> list[str]:
+        """Start again each plugin whose approval changed in the file since the last look,
+        such as one the owner just typed, so it takes effect without restarting the bridge;
+        the names started again."""
+        now = plugins.read_approvals(self.approvals)
+        changed = sorted(n for n in {*now, *self._seen} if now.get(n) != self._seen.get(n))
+        self._seen = now
+        for name in changed:
+            if self._spec(name) is not None:
+                await self.restart(name)
+        return changed
 
     # -- developer mode ----------------------------------------------------------------
 
@@ -157,6 +176,7 @@ class Desk:
         if self._commit(spec.cwd) != asked["commit"]:
             return _no(f"{name}'s code changed after the question, so nothing was approved. Ask again.")
         plugins.approve(spec, asked["listing"], self.approvals)
+        self._seen = plugins.read_approvals(self.approvals)  # started below, not picked up again
         log.info("plugin %s approved by voice at %s", name, asked["commit"])
         started = await self.restart(name)
         return {**started, "say": f"Approved. {started['say']}"}

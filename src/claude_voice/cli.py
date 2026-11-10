@@ -212,7 +212,7 @@ def plugins_command(action: str, name: str | None, env: Mapping[str, str]) -> in
     for tool in spec.tools:
         found = listing.get(tool)
         sys.stdout.write(f"  {tool} takes: {plugins.takes(found['schema'])}\n" if found else f"  {tool}: not in it\n")
-    sys.stdout.write(f"Approved. Restart the bridge to offer {spec.name}'s tools.\n")
+    sys.stdout.write(f"Approved. A running bridge offers {spec.name}'s tools within a few seconds.\n")
     return 0
 
 
