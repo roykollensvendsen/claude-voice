@@ -381,6 +381,7 @@ async def test_active_sessions_are_the_running_claude_code_processes(tmp_path, r
             "kind": "interactive",
             "managed_by_bridge": False,
             "minutes_since_update": 2,
+            "number": 1,
         }
     ]
     assert listed["conversations"][0]["open_in_terminal"] is True
