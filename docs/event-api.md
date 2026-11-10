@@ -251,7 +251,8 @@ not on every refresh.
 | --- | --- |
 | `GET /api/v1/health/software` | `{"as_of", "repos": [{"name", "url", "as_of", "metrics": [{"id", "label", "value", "unit", "text", "status": "ok"\|"warn"\|"bad"\|"unknown", "url", "trend": [≤30 values, oldest first]}]}]}` |
 
-One entry for claude-voice and one for claude-voice-ui, read from the levels
+One entry for claude-voice, one for claude-voice-ui and one for each plugin's
+own repository (the one its checked-out branch pushes to), read from the levels
 main keeps with each run of its checks (see CONTRIBUTING, "The quality ratchet"),
 from each clone's `quality.json` for the time before that, and from the latest
 run of the checks on main; kept for ten minutes. The measures, by `id`:
@@ -262,6 +263,20 @@ run of the checks on main; kept for ten minutes. The measures, by `id`:
 `url`). The trend is each measured version, oldest first, so it moves change by
 change. A repository with nothing measured has every measure `unknown` rather
 than a guess.
+
+## The team's work
+
+| Call | Answer |
+| --- | --- |
+| `GET /api/v1/work` | `{"as_of", "waiting_on_owner": [{"id", "text", "command"\|null, "since", "repo"\|null, "session"\|null}], "open_prs": [{"repo", "number", "title", "url", "checks": "pass"\|"fail"\|"pending", "draft"}], "unreadable": ["<repo>"]}` |
+
+What waits on the owner is the manager session's own list, read fresh on every
+call from `~/.local/state/claude-voice/waiting.json`; an item with no `id` or
+`text` is left out. The open pull requests are those of claude-voice,
+claude-voice-ui and every plugin's repository, asked of GitHub at most once a
+minute; a repository whose pull requests could not be read is named in
+`unreadable` rather than shown as having none. `text` and `command` are plain
+text, never markup.
 
 ## A session's own page
 
@@ -345,6 +360,7 @@ that must send a bearer token reads the stream with `fetch`.
 | `git` | `{"session": "<id>", "git": {...}}` | a session's git status changed |
 | `output` | `{"session": "<id>", "index", "role"}` | a running session wrote a new turn; read it with `/sessions/{id}/output?after=` |
 | `update` | one step: `{"step", "ok", "detail", "at"}`, with `step` one of `check`, `fetch`, `pull`, `install`, `test`, `restart`, `verify`, `rollback`, `done` | an update made progress |
+| `work` | the `/api/v1/work` body | what waits on the owner, or an open pull request, changed; looked at every ten seconds while a stream is open |
 | `news` | one item: `{"kind", "session", "text", …}` | something happened worth telling: a session finished, failed, started waiting, asked for an approval |
 
 A comment line (`: keep-alive`) comes every 15 seconds so proxies keep the
