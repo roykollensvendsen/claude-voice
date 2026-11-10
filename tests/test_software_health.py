@@ -100,8 +100,8 @@ async def test_the_app_reads_both_repositories_on_one_page(tmp_path):
         conversations=lambda **k: [],
         live_dir=tmp_path / "live",
         repo_config=repos,
-        ci_status=lambda repo: {"conclusion": "success", "status": "completed", "url": f"https://ci/{repo}"},
-        kept_levels=lambda repo: [],
+        ci_status=lambda repo, **_: {"conclusion": "success", "status": "completed", "url": f"https://ci/{repo}"},
+        kept_levels=lambda repo, **_: [],
     )
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=build_app(server)), base_url=HOST) as c:
         page = (await c.get("/api/v1/health/software", headers=BEARER)).json()
@@ -160,3 +160,23 @@ def test_kept_levels_are_fetched_from_mains_runs_once_and_then_read_from_disk(tm
     calls.clear()
     again = software.kept_levels("o/r", tmp_path / "cache", run=fake_gh(runs, calls))
     assert again == first and calls == [["run", "list"]]
+
+
+def test_the_newest_levels_are_fetched_first_when_there_are_too_many_for_one_look(tmp_path):
+    # A repository that kept no levels for its first runs must still show its newest ones at once,
+    # not after an hour of looks spent downloading the old runs that kept nothing.
+    runs = {i: None for i in range(1, 21)} | {i: {**QUALITY, "tests": i} for i in range(21, 24)}
+    got = software.kept_levels("o/r", tmp_path / "cache", run=fake_gh(runs, []))
+    assert [q["tests"] for q in got] == [21, 22, 23]
+
+
+def test_levels_are_read_from_the_branch_the_plugin_follows(tmp_path):
+    seen = []
+
+    def run(args):
+        if args[:2] == ["run", "list"]:
+            seen.append(args[args.index("--branch") + 1])
+        return "[]"
+
+    software.kept_levels("o/r", tmp_path / "cache", run=run, branch="voice")
+    assert seen == ["voice"]

@@ -141,7 +141,7 @@ async def test_the_phone_page_reads_the_work_with_the_token_and_not_without(tmp_
         conversations=lambda **k: [],
         live_dir=tmp_path / "live",
         repo_config=config.Config(config.Repos(), config.Paths(None, None, None, None), None),
-        kept_levels=lambda repo: [],
+        kept_levels=lambda repo, **_: [],
         work_board=work.Board({}, lambda args: "[]", waiting_file=path),
     )
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=build_app(server)), base_url=HOST) as c:
@@ -164,7 +164,7 @@ async def test_the_work_page_says_whether_developer_mode_is_on(tmp_path, monkeyp
         conversations=lambda **k: [],
         live_dir=tmp_path / "live",
         repo_config=config.Config(config.Repos(), config.Paths(None, None, None, None), None),
-        kept_levels=lambda repo: [],
+        kept_levels=lambda repo, **_: [],
         work_board=work.Board({}, lambda args: "[]", waiting_file=path),
     )
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=build_app(server)), base_url=HOST) as c:
