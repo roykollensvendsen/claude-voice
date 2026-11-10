@@ -147,24 +147,45 @@ def takes(schema: Any) -> str:
     return ", ".join(name if name in needed else f"{name}?" for name in properties) or "nothing"
 
 
-def approve(spec: PluginSpec, listing: dict[str, dict[str, Any]], path: Path | None = None) -> None:
-    target = (path or APPROVALS).expanduser()
-    body = {
-        **_approvals(target),
-        spec.name: {
-            "runs": fingerprint(spec),
-            "inputs": input_fingerprint(spec, listing),
-            "place": place_fingerprint(spec),
-            "tools": tool_fingerprints(spec, listing),
-            "marks": mark_fingerprint(spec, listing),
-        },
+def _record(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "runs": fingerprint(spec),
+        "inputs": input_fingerprint(spec, listing),
+        "place": place_fingerprint(spec),
+        "tools": tool_fingerprints(spec, listing),
+        "marks": mark_fingerprint(spec, listing),
     }
+
+
+def upgrade(spec: PluginSpec, listing: dict[str, dict[str, Any]], path: Path | None = None) -> bool:
+    """Complete an approval written before developer mode, once the plugin was found exactly
+    as it allowed: the same start, the same tools taking the same inputs. Nothing more is
+    allowed than before; the approval only gains what voice approval needs to recognise it.
+    Whether it was upgraded."""
+    found = _approval(spec, path)
+    if "place" in found:
+        return False
+    # RULE: an approval from before developer mode is upgraded only when nothing differs
+    if found.get("runs") != fingerprint(spec) or found.get("inputs") != input_fingerprint(spec, listing):
+        return False
+    _write(spec.name, _record(spec, listing), path)
+    log.info("plugin %s approval upgraded", spec.name)
+    return True
+
+
+def approve(spec: PluginSpec, listing: dict[str, dict[str, Any]], path: Path | None = None) -> None:
+    _write(spec.name, _record(spec, listing), path)
+    log.info("plugin %s approved", spec.name)
+
+
+def _write(name: str, entry: dict[str, Any], path: Path | None) -> None:
+    target = (path or APPROVALS).expanduser()
+    body = {**_approvals(target), name: entry}
     target.parent.mkdir(parents=True, exist_ok=True)
     spare = target.with_name(target.name + ".tmp")
     spare.write_text(json.dumps(body, indent=2) + "\n")
     os.chmod(spare, 0o600)
     os.replace(spare, target)
-    log.info("plugin %s approved", spec.name)
 
 
 def exposed_name(plugin: str, tool: str) -> str:
@@ -386,6 +407,7 @@ def start_one(
     if not inputs_approved(spec, listing, approvals):
         log.info("plugin %s's tools changed; run: claude-voice plugins approve %s", spec.name, spec.name)
         return None, "tools changed"
+    upgrade(spec, listing, approvals)
     plugin.offered = offer(server, plugin, listing)
     commit = (commit_of(spec.cwd) if commit_of else None) or "an unknown commit"
     log.info("plugin %s accepted again unchanged at %s", spec.name, commit)
