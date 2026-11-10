@@ -93,6 +93,40 @@ class TailnetOnly:
         await self.app(scope, receive, send)
 
 
+LOCAL_NAMES = ("127.0.0.1", "localhost")
+FORWARDING = (b"x-forwarded-for", b"forwarded")
+
+
+def _loopback(address: str) -> bool:
+    try:
+        return ipaddress.ip_address(address).is_loopback
+    except ValueError:
+        return False
+
+
+def from_here(scope: Scope) -> bool:
+    """Whether a request comes from this computer itself (ADR-CV-012). Tailscale and a
+    preview server forward the phone's requests from this computer too, so the peer alone
+    is not enough: nothing may have forwarded it, it must be addressed to the bridge's own
+    local address, and a page that sent it must be the bridge's own."""
+    peer = str((scope.get("client") or ("", 0))[0])
+    port = (scope.get("server") or ("", None))[1]
+    headers = scope.get("headers") or []
+    # RULE: a request from another computer is not from here
+    if not _loopback(peer):
+        return False
+    # RULE: a forwarded request is not from here
+    if any(name in FORWARDING or name.startswith(b"tailscale-user-") for name, _ in headers):
+        return False
+    host = next((v.decode("latin-1") for n, v in headers if n == b"host"), None)
+    # RULE: a request to another address is not from here
+    if host not in {f"{name}:{port}" for name in LOCAL_NAMES}:
+        return False
+    origin = next((v.decode("latin-1") for n, v in headers if n == b"origin"), None)
+    # RULE: a request sent by another website is not from here
+    return origin is None or origin in {f"http://{name}:{port}" for name in LOCAL_NAMES}
+
+
 def _scheme(request: Request) -> str:
     """The scheme the caller used: Tailscale says it in X-Forwarded-Proto, last entry counting."""
     forwarded = request.headers.get("x-forwarded-proto", "").split(",")[-1].strip().lower()
@@ -191,6 +225,7 @@ class EventApi:
         ui_origins: list[str] | None = None,
         remote_prompts: Callable[[], list[dict[str, Any]]] | None = None,
         answer_remote: Callable[[str, dict[str, Any]], Awaitable[tuple[int, dict[str, Any]]]] | None = None,
+        focus: Callable[[str], tuple[int, dict[str, str]]] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.store = store
@@ -215,6 +250,7 @@ class EventApi:
         # Questions on other machines, and how to answer one (fleet.Fleet); none without machines.
         self.remote_prompts = remote_prompts or (lambda: [])
         self.answer_remote = answer_remote
+        self.focus = focus  # bring a session's terminal to the front: terminals.Terminals, by id
         self.clock = clock
         self._failures: list[float] = []
 
@@ -229,6 +265,8 @@ class EventApi:
         route("/api/v1/sessions/{session:path}/prs", methods=["GET"])(self.session_prs)
         route("/api/v1/sessions/{session:path}/detail", methods=["GET"])(self.session_detail)
         route("/api/v1/sessions/{session:path}/summary", methods=["POST"])(self.session_summary)
+        route("/api/v1/sessions/{session:path}/focus", methods=["POST"])(self.session_focus)
+        route("/api/v1/whoami", methods=["GET"])(self.whoami)
         route("/api/v1/events", methods=["GET"])(self.events)
         route("/api/v1/roles", methods=["GET"])(self.list_roles)
         route("/api/v1/prompts", methods=["GET", "POST"])(self.prompts_route)
@@ -370,6 +408,24 @@ class EventApi:
         if self.detail is None:
             return JSONResponse({"error": "not available"}, 404)
         return await self._one(request, self.detail)
+
+    async def whoami(self, request: Request) -> Response:
+        """Whether the page asking is on this computer itself, so it may offer to open a
+        session's terminal. It says nothing about the bridge, so it needs no signing in."""
+        return JSONResponse({"here": from_here(request.scope)}, headers={"Cache-Control": "no-store"})
+
+    async def session_focus(self, request: Request) -> Response:
+        """Bring a session's terminal to the front on this computer (ADR-CV-012)."""
+        if not await self._allowed(request):
+            return JSONResponse({"error": "sign in first"}, 401)
+        # RULE: only a request from here may bring a terminal to the front
+        if not from_here(request.scope):
+            return JSONResponse({"reason": "not_here"}, 403)
+        if self.focus is None:
+            return JSONResponse({"reason": "no_window_list"}, 501)
+        # The desktop is asked through programs that may take a moment; the bridge keeps answering.
+        status, body = await asyncio.to_thread(self.focus, request.path_params["session"])
+        return JSONResponse(body, status, headers={"Cache-Control": "no-store"})
 
     async def session_summary(self, request: Request) -> Response:
         """Ask for a fresh summary: 202 at once; the stream says when it is ready."""
