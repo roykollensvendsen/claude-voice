@@ -1,0 +1,277 @@
+"""A plugin already approved is restarted, and approved again by voice in developer mode.
+
+The decision is ADR-CV-010: the same tools taking the same inputs run without asking and
+are logged; a changed tool is approved by the owner's voice, only in a developer mode the
+owner switched on by voice; a new plugin, command or folder is still typed.
+"""
+
+import json
+import logging
+
+from mcp.client import Client
+from mcp.server.mcpserver import MCPServer
+from test_plugins import GARAGE, bridge, stand_in, tool_names
+
+from claude_voice import devmode, plugin_desk, plugins
+from claude_voice.config import PluginSpec
+
+LEVEL = {
+    "branch": "main",
+    "commit": {"hash": "abc1234", "subject": "feat: something"},
+    "dirty": False,
+    "tracking": {"name": "origin/main", "ahead": 0, "behind": 0},
+}
+
+
+class Clock:
+    def __init__(self, now=1_000_000.0):
+        self.now = now
+
+    def __call__(self):
+        return self.now
+
+
+def desk(tmp_path, fake, git=None, mode_on=True, clock=None):
+    """A desk over a fresh MCP server, the garage approved against `fake`'s first listing."""
+    clock = clock or Clock()
+    approvals = tmp_path / "approved.json"
+    mode = devmode.DeveloperMode(tmp_path / "developer-mode.json", clock=clock)
+    if mode_on:
+        mode.switch_on()
+    server = MCPServer("bridge")
+    holder = {"fake": fake}
+    factory = lambda params: Client(holder["fake"])  # noqa: E731
+    plugins.approve(GARAGE, plugins.Plugin(GARAGE, factory).listing(), approvals)
+    active = plugins.start_approved(server, [GARAGE], approvals, factory)
+    made = plugin_desk.Desk(
+        server,
+        active,
+        specs=lambda: [GARAGE],
+        approvals=approvals,
+        client=factory,
+        git=lambda folder: dict(git or LEVEL),
+        mode=mode,
+        questions=devmode.Questions(clock=clock),
+    )
+    return made, holder, server, approvals
+
+
+# -- the same tools: run, logged, restarted one at a time --------------------------------
+
+
+def test_a_known_plugin_accepted_again_is_logged_with_its_commit(tmp_path, caplog):
+    fake, _ = stand_in()
+    approvals = tmp_path / "approved.json"
+    factory = lambda params: Client(fake)  # noqa: E731
+    plugins.approve(GARAGE, plugins.Plugin(GARAGE, factory).listing(), approvals)
+    with caplog.at_level(logging.INFO, logger="claude_voice"):
+        plugins.start_approved(MCPServer("bridge"), [GARAGE], approvals, factory, commit_of=lambda folder: "abc1234")
+    said = [r.getMessage() for r in caplog.records if r.name == "claude_voice"]
+    assert "plugin garage accepted again unchanged at abc1234" in said
+
+
+async def test_plugin_restart_starts_one_plugin_again_and_keeps_its_tools(tmp_path):
+    fake, _ = stand_in()
+    made, _, server, _ = desk(tmp_path, fake)
+    before = made.active[0]
+    out = await made.restart("garage")
+    assert out["ok"] and "garage" in out["say"]
+    assert made.active[0] is not before and before.state != "running"
+    assert {"garage_status", "garage_request"} <= await tool_names(server)
+    async with Client(server) as c:
+        status = (await c.call_tool("garage_status", {})).structured_content
+    assert status == {"door": "closed"}
+
+
+async def test_a_restarted_plugin_whose_inputs_changed_is_not_offered(tmp_path):
+    before, _ = stand_in()
+    after, _ = stand_in(phrase=True)
+    made, holder, server, _ = desk(tmp_path, before)
+    holder["fake"] = after
+    out = await made.restart("garage")
+    assert not out["ok"] and "approve" in out["say"]
+    assert not any(n.startswith("garage") for n in await tool_names(server))
+
+
+async def test_restarting_a_plugin_not_in_the_settings_file_is_refused(tmp_path):
+    fake, _ = stand_in()
+    made, *_ = desk(tmp_path, fake)
+    out = await made.restart("toaster")
+    assert not out["ok"] and "toaster" in out["say"]
+
+
+# -- developer mode ----------------------------------------------------------------------
+
+
+def test_developer_mode_ends_by_itself_after_eight_hours(tmp_path, caplog):
+    clock = Clock()
+    mode = devmode.DeveloperMode(tmp_path / "dev.json", clock=clock)
+    assert mode.state()["on"] is False
+    with caplog.at_level(logging.INFO, logger="claude_voice"):
+        on = mode.switch_on()
+        clock.now += 8 * 3600 - 1
+        still = mode.state()
+        clock.now += 2
+        ended = mode.state()
+    assert on["on"] and on["until"] and still["on"] and not ended["on"]
+    said = [r.getMessage() for r in caplog.records if r.name == "claude_voice"]
+    assert any("developer mode on" in s for s in said) and any("ended by itself" in s for s in said)
+
+
+def test_developer_mode_is_kept_across_a_restart_of_the_bridge(tmp_path):
+    clock = Clock()
+    devmode.DeveloperMode(tmp_path / "dev.json", clock=clock).switch_on()
+    again = devmode.DeveloperMode(tmp_path / "dev.json", clock=clock)
+    assert again.state()["on"]
+    assert json.loads((tmp_path / "dev.json").read_text())["until"] == clock.now + 8 * 3600
+
+
+def test_a_question_token_works_once_and_only_for_two_minutes():
+    clock = Clock()
+    asked = devmode.Questions(clock=clock)
+    first = asked.ask("developer_mode", {})
+    assert asked.take("plugin", first) is None  # a token answers only its own kind of question
+    assert asked.take("developer_mode", first) == {}
+    assert asked.take("developer_mode", first) is None
+    late = asked.ask("developer_mode", {})
+    clock.now += 121
+    assert asked.take("developer_mode", late) is None
+
+
+def test_only_the_owners_voice_in_the_claude_app_can_approve_a_plugin_or_switch_developer_mode_on(tmp_path):
+    fake, _ = stand_in()
+    made, *_ = desk(tmp_path, fake, mode_on=False)
+    for caller in ("local", "in_process", "voice_app"):
+        out = made.mode_request(caller)
+        assert not out["ok"] and "Claude app" in out["say"]
+    asked = made.mode_request("claude_app")
+    assert asked["ok"] and "token" in asked and "eight hours" in asked["say"]
+    assert not made.mode_confirm("local", asked["token"])["ok"]
+    assert made.mode_confirm("claude_app", asked["token"])["ok"]
+    assert made.mode.state()["on"]
+
+
+def test_developer_mode_is_switched_off_at_once_from_anywhere(tmp_path):
+    fake, _ = stand_in()
+    made, *_ = desk(tmp_path, fake)
+    out = made.mode_off("local")
+    assert out["ok"] and not made.mode.state()["on"]
+
+
+# -- a changed plugin, approved by voice -------------------------------------------------
+
+
+async def changed_desk(tmp_path, git=None, mode_on=True):
+    before, _ = stand_in()
+    after, asked = stand_in(phrase=True)
+    made, holder, server, approvals = desk(tmp_path, before, git=git, mode_on=mode_on)
+    holder["fake"] = after
+    await made.restart("garage")  # the new code no longer matches, so its tools are withdrawn
+    return made, server, approvals
+
+
+async def test_a_changed_plugin_is_approved_by_voice_and_offered_at_once(tmp_path):
+    made, server, approvals = await changed_desk(tmp_path)
+    asked = await made.approve_request("claude_app", "garage")
+    assert asked["ok"] and "garage_request" in asked["say"] and "phrase?" in asked["say"]
+    assert "garage_status" not in asked["say"]  # an unchanged tool is not read out
+    done = await made.approve_confirm("claude_app", asked["token"])
+    assert done["ok"]
+    assert "garage_request" in await tool_names(server)
+    again = await made.approve_confirm("claude_app", asked["token"])
+    assert not again["ok"]  # the token is spent
+
+
+async def test_a_changed_plugin_is_approved_by_voice_only_in_developer_mode(tmp_path):
+    made, *_ = await changed_desk(tmp_path, mode_on=False)
+    out = await made.approve_request("claude_app", "garage")
+    assert not out["ok"] and "developer mode" in out["say"].lower()
+
+
+async def test_a_question_asked_in_developer_mode_is_not_confirmed_once_it_is_off(tmp_path):
+    made, *_ = await changed_desk(tmp_path)
+    asked = await made.approve_request("claude_app", "garage")
+    made.mode_off("local")
+    assert not (await made.approve_confirm("claude_app", asked["token"]))["ok"]
+
+
+async def test_only_a_clean_checkout_level_with_its_followed_branch_is_approved_by_voice(tmp_path):
+    for git in (
+        {**LEVEL, "dirty": True},
+        {**LEVEL, "branch": "feat/x", "tracking": {"name": "origin/feat/x", "ahead": 0, "behind": 0}},
+        {**LEVEL, "tracking": {"name": "origin/main", "ahead": 1, "behind": 0}},
+        {**LEVEL, "tracking": None},
+    ):
+        made, *_ = await changed_desk(tmp_path / str(id(git)), git=git)
+        out = await made.approve_request("claude_app", "garage")
+        assert not out["ok"], git
+
+
+async def test_code_that_moved_after_the_question_is_not_approved(tmp_path):
+    made, *_ = await changed_desk(tmp_path)
+    asked = await made.approve_request("claude_app", "garage")
+    made.git = lambda folder: {**LEVEL, "commit": {"hash": "def5678", "subject": "later"}}
+    out = await made.approve_confirm("claude_app", asked["token"])
+    assert not out["ok"] and "changed" in out["say"]
+
+
+async def test_a_new_command_or_folder_is_never_approved_by_voice(tmp_path):
+    made, *_ = await changed_desk(tmp_path)
+    moved = PluginSpec(
+        name="garage", command="other-mcp", args=[], cwd=GARAGE.cwd, tools=GARAGE.tools, timeout=GARAGE.timeout
+    )
+    made.specs = lambda: [moved]
+    out = await made.approve_request("claude_app", "garage")
+    assert not out["ok"] and "claude-voice plugins approve garage" in out["say"]
+    never = PluginSpec(name="toaster", command="toaster-mcp", args=[], cwd="/x", tools=["toast"])
+    made.specs = lambda: [never]
+    out = await made.approve_request("claude_app", "toaster")
+    assert not out["ok"] and "claude-voice plugins approve toaster" in out["say"]
+
+
+async def test_an_unchanged_plugin_needs_no_approval(tmp_path):
+    fake, _ = stand_in()
+    made, *_ = desk(tmp_path, fake)
+    out = await made.approve_request("claude_app", "garage")
+    assert not out["ok"] and "plugin_restart" in out["say"]
+
+
+async def test_a_changed_read_only_mark_needs_approving_again(tmp_path):
+    fake, _ = stand_in()
+    factory = lambda params: Client(fake)  # noqa: E731
+    approvals = tmp_path / "approved.json"
+    listing = plugins.Plugin(GARAGE, factory).listing()
+    plugins.approve(GARAGE, listing, approvals)
+    marked = {tool: {**found, "read_only": True} for tool, found in listing.items()}
+    assert plugins.inputs_approved(GARAGE, listing, approvals)
+    assert not plugins.inputs_approved(GARAGE, marked, approvals)
+
+
+# -- through the bridge ------------------------------------------------------------------
+
+
+async def test_the_health_report_and_the_work_page_say_whether_developer_mode_is_on(tmp_path, monkeypatch):
+    monkeypatch.setattr(devmode, "STATE", tmp_path / "developer-mode.json")
+    fake, _ = stand_in()
+    server = bridge(tmp_path, [GARAGE], factory=lambda params: Client(fake))
+    async with Client(server) as c:
+        health = (await c.call_tool("health", {})).structured_content
+        names = {t.name for t in (await c.list_tools()).tools}
+    assert health["developer_mode"] == {"on": False, "until": None}
+    assert {
+        "plugin_restart",
+        "developer_mode_request",
+        "developer_mode_confirm",
+        "developer_mode_off",
+        "plugin_approve_request",
+        "plugin_approve_confirm",
+    } <= names
+
+
+async def test_a_call_from_this_computer_cannot_switch_developer_mode_on_through_the_bridge(tmp_path, monkeypatch):
+    monkeypatch.setattr(devmode, "STATE", tmp_path / "developer-mode.json")
+    fake, _ = stand_in()
+    server = bridge(tmp_path, [GARAGE], factory=lambda params: Client(fake))
+    async with Client(server) as c:
+        out = (await c.call_tool("developer_mode_request", {})).structured_content
+    assert not out["ok"] and "token" not in out
