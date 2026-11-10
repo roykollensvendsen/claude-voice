@@ -17,3 +17,4 @@ read whenever a decision record is written and when a phase ends.
 | ChatGPT as the voice front | OpenAI lets a Plus plan on Android use a custom MCP server | It could not connect at all when this was built |
 | Ranked or semantic search of transcripts | Keyword search misses something the owner asked for | Keyword search answered every case tried so far |
 | A shorter `list_projects` for a large root | The owner finds the folder list too long to hear | With the home folder as root it lists hundreds of folders, and asking for recent sessions works better |
+| Refusing in CI a pull request that removes someone else's test or mutation row without saying why | A contributor's work breaks without anyone noticing, or more than about five people contribute regularly | With three contributors, review and the written rule catch it, and telling who wrote a test from history would raise false alarms |

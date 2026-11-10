@@ -131,7 +131,7 @@ cannot be tidied at the end by squashing it, which is why `committed.toml`
 refuses a fixup and a work-in-progress commit rather than trusting you to clean
 up later.
 
-## Three more rules for every change
+## Five more rules for every change
 
 - **One pull request per topic.** Several small changes on one subject go
   together; changes on different subjects go apart, so each can be reviewed,
@@ -148,6 +148,15 @@ up later.
 - **Credit the people whose work a change builds on.** A commit that takes in
   someone else's work keeps them as author, or names them with a
   `Co-Authored-By:` line.
+- **Say why a test or a mutation row is removed or weakened.** The tests and
+  the mutation rows are what stop a later change from quietly breaking a rule,
+  whoever wrote it. A pull request that deletes one, loosens what it checks, or
+  points a row at something easier says why in its description, so the reviewer
+  decides it on purpose.
+- **Ask the person who wrote the lines you change.** When a pull request
+  changes code or tests a contributor outside the project wrote, mention them
+  in it, so they can say if something they relied on breaks. They are asked,
+  not given a veto; the maintainer decides.
 
 ## Sending a change from your own clone
 
