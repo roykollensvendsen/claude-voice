@@ -172,7 +172,8 @@ tells them nothing they can use.
 
 **Then learn from it.** When a contribution does something better than our own
 changes do, it goes in the list below, and our own pull requests are held to it
-from then on.
+from then on. The `review-contribution` skill walks an assistant through all
+of it in order, with a sandbox for running the contributor's code.
 
 What contributions have taught us:
 
