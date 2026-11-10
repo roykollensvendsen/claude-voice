@@ -199,6 +199,9 @@ Five parts, in this order:
    the rules no script can measure, so a ticked box that is not true is worse
    than an empty repository.
 
+Before writing it, read "What contributions have taught us" in CONTRIBUTING,
+and hold the pull request to it.
+
 Do not restate what continuous integration reports on the same page. Do not
 list the commands you ran.
 
