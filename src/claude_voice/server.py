@@ -1962,9 +1962,13 @@ def build_app(
     )
     app = server.streamable_http_app(transport_security=security)
     if ui_dir is not None:
+        from starlette.responses import RedirectResponse
+        from starlette.routing import Route
         from starlette.staticfiles import StaticFiles
 
         app.mount("/ui", StaticFiles(directory=str(ui_dir), html=True), name="ui")
+        # The plain address is what people type, so it leads to the page rather than "not found".
+        app.router.routes.append(Route("/", lambda request: RedirectResponse("/ui/"), methods=["GET"]))
     wrapped: ASGIApp = api.TailnetOnly(PublicClientMetadata(app))
     if ui_origins:
         from starlette.middleware.cors import CORSMiddleware
