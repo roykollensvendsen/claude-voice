@@ -1,14 +1,17 @@
 """How the software is doing: each repository's quality measures, their trend, and its checks on main.
 
-Read from each clone's ``quality.json`` (the quality ratchet's record) and its git history,
-so the trend is what was recorded change by change, and from the latest run of the checks
-on GitHub. Nothing is estimated: a repository with nothing recorded says so.
+Read from the levels main keeps with each run of its checks on GitHub (ADR-CV-009), and,
+for the time before that or a repository that still records them, from each clone's
+``quality.json`` and its git history. The time budget is read from ``quality.json``. So the
+trend is what was measured change by change. Nothing is estimated: a repository with
+nothing recorded says so.
 """
 
 from __future__ import annotations
 
 import json
 import subprocess
+import tempfile
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,6 +21,8 @@ from . import procs
 
 TREND = 30  # points of history per measure
 FILE = "quality.json"
+ARTIFACT = "quality-levels"  # the name main's checks keep their measured levels under
+NEW_PER_LOOK = 5  # downloads of main's levels per look; the rest wait for the next one
 
 
 def _now() -> str:
@@ -31,6 +36,71 @@ def _git(repo: Path, *args: str) -> str | None:
     except (OSError, subprocess.SubprocessError):
         return None
     return out.stdout if out.returncode == 0 else None
+
+
+def _gh(args: list[str]) -> str | None:
+    """GitHub's command line, or None when it is missing or the call fails."""
+    gh = procs.find("gh")
+    if not gh:
+        return None
+    try:
+        out = subprocess.run([gh, *args], capture_output=True, text=True, timeout=60, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return out.stdout if out.returncode == 0 else None
+
+
+def _cache() -> Path:
+    return Path.home() / ".cache" / "claude-voice" / "levels"
+
+
+def _run_ids(listed: str | None) -> list[int]:
+    try:
+        return [int(r["databaseId"]) for r in json.loads(listed or "[]")]
+    except (ValueError, KeyError, TypeError):
+        return []
+
+
+def _download(repo: str, run_id: int, saved: Path, run: Callable[[list[str]], str | None]) -> None:
+    """Keep one run's levels on disk, or `null` for a run that kept none."""
+    with tempfile.TemporaryDirectory() as tmp:
+        got = run(["run", "download", str(run_id), "--repo", repo, "--name", ARTIFACT, "--dir", tmp])
+        levels = Path(tmp) / "levels.json"
+        saved.parent.mkdir(parents=True, exist_ok=True)
+        saved.write_text(levels.read_text() if got is not None and levels.exists() else "null")
+
+
+def _read_saved(saved: Path) -> dict[str, Any] | None:
+    try:
+        levels = json.loads(saved.read_text())
+    except (OSError, ValueError):
+        return None
+    return levels if isinstance(levels, dict) else None
+
+
+def kept_levels(
+    repo: str, cache: Path | None = None, limit: int = TREND, run: Callable[[list[str]], str | None] = _gh
+) -> list[dict[str, Any]]:
+    """The levels main kept with its latest runs, oldest first.
+
+    Only finished runs: a finished run's levels never change, so each is downloaded once
+    and then read from disk, and one that kept none is remembered as having none.
+    """
+    folder = (cache or _cache()) / repo.replace("/", "__")
+    listed = run(
+        ["run", "list", "--repo", repo, "--branch", "main", "--event", "push", "--workflow", "checks"]
+        + ["--status", "completed", "--limit", str(limit), "--json", "databaseId"]
+    )
+    out, fetched = [], 0
+    for run_id in reversed(_run_ids(listed)):
+        saved = folder / f"{run_id}.json"
+        if not saved.exists() and fetched < NEW_PER_LOOK:
+            fetched += 1
+            _download(repo, run_id, saved, run)
+        levels = _read_saved(saved)
+        if levels is not None:
+            out.append(levels)
+    return out
 
 
 def history(repo: Path, limit: int = TREND) -> list[dict[str, Any]]:
@@ -180,44 +250,41 @@ def ci_metric(run: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
-def repo_report(name: str, url: str, folder: Path | None, ci: dict[str, Any] | None = None) -> dict[str, Any]:
-    """One repository's measures, each with its value, status and trend."""
+def _measured(folder: Path | None, kept: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Every measured version, oldest first: the file's history, then main's kept levels,
+    each carrying the time budget the file sets."""
     try:
-        current = json.loads((folder / FILE).read_text()) if folder else None
+        recorded = json.loads((folder / FILE).read_text()) if folder else None
     except (OSError, ValueError):
-        current = None
-    past = history(folder) if folder and current is not None else []
-    link = f"{url}/blob/main/{FILE}"
-    metrics: list[dict[str, Any]] = []
-    for id_, label, unit, read, word, judge in MEASURES:
-        value = _read(current, read) if current is not None else None
-        if value is None:
-            metrics.append(
-                {
-                    "id": id_,
-                    "label": label,
-                    "value": None,
-                    "unit": unit,
-                    "text": f"No {FILE} yet",
-                    "status": "unknown",
-                    "url": link,
-                    "trend": [],
-                }
-            )
-            continue
-        trend = [v for v in (_read(q, read) for q in past) if v is not None][-TREND:]
-        metrics.append(
-            {
-                "id": id_,
-                "label": label,
-                "value": value,
-                "unit": unit,
-                "text": word(current, value),
-                "status": judge(current, value),
-                "url": link,
-                "trend": trend,
-            }
-        )
+        recorded = None
+    budget = (recorded or {}).get("test_budget")
+    past = [q for q in history(folder) if "coverage" in q] if folder and recorded is not None else []
+    return past + [{**q, "test_budget": budget} for q in kept or []]
+
+
+def _metric(measure: tuple[Any, ...], past: list[dict[str, Any]], link: str) -> dict[str, Any]:
+    """One measure's row: its value now, how it reads, its status and its trend."""
+    id_, label, unit, read, word, judge = measure
+    current = past[-1] if past else None
+    value = _read(current, read) if current is not None else None
+    row = {"id": id_, "label": label, "unit": unit, "url": link}
+    if current is None or value is None:
+        return {**row, "value": None, "text": "Nothing measured yet", "status": "unknown", "trend": []}
+    trend = [v for v in (_read(q, read) for q in past) if v is not None][-TREND:]
+    return {**row, "value": value, "text": word(current, value), "status": judge(current, value), "trend": trend}
+
+
+def repo_report(
+    name: str,
+    url: str,
+    folder: Path | None,
+    ci: dict[str, Any] | None = None,
+    kept: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """One repository's measures, each with its value, status and trend."""
+    past = _measured(folder, kept)
+    link = f"{url}/actions/workflows/checks.yml?query=branch%3Amain" if kept else f"{url}/blob/main/{FILE}"
+    metrics = [_metric(measure, past, link) for measure in MEASURES]
     metrics.append(ci_metric(ci))
     return {"name": name, "url": url, "metrics": metrics, "as_of": _now()}
 

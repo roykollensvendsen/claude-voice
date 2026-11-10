@@ -305,6 +305,7 @@ def build_server(
     find_program: Callable[[str], str | None] = procs.find,
     desktop_env: Mapping[str, str] | None = None,
     ci_status: Callable[[str], dict[str, Any] | None] = software.latest_run,
+    kept_levels: Callable[[str], list[dict[str, Any]]] = software.kept_levels,
     tmux: Any = None,
 ) -> MCPServer:
     auth = None
@@ -910,7 +911,7 @@ def build_server(
         report = {
             "as_of": datetime.now(UTC).isoformat(timespec="seconds"),
             "repos": [
-                software.repo_report(name, f"https://github.com/{repo}", folder, ci_status(repo))
+                software.repo_report(name, f"https://github.com/{repo}", folder, ci_status(repo), kept_levels(repo))
                 for name, repo, folder in listed
             ],
         }
