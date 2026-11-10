@@ -504,8 +504,8 @@ replace = 'asyncio.gather(machine.call("fleet_recap", {}), self._approvals(machi
 [[rule]]
 name = "a session on another machine is reached by the machine name in front"
 file = "src/claude_voice/fleet.py"
-find = 'target = fleet.split\(arguments.get\(key\)\) if key else None'
-replace = 'target = None'
+find = 'return key, fleet.split\(arguments.get\(key\)\)'
+replace = 'return key, None'
 
 [[rule]]
 name = "an answer from the page reaches the machine the question is on"
@@ -976,3 +976,21 @@ name = "a write from one thread never lands inside another"
 file = "src/claude_voice/store.py"
 find = 'self\.db = sqlite3\.connect\(path, check_same_thread=False, factory=OneWriterAtATime\)'
 replace = 'self.db = sqlite3.connect(path, check_same_thread=False)'
+
+[[rule]]
+name = "a list of sessions frees only the numbers of the sessions it speaks for"
+file = "src/claude_voice/store.py"
+find = 'if sid not in wanted and released is None and \(scope is None or scope\(sid\)\):'
+replace = 'if sid not in wanted and released is None:'
+
+[[rule]]
+name = "every list of sessions shows the number the page shows"
+file = "src/claude_voice/server.py"
+find = 'return \{"sessions": \[\{\*\*r, "number": numbers.get\(str\(r\["claude_session_id"\]\)\)\} for r in rows\]\}'
+replace = 'return {"sessions": rows}'
+
+[[rule]]
+name = "a session on another machine gets its number from the same pool as the hub"
+file = "src/claude_voice/fleet.py"
+find = 'return dict\(self.numbers.number_sessions\(ids, scope=lambda sid: "/" in sid\)\)'
+replace = 'return {}'

@@ -249,9 +249,8 @@ def _parse_cursor(cursor: str | None) -> tuple[int | None, int | None]:
 
 
 REMOTE_ID = re.compile(r"session_[A-Za-z0-9]+")
-# A session named by its short number, as said aloud: "3", "nr 3", "nr. 3", "nummer 3", "number 3".
 SIMPLE_FOLDER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")  # a new project folder: one plain name
-SPOKEN_NUMBER = re.compile(r"(?:nr\.?|nummer|number)?\s*(\d{1,4})", re.IGNORECASE)
+SPOKEN_NUMBER = fleet.SPOKEN_NUMBER  # a session named by its short number
 
 
 def app_url(bridge_session_id: Any) -> str | None:
@@ -633,6 +632,7 @@ def build_server(
                 stop_software()
 
     across = fleet.Fleet()  # the other machines, filled in once they are started below
+    across.numbers = manager.store
     across.publish = api.HUB.publish
     mcp = MCPServer(
         "claude-voice",
@@ -911,6 +911,18 @@ def build_server(
         mcp, repos.machines, machine_folder, http=machine_http, whois=machine_whois
     )
 
+    def own_recent() -> list[dict[str, Any]]:
+        """The bridge's own sessions that are open and were active in the last day."""
+        cutoff = manager.clock() - 24 * 3600
+        return [s for s in store.list_sessions(limit=200) if s["status"] != "closed" and s["updated_at"] >= cutoff]
+
+    def local_numbers(live_ids: list[str] | None = None) -> dict[str, int]:
+        """The short number of every session on this machine, as the page shows it."""
+        if live_ids is None:
+            live_ids = [str(r["claude_session_id"]) for r in running()]
+        ids = live_ids + [s["id"] for s in own_recent()]
+        return store.number_sessions(ids, scope=lambda sid: "/" not in sid)
+
     @tool(annotations=READ_ONLY)
     def fleet_recap() -> dict[str, Any]:
         """Every session in one call, with its status and what it is doing.
@@ -920,9 +932,8 @@ def build_server(
         sessions = []
         live_by_id = {str(d.get("sessionId")): d for d in live_sessions()}
         live_rows = running()
-        cutoff = manager.clock() - 24 * 3600
-        own_rows = [s for s in store.list_sessions(limit=200) if s["status"] != "closed" and s["updated_at"] >= cutoff]
-        numbers = store.number_sessions([str(r["claude_session_id"]) for r in live_rows] + [s["id"] for s in own_rows])
+        own_rows = own_recent()
+        numbers = local_numbers([str(r["claude_session_id"]) for r in live_rows])
         for row in live_rows:
             d = live_by_id.get(str(row["claude_session_id"]), {})
             if row["status"] == "moved":
@@ -1352,8 +1363,12 @@ def build_server(
     def list_active_sessions() -> dict[str, Any]:
         """Claude Code sessions running on this machine now, busy or waiting for input.
         kind: "interactive" is a terminal window the user types in; "bg" is a background or
-        remote-controlled session."""
-        return {"sessions": running()}
+        remote-controlled session. `number` is the short number the page shows, which any
+        tool taking a session also takes."""
+        rows = running()
+        numbers = local_numbers([str(r["claude_session_id"]) for r in rows])
+        # RULE: every list of sessions shows the number the page shows
+        return {"sessions": [{**r, "number": numbers.get(str(r["claude_session_id"]))} for r in rows]}
 
     def moved_to(d: dict[str, Any]) -> dict[str, Any] | None:
         """Where a running session's conversation went, if Claude Code continued it elsewhere."""
@@ -1909,8 +1924,11 @@ def build_server(
         """The sessions to choose from, as a tree, with which ones message each other.
         The bridge, the Claude Code sessions running on this machine, the sessions the bridge runs,
         helper agents, and for each which others it has sent messages to in the last day (talks_to).
-        `version` changes when the shape changes; whats_new reports that as kind "tree_changed"."""
-        return tree.build()
+        `version` changes when the shape changes; whats_new reports that as kind "tree_changed".
+        `number` is each session's short number, as on the page."""
+        built = tree.build()
+        numbers = local_numbers()
+        return {**built, "nodes": [{**n, "number": numbers.get(str(n["id"]))} for n in built["nodes"]]}
 
     @tool(annotations=READ_ONLY)
     def health() -> dict[str, Any]:
@@ -2104,7 +2122,7 @@ def build_server(
             }
         assert live is not None
         sid, cwd = str(live.get("sessionId")), str(live.get("cwd"))
-        numbers = store.number_sessions([str(d.get("sessionId")) for d in live_sessions()])
+        numbers = local_numbers()  # every session here at once, so no other number moves
         entries = detail.read(projects_dir / project_key_for_directory(cwd) / f"{sid}.jsonl")
         return {
             "session": sid,
