@@ -449,3 +449,14 @@ async def test_a_wait_never_runs_past_the_callers_time_budget(tmp_path, root, li
         started = time.monotonic()
         out = await call(c, "ask_active_session", session="billing-ab", message="go", wait_seconds=60)
     assert out["status"] == "still_working" and time.monotonic() - started < 5
+
+
+async def test_a_message_that_cannot_be_delivered_is_a_clear_error(tmp_path, root, live):
+    target = Target(live, str(root / "billing"))
+
+    async def deliver(name, text):
+        return {"delivered": False, "detail": "socket gone"}
+
+    async with Client(bridge(tmp_path, root, live, target, deliver)) as c:
+        res = await c.call_tool("ask_active_session", {"session": "billing-ab", "message": "go", "wait_seconds": 1})
+    assert res.is_error and "Could not deliver: socket gone" in str(res.content)
