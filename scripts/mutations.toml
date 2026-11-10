@@ -434,3 +434,45 @@ name = "an answer from the page reaches the machine the question is on"
 file = "src/claude_voice/fleet.py"
 find = 'answer = await machine.call\("approve" if decision == "allow" else "deny", arguments\)'
 replace = 'answer = await machine.call("approve", arguments)'
+
+[[rule]]
+name = "a request from another computer is not from here"
+file = "src/claude_voice/api.py"
+find = 'if not _loopback\(peer\):'
+replace = 'if False:'
+
+[[rule]]
+name = "a forwarded request is not from here"
+file = "src/claude_voice/api.py"
+find = 'if any\(name in FORWARDING or name.startswith\(b"tailscale-user-"\) for name, _ in headers\):'
+replace = 'if False:'
+
+[[rule]]
+name = "a request to another address is not from here"
+file = "src/claude_voice/api.py"
+find = 'if host not in \{f"\{name\}:\{port\}" for name in LOCAL_NAMES\}:'
+replace = 'if False:'
+
+[[rule]]
+name = "a request sent by another website is not from here"
+file = "src/claude_voice/api.py"
+find = 'return origin is None or origin in \{f"http://\{name\}:\{port\}" for name in LOCAL_NAMES\}'
+replace = 'return True'
+
+[[rule]]
+name = "only a request from here may bring a terminal to the front"
+file = "src/claude_voice/api.py"
+find = 'if not from_here\(request.scope\):'
+replace = 'if False:'
+
+[[rule]]
+name = "only the terminal titled with the session name is raised"
+file = "src/claude_voice/terminals.py"
+find = 'found = \[w for w in titled if title_name\(str\(w.get\("title"\) or ""\)\) in names\]'
+replace = 'found = titled[:1]'
+
+[[rule]]
+name = "a terminal already attached to a tmux session is raised, not opened again"
+file = "src/claude_voice/terminals.py"
+find = 'if self._attached\(tmux_session\):'
+replace = 'if False:'
