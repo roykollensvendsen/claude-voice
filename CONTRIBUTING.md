@@ -158,6 +158,34 @@ up later.
   in it, so they can say if something they relied on breaks. They are asked,
   not given a veto; the maintainer decides.
 
+## When someone else's change comes in
+
+A contribution from outside the project is reviewed as it is. Questions and
+wishes go in a comment on the pull request. Nobody pushes to the contributor's
+branch, except a small fix they have agreed to, and their commits keep them as
+author.
+
+**When it lands, thank them in the pull request, and say what was good.** Name
+what made it easy to review or to trust, and why it helped, so they know what
+to do again. Add a tip if there is one worth having. A bare "merged, thanks"
+tells them nothing they can use.
+
+**Then learn from it.** When a contribution does something better than our own
+changes do, it goes in the list below, and our own pull requests are held to it
+from then on.
+
+What contributions have taught us:
+
+- **Measure it in the real product before writing a rule about it.** The rule
+  for tools' first lines rests on what the Claude app was seen to show, not on
+  what its documentation says (#108).
+- **A new rule comes with the check that enforces it.** A note asks to be
+  remembered; a test cannot be forgotten (#108).
+- **Turn a slip into a check, once.** A mutation row that broke the code was
+  found by hand; now a test refuses any such row (#129).
+- **Say what was not checked.** A pull request that names the part with no test
+  of its own saves the reviewer from finding it (#129).
+
 ## Sending a change from your own clone
 
 You do not need to set any of this up by hand. Ask the bridge for the
