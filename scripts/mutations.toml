@@ -456,19 +456,19 @@ replace = 'if False:'
 [[rule]]
 name = "a forwarded request is not from here"
 file = "src/claude_voice/api.py"
-find = 'if any\(name in FORWARDING or name.startswith\(b"tailscale-user-"\) for name, _ in headers\):'
+find = 'if _forwarded\(headers\):'
 replace = 'if False:'
 
 [[rule]]
 name = "a request to another address is not from here"
 file = "src/claude_voice/api.py"
-find = 'if host not in \{f"\{name\}:\{port\}" for name in LOCAL_NAMES\}:'
+find = 'if _header\(headers, b"host"\) not in _own\(port\):'
 replace = 'if False:'
 
 [[rule]]
 name = "a request sent by another website is not from here"
 file = "src/claude_voice/api.py"
-find = 'return origin is None or origin in \{f"http://\{name\}:\{port\}" for name in LOCAL_NAMES\}'
+find = 'return origin is None or origin in _own\(port, "http://"\)'
 replace = 'return True'
 
 [[rule]]
