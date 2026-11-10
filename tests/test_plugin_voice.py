@@ -268,6 +268,44 @@ async def test_the_health_report_and_the_work_page_say_whether_developer_mode_is
     } <= names
 
 
+def changing_bridge(tmp_path):
+    """The bridge with the garage approved as it was, and a switch to give it new code."""
+    before, _ = stand_in()
+    holder = {"fake": before}
+    server = bridge(tmp_path, [GARAGE], factory=lambda params: Client(holder["fake"]))
+    return server, holder
+
+
+async def test_a_typed_approval_takes_effect_in_the_running_bridge(tmp_path):
+    """The owner types `claude-voice plugins approve garage` while the bridge runs."""
+    server, holder = changing_bridge(tmp_path)
+    holder["fake"], _ = stand_in(phrase=True)
+    await server.plugin_desk.restart("garage")  # the new code takes a new input: withdrawn
+    assert "garage_request" not in await tool_names(server)
+    listing = plugins.Plugin(GARAGE, lambda params: Client(holder["fake"])).listing()
+    plugins.approve(GARAGE, listing, tmp_path / "approved.json")  # what the typed command writes
+    assert await server.plugin_desk.pick_up() == ["garage"]
+    assert "garage_request" in await tool_names(server)
+    assert await server.plugin_desk.pick_up() == []  # once picked up, nothing more to do
+
+
+async def test_connected_clients_hear_when_the_tools_change(tmp_path):
+    server, holder = changing_bridge(tmp_path)
+    heard = []
+
+    async def listen(message):
+        heard.append(repr(message))
+
+    async with Client(server, mode="legacy", message_handler=listen) as c:
+        assert c.server_capabilities.tools.list_changed is True
+        await c.call_tool("health", {})  # the bridge knows a client once it has called
+        holder["fake"], _ = stand_in(phrase=True)
+        await c.call_tool("plugin_restart", {"name": "garage"})
+        names = {t.name for t in (await c.list_tools()).tools}
+    assert any("ToolListChanged" in h for h in heard)
+    assert "garage_request" not in names
+
+
 async def test_a_call_from_this_computer_cannot_switch_developer_mode_on_through_the_bridge(tmp_path, monkeypatch):
     monkeypatch.setattr(devmode, "STATE", tmp_path / "developer-mode.json")
     fake, _ = stand_in()
