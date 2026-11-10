@@ -63,6 +63,7 @@ from .metrics import METRICS
 from .oauth import ACCESS_TTL, MIN_ACCESS_TTL, SCOPE, OAuthProvider, PublicClientMetadata
 from .sessions import SessionBusy, SessionClosed, SessionManager
 from .store import SessionNotFound, Store
+from .terminals import NOT_LOCAL, Terminals
 from .tree import PROJECTS_DIR, SessionTree
 
 MIN_TOKEN_CHARS = 32
@@ -387,6 +388,7 @@ def build_server(
     kept_levels: Callable[..., list[dict[str, Any]]] = software.kept_levels,
     work_board: work.Board | None = None,
     tmux: Any = None,
+    terminals: Terminals | None = None,
 ) -> MCPServer:
     auth = None
     if oauth is not None:
@@ -1921,6 +1923,15 @@ def build_server(
     async def _no_prs() -> dict[str, Any]:
         return {"prs": []}  # another machine's pull requests are not looked up from here
 
+    mcp.terminals = terminals or Terminals()  # type: ignore[attr-defined]  # the desktop, swapped in tests
+
+    def focus_session(session_id: str) -> tuple[int, dict[str, str]]:
+        """Bring a session's terminal to the front: one on another machine cannot be."""
+        if across.split(session_id):
+            return NOT_LOCAL
+        desk: Terminals = mcp.terminals  # type: ignore[attr-defined]
+        return desk.open(session_id, live_sessions(), tmux.pane)
+
     if oauth is not None:
 
         async def check_token(token: str) -> bool:
@@ -1961,6 +1972,7 @@ def build_server(
             ui_origins=ui_origins,
             remote_prompts=across.prompts,
             answer_remote=across.answer,
+            focus=focus_session,
         ).routes(mcp)
 
     mcp.fleet = across  # type: ignore[attr-defined]  # the other machines, for tests and the CLI

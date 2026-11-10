@@ -298,6 +298,37 @@ summary: only the POST does, with a small model, and so does the voice tool
 last good `summary` is kept). The stream carries `summary` with
 `{"session", "summary", "summary_state"}` when one is ready or has failed.
 
+## Opening a session's terminal
+
+Decided in [ADR-CV-012](../decisions/ADR-CV-012-a-session-opens-where-the-owner-is.md).
+
+| Call | Answer |
+| --- | --- |
+| `GET /api/v1/whoami` | `{"here": true \| false}`. Needs no signing in: it tells only whether the asker is on this computer |
+| `POST /api/v1/sessions/{id}/focus` | no body. `200` `{"done": "raised"}` (a terminal holding it was brought to the front) or `{"done": "attached"}` (a new terminal was opened on its tmux session); `401` without signing in; `403` `{"reason": "not_here"}`; `409` `{"reason": "no_window" \| "not_running" \| "not_local"}`; `501` `{"reason": "no_window_list"}` |
+
+A request is **here** only when all of these hold: it comes from a loopback
+address; it has no `X-Forwarded-For`, `Forwarded` or `Tailscale-User-*` header;
+its `Host` is `127.0.0.1` or `localhost` on the bridge's own port; and its
+`Origin`, when it has one, is `http://127.0.0.1:<port>` or
+`http://localhost:<port>`. So the page served at `/ui/` from `127.0.0.1:8811` is
+here, and the same page reached through Tailscale, Funnel or a preview server is
+not, though those connect from this computer too. The page reads `whoami` once
+when it starts and shows "Open in terminal" only when it is here, and only for a
+session whose `machine` is `null`.
+
+`{id}` is the session's id, not its name or number. A session in tmux gets the
+terminal already attached to it raised, or else a new `gnome-terminal` running
+`tmux attach-session` on it (`attached`). A session in a plain terminal gets the
+window that holds it raised; that window is the one terminal window whose title
+is the session's name after Claude Code's status sign. Nothing ever starts
+`claude` again. `no_window`: the session is not in a terminal (a background or
+bridge session), or its window was not found or found twice, or the desktop would
+not raise it. `not_running`: no running session has that id. `not_local`: the
+session is on another machine. `no_window_list`: this desktop cannot list or
+raise windows (the computer-use-linux GNOME Shell extension is not running) or has
+no `gnome-terminal`.
+
 ## How new sessions start
 
 | Call | Answer |
