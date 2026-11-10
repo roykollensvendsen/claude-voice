@@ -7,7 +7,7 @@ that a new plugin starts at the level the best of them reached, and so that one
 plugin's lesson becomes all of theirs.
 
 It was put together on 2026-11-10 from the three plugins' own reviews of
-themselves. The [`write-plugin`](../.claude/skills/write-plugin/SKILL.md) skill
+themselves, and accepted by the owner the same day. The [`write-plugin`](../.claude/skills/write-plugin/SKILL.md) skill
 says how to build one; this page says what it must do once built.
 
 ## A. How a plugin behaves towards the voice
@@ -84,7 +84,10 @@ owner's fork, with checks of its own there.
 18. **The files a stranger looks for:** a README they can follow, CONTRIBUTING,
     AGENTS.md, SECURITY, CHANGELOG, a licence, decision records, and a list of
     what is deferred with the trigger that would make it worth doing.
-19. **One change per topic, landed by rebase**, with contributors thanked for
+19. **Every change goes through a pull request**, even in a repository with a
+    single owner. Then its checks have run before anything reaches main, and
+    main can be locked against direct pushes.
+20. **One change per topic, landed by rebase**, with contributors thanked for
     what was good.
 
 ## What to copy from whom
