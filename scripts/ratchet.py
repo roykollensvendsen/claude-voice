@@ -69,6 +69,7 @@ LAYERS = {
             "oauth",
             "renames",
             "devmode",
+            "terminals",
         ),
         1,
     ),  # parts, each about one thing
