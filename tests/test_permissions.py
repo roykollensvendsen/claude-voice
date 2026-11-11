@@ -131,6 +131,44 @@ def test_every_command_allowed_to_read_a_file_is_refused_every_secret_file():
             assert f"Bash({reader} {path})" in rules.deny
 
 
+#: The rules the first hand-run installer refused. The shipped rules may refuse more, never less:
+#: dropping one is a permission change the owner decides, not a side effect of moving the rules.
+INSTALLED_BEFORE = (
+    "Bash(cat *.config/claude-voice/env*)",
+    "Bash(cat *.config/dreame*)",
+    "Bash(cat *.config/tv-mcp*)",
+    "Bash(cat *secrets.yaml*)",
+    "Bash(git branch * -D*)",
+    "Bash(git branch * -d*)",
+    "Bash(git branch --delete*)",
+    "Bash(git branch -D*)",
+    "Bash(git branch -d*)",
+    "Bash(git branch -f*)",
+    "Bash(git checkout -- *)",
+    "Bash(git clean -f*)",
+    "Bash(git reset --hard*)",
+    "Bash(git worktree remove* -f*)",
+    "Bash(git worktree remove*--force*)",
+    "Bash(grep *.config/claude-voice/env*)",
+    "Bash(grep *.config/dreame*)",
+    "Bash(grep *.config/tv-mcp*)",
+    "Bash(grep *secrets.yaml*)",
+    "Bash(head *.config/dreame*)",
+    "Bash(head *.config/tv-mcp*)",
+    "Bash(head *secrets.yaml*)",
+    "Bash(sed -n *.config/*)",
+    "Bash(sed -n *secrets*)",
+    "Bash(tail *.config/dreame*)",
+    "Bash(tail *.config/tv-mcp*)",
+    "Bash(tail *secrets.yaml*)",
+)
+
+
+def test_everything_refused_before_is_still_refused():
+    rules = permissions.load()
+    assert [rule for rule in INSTALLED_BEFORE if rule not in rules.deny] == []
+
+
 def test_the_shipped_rules_name_no_person_host_or_home_folder():
     text = permissions.TABLE.read_text(encoding="utf-8")
     for private in ("/home/", "/users/", "~/", "roykollensvendsen", "192.168.", "100.", ".local/"):
