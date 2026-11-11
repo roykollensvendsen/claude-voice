@@ -40,6 +40,7 @@ from . import (
     detail,
     devmode,
     doctor,
+    envfile,
     events,
     fleet,
     gitstatus,
@@ -2214,6 +2215,7 @@ def serve_forever(cfg: Config) -> None:
     )
     app = build_app(server, cfg.public_hosts, ui_origins=cfg.ui_origins, ui_dir=cfg.ui_dir)
     configure_logging(cfg.db.parent / LOG_FILE)
+    envfile.warn(log)
     web_server(app, cfg.host, cfg.port).run()
 
 

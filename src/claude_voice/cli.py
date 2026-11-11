@@ -11,7 +11,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from . import procs
+from . import envfile, procs
 from .server import Config, ConfigError, load_config, serve_forever
 
 if TYPE_CHECKING:
@@ -92,6 +92,9 @@ def checks(
             "To reach it from a phone, set CLAUDE_VOICE_PUBLIC_HOSTS to the tunnel's hostname (see the README).",
             required=False,
         )
+    for problem in envfile.read(env):
+        # RULE: a misread env file line is a warning and never stops the check
+        add("env_file", False, problem.detail, problem.fix, required=False)
     return cfg, found
 
 
