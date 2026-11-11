@@ -15,7 +15,7 @@ import subprocess
 import tomllib
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 from . import config, renames
@@ -127,11 +127,17 @@ def _code(value: Any, where: str) -> str:
     return value
 
 
+def _relative(text: str) -> bool:
+    """Whether `text` is a folder relative to the repository on every system: no `~`, and no
+    root or drive as either Windows or this system reads it ("/x", "\\x", "C:/x", "C:x")."""
+    return not (text.startswith("~") or PureWindowsPath(text).anchor or Path(text).anchor)
+
+
 def _folders(repo: Path, written: tuple[str, ...], where: str, problems: list[str]) -> tuple[Path, ...]:
     out = []
     for text in written:
         # RULE: a folder in an org file must be relative
-        if text.startswith("~") or Path(text).is_absolute():
+        if not _relative(text):
             problems.append(f"{where}: folder {text} is left out; give it relative to the repository")
             continue
         out.append((repo / text).resolve())
