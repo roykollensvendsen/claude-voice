@@ -80,7 +80,9 @@ send_here = ["quality", "facts"]
 
 - A folder is always relative to the repository that holds the file, never an
   absolute path or one starting with `~`, so the file works in anyone's clone.
-  A folder that is not relative is left out, with a warning.
+  A folder with a root or a drive, such as `/x`, `\x` or `C:/x`, is refused on
+  every system, Windows included. A folder that is not relative is left out,
+  with a warning.
 - A remote is matched against the `git remote` addresses of the session's
   folder, when no folder matched.
 - `send_here` says what to send to the role: `facts`, `proposals`,
