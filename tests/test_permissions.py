@@ -179,9 +179,10 @@ def test_the_shipped_rules_name_no_person_host_or_home_folder():
 
 
 def config_naming(tmp_path, *folders, plugin=None):
-    lines = ["[paths]", f'claude_voice = "{folders[0]}"', f'claude_voice_ui = "{folders[1]}"']
+    # Literal TOML strings, so a Windows path's backslashes are not read as escapes.
+    lines = ["[paths]", f"claude_voice = '{folders[0]}'", f"claude_voice_ui = '{folders[1]}'"]
     if plugin:
-        lines += ["[plugins.garage]", 'command = "uv"', f'cwd = "{plugin}"', 'tools = ["garage_status"]']
+        lines += ["[plugins.garage]", 'command = "uv"', f"cwd = '{plugin}'", 'tools = ["garage_status"]']
     file = tmp_path / "config.toml"
     file.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return {"HOME": str(tmp_path), "CLAUDE_VOICE_CONFIG": str(file)}
@@ -197,7 +198,7 @@ def test_with_no_folders_named_the_bridge_and_plugin_clones_from_the_settings_ar
     assert "Bash(git status*)" in read(garage)["permissions"]["allow"]
     assert not ui.exists()  # a clone that is not there is skipped, not made
     out = capsys.readouterr().out
-    assert str(voice) in out and str(garage) in out
+    assert str(voice.resolve()) in out and str(garage.resolve()) in out
 
 
 def test_the_command_takes_folders_and_a_dry_run(tmp_path, capsys):
