@@ -97,16 +97,20 @@ class Outcome:
         counts = f"{self.added_allow} allow and {self.added_deny} deny rules"
         if not (self.added_allow or self.added_deny or self.removed_allow):
             return f"{self.folder}: already has every rule"
-        retired = ""
-        if self.removed_allow:
-            verb = "remove" if self.dry_run else "removed"
-            plural = "" if self.removed_allow == 1 else "s"
-            retired = f", and {verb} {self.removed_allow} retired allow rule{plural}"
+        retired = self._retired_note()
         if self.dry_run:
             return f"{self.folder}: would add {counts}{retired}"
         notes = [f"created {SETTINGS}"] if self.created else []
         notes += [f"kept the old file as {SETTINGS.name}{BACKUP}"] if self.backed_up else []
         return f"{self.folder}: added {counts}{retired}" + "".join(f"; {note}" for note in notes)
+
+    def _retired_note(self) -> str:
+        """The words about removed retired rules, or nothing when none were removed."""
+        if not self.removed_allow:
+            return ""
+        verb = "remove" if self.dry_run else "removed"
+        plural = "" if self.removed_allow == 1 else "s"
+        return f", and {verb} {self.removed_allow} retired allow rule{plural}"
 
 
 def _read(file: Path) -> dict[str, Any]:
@@ -130,6 +134,14 @@ def _write(file: Path, settings: dict[str, Any]) -> None:
     os.replace(temporary, file)
 
 
+def _changes(before: dict[str, Any], after: dict[str, Any]) -> tuple[int, int, int]:
+    """How many allow and deny rules the merge added, and how many allow rules it removed."""
+    old, new = before.get("permissions") or {}, after["permissions"]
+    allow, deny = (len([rule for rule in new[key] if rule not in (old.get(key) or [])]) for key in ("allow", "deny"))
+    removed = len([rule for rule in old.get("allow") or [] if rule not in new["allow"]])
+    return allow, deny, removed
+
+
 def apply(folder: Path, rules: Rules, dry_run: bool = False) -> Outcome:
     """Add the rules to one repository's local settings, or say what that would change."""
     if not folder.is_dir():
@@ -140,9 +152,7 @@ def apply(folder: Path, rules: Rules, dry_run: bool = False) -> Outcome:
         after = merged(before, rules)
     except PermissionsError as exc:
         raise PermissionsError(f"{file}: {exc}, so it was left alone") from exc
-    old, new = before.get("permissions") or {}, after["permissions"]
-    allow, deny = (len([rule for rule in new[key] if rule not in (old.get(key) or [])]) for key in ("allow", "deny"))
-    removed = len([rule for rule in old.get("allow") or [] if rule not in new["allow"]])
+    allow, deny, removed = _changes(before, after)
     outcome = Outcome(folder, allow, deny, removed, dry_run=dry_run, created=not file.exists())
     # RULE: a second run writes nothing
     if after == before:
