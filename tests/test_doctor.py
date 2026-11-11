@@ -155,3 +155,37 @@ def test_the_fix_for_a_missing_tailnet_port_offers_both_the_name_and_the_address
     host.answers[("tailscale", "serve", "status")] = (0, "{}")
     serve = by_id(doctor.examine(host, {"folder": str(clone)}, state_dir=state, port=8811))["tailnet_port"]
     assert "--https=8814" in serve["fix"] and "--tcp=8813" in serve["fix"]
+
+
+@pytest.mark.parametrize("answer", [(1, SERVE), (0, "not json"), (0, "  ")])
+def test_a_serve_status_that_cannot_be_read_counts_as_no_tailnet_port(tmp_path, answer):
+    host, clone, state = healthy(tmp_path)
+    host.answers[("tailscale", "serve", "status")] = answer
+    serve = by_id(doctor.examine(host, {"folder": str(clone)}, state_dir=state, port=8811))["tailnet_port"]
+    assert serve["ok"] is False and "no tailnet-only" in serve["detail"]
+
+
+def test_a_tailnet_port_that_leads_somewhere_else_does_not_count(tmp_path):
+    host, clone, state = healthy(tmp_path)
+    elsewhere = json.dumps(
+        {
+            "TCP": {"8813": {"TCPForward": "127.0.0.1:9999"}},
+            "Web": {"box.ts.net:8814": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:9999"}}}},
+        }
+    )
+    host.answers[("tailscale", "serve", "status")] = (0, elsewhere)
+    serve = by_id(doctor.examine(host, {"folder": str(clone)}, state_dir=state, port=8811))["tailnet_port"]
+    assert serve["ok"] is False
+
+
+def test_a_tcp_forward_on_a_port_funnel_opens_does_not_count(tmp_path):
+    host, clone, state = healthy(tmp_path)
+    funnel_tcp = json.dumps(
+        {
+            "TCP": {"443": {"TCPForward": "127.0.0.1:8811"}},
+            "AllowFunnel": {"box.ts.net:443": True},
+        }
+    )
+    host.answers[("tailscale", "serve", "status")] = (0, funnel_tcp)
+    serve = by_id(doctor.examine(host, {"folder": str(clone)}, state_dir=state, port=8811))["tailnet_port"]
+    assert serve["ok"] is False
