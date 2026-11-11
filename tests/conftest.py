@@ -40,3 +40,14 @@ def no_github(monkeypatch):
     from claude_voice import software
 
     monkeypatch.setattr(software, "_gh", lambda args: None)
+
+
+@pytest.fixture(autouse=True)
+def no_owner_env_file(tmp_path_factory, monkeypatch):
+    """Keep the owner's own environment file out of the suite: it holds his token, and a
+    test never reads it. A test that wants one writes its own."""
+    from claude_voice import envfile
+
+    none = tmp_path_factory.mktemp("env") / "none"
+    monkeypatch.setattr(envfile, "ENV_FILE", none)
+    monkeypatch.setenv("CLAUDE_VOICE_ENV_FILE", str(none))  # for the commands the docs run
