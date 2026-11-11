@@ -1,11 +1,15 @@
 """The software page: each repository's quality measures, their trend, and whether its checks pass."""
 
+import asyncio
 import json
 import pathlib
 import subprocess
+import threading
+import time
 
 import httpx
 from fakes import FakeClaude
+from mcp.client import Client
 
 from claude_voice import config, software
 from claude_voice.oauth import OAuthProvider
@@ -102,7 +106,9 @@ async def test_the_app_reads_both_repositories_on_one_page(tmp_path):
         repo_config=repos,
         ci_status=lambda repo, **_: {"conclusion": "success", "status": "completed", "url": f"https://ci/{repo}"},
         kept_levels=lambda repo, **_: [],
+        main_head=lambda repo, **_: "aaa",
     )
+    await asyncio.to_thread(server.software_report.refresh)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=build_app(server)), base_url=HOST) as c:
         page = (await c.get("/api/v1/health/software", headers=BEARER)).json()
     names = [r["name"] for r in page["repos"]]
@@ -221,3 +227,176 @@ def test_an_exemption_counts_only_with_a_reason_and_the_owners_yes(tmp_path):
     for i, text in enumerate((no_yes, no_reason, "not toml [[")):
         repo = exemptions(repo_with_history(tmp_path / f"r{i}", QUALITY), text)
         assert by_id(software.repo_report("r", "https://github.com/o/r", repo))["complexity"]["status"] == "bad"
+
+
+# -- the report the bridge keeps ---------------------------------------------------------
+
+REPORT = {"as_of": "2026-11-11T08:00:00+00:00", "repos": [{"name": "claude-voice", "as_of": "x", "metrics": []}]}
+
+
+class Builds:
+    """A fake build of the report: counts its calls, and can fail or be held until let go."""
+
+    def __init__(self, report=REPORT):
+        self.report, self.calls, self.fail = report, 0, None
+        self.began, self.go = threading.Event(), threading.Event()
+        self.go.set()
+
+    def __call__(self):
+        self.calls += 1
+        self.began.set()
+        self.go.wait(5)
+        if self.fail:
+            raise self.fail
+        return self.report
+
+
+class Clock:
+    def __init__(self):
+        self.now = 1000.0
+
+    def __call__(self):
+        return self.now
+
+
+def refresher(build, heads=dict, clock=None):
+    return software.Refresher(build, heads, clock=clock or Clock())
+
+
+def test_the_software_page_answers_at_once_from_the_report_it_keeps():
+    build = Builds()
+    kept = refresher(build)
+    kept.refresh()
+    answers = [kept.answer() for _ in range(3)]
+    assert build.calls == 1  # three answers, one build
+    page = answers[-1]
+    assert page["refreshing"] is False and page["measured_at"] and page["as_of"]
+    assert [r["name"] for r in page["repos"]] == ["claude-voice"]
+    assert page["repos"][0]["measured_at"] == page["measured_at"]
+    assert page["repos"][0]["as_of"] != "x"  # each answer is dated now; the measuring keeps its own time
+
+
+def test_before_the_first_build_the_software_page_is_empty_and_says_it_is_refreshing():
+    build = Builds()
+    assert refresher(build).answer() == {"repos": [], "measured_at": None, "refreshing": True}
+    assert build.calls == 0  # asking never builds
+
+
+def test_a_failed_refresh_keeps_the_report_it_had(caplog):
+    build, clock = Builds(), Clock()
+    kept = refresher(build, clock=clock)
+    kept.refresh()
+    before = kept.answer()["measured_at"]
+    build.fail = RuntimeError("gh: not signed in")
+    clock.now += 601
+    with caplog.at_level("WARNING", logger="claude_voice"):
+        kept.refresh()
+    page = kept.answer()
+    assert [r["name"] for r in page["repos"]] == ["claude-voice"]
+    assert page["measured_at"] == before and page["refreshing"] is False
+    said = [r.getMessage() for r in caplog.records]
+    assert len(said) == 1 and "gh: not signed in" in said[0] and "gh auth status" in said[0]
+
+
+def test_only_one_software_build_runs_at_a_time():
+    build = Builds()
+    build.go.clear()
+    kept = refresher(build)
+    first = threading.Thread(target=kept.refresh)
+    first.start()
+    assert build.began.wait(5)
+    assert kept.answer()["refreshing"] is True
+    second = kept.refresh()  # returns at once: the build under way is the one that counts
+    build.go.set()
+    first.join(5)
+    assert second is False and build.calls == 1
+
+
+def test_a_moved_main_starts_a_new_build():
+    build, clock, heads = Builds(), Clock(), {"o/r": "aaa"}
+    kept = refresher(build, heads=lambda: dict(heads), clock=clock)
+    kept.tick()  # the first build
+    clock.now += 60
+    kept.tick()  # nothing moved and not yet due
+    assert build.calls == 1
+    heads["o/r"] = "bbb"
+    kept.tick()
+    assert build.calls == 2
+    heads["o/r"] = None  # GitHub not answering is not a move
+    kept.tick()
+    assert build.calls == 2
+
+
+def test_a_build_is_due_ten_minutes_after_the_last():
+    build, clock = Builds(), Clock()
+    kept = refresher(build, clock=clock)
+    kept.tick()
+    clock.now += 599
+    kept.tick()
+    assert build.calls == 1
+    clock.now += 1
+    kept.tick()
+    assert build.calls == 2
+
+
+def test_the_first_build_runs_behind_and_answers_meanwhile_say_it_is_refreshing():
+    build = Builds()
+    build.go.clear()
+    kept = refresher(build)
+    asked = time.monotonic()
+    stop = kept.start()
+    assert time.monotonic() - asked < 0.5
+    assert build.began.wait(5)
+    assert kept.answer()["refreshing"] is True
+    build.go.set()
+    for _ in range(250):
+        if kept.answer()["measured_at"]:
+            break
+        time.sleep(0.02)
+    stop()
+    assert kept.answer()["refreshing"] is False and kept.answer()["measured_at"]
+
+
+def test_the_head_of_main_is_read_from_github():
+    seen = []
+
+    def run(args):
+        seen.append(args)
+        return "abc123\n"
+
+    assert software.head("o/r", "voice", run=run) == "abc123"
+    assert "repos/o/r/commits/voice" in seen[0]
+    assert software.head("o/r", run=lambda args: None) is None
+
+
+async def test_the_bridge_starts_listening_while_the_software_report_is_built(tmp_path):
+    voice = repo_with_history(tmp_path / "voice", QUALITY)
+    held = threading.Event()
+
+    def slow_ci(repo, **_):
+        held.wait(5)
+        return {"conclusion": "success", "status": "completed", "url": f"https://ci/{repo}"}
+
+    m = SessionManager(Store(tmp_path / "b.db"), project_root=tmp_path, client_factory=FakeClaude())
+    server = build_server(
+        m,
+        live_dir=tmp_path / "live",
+        projects_dir=tmp_path / "projects",
+        watch_interval=60,
+        repo_config=config.Config(config.Repos(), config.Paths(voice, None, None, None), None),
+        ci_status=slow_ci,
+        kept_levels=lambda repo, **_: [],
+        main_head=lambda repo, **_: "aaa",
+    )
+    asked = time.monotonic()
+    async with Client(server) as client:
+        await client.call_tool("list_pending_approvals", {})
+        answered = time.monotonic() - asked
+        assert server.software_report.answer()["refreshing"] is True
+        held.set()
+        for _ in range(200):
+            if server.software_report.answer()["measured_at"]:
+                break
+            await asyncio.sleep(0.05)
+    assert answered < 1.5
+    assert server.software_report.answer()["repos"][0]["name"] == "claude-voice"
