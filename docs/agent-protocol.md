@@ -255,9 +255,11 @@ cannot skip the question.
 2. The voice reads the question exactly. Only if Roy clearly says yes does it
    call the named tool with
    [`agent-protocol/v1/confirm-request.json`](agent-protocol/v1/confirm-request.json).
-3. The hub calls the tool in `confirm_with` only if it belongs to the same
-   plugin as the tool that asked: the same `<plugin>_` in front. The plugin, not
-   the hub, holds the token and decides what it confirms.
+3. The hub calls the tool in `confirm_with` only if it is listed in the
+   `tools` of the same plugin's entry in `agent_info` as the tool that asked.
+   The name alone proves nothing: plugin names may hold `_`, so
+   `phone_x_confirm` starts with `phone_` but may belong to a plugin `phone_x`.
+   The plugin, not the hub, holds the token and decides what it confirms.
 4. A token works once, for that question only. A yes is passed on as a yes,
    never as a standing permission.
 

@@ -209,3 +209,9 @@ def test_a_call_carries_an_id_so_a_repeat_is_never_run_twice():
 def test_a_machine_that_has_spoken_version_one_is_never_taken_back_to_version_zero():
     text = DOC.read_text()
     assert "never accepts an answer in a lower version from it again" in text
+
+
+def test_a_yes_confirms_only_a_tool_of_the_plugin_that_asked_by_its_list_of_tools():
+    text = " ".join(DOC.read_text().split())
+    assert "the same `<plugin>_` in front" not in text, "plugin names may hold _, so a prefix proves nothing"
+    assert "in the `tools` of the same plugin's entry in `agent_info`" in text

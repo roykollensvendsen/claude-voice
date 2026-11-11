@@ -28,7 +28,7 @@
     "confirm_with": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9_]{0,31}$",
-      "description": "The tool that takes the token, from the same plugin."
+      "description": "The tool that takes the token. The hub calls it only if it is in the tools of the same plugin entry in agent_info as the tool that asked; a shared name prefix proves nothing."
     },
     "expires_in": {
       "type": "integer",
