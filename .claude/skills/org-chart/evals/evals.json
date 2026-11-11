@@ -1,0 +1,41 @@
+{
+  "skill_name": "org-chart",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I've got sessions running in acme-robots and acme-vision and they keep showing under Other on my phone. These belong together, can you make them a programme?",
+      "expected_output": "Runs the survey, proposes an acme programme with two components and a manager, quality and analyst role, shows a table and the TOML, and waits for a yes before writing.",
+      "files": [],
+      "assertions": [
+        "Runs org_survey.py survey before proposing",
+        "Shows a table and the full TOML",
+        "Every role has purpose, limits and send_here",
+        "Folders are relative to the main repository",
+        "Does not write .claude/org.toml before the owner says yes"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "yes, write it",
+      "expected_output": "Checks the draft, writes .claude/org.toml, adds it to .git/info/exclude, checks again, reports the problems list, and offers the CLAUDE.local.md manager rule.",
+      "files": [],
+      "assertions": [
+        "Runs check with --draft before writing",
+        "Runs exclude on the main repository",
+        "Reports the problems list from the final check",
+        "Offers the local manager rule without writing it unasked"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "add the new acme-gripper plugin to the acme org chart, and the session gripper-quality as its quality role",
+      "expected_output": "Reads the existing file, shows a diff adding components.gripper and a quality role with component gripper, waits for a yes, then checks it.",
+      "files": [],
+      "assertions": [
+        "Changes only the gripper component and its role",
+        "The new role sets component = \"gripper\"",
+        "Shows the change as a diff and waits for a yes"
+      ]
+    }
+  ]
+}
