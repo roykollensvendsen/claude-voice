@@ -487,12 +487,13 @@ class EventApi:
         return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
     async def software_health(self, request: Request) -> Response:
-        """How both repositories are doing: their quality measures, trends and checks."""
+        """How the repositories are doing: their quality measures, trends and checks.
+        The report kept from the last build, at once; the bridge builds it behind (`measured_at`)."""
         if not await self._allowed(request):
             return JSONResponse({"error": "sign in first"}, 401)
         if self.software is None:
             return JSONResponse({"error": "not available"}, 404)
-        out = await asyncio.to_thread(self.software)  # git history and GitHub take a moment
+        out = self.software()
         return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
     async def work_now(self, request: Request) -> Response:

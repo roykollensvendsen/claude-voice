@@ -566,3 +566,34 @@ name = "the log says why a plugin could not be listed"
 file = "src/claude_voice/plugins.py"
 find = 'return f"\{said\} \(\{type\(exc\)\.__name__\}\)" if said else type\(exc\)\.__name__'
 replace = 'return str(exc)'
+
+[[rule]]
+name = "the software page answers at once from the report it keeps"
+file = "src/claude_voice/software.py"
+find = 'report = self\._report$'
+replace = 'report = self._build()'
+
+[[rule]]
+name = "before the first build the software page is empty and says it is refreshing"
+file = "src/claude_voice/software.py"
+find = 'self\._refreshing = True$'
+replace = 'self._refreshing = False'
+
+[[rule]]
+name = "a failed refresh keeps the report it had"
+file = "src/claude_voice/software.py"
+find = 'report = self\._report$'
+occurrence = 2
+replace = 'report = {"repos": []}'
+
+[[rule]]
+name = "only one software build runs at a time"
+file = "src/claude_voice/software.py"
+find = 'if not self\._building\.acquire\(blocking=False\):'
+replace = 'if False:'
+
+[[rule]]
+name = "a moved main starts a new build"
+file = "src/claude_voice/software.py"
+find = 'if self\._due\(\) or self\._moved\(heads\):'
+replace = 'if self._due():'

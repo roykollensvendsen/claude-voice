@@ -386,6 +386,7 @@ def build_server(
     desktop_env: Mapping[str, str] | None = None,
     ci_status: Callable[..., dict[str, Any] | None] = software.latest_run,
     kept_levels: Callable[..., list[dict[str, Any]]] = software.kept_levels,
+    main_head: Callable[..., str | None] = software.head,
     work_board: work.Board | None = None,
     tmux: Any = None,
     terminals: Terminals | None = None,
@@ -487,11 +488,15 @@ def build_server(
             # The service keeps the side-question reader ready, so the first answer is quick too.
             warming = asyncio.create_task(transcripts.shared_reader().warm())
             warming.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+        # The software report is built on a thread of its own, so the bridge listens at once.
+        stop_software = software_report.start() if watch_interval else None
         try:
             yield {}
         finally:
             if task:
                 task.cancel()
+            if stop_software:
+                stop_software()
 
     across = fleet.Fleet()  # the other machines, filled in once they are started below
     across.publish = api.HUB.publish
@@ -1027,7 +1032,6 @@ def build_server(
         except LookupError as exc:
             raise ToolError(str(exc)) from None
 
-    software_seen: dict[str, Any] = {}
     # Each plugin's own repository joins the two above, on the software panel and the work page.
     plugin_repos = work.plugin_repos(repos.plugins)
     board = work_board or work.Board(
@@ -1036,10 +1040,8 @@ def build_server(
         run=software._gh,
     )
 
-    def software_now() -> dict[str, Any]:
-        """Both repositories' measures and checks, kept for ten minutes: git and GitHub are slow."""
-        if software_seen and time.monotonic() - software_seen["at"] < 600:
-            return software_seen["report"]
+    def software_listed() -> list[tuple[str, str, Path | None, str]]:
+        """Each repository on the software panel: its name, its GitHub name, its clone and the branch followed."""
         # A plugin may follow another branch than main (dreame-mcp's voice plugin lives on "voice").
         followed = {str(Path(spec.cwd)): spec.branch for spec in repos.plugins}
         listed = (
@@ -1047,22 +1049,30 @@ def build_server(
             ("claude-voice-ui", repos.repos.claude_voice_ui, repos.paths.claude_voice_ui),
             *plugin_repos,
         )
-        report = {
+        return [(name, repo, folder, followed.get(str(folder), "main")) for name, repo, folder in listed]
+
+    def software_build() -> dict[str, Any]:
+        """Every repository's measures and checks, read afresh: git and GitHub are slow."""
+        return {
             "as_of": datetime.now(UTC).isoformat(timespec="seconds"),
             "repos": [
                 software.repo_report(
                     name,
                     f"https://github.com/{repo}",
                     folder,
-                    ci_status(repo, branch=followed.get(str(folder), "main")),
-                    kept_levels(repo, branch=followed.get(str(folder), "main")),
-                    branch=followed.get(str(folder), "main"),
+                    ci_status(repo, branch=branch),
+                    kept_levels(repo, branch=branch),
+                    branch=branch,
                 )
-                for name, repo, folder in listed
+                for name, repo, folder, branch in software_listed()
             ],
         }
-        software_seen.update(at=time.monotonic(), report=report)
-        return report
+
+    # Built on a thread of its own at start and kept; the page reads the kept one at once.
+    software_report = software.Refresher(
+        software_build,
+        lambda: {repo: main_head(repo, branch=branch) for _, repo, _, branch in software_listed()},
+    )
 
     def bridge_now() -> dict[str, Any]:
         folder = bridge_folder or repos.paths.claude_voice
@@ -1964,7 +1974,7 @@ def build_server(
             },
             start_role=launch_role,
             settings=start_settings,
-            software=software_now,
+            software=software_report.answer,
             work=lambda: {**board.report(), "developer_mode": developer_mode.state()},
             detail=lambda s: across.detail_page(s) if across.split(s) else session_detail(s),
             summary=request_summary,
@@ -1976,6 +1986,7 @@ def build_server(
         ).routes(mcp)
 
     mcp.fleet = across  # type: ignore[attr-defined]  # the other machines, for tests and the CLI
+    mcp.software_report = software_report  # type: ignore[attr-defined]  # the kept report, for tests
     return mcp
 
 
