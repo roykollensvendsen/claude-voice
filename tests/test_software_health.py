@@ -191,3 +191,33 @@ def test_levels_are_read_from_the_branch_the_plugin_follows(tmp_path):
 
     software.kept_levels("o/r", tmp_path / "cache", run=run, branch="voice")
     assert seen == ["voice"]
+
+
+def exemptions(repo, text):
+    (repo / "quality.toml").write_text(text)
+    return repo
+
+
+EXEMPT = """
+[[exempt]]
+measure = "complexity"
+reason = "the tool table is one long match"
+approved = "Roy, 2026-11-11"
+"""
+
+
+def test_an_exempt_measure_is_shown_as_exempt_and_never_as_ok(tmp_path):
+    repo = exemptions(repo_with_history(tmp_path / "r", QUALITY), EXEMPT)
+    complexity = by_id(software.repo_report("r", "https://github.com/o/r", repo))["complexity"]
+    assert complexity["status"] == "exempt"
+    assert complexity["text"].endswith("exempt: the tool table is one long match")
+    inside = exemptions(repo_with_history(tmp_path / "s", {**QUALITY, "complexity": {"a.py": 9}}), EXEMPT)
+    assert by_id(software.repo_report("s", "https://github.com/o/s", inside))["complexity"]["status"] == "ok"
+
+
+def test_an_exemption_counts_only_with_a_reason_and_the_owners_yes(tmp_path):
+    no_yes = EXEMPT.replace('approved = "Roy, 2026-11-11"', "")
+    no_reason = EXEMPT.replace('reason = "the tool table is one long match"', 'reason = "  "')
+    for i, text in enumerate((no_yes, no_reason, "not toml [[")):
+        repo = exemptions(repo_with_history(tmp_path / f"r{i}", QUALITY), text)
+        assert by_id(software.repo_report("r", "https://github.com/o/r", repo))["complexity"]["status"] == "bad"
