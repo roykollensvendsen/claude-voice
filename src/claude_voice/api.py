@@ -160,14 +160,30 @@ class EventHub:
 
     def __init__(self, keep: int = 100) -> None:
         self.keep = keep
-        self._queues: set[asyncio.Queue[tuple[str, dict[str, Any] | None]]] = set()
+        # Each open stream's queue, with the event loop that reads it (None outside one).
+        self._queues: dict[asyncio.Queue[tuple[str, dict[str, Any] | None]], asyncio.AbstractEventLoop | None] = {}
+
+    @staticmethod
+    def _put(q: asyncio.Queue[tuple[str, dict[str, Any] | None]], item: tuple[str, dict[str, Any] | None]) -> None:
+        if q.full():
+            with contextlib.suppress(asyncio.QueueEmpty):
+                q.get_nowait()
+        q.put_nowait(item)
 
     def publish(self, event: str, data: dict[str, Any] | None) -> None:
-        for q in list(self._queues):
-            if q.full():
-                with contextlib.suppress(asyncio.QueueEmpty):
-                    q.get_nowait()
-            q.put_nowait((event, data))
+        """Hand an event to every open stream. Safe from any thread: the watcher and the
+        tools publish from worker threads, and a queue may only be touched from its own loop."""
+        try:
+            here: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
+        except RuntimeError:
+            here = None
+        for q, loop in list(self._queues.items()):
+            if loop is None or loop is here:
+                self._put(q, (event, data))
+                continue
+            with contextlib.suppress(RuntimeError):  # a loop already closed has no reader left
+                # RULE: an event published from another thread reaches a waiting stream at once
+                loop.call_soon_threadsafe(self._put, q, (event, data))
 
     def listening(self) -> bool:
         """Whether any stream is open, so work done only to tell someone can be skipped."""
@@ -176,11 +192,15 @@ class EventHub:
     @contextlib.contextmanager
     def subscribe(self) -> Any:
         q: asyncio.Queue[tuple[str, dict[str, Any] | None]] = asyncio.Queue(self.keep)
-        self._queues.add(q)
+        try:
+            loop: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        self._queues[q] = loop
         try:
             yield q
         finally:
-            self._queues.discard(q)
+            self._queues.pop(q, None)
 
 
 HUB = EventHub()
