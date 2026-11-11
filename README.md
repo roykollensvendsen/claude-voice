@@ -441,7 +441,10 @@ Once a plugin is approved, three things can happen to it
 
 - **New code, the same tools taking the same inputs.** It runs without asking, and
   the log names the commit. `plugin_restart` starts one plugin again with its new
-  code, without restarting the bridge or dropping the call.
+  code, without restarting the bridge or dropping the call. The new one must list
+  its tools within 60 seconds, or its own `timeout` when that is longer. If it does
+  not, it counts as not started, never as changed: the one running stays offered,
+  and the voice says to try again.
 - **A tool added, removed, taking new inputs, or with a changed read-only mark.** You
   can type the approval as above, or approve it by voice in **developer mode**. You
   switch that on by voice: the voice asks, you say yes. It ends by itself after eight
