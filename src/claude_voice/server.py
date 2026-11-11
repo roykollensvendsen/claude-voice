@@ -13,6 +13,7 @@ import re
 import secrets
 import subprocess
 import sys
+import threading
 import time
 import weakref
 from collections.abc import Awaitable, Callable, Mapping
@@ -454,19 +455,28 @@ def build_server(
     restart = restart or {"at": started_at, "reason": None, "total": None}
     running_version = metrics.version()
 
+    looking = threading.Lock()  # held while one look runs; the watcher and whats_new both look
+
     def check() -> None:
-        """Look at the running sessions and the tree's shape; record what changed."""
-        watcher.check()
-        version = tree.build()["version"]
-        if tree_version and tree_version[0] != version:
-            watcher.record("claude-voice", "tree_changed", version)
-        tree_version[:] = [version]
-        last_check[:] = [datetime.now(UTC).isoformat(timespec="seconds")]
-        if api.HUB.listening():
-            tell_programmes()
-            fleet_recap()  # notes each session's state, and announces the ones that changed
-            update_state()  # and each step of an update under way
-            announce_new_turns()
+        """Look at the running sessions and the tree's shape; record what changed.
+        Returns at once when a look is already under way, which records the same changes."""
+        # RULE: a question about news does not wait for a look already under way
+        if not looking.acquire(blocking=False):
+            return
+        try:
+            watcher.check()
+            version = tree.build()["version"]
+            if tree_version and tree_version[0] != version:
+                watcher.record("claude-voice", "tree_changed", version)
+            tree_version[:] = [version]
+            last_check[:] = [datetime.now(UTC).isoformat(timespec="seconds")]
+            if api.HUB.listening():
+                tell_programmes()
+                fleet_recap()  # notes each session's state, and announces the ones that changed
+                update_state()  # and each step of an update under way
+                announce_new_turns()
+        finally:
+            looking.release()
 
     @contextlib.asynccontextmanager
     async def lifespan(_server):
@@ -477,7 +487,10 @@ def build_server(
             async def watch():
                 while True:
                     with contextlib.suppress(Exception):
-                        check()
+                        # The first look reads every running session's whole conversation, which
+                        # takes many seconds; on the event loop it held back startup and every call.
+                        # RULE: the bridge answers as soon as it has started, while its first look runs behind
+                        await asyncio.to_thread(check)
                     with contextlib.suppress(Exception):
                         await across.refresh()  # the other machines, asked every ten seconds
                     with contextlib.suppress(Exception):
