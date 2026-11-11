@@ -3,13 +3,14 @@
 A plugin is named in the settings file's ``[plugins.<name>]`` section (its command, folder
 and the tools allowed to the voice), and runs only once the owner has approved it by typing
 its name (``claude-voice plugins approve <name>``). The approval is fingerprints: one of
-the command, folder and tools, checked before the plugin is started, and one of what each
-allowed tool takes and whether it only reads, checked once it has said so. A change to
-either needs approving again: typed, or by voice in developer mode when only the tools
-changed (ADR-CV-010). Each plugin runs as its
-own long-lived child process, started again with a growing pause when it fails; every call
-has a time limit. Only the allowed tools are offered to the voice, named after the plugin,
-and the plugin's own safety rules stay in the plugin.
+the command, folder and tools, checked before the plugin is started, and ones of what each
+allowed tool takes, whether it only reads, and every word the voice reads from the plugin
+(each tool's description and the plugin's own instructions), checked once it has said so.
+A change to any of them needs approving again: typed, or by voice in developer mode when
+only the tools changed (ADR-CV-010). Each plugin runs as its own long-lived child process,
+started again with a growing pause when it fails; every call has a time limit. Only the
+allowed tools are offered to the voice, named after the plugin, and the plugin's own
+safety rules stay in the plugin.
 """
 
 from __future__ import annotations
@@ -69,10 +70,18 @@ def input_fingerprint(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> s
 
 
 def tool_fingerprints(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> dict[str, str]:
-    """Each allowed tool's inputs and read-only mark, one fingerprint per tool, so a later
-    change can be named tool by tool."""
+    """Each allowed tool's inputs, read-only mark and words for the voice, one fingerprint per
+    tool, so a later change can be named tool by tool."""
     shown = {tool: listing.get(tool, {}) for tool in spec.tools}
-    return {tool: _hash({"schema": t.get("schema"), "read_only": t.get("read_only")}) for tool, t in shown.items()}
+    seen = ("schema", "read_only", "description", "rules")
+    return {tool: _hash({k: t.get(k) for k in seen}) for tool, t in shown.items()}
+
+
+def reads_fingerprint(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> str:
+    """Every word the voice reads from the plugin: each allowed tool's description and the
+    plugin's own instructions, which travel with it."""
+    shown = {tool: listing.get(tool, {}) for tool in sorted(spec.tools)}
+    return _hash({tool: [t.get("description"), t.get("rules")] for tool, t in shown.items()})
 
 
 def mark_fingerprint(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> str:
@@ -107,8 +116,11 @@ def inputs_approved(spec: PluginSpec, listing: dict[str, dict[str, Any]], path: 
     # RULE: a plugin tool whose inputs changed is not offered until approved again
     if found.get("inputs") != input_fingerprint(spec, listing):
         return False
+    # RULE: what the voice reads is covered by the approval
+    if found.get("reads") != reads_fingerprint(spec, listing):
+        return False  # an approval from before descriptions counted is approved once more
     # RULE: a changed read only mark needs approving again
-    return found.get("marks") in (None, mark_fingerprint(spec, listing))  # None: approved before marks counted
+    return found.get("marks") == mark_fingerprint(spec, listing)
 
 
 def known_place(spec: PluginSpec, path: Path | None = None) -> bool:
@@ -167,23 +179,8 @@ def _record(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> dict[str, A
         "place": place_fingerprint(spec),
         "tools": tool_fingerprints(spec, listing),
         "marks": mark_fingerprint(spec, listing),
+        "reads": reads_fingerprint(spec, listing),
     }
-
-
-def upgrade(spec: PluginSpec, listing: dict[str, dict[str, Any]], path: Path | None = None) -> bool:
-    """Complete an approval written before developer mode, once the plugin was found exactly
-    as it allowed: the same start, the same tools taking the same inputs. Nothing more is
-    allowed than before; the approval only gains what voice approval needs to recognise it.
-    Whether it was upgraded."""
-    found = _approval(spec, path)
-    if "place" in found:
-        return False
-    # RULE: an approval from before developer mode is upgraded only when nothing differs
-    if found.get("runs") != fingerprint(spec) or found.get("inputs") != input_fingerprint(spec, listing):
-        return False
-    _write(spec.name, _record(spec, listing), path)
-    log.info("plugin %s approval upgraded", spec.name)
-    return True
 
 
 def approve(spec: PluginSpec, listing: dict[str, dict[str, Any]], path: Path | None = None) -> None:
@@ -233,7 +230,6 @@ class Plugin:
     def __init__(self, spec: PluginSpec, client_factory: Callable[[Any], Any]) -> None:
         self.spec, self.client_factory = spec, client_factory
         self.state = "not started"
-        self.instructions: str | None = None
         self.offered: list[str] = []
         self.unlisted: str | None = None  # why the latest listing got no answer, or None
         self._failure: Exception | None = None
@@ -259,7 +255,7 @@ class Plugin:
 
         async def read() -> None:
             async with self.open() as client:
-                self.instructions = getattr(client, "instructions", None) or None
+                rules = getattr(client, "instructions", None) or None
                 for tool in (await client.list_tools()).tools:
                     if tool.name in self.spec.tools:
                         marks = getattr(tool, "annotations", None)
@@ -267,6 +263,7 @@ class Plugin:
                             "description": tool.description or "",
                             "schema": tool.input_schema,
                             "read_only": getattr(marks, "read_only_hint", None),
+                            "rules": rules,  # the plugin's instructions, which travel with each tool
                         }
 
         def run() -> None:
@@ -398,30 +395,35 @@ def offer(server: Any, plugin: Plugin, listing: dict[str, dict[str, Any]]) -> li
     async def placeholder() -> dict[str, Any]:  # never called: PluginTool.run answers instead
         return {}
 
+    rules = instructions(listing)
     offered = []
     for tool in plugin.spec.tools:
         name = exposed_name(plugin.spec.name, tool)
         known = listing.get(tool, {})
         description = known.get("description") or f"{tool}, from the {plugin.spec.name} plugin"
-        if plugin.instructions:  # the plugin's own rules travel with every tool, whatever the client reads
-            description = f"{description}\n\n{plugin.spec.name} rules: {plugin.instructions}"
+        if rules:  # the plugin's own rules travel with every tool, whatever the client reads
+            description = f"{description}\n\n{plugin.spec.name} rules: {rules}"
         base = Tool.from_function(placeholder, name=name, description=description, structured_output=True)
         fields = {k: getattr(base, k) for k in type(base).model_fields}
         made = PluginTool(**{**fields, "meta": {"plugin": plugin.spec.name, "plugin_tool": tool}})
         made.parameters = known.get("schema") or {"type": "object", "properties": {}}
         server._tool_manager._tools[name] = made
         offered.append(name)
-    _instruct(server._lowlevel_server, plugin)
+    _instruct(server._lowlevel_server, plugin.spec.name, rules)
     return offered
 
 
-def _instruct(lowlevel: Any, plugin: Plugin) -> None:
+def instructions(listing: dict[str, dict[str, Any]]) -> str | None:
+    """The plugin's own instructions as its listing carries them, so the voice is told only
+    the words the owner approved."""
+    return next((str(t["rules"]) for t in listing.values() if t.get("rules")), None)
+
+
+def _instruct(lowlevel: Any, name: str, rules: str | None) -> None:
     """Add the plugin's own rules to what the voice is told, once, however often it starts."""
     # RULE: a plugins own instructions reach the voice
-    if plugin.instructions and plugin.instructions not in (lowlevel.instructions or ""):
-        lowlevel.instructions = (
-            f"{lowlevel.instructions or ''}\n\nThe {plugin.spec.name} plugin: {plugin.instructions}".strip()
-        )
+    if rules and rules not in (lowlevel.instructions or ""):
+        lowlevel.instructions = f"{lowlevel.instructions or ''}\n\nThe {name} plugin: {rules}".strip()
 
 
 def withdraw(server: Any, plugin: Plugin) -> None:
@@ -449,7 +451,6 @@ def check_one(spec: PluginSpec, approvals: Path | None = None, client: Callable[
     if not inputs_approved(spec, listing, approvals):
         log.info("plugin %s's tools changed; run: claude-voice plugins approve %s", spec.name, spec.name)
         return None, listing, "tools changed"
-    upgrade(spec, listing, approvals)
     return plugin, listing, "started"
 
 

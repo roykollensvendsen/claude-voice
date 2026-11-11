@@ -173,7 +173,7 @@ async def test_a_machine_whose_tools_changed_is_not_called_until_approved_again(
         await approve(before, folder)
     door = PluginSpec(name="door", command="door-mcp", args=[], cwd=str(tmp_path), tools=["status"])
     own = tmp_path / "laptop-approved.json"
-    plugins.approve(door, {"status": {"schema": {"type": "object", "properties": {}}}}, own)
+    plugins.approve(door, plugins.Plugin(door, FakePlugin).listing(), own)
     async with Laptop(tmp_path / "before", [door], own, FakePlugin) as after:  # same pairing, one tool more
         server, _ = hub(after, folder)
         res = await call(server, "lukas-laptop_agent_info")

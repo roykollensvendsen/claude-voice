@@ -9,10 +9,13 @@ import subprocess
 import sys
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from . import procs
 from .server import Config, ConfigError, load_config, serve_forever
+
+if TYPE_CHECKING:
+    from .config import PluginSpec
 
 #: Every verb this command has. The documentation test requires each one to
 #: appear in a worked example, so a verb cannot be added without one.
@@ -180,6 +183,43 @@ def check_command(env: Mapping[str, str], transport: str, as_json: bool, login: 
     return 0 if ready else 1
 
 
+def _plugin_state(spec: PluginSpec) -> str:
+    """Whether a plugin is approved, checked the way a restart checks it: started, and its
+    tools and words for the voice compared with the approval."""
+    from . import plugins
+
+    _, _, why = plugins.check_one(spec)
+    # RULE: plugins list says approved only when a restart would offer it
+    if why == "started":
+        return "approved"
+    if why == "not started":
+        return "approved, but it did not start; check its command and folder"
+    return f"{why}; to approve it, run: claude-voice plugins approve {spec.name}"
+
+
+def _list_plugins(specs: list[PluginSpec]) -> int:
+    """Each plugin in the settings file, and whether a restart would offer it."""
+    if not specs:
+        sys.stdout.write("No plugins in the settings file.\n")
+    for spec in specs:
+        sys.stdout.write(f"{spec.name}: {_plugin_state(spec)}; tools {', '.join(spec.tools)}\n")
+    return 0
+
+
+def _show_approved(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> None:
+    """What the owner just approved: each tool's inputs and every word the voice reads."""
+    from . import plugins
+
+    for tool in spec.tools:
+        found = listing.get(tool)
+        sys.stdout.write(f"  {tool} takes: {plugins.takes(found['schema'])}\n" if found else f"  {tool}: not in it\n")
+        if found and found.get("description"):
+            sys.stdout.write(f"    the voice reads: {found['description']}\n")
+    rules = plugins.instructions(listing)
+    if rules:
+        sys.stdout.write(f"  {spec.name}'s rules for the voice: {rules}\n")
+
+
 def plugins_command(action: str, name: str | None, env: Mapping[str, str]) -> int:
     """List the plugins in the settings file, or approve one: the owner types its name."""
     from . import config as settings
@@ -191,12 +231,7 @@ def plugins_command(action: str, name: str | None, env: Mapping[str, str]) -> in
         sys.stderr.write(f"claude-voice: {exc}\n")
         return 1
     if action == "list":
-        if not specs:
-            sys.stdout.write("No plugins in the settings file.\n")
-        for spec in specs:
-            state = "approved" if plugins.approved(spec) else "not approved"
-            sys.stdout.write(f"{spec.name}: {state}; tools {', '.join(spec.tools)}\n")
-        return 0
+        return _list_plugins(specs)
     chosen = next((s for s in specs if s.name == name), None)
     if chosen is None:
         sys.stderr.write(f"claude-voice: no plugin {name!r} in the settings file\n")
@@ -220,9 +255,7 @@ def plugins_command(action: str, name: str | None, env: Mapping[str, str]) -> in
         sys.stdout.write(f"{spec.name} did not start, so nothing was approved. Check its command and folder.\n")
         return 1
     plugins.approve(spec, listing)
-    for tool in spec.tools:
-        found = listing.get(tool)
-        sys.stdout.write(f"  {tool} takes: {plugins.takes(found['schema'])}\n" if found else f"  {tool}: not in it\n")
+    _show_approved(spec, listing)
     sys.stdout.write(f"Approved. A running bridge offers {spec.name}'s tools within a few seconds.\n")
     return 0
 
