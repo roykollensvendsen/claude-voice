@@ -94,3 +94,10 @@ def test_the_start_here_steps_are_run_on_a_clean_machine_by_continuous_integrati
     job = workflow.split("\n  clean-install:", 1)
     assert len(job) == 2, "checks.yml has no clean-install job"
     assert "python3 scripts/clean_install.py" in job[1].split("\n  checks:", 1)[0]
+
+
+def test_the_org_chart_page_shows_the_example_file_as_it_is():
+    """The page copies the example org file, so the copy is held to the file."""
+    page = (ROOT / "docs" / "org-chart.md").read_text(encoding="utf-8")
+    example = (ROOT / "docs" / "examples" / "acme-robots" / ".claude" / "org.toml").read_text(encoding="utf-8")
+    assert "```toml\n" + example + "```" in page

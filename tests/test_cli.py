@@ -13,8 +13,35 @@ def env(tmp_path, **extra):
     return {"CLAUDE_VOICE_ROOT": str(tmp_path), **extra}
 
 
-def test_the_command_has_serve_check_plugins_agent_machines_and_permissions():
-    assert COMMANDS == ("serve", "check", "plugins", "agent", "machines", "permissions")
+def test_the_command_has_serve_check_plugins_agent_machines_permissions_and_org():
+    assert COMMANDS == ("serve", "check", "plugins", "agent", "machines", "permissions", "org")
+
+
+def org_file(tmp_path, text):
+    (tmp_path / "acme" / ".claude").mkdir(parents=True)
+    (tmp_path / "acme" / ".claude" / "org.toml").write_text(text)
+
+
+ACME = '[programme]\ncode = "acme"\nname = "Acme"\n[roles.manager]\nsessions = ["acme"]\nsend_here = ["facts"]\n'
+
+
+def test_org_check_warns_about_a_role_whose_session_is_not_running(tmp_path, capsys):
+    org_file(tmp_path, ACME)
+    code = main(["org", "check"], env=env(tmp_path, HOME=str(tmp_path)))
+    assert code == 0
+    assert "acme: role manager names session 'acme', which is not running" in capsys.readouterr().out
+
+
+def test_org_check_fails_on_a_file_it_cannot_use(tmp_path, capsys):
+    org_file(tmp_path, '[programme]\nname = "no code"\n')
+    assert main(["org", "check"], env=env(tmp_path, HOME=str(tmp_path))) == 1
+    assert "code" in capsys.readouterr().out
+
+
+def test_org_prints_the_chart_as_the_voice_hears_it(tmp_path, capsys):
+    org_file(tmp_path, ACME)
+    assert main(["org"], env=env(tmp_path, HOME=str(tmp_path))) == 0
+    assert "Acme (acme): manager, acme, not running; send facts." in capsys.readouterr().out
 
 
 def test_serve_starts_the_bridge_with_the_chosen_transport(tmp_path):

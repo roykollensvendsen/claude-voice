@@ -16,7 +16,7 @@ from .server import Config, ConfigError, load_config, serve_forever
 
 #: Every verb this command has. The documentation test requires each one to
 #: appear in a worked example, so a verb cannot be added without one.
-COMMANDS: tuple[str, ...] = ("serve", "check", "plugins", "agent", "machines", "permissions")
+COMMANDS: tuple[str, ...] = ("serve", "check", "plugins", "agent", "machines", "permissions", "org")
 
 SIGN_IN = (
     "Run `claude`, type /login and sign in with your Claude account, then check again. If `claude` "
@@ -131,10 +131,15 @@ def main(
     permission_cmd = sub.add_parser("permissions", help="give Claude Code the voice repositories' permission rules")
     permission_cmd.add_argument("folders", nargs="*", type=Path, help="default: the clones in the settings file")
     permission_cmd.add_argument("--dry-run", action="store_true", help="say what would be added, and write nothing")
+    org_cmd = sub.add_parser("org", help="print the org chart, or check its files")
+    org_cmd.add_argument("action", nargs="?", choices=["show", "check"], default="show")
     parsed = parser.parse_args(args)
 
     if parsed.command == "permissions":
         return permissions_command(parsed.folders, parsed.dry_run, env)
+
+    if parsed.command == "org":
+        return org_command(parsed.action, env)
 
     if parsed.command == "machines":
         return machines_command(parsed.action, parsed.name, env)
@@ -298,6 +303,30 @@ def permissions_command(folders: list[Path], dry_run: bool, env: Mapping[str, st
             sys.stderr.write(f"claude-voice: {exc}\n")
             code = 1
     return code
+
+
+def org_command(action: str, env: Mapping[str, str]) -> int:
+    """Print the org chart as the voice hears it, or check its files (docs/org-chart.md)."""
+    from . import config as settings
+    from . import events, org, roles
+
+    home = Path(env.get("HOME") or Path.home())
+    try:
+        cfg = settings.load(settings.FILE, own_clone=roles.own_clone(), env=env)
+    except settings.ConfigError as exc:
+        sys.stderr.write(f"claude-voice: {exc}\n")
+        return 1
+    root = Path(env.get("CLAUDE_VOICE_ROOT", "~/src")).expanduser()
+    chart = org.load(org.known_folders(root, [cfg.paths.claude_voice, *(p.cwd for p in cfg.plugins)]))
+    live = events.read_live(home / ".claude" / "sessions")
+    if action == "show":
+        for line in org.overview(chart, live, chart.placer()) or ["No programme has an org file."]:
+            sys.stdout.write(line + "\n")
+        return 0
+    running = {str(d.get("name")) for d in live}
+    for line in org.check(chart, running):
+        sys.stdout.write(line + "\n")
+    return 1 if chart.problems else 0
 
 
 def _systemctl(command: list[str]) -> None:
