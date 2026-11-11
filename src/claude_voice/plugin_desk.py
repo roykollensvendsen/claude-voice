@@ -71,7 +71,7 @@ class Desk:
         if spec is None:
             return _no(f"There is no plugin called {name}.")
         plugin, listing, why = await asyncio.to_thread(plugins.check_one, spec, self.approvals, self.client)
-        # Starting it may have upgraded its approval; that is not a new approval to pick up.
+        # The approval it was just checked against is not a new one to pick up.
         self._seen = {**self._seen, name: plugins.read_approvals(self.approvals).get(name)}
         running = [p for p in self.active if p.spec.name == name]
         # RULE: a restart that fails keeps the plugin that was running
