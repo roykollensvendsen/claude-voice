@@ -169,10 +169,14 @@ On the wire it is:
   [`agent-protocol/v1/plugin.json`](agent-protocol/v1/plugin.json): its name,
   which of the listed tools are its, its own rules for the voice, and `uses`:
   which private things on the machine it can reach (`microphone`, `camera`,
-  `location`, `calls`, `contacts`, `notifications`, `media`, `sensors`).
+  `location`, `calls`, `contacts`, `notifications`, `media`, `sensors`, and
+  `usage`: the use of the machine and its apps, such as mobile data used).
 
 Each plugin is approved on its own, first on its machine and then on the hub,
-and `uses` is shown to Roy when he approves it.
+and `uses` is shown to Roy when he approves it. `uses` follows the plugin's
+settings as they are now: turning on a setting that reaches more, such as
+naming a home Wi-Fi, which needs `location`, changes it, and the hub calls
+nothing on that machine until Roy has approved it again.
 
 ## The privacy rules on the wire (new in version 1)
 
