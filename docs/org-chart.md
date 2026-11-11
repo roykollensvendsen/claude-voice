@@ -121,3 +121,10 @@ $ env HOME=/nonexistent CLAUDE_VOICE_ROOT=docs/examples claude-voice org
 Acme Robots (acme): manager, acme-robots, not running; send decisions, proposals.
 Acme Robots (acme): arm quality, arm-quality, not running; send quality, facts.
 ```
+
+## Who reads it
+
+- The voice: the `org_chart` tool gives the whole chart in a few short lines,
+  one per role, and one more for the sessions in no programme.
+
+It only reads. The chart changes in the file and nowhere else.
