@@ -12,10 +12,15 @@ git clone https://github.com/roykollensvendsen/claude-voice
 cd claude-voice
 uv sync --all-extras
 git config core.hooksPath .githooks
+uv run claude-voice permissions
 ```
 
-The last line turns on the commit-msg hook, which refuses a message the gates
-would refuse later while it is still being written.
+The `git config` line turns on the commit-msg hook, which refuses a message the gates
+would refuse later while it is still being written. The last gives Claude Code
+the permission rules for this clone and the other voice repositories. It may
+look and run the tests without asking, and may never delete history or read a
+secret. [docs/permissions.md](docs/permissions.md) lists them; `--dry-run` shows
+what it would add first.
 
 The commit linter is a separate binary,
 [committed](https://github.com/crate-ci/committed).
