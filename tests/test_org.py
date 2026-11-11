@@ -145,6 +145,16 @@ def test_a_folder_in_an_org_file_must_be_relative(home):
     assert any("/elsewhere" in p for p in c.problems) and any("~/acme-vision" in p for p in c.problems)
 
 
+@pytest.mark.parametrize("folder", ["C:/acme-vision", "\\acme-vision", "D:acme-vision"])
+def test_a_folder_with_a_drive_or_a_root_is_refused_on_every_system(home, folder):
+    # a literal string, so a backslash is kept as written
+    text = ACME.replace('folders = ["../acme-vision"]', f"folders = ['{folder}']")
+    (home / "acme-robots" / ".claude" / "org.toml").write_text(text)
+    c = chart(home)
+    assert c.programme("acme").component("vision").folders == ()
+    assert any(folder in p for p in c.problems)
+
+
 def test_a_file_that_cannot_be_read_is_a_problem_not_a_crash(home):
     (home / "shop" / ".claude" / "org.toml").write_text("[programme\n")
     c = chart(home)

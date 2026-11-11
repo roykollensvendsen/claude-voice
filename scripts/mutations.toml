@@ -576,7 +576,7 @@ replace = 'return str(exc)'
 [[rule]]
 name = "a folder in an org file must be relative"
 file = "src/claude_voice/org.py"
-find = 'if text.startswith\("~"\) or Path\(text\).is_absolute\(\):'
+find = 'if not _relative\(text\):'
 replace = 'if False:'
 
 [[rule]]
