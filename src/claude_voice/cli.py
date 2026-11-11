@@ -16,7 +16,7 @@ from .server import Config, ConfigError, load_config, serve_forever
 
 #: Every verb this command has. The documentation test requires each one to
 #: appear in a worked example, so a verb cannot be added without one.
-COMMANDS: tuple[str, ...] = ("serve", "check", "plugins", "agent", "machines")
+COMMANDS: tuple[str, ...] = ("serve", "check", "plugins", "agent", "machines", "permissions")
 
 SIGN_IN = (
     "Run `claude`, type /login and sign in with your Claude account, then check again. If `claude` "
@@ -128,7 +128,13 @@ def main(
     machine_cmd = sub.add_parser("machines", help="list other machines, or pair with one by typing its code")
     machine_cmd.add_argument("action", nargs="?", choices=["list", "approve"], default="list")
     machine_cmd.add_argument("name", nargs="?")
+    permission_cmd = sub.add_parser("permissions", help="give Claude Code the voice repositories' permission rules")
+    permission_cmd.add_argument("folders", nargs="*", type=Path, help="default: the clones in the settings file")
+    permission_cmd.add_argument("--dry-run", action="store_true", help="say what would be added, and write nothing")
     parsed = parser.parse_args(args)
+
+    if parsed.command == "permissions":
+        return permissions_command(parsed.folders, parsed.dry_run, env)
 
     if parsed.command == "machines":
         return machines_command(parsed.action, parsed.name, env)
@@ -268,6 +274,30 @@ def machines_command(action: str, name: str | None, env: Mapping[str, str]) -> i
         sys.stderr.write(f"claude-voice: no machine {name!r} in the settings file\n")
         return 1
     return 0 if asyncio.run(machines.pair(chosen, folder=folder))["approved"] else 1
+
+
+def permissions_command(folders: list[Path], dry_run: bool, env: Mapping[str, str]) -> int:
+    """Add the permission rules to each repository's local settings, keeping the owner's own."""
+    from . import config as settings
+    from . import permissions, roles
+
+    if not folders:
+        try:
+            folders = permissions.folders(settings.load(settings.FILE, own_clone=roles.own_clone(), env=env))
+        except settings.ConfigError as exc:
+            sys.stderr.write(f"claude-voice: {exc}\n")
+            return 1
+    if not folders:
+        sys.stderr.write(f"claude-voice: no clone was found; name the folders, or set [paths] in {settings.FILE}\n")
+        return 1
+    rules, code = permissions.load(), 0
+    for folder in folders:
+        try:
+            sys.stdout.write(permissions.apply(folder, rules, dry_run).line() + "\n")
+        except permissions.PermissionsError as exc:
+            sys.stderr.write(f"claude-voice: {exc}\n")
+            code = 1
+    return code
 
 
 def _systemctl(command: list[str]) -> None:
