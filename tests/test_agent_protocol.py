@@ -9,6 +9,7 @@ with, because a frozen version is never edited.
 import hashlib
 import json
 import re
+import subprocess
 from pathlib import Path
 
 import httpx
@@ -231,3 +232,12 @@ def test_only_the_voice_can_confirm_a_spoken_yes():
 def test_version_one_is_frozen():
     assert "v1" in load(FROZEN), "the owner froze version 1 on 2026-11-11"
     assert "**Status: frozen" in DOC.read_text()
+
+
+def test_a_frozen_file_has_the_same_bytes_on_every_checkout():
+    """Git may turn line endings into CRLF on a Windows checkout, which would change the hash."""
+    names = [str(p.relative_to(ROOT)) for p in schema_files()]
+    out = subprocess.run(
+        ["git", "check-attr", "text", "--", *names], cwd=ROOT, capture_output=True, text=True, check=True
+    )
+    assert all(line.endswith(": text: unset") for line in out.stdout.splitlines()), out.stdout

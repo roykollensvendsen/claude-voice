@@ -1,0 +1,3 @@
+# The agent protocol schemas are held to their bytes once frozen, so git must never
+# change their line endings on checkout.
+docs/agent-protocol/** -text
