@@ -166,65 +166,50 @@ class SessionTree:
         except OSError:
             return False
 
-    def build(self) -> dict[str, Any]:
-        live = self._live()
-        nodes: dict[str, dict[str, Any]] = {
-            BRIDGE_NODE: {
-                "id": BRIDGE_NODE,
-                "name": "claude-voice",
-                "kind": "bridge",
-                "project": None,
-                "status": "running",
-                "parent_id": None,
-                "talks_to": set(),
-            }
+    def _node(
+        self, nid: str, name: Any, kind: str, project: str | None, status: Any, parent: str | None
+    ) -> dict[str, Any]:
+        return {
+            "id": nid,
+            "name": name,
+            "kind": kind,
+            "project": project,
+            "status": status,
+            "parent_id": parent,
+            "talks_to": set(),
         }
-        by_name = renames.by_name(live)
-        by_pid = {int(d["pid"]): str(d["sessionId"]) for d in live}
 
+    def _live_nodes(self, live: list[dict[str, Any]], nodes: dict[str, dict[str, Any]]) -> None:
+        """A node for each running session, and under it the helpers still at work."""
         for d in live:
             sid = str(d["sessionId"])
-            nodes[sid] = {
-                "id": sid,
-                "name": d.get("name"),
-                "kind": "terminal" if d.get("kind") == "interactive" else "background",
-                "project": self._project(d.get("cwd")),
-                "status": d.get("status"),
-                "parent_id": None,
-                "talks_to": set(),
-            }
+            cwd = str(d.get("cwd"))
+            project = self._project(d.get("cwd"))
+            kind = "terminal" if d.get("kind") == "interactive" else "background"
+            nodes[sid] = self._node(sid, d.get("name"), kind, project, d.get("status"), None)
             try:
-                agents = self.subagents(sid, str(d.get("cwd")))
+                agents = self.subagents(sid, cwd)
             except Exception:
                 agents = []
             for agent in agents:
-                if not self._recent_subagent(sid, str(d.get("cwd")), agent):
+                if not self._recent_subagent(sid, cwd, agent):
                     continue  # long sessions keep every helper they ever ran; show those at work
-                nodes[f"{sid}/{agent}"] = {
-                    "id": f"{sid}/{agent}",
-                    "name": agent,
-                    "kind": "subagent",
-                    "project": self._project(d.get("cwd")),
-                    "status": None,
-                    "parent_id": sid,
-                    "talks_to": set(),
-                }
+                nodes[f"{sid}/{agent}"] = self._node(f"{sid}/{agent}", agent, "subagent", project, None, sid)
 
-        cutoff = self.clock() - WINDOW_SECONDS
+    def _bridge_nodes(self, nodes: dict[str, dict[str, Any]], cutoff: float) -> None:
+        """A node for each session the bridge runs, under the session it copies or the bridge."""
         for s in self.store.list_sessions(limit=200):
             if s["status"] == "closed" or s["updated_at"] < cutoff:
                 continue
             parent = s["claude_session_id"] if s["claude_session_id"] in nodes else BRIDGE_NODE
-            nodes[s["id"]] = {
-                "id": s["id"],
-                "name": s["label"] or Path(s["project_path"]).name,
-                "kind": "bridge-session",
-                "project": self._project(s["project_path"]),
-                "status": s["status"],
-                "parent_id": parent,
-                "talks_to": set(),
-            }
+            name = s["label"] or Path(s["project_path"]).name
+            project = self._project(s["project_path"])
+            nodes[s["id"]] = self._node(s["id"], name, "bridge-session", project, s["status"], parent)
 
+    def _resolver(self, live: list[dict[str, Any]]) -> Callable[[str, str], str | None]:
+        """Who a name or socket address in a transcript is: the bridge, a running session, or nobody."""
+        by_name = renames.by_name(live)
+        by_pid = {int(d["pid"]): str(d["sessionId"]) for d in live}
         courier_pids, courier_names = self._couriers
 
         def resolve(who: str, address: str = "") -> str | None:
@@ -244,6 +229,11 @@ class SessionTree:
                     return by_pid[int(pid.group(1))]
             return None
 
+        return resolve
+
+    def _talk(self, live: list[dict[str, Any]], nodes: dict[str, dict[str, Any]], cutoff: float) -> None:
+        """Mark sessions continued elsewhere, and draw who talks to whom from the transcripts."""
+        resolve = self._resolver(live)
         for d in live:
             sid = str(d["sessionId"])
             transcript = self._transcript(sid, str(d.get("cwd")))
@@ -261,6 +251,13 @@ class SessionTree:
                 else:
                     nodes[other]["talks_to"].add(sid)
 
+    def build(self) -> dict[str, Any]:
+        live = self._live()
+        nodes = {BRIDGE_NODE: self._node(BRIDGE_NODE, "claude-voice", "bridge", None, "running", None)}
+        self._live_nodes(live, nodes)
+        cutoff = self.clock() - WINDOW_SECONDS
+        self._bridge_nodes(nodes, cutoff)
+        self._talk(live, nodes, cutoff)
         out = [{**n, "talks_to": sorted(n["talks_to"])} for n in nodes.values()]
         shape = sorted((n["id"], n["parent_id"] or "", n["kind"], tuple(n["talks_to"])) for n in out)
         version = hashlib.sha1(json.dumps(shape).encode()).hexdigest()[:12]
