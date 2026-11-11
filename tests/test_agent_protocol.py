@@ -226,3 +226,8 @@ def test_only_the_voice_can_confirm_a_spoken_yes():
     text = " ".join(DOC.read_text().split())
     assert "only when its caller is `voice`" in text
     assert "the same caller that got the `needs_yes`" in text
+
+
+def test_version_one_is_frozen():
+    assert "v1" in load(FROZEN), "the owner froze version 1 on 2026-11-11"
+    assert "**Status: frozen" in DOC.read_text()

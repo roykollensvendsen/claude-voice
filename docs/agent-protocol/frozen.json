@@ -1,1 +1,13 @@
-{}
+{
+  "v1": {
+    "agent-info.json": "ea3cffcf0202d20c7629dbedbd1884ac38c9b329ab3b4f0a98a5d6718f9cc8e1",
+    "caller-meta.json": "dbd6f8d41baf62f80673ec2bf451c2acfa31b36b65df6b21e8445697b8054a36",
+    "confirm-request.json": "c543e6cf77451f170246200d9737bd2ef9fb09745e1d16d07c23f8dc5bf058ab",
+    "error.json": "fd472fb37c1f830dc4c5c37d039f7ae6f9dd4102570960f2b0717c2e1af7c58e",
+    "needs-yes.json": "3770c14f7b4af54226cd0a558decd3069e5a21fd16d62983ba770d9a2ec2b81d",
+    "pair-request.json": "0579f789a9f5703dda071999b72c5bab8f722a4195a66701018d402ccfb21987",
+    "pair-response.json": "6c6b1b5ad3bbf14eff28b176c266ea42e4112485a3ac1a994c8a0cb5336125fc",
+    "plugin.json": "6c9dadc5d4efe52034e2a33200b96238226d2e25eb34a23d95ea585a896ba50f",
+    "privacy.json": "e449a536e43888ab9f09d9a606f144dfdd2136b97e6ef8a7064b757693505bed"
+  }
+}
