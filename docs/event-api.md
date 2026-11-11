@@ -405,6 +405,46 @@ as pinned cards above the sessions.
 | `GET /api/v1/roles` | `{"roles": [{"name", "title", "description", "session": {"name", "id", "status"} or null}]}`; `session` is the running session last started for the role |
 | `POST /api/v1/roles/{name}/start` | with `{"task": "what to change"}` or `{}`: starts a session for the role and answers `{"role", "name", "claude_session_id", "status"}`. `404` for an unknown role, `502` when Claude Code could not start it. A change: with the cookie it needs an allowed `Origin` |
 
+## The org chart
+
+Which programme, component and role each session belongs to, read from each
+programme's own file ([the org chart](org-chart.md)). These calls only read:
+the chart changes in its file, never through the API. The page reads them when
+it shows the chart; they are not streamed, but the `programmes` event says when
+the list of programmes changed.
+
+| Call | Answer |
+| --- | --- |
+| `GET /api/v1/org` | every programme, in order: `{"programmes": [{"id", "name", "order", "roles": <how many>, "unfilled": ["<role id>"]}]}` |
+| `GET /api/v1/org/{programme}` | one programme by its `id`, as below; `404` for an unknown one |
+
+```json
+{
+  "id": "acme", "name": "Acme Robots", "aliases": ["robots"],
+  "components": [{"id": "arm", "name": "Robot arm", "aliases": ["the arm"]}],
+  "roles": [
+    {"id": "manager", "name": "Manager", "component": null, "programme_wide": true,
+     "address": "acme/manager", "purpose": "Keeps the overview and brings the owner's decisions to the others.",
+     "limits": "Never merges someone else's pull request without the owner.",
+     "routing": ["decisions", "proposals"], "session_names": ["acme-robots"],
+     "sessions": ["5f3c…"], "running": true},
+    {"id": "quality", "name": "Quality", "component": {"id": "arm", "name": "Robot arm"},
+     "programme_wide": false, "address": "acme/arm/quality", "purpose": "Watches the arm's tests and measurements.",
+     "limits": "Changes tests, never the arm's code.", "routing": ["quality", "facts"],
+     "session_names": ["arm-quality"], "sessions": [], "running": false}
+  ],
+  "unfilled": ["quality"]
+}
+```
+
+- `routing`: what to send the role, from `facts`, `proposals`, `decisions` and
+  `quality`.
+- `session_names`: the names the file gives for the role. `sessions`: the ids of
+  the sessions on this computer filling it now, the `id` the session list uses.
+  `running` is whether there is one; a role in `unfilled` has none.
+
+These are not the start roles above, which say how to start a new session.
+
 ## Live events
 
 `GET /api/v1/events` is a stream of

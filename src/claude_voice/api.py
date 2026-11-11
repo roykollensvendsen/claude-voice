@@ -240,6 +240,7 @@ class EventApi:
         remote_prompts: Callable[[], list[dict[str, Any]]] | None = None,
         answer_remote: Callable[[str, dict[str, Any]], Awaitable[tuple[int, dict[str, Any]]]] | None = None,
         focus: Callable[[str], tuple[int, dict[str, str]]] | None = None,
+        org: Callable[[str | None], dict[str, Any] | None] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.store = store
@@ -265,6 +266,8 @@ class EventApi:
         self.remote_prompts = remote_prompts or (lambda: [])
         self.answer_remote = answer_remote
         self.focus = focus  # bring a session's terminal to the front: terminals.Terminals, by id
+        # The org chart, read only: every programme with None, or one by its code (None if unknown).
+        self.org = org or (lambda code: None if code else {"programmes": []})
         self.clock = clock
         self._failures: list[float] = []
 
@@ -297,6 +300,8 @@ class EventApi:
         route("/api/v1/update/changes", methods=["GET"])(self.changes)
         route("/api/v1/bridge", methods=["GET"])(self.bridge_now)
         route("/api/v1/roles/{role}/start", methods=["POST"])(self.role_start)
+        route("/api/v1/org", methods=["GET"])(self.org_chart)
+        route("/api/v1/org/{programme}", methods=["GET"])(self.org_chart)
 
     # -- who is asking ---------------------------------------------------------------
 
@@ -706,6 +711,19 @@ class EventApi:
             return JSONResponse({"error": str(exc)}, 404)
         except Exception as exc:  # the start failed; say why
             return JSONResponse({"error": str(getattr(exc, "message", exc))}, 502)
+
+    # -- the org chart ---------------------------------------------------------------
+
+    async def org_chart(self, request: Request) -> Response:
+        """Every programme, or one programme's roles and who fills them. Only read: the
+        chart changes in its file, never through the API."""
+        if not await self._allowed(request):
+            return JSONResponse({"error": "sign in first"}, 401)
+        wanted = request.path_params.get("programme")
+        found = self.org(wanted)
+        if found is None:
+            return JSONResponse({"error": f"no programme {wanted!r}"}, 404)
+        return JSONResponse(found, headers={"Cache-Control": "no-store"})
 
     # -- the live stream -------------------------------------------------------------
 
