@@ -98,6 +98,9 @@ settings, and the project folders it lists (every folder directly under its
 project root). It looks again every ten seconds, so an edited file is seen
 without a restart.
 
+A project folder the bridge is not allowed to open is reported as a file that
+cannot be read. The rest of the chart is still read, and nothing else fails.
+
 ## Checking a file
 
 `claude-voice org check` reads the same files the bridge reads. Here it is with
