@@ -90,11 +90,51 @@ list_active_sessions; to continue one, attach_conversation with its id.
 When a recap shows pending_approvals, read the tool and its input to the user
 and call approve only if they clearly say yes; otherwise call deny.
 Call org_chart to know who handles what.
+When a tool's answer says what to do next, read that step out to the user.
+A command that asks the user to type something in is given to them to run in a
+plain terminal; never run it for them.
 """
+# The owner's own rules for the voice live in a file outside the repository, cut to this size.
+OWN_RULES_BYTES = 8 * 1024
+OWN_RULES_HEADING = "The owner's own rules:"
 
 
 class ConfigError(RuntimeError):
     pass
+
+
+def voice_instructions(file: Path | None) -> str:
+    """The instructions to the voice: the general ones, then the owner's own file when one is set.
+    A file that cannot be read never stops the bridge; the log says what to do."""
+    # RULE: without an owners rules file the voice gets the general rules only
+    if file is None:
+        return INSTRUCTIONS
+    try:
+        raw = file.read_bytes()
+    # RULE: an owners rules file that cannot be read is logged and the bridge runs on
+    except OSError as exc:
+        log.warning(
+            "voice_instructions_file %s could not be read (%s), so the voice has the general rules only. "
+            "Create the file, or fix or remove voice_instructions_file in config.toml.",
+            file,
+            exc.strerror or type(exc).__name__,
+        )
+        return INSTRUCTIONS
+    # RULE: an owners rules file over eight kilobytes is cut
+    if len(raw) > OWN_RULES_BYTES:
+        log.warning(
+            "voice_instructions_file %s is %d bytes, so it was cut to the first %d. "
+            "Shorten the file to keep all of it.",
+            file,
+            len(raw),
+            OWN_RULES_BYTES,
+        )
+        raw = raw[:OWN_RULES_BYTES]
+    own = raw.decode("utf-8", errors="ignore").strip()
+    if not own:
+        return INSTRUCTIONS
+    # RULE: the owners own rules file reaches the voice
+    return f"{INSTRUCTIONS}\n{OWN_RULES_HEADING}\n{own}\n"
 
 
 @dataclass
@@ -503,7 +543,7 @@ def build_server(
         "claude-voice",
         title="Claude voice bridge",
         version=running_version,
-        instructions=INSTRUCTIONS,
+        instructions=voice_instructions(repos.voice_instructions_file),
         auth_server_provider=oauth,
         auth=auth,
         middleware=[log_requests, fleet.middleware(across)],
