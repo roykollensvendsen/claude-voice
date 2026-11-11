@@ -184,6 +184,29 @@ def test_a_broken_bridge_never_stops_a_session():
     assert phone_hook.handle(question_input(), Broken(), timeout=5) == {}
 
 
+def test_the_hook_leaves_every_other_tool_and_event_alone():
+    bridge = Bridge(answer={"answer": "blue"})
+    for hook_input in (
+        {"hook_event_name": "PreToolUse", "session_id": "s1", "tool_name": "Bash", "tool_input": {}},
+        {"hook_event_name": "PostToolUse", "session_id": "s1", "tool_name": "AskUserQuestion", "tool_input": {}},
+    ):
+        assert phone_hook.handle(hook_input, bridge, timeout=5) == {}
+    assert bridge.posted == []
+
+
+def test_the_hook_joins_several_choices_picked_on_the_phone():
+    out = phone_hook.handle(question_input(), Bridge(answer={"answer": {"text": ["red", "blue"]}}), timeout=5)
+    assert out["hookSpecificOutput"]["updatedInput"]["answers"] == {"Which colour?": "red, blue"}
+
+
+def test_a_refusal_from_the_phone_tells_claude_why():
+    hook_input = {"hook_event_name": "PermissionRequest", "session_id": "s1", "tool_name": "Bash", "tool_input": {}}
+    given = phone_hook.handle(hook_input, Bridge(answer={"decision": "deny", "reason": "not now"}), timeout=5)
+    bare = phone_hook.handle(hook_input, Bridge(answer={"decision": "maybe"}), timeout=5)
+    assert given["hookSpecificOutput"]["decision"] == {"behavior": "deny", "message": "not now"}
+    assert bare["hookSpecificOutput"]["decision"] == {"behavior": "deny", "message": "Refused from the phone."}
+
+
 def test_the_hook_is_given_to_claude_code_only_for_questions_and_permission_prompts():
     entries = phone_hook.settings_entries("/usr/bin/python3")
     assert set(entries) == {"PreToolUse", "PermissionRequest"}
