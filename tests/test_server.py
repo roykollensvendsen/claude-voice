@@ -477,7 +477,7 @@ def test_the_log_is_kept_in_a_file_next_to_the_database(tmp_path):
     assert "claude_voice.oauth: oauth refresh ok for client abcdef12" in text
 
 
-def slow_first_look(monkeypatch, seconds=1.0):
+def slow_first_look(monkeypatch, seconds=2.5):
     """Make every tree build take `seconds`, as the first one does on a busy machine, where it
     reads each running session's whole conversation. Returns an event set once one has begun."""
     import threading
@@ -522,7 +522,7 @@ async def test_the_bridge_answers_as_soon_as_it_has_started_while_its_first_look
             if looked:
                 break
             await asyncio.sleep(0.05)
-    assert answered < 0.5
+    assert answered < 1.5  # well under the 2.5 s look, with room for a slow Windows runner
     assert looked
 
 
@@ -536,4 +536,4 @@ async def test_a_question_about_news_does_not_wait_for_a_look_already_under_way(
         news = await call(client, "whats_new")
         answered = time.monotonic() - asked
     assert news["cursor"]
-    assert answered < 0.5
+    assert answered < 1.5  # well under the 2.5 s look, with room for a slow Windows runner

@@ -11,10 +11,10 @@ where reading stopped.
 
 from __future__ import annotations
 
-import threading
 import hashlib
 import json
 import re
+import threading
 import time
 from collections.abc import Callable
 from datetime import datetime
