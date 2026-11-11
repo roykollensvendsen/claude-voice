@@ -32,7 +32,7 @@ def read(folder):
     return json.loads(settings_file(folder).read_text(encoding="utf-8"))
 
 
-def test_the_owners_own_rules_are_kept(tmp_path):
+def test_rules_already_in_the_settings_are_kept(tmp_path):
     with_settings(
         tmp_path,
         {"model": "opus", "permissions": {"allow": ["Bash(make*)"], "deny": ["Bash(rm -rf*)"], "ask": ["Bash(x)"]}},

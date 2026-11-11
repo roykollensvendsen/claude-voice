@@ -70,6 +70,7 @@ LAYERS = {
             "renames",
             "devmode",
             "terminals",
+            "permissions",
         ),
         1,
     ),  # parts, each about one thing
