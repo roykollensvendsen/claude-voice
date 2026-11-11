@@ -147,7 +147,8 @@ def voice_instructions(file: Path | None) -> str:
             OWN_RULES_BYTES,
         )
         raw = raw[:OWN_RULES_BYTES]
-    own = raw.decode("utf-8", errors="ignore").strip()
+    # A file saved on Windows ends its lines with a carriage return too; the voice gets plain line ends.
+    own = raw.decode("utf-8", errors="ignore").replace("\r\n", "\n").replace("\r", "\n").strip()
     if not own:
         return INSTRUCTIONS
     # RULE: the owners own rules file reaches the voice
