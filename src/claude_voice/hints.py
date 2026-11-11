@@ -31,7 +31,8 @@ def hint_id(sessions: Iterable[str]) -> str:
 
 
 def _hint(sessions: list[str], reason: str, detail: str | None, messages: int | None) -> dict[str, Any]:
-    return {"id": hint_id(sessions), "sessions": sessions, "reason": reason, "detail": detail, "messages": messages}
+    ids = sorted(sessions)
+    return {"id": hint_id(ids), "sessions": ids, "reason": reason, "detail": detail, "messages": messages}
 
 
 def _enough(sessions: list[str]) -> bool:
