@@ -34,39 +34,60 @@ class Bridge(Protocol):
 
 def handle(hook_input: dict[str, Any], bridge: Bridge, timeout: float = TIMEOUT) -> dict[str, Any]:
     """Claude Code's hook answer: the phone's answer, or nothing so the box shows."""
+    body = _prompt(hook_input)
+    if body is None:
+        return {}
+    answer = _ask_phone(body, bridge, timeout)
+    if answer is None:
+        return {}
+    if body["kind"] == "question":
+        return _question_answer(hook_input.get("tool_input") or {}, answer)
+    return _approval_answer(answer)
+
+
+def _prompt(hook_input: dict[str, Any]) -> dict[str, Any] | None:
+    """What to show on the phone, or None for a hook event the phone does not answer."""
     event = hook_input.get("hook_event_name")
     tool = str(hook_input.get("tool_name") or "")
     tool_input = hook_input.get("tool_input") or {}
     session = str(hook_input.get("session_id") or "")
     if event == "PreToolUse" and tool == "AskUserQuestion":
-        body = {"session_id": session, "kind": "question", "question": tool_input}
-    elif event == "PermissionRequest":
-        body = {"session_id": session, "kind": "approval", "tool": tool, "input": tool_input}
-    else:
-        return {}
+        return {"session_id": session, "kind": "question", "question": tool_input}
+    if event == "PermissionRequest":
+        return {"session_id": session, "kind": "approval", "tool": tool, "input": tool_input}
+    return None
+
+
+def _ask_phone(body: dict[str, Any], bridge: Bridge, timeout: float) -> dict[str, Any] | None:
+    """The phone's answer, or None when nobody is looking, none came in time, or the bridge failed."""
     try:
         opened = bridge.open(body)
         if not opened.get("wait"):
-            return {}  # nobody is looking at the phone: the box shows as before
+            return None  # nobody is looking at the phone: the box shows as before
         answer = bridge.wait_for(str(opened["id"]), timeout)
         if answer is None:
             bridge.close(str(opened["id"]), "timeout")
-            return {}
+        return answer
     except Exception:
-        return {}  # a bridge that is down or broken never stops a session
-    if body["kind"] == "question":
-        questions = tool_input.get("questions") or [{}]
-        chosen = answer.get("answer")
-        text = chosen.get("text") if isinstance(chosen, dict) else chosen
-        value = ", ".join(text) if isinstance(text, list) else str(text)
-        updated = {**tool_input, "answers": {str(questions[0].get("question", "")): value}}
-        return {
-            "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "allow",
-                "updatedInput": updated,
-            }
+        return None  # a bridge that is down or broken never stops a session
+
+
+def _question_answer(tool_input: dict[str, Any], answer: dict[str, Any]) -> dict[str, Any]:
+    questions = tool_input.get("questions") or [{}]
+    chosen = answer.get("answer")
+    text = chosen.get("text") if isinstance(chosen, dict) else chosen
+    value = ", ".join(text) if isinstance(text, list) else str(text)
+    updated = {**tool_input, "answers": {str(questions[0].get("question", "")): value}}
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "updatedInput": updated,
         }
+    }
+
+
+def _approval_answer(answer: dict[str, Any]) -> dict[str, Any]:
     decision: dict[str, Any] = {"behavior": "allow" if answer.get("decision") == "allow" else "deny"}
     if decision["behavior"] == "deny":
         decision["message"] = str(answer.get("reason") or "Refused from the phone.")
