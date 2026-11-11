@@ -199,40 +199,48 @@ class SessionManager:
 
     def _record(self, session_id: str, msg: Any) -> tuple[str, str | None] | None:
         """Journal one SDK message; return (status, error) when it ends the turn."""
-        sid = session_id
         if isinstance(msg, SystemMessage):
-            claude_id = msg.data.get("session_id")
-            if msg.subtype == "init" and claude_id:
-                self.store.update_session(sid, claude_session_id=claude_id)
+            self._record_system(session_id, msg)
         elif isinstance(msg, AssistantMessage):
-            for block in msg.content:
-                if isinstance(block, TextBlock) and block.text.strip():
-                    self.store.add_event(sid, "text", {"text": block.text})
-                elif isinstance(block, ToolUseBlock):
-                    self.store.add_event(sid, "tool_use", {"name": block.name, "input": brief(block.input)})
+            self._record_assistant(session_id, msg)
         elif isinstance(msg, ResultMessage):
-            if msg.session_id:
-                self.store.update_session(sid, claude_session_id=msg.session_id)
-            self.store.add_event(
-                sid,
-                "result",
-                {
-                    "text": msg.result,
-                    "is_error": msg.is_error,
-                    "num_turns": msg.num_turns,
-                    "duration_ms": msg.duration_ms,
-                },
-            )
-            if msg.is_error:
-                return "error", msg.result or msg.subtype
-            if msg.num_turns == 0 and not (msg.result or "").strip():
-                # Seen when resuming a conversation that is open in a terminal.
-                return "error", (
-                    "Claude did nothing; the conversation may be open in another "
-                    "Claude Code window. Use message_active_session to reach it there."
-                )
-            return "idle", None
+            return self._record_result(session_id, msg)
         return None
+
+    def _record_system(self, session_id: str, msg: SystemMessage) -> None:
+        claude_id = msg.data.get("session_id")
+        if msg.subtype == "init" and claude_id:
+            self.store.update_session(session_id, claude_session_id=claude_id)
+
+    def _record_assistant(self, session_id: str, msg: AssistantMessage) -> None:
+        for block in msg.content:
+            if isinstance(block, TextBlock) and block.text.strip():
+                self.store.add_event(session_id, "text", {"text": block.text})
+            elif isinstance(block, ToolUseBlock):
+                self.store.add_event(session_id, "tool_use", {"name": block.name, "input": brief(block.input)})
+
+    def _record_result(self, session_id: str, msg: ResultMessage) -> tuple[str, str | None]:
+        if msg.session_id:
+            self.store.update_session(session_id, claude_session_id=msg.session_id)
+        self.store.add_event(
+            session_id,
+            "result",
+            {
+                "text": msg.result,
+                "is_error": msg.is_error,
+                "num_turns": msg.num_turns,
+                "duration_ms": msg.duration_ms,
+            },
+        )
+        if msg.is_error:
+            return "error", msg.result or msg.subtype
+        if msg.num_turns == 0 and not (msg.result or "").strip():
+            # Seen when resuming a conversation that is open in a terminal.
+            return "error", (
+                "Claude did nothing; the conversation may be open in another "
+                "Claude Code window. Use message_active_session to reach it there."
+            )
+        return "idle", None
 
     # -- recaps --------------------------------------------------------------
 
