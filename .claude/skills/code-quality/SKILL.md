@@ -34,9 +34,12 @@ in this skill makes a cell exempt by itself.
 
 ## 2. Measure it locally
 
-Run these from the repository root. The long ones go in the background; never
-put a time limit on them, because a cut-off mutation run reports rules as
-unproven that are not.
+Run these from the repository root, after `uv sync --all-extras`: in a fresh
+clone or worktree the measure otherwise stops at "The suite fails". The long
+ones go in the background; never put a time limit on them, because a cut-off
+mutation run reports rules as unproven that are not. Test time measured while
+other heavy runs share the machine comes out far too high; trust the figure
+from continuous integration.
 
 <!-- not run: the full measure takes about ten minutes -->
 ```
@@ -154,6 +157,8 @@ entry without both a reason and an approval is ignored, and a measure back
 inside its limit is green again whatever the file says, so delete the entry
 then. The ids are `coverage`, `mutation`, `tests`, `problems`, `cycles`,
 `layers`, `duplication`, `complexity` and `test_time`.
+Why it works this way is
+[ADR-CV-013](../../../decisions/ADR-CV-013-an-agreed-exception-is-shown-as-exempt.md).
 
 ## 5. Land it
 
