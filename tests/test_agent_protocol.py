@@ -204,3 +204,8 @@ def test_a_call_carries_an_id_so_a_repeat_is_never_run_twice():
     text = DOC.read_text()
     assert "`duplicate_call`" in text
     assert "may have happened" in text
+
+
+def test_a_machine_that_has_spoken_version_one_is_never_taken_back_to_version_zero():
+    text = DOC.read_text()
+    assert "never accepts an answer in a lower version from it again" in text

@@ -64,6 +64,12 @@ addresses here are examples: `laptop-a` is a hub, `phone-a` an agent,
   and refusing version 0 are two separate events, and each is Roy's decision.
   Until the second, hub and agent each accept a peer that sends no header, so
   freezing this version cuts no machine off. After it, both refuse one.
+- **No machine slips back.** The hub keeps, with each machine's pairing, the
+  highest version it has answered in. Once a machine has answered in version 1,
+  the hub never accepts an answer in a lower version from it again, even before
+  the switch-over: an answer with no header from it is refused, and Roy is told.
+  The agent does the same with its hub's requests. A machine that really went
+  back, such as one reinstalled with older software, is paired again.
 
 ## Pairing
 
