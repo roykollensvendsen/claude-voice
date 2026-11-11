@@ -47,6 +47,46 @@ def test_a_file_names_other_repositories_and_folders(tmp_path):
     assert out.paths.ui_dist == tmp_path / "code" / "claude-voice-ui" / "dist"
 
 
+def test_the_file_can_name_the_ui_repository_and_its_folders(tmp_path):
+    file = tmp_path / "config.toml"
+    file.write_text(
+        "[repos]\n"
+        'claude_voice_ui = "someone/claude-voice-ui"\n'
+        "[paths]\n"
+        "claude_voice_ui = '~/ui'\n"
+        "ui_dist = '~/built'\n"
+    )
+    out = config.load(file, own_clone=tmp_path / "cv", env={"HOME": str(tmp_path)})
+    assert out.repos.claude_voice_ui == "someone/claude-voice-ui"
+    assert out.paths.claude_voice == tmp_path / "cv"
+    assert out.paths.claude_voice_ui == tmp_path / "ui"
+    assert out.paths.ui_dist == tmp_path / "built"
+    assert out.file == file
+
+
+def test_without_a_clone_or_a_file_no_folder_is_known(tmp_path):
+    out = config.load(None, own_clone=None, env={"HOME": str(tmp_path)})
+    assert out.file is None
+    assert (out.paths.claude_voice, out.paths.claude_voice_ui, out.paths.ui_dist, out.paths.contribute) == (
+        None,
+        None,
+        None,
+        None,
+    )
+
+
+def test_the_settings_file_named_in_the_environment_wins_over_the_given_one(tmp_path):
+    given, named = tmp_path / "given.toml", tmp_path / "named.toml"
+    given.write_text('[repos]\nfork = "given/claude-voice"\n')
+    named.write_text('[repos]\nfork = "named/claude-voice"\n')
+    out = config.load(given, own_clone=None, env={"HOME": str(tmp_path), "CLAUDE_VOICE_CONFIG": "~/named.toml"})
+    assert out.file == named
+    assert out.repos.fork == "named/claude-voice"
+    folder = tmp_path / "a-folder.toml"
+    folder.mkdir()
+    assert config.load(folder, own_clone=None, env={}).repos.fork is None  # not a file: the defaults
+
+
 def test_the_ui_folder_setting_still_wins_over_the_file(tmp_path):
     out = config.load(None, own_clone=tmp_path, env={"CLAUDE_VOICE_UI_DIR": str(tmp_path / "built")})
     assert out.paths.ui_dist == tmp_path / "built"
