@@ -5,6 +5,7 @@ are logged; a changed tool is approved by the owner's voice, only in a developer
 owner switched on by voice; a new plugin, command or folder is still typed.
 """
 
+import asyncio
 import json
 import logging
 
@@ -81,6 +82,36 @@ async def test_plugin_restart_starts_one_plugin_again_and_keeps_its_tools(tmp_pa
     async with Client(server) as c:
         status = (await c.call_tool("garage_status", {})).structured_content
     assert status == {"door": "closed"}
+
+
+def unhurried():
+    """A stand-in garage whose status takes a moment, as a real device does."""
+    server = MCPServer("garage")
+
+    @server.tool()
+    async def garage_status() -> dict:
+        """Where the door is."""
+        await asyncio.sleep(0.5)
+        return {"door": "closed"}
+
+    @server.tool()
+    async def garage_request(action: str) -> dict:
+        """Ask to open or close the door."""
+        return {"token": "t1", "action": action}
+
+    return server
+
+
+async def test_a_restart_lets_a_call_already_running_finish_first(tmp_path):
+    made, _, server, _ = desk(tmp_path, unhurried())
+    async with Client(server) as c:
+        running = asyncio.create_task(c.call_tool("garage_status", {}))
+        await asyncio.sleep(0.2)
+        out = await made.restart("garage")
+        answer = await running
+    assert out["ok"]
+    assert not answer.is_error
+    assert answer.structured_content == {"door": "closed"}
 
 
 async def test_a_restarted_plugin_whose_inputs_changed_is_not_offered(tmp_path):
