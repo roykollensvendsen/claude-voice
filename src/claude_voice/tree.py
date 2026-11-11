@@ -253,6 +253,25 @@ class SessionTree:
                 else:
                     nodes[other]["talks_to"].add(sid)
 
+    def build(self) -> dict[str, Any]:
+        # The watcher and the tools build it from different threads, and a transcript's
+        # place in its file must move on for one reader at a time.
+        # RULE: the tree is built by one caller at a time
+        with self._building:
+            return self._build()
+
+    def _build(self) -> dict[str, Any]:
+        live = self._live()
+        nodes = {BRIDGE_NODE: self._node(BRIDGE_NODE, "claude-voice", "bridge", None, "running", None)}
+        self._live_nodes(live, nodes)
+        cutoff = self.clock() - WINDOW_SECONDS
+        self._bridge_nodes(nodes, cutoff)
+        self._talk(live, nodes, cutoff)
+        out = [{**n, "talks_to": sorted(n["talks_to"])} for n in nodes.values()]
+        shape = sorted((n["id"], n["parent_id"] or "", n["kind"], tuple(n["talks_to"])) for n in out)
+        version = hashlib.sha1(json.dumps(shape).encode()).hexdigest()[:12]
+        return {"version": version, "nodes": out}
+
     def message_counts(self, seconds: float) -> dict[tuple[str, str], int]:
         """How many messages each pair of running sessions exchanged in the last `seconds`,
         keyed by the two ids in order. Each transcript is read on from where it stopped."""
@@ -277,22 +296,3 @@ class SessionTree:
                     pair = (min(sid, str(other)), max(sid, str(other)))
                     counts[pair] = counts.get(pair, 0) + 1
             return counts
-
-    def build(self) -> dict[str, Any]:
-        # The watcher and the tools build it from different threads, and a transcript's
-        # place in its file must move on for one reader at a time.
-        # RULE: the tree is built by one caller at a time
-        with self._building:
-            return self._build()
-
-    def _build(self) -> dict[str, Any]:
-        live = self._live()
-        nodes = {BRIDGE_NODE: self._node(BRIDGE_NODE, "claude-voice", "bridge", None, "running", None)}
-        self._live_nodes(live, nodes)
-        cutoff = self.clock() - WINDOW_SECONDS
-        self._bridge_nodes(nodes, cutoff)
-        self._talk(live, nodes, cutoff)
-        out = [{**n, "talks_to": sorted(n["talks_to"])} for n in nodes.values()]
-        shape = sorted((n["id"], n["parent_id"] or "", n["kind"], tuple(n["talks_to"])) for n in out)
-        version = hashlib.sha1(json.dumps(shape).encode()).hexdigest()[:12]
-        return {"version": version, "nodes": out}
