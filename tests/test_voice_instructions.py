@@ -43,6 +43,15 @@ async def test_the_owners_own_rules_file_reaches_the_voice(tmp_path):
     assert "The owner's own rules:\n" + OWN in said
 
 
+def test_an_owners_rules_file_saved_on_windows_reaches_the_voice_with_plain_line_ends(tmp_path):
+    """Notepad ends each line with a carriage return too; the voice gets the same text as from any other editor."""
+    file = tmp_path / "rules.md"
+    file.write_bytes(OWN.replace("\n", "\r\n").encode() + b"\r\n")
+    said = voice_instructions(file)
+    assert "\r" not in said
+    assert said.endswith("The owner's own rules:\n" + OWN + "\n")
+
+
 async def test_without_an_owners_rules_file_the_voice_gets_the_general_rules_only(tmp_path):
     repos = settings(tmp_path)
     assert repos.voice_instructions_file is None
