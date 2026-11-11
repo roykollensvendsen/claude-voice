@@ -512,3 +512,21 @@ name = "an exempt measure is shown as exempt and never as ok"
 file = "src/claude_voice/software.py"
 find = 'return \{\*\*row, "status": "exempt", "text": f"\{row\[.text.\]\}; exempt: \{reason\}"\}'
 replace = '''return {**row, "status": "ok", "text": f"{row['text']}; exempt: {reason}"}'''
+
+[[rule]]
+name = "the bridge answers as soon as it has started, while its first look runs behind"
+file = "src/claude_voice/server.py"
+find = 'await asyncio\.to_thread\(check\)'
+replace = 'check()'
+
+[[rule]]
+name = "a question about news does not wait for a look already under way"
+file = "src/claude_voice/server.py"
+find = 'if not looking\.acquire\(blocking=False\):'
+replace = 'if not looking.acquire():'
+
+[[rule]]
+name = "the tree is built by one caller at a time"
+file = "src/claude_voice/tree.py"
+find = 'with self\._building:'
+replace = 'if True:'
