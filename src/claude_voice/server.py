@@ -89,6 +89,7 @@ To see what is running on the machine (including terminal sessions), call
 list_active_sessions; to continue one, attach_conversation with its id.
 When a recap shows pending_approvals, read the tool and its input to the user
 and call approve only if they clearly say yes; otherwise call deny.
+Call org_chart to know who handles what.
 """
 
 
@@ -1132,7 +1133,7 @@ def build_server(
         """Stop a session that start_active_session started.
         It stops whether it runs in the background or in a window it opened. Any other session,
         such as one the owner opened, is refused (status not_started_here)."""
-        target = renames.find(live_sessions(), name)
+        target = named_for_voice(live_sessions(), name)
         if target is None:
             return {"name": name, "status": "not_running"}
         sid = str(target.get("sessionId"))
@@ -1286,8 +1287,9 @@ def build_server(
             history = []
         return manager.attach(claude_session_id, path, label, history=history)
 
-    def find_live(session: str) -> dict[str, Any]:
-        rows = [
+    def reachable() -> list[dict[str, Any]]:
+        """The running sessions under the root, leaving out the bridge's own messengers."""
+        return [
             d
             for d in live_sessions()
             # the bridge's own messengers, gone as soon as they deliver
@@ -1295,7 +1297,21 @@ def build_server(
             and not Path(str(d.get("cwd"))).name.startswith(COURIER_PREFIX)
             and under_root(d.get("cwd"))
         ]
-        found = renames.find(rows, by_number(session))
+
+    def named(rows: list[dict[str, Any]], session: str) -> dict[str, Any] | None:
+        """The running session `session` names: by its name, id or a name it had, and
+        otherwise by its address in the org chart. Words that fit several raise org.Ambiguous."""
+        found = renames.find(rows, session)
+        return found if found is not None else org.find(rows, session, org_now().placer())
+
+    def named_for_voice(rows: list[dict[str, Any]], session: str) -> dict[str, Any] | None:
+        try:
+            return named(rows, by_number(session))
+        except org.Ambiguous as exc:
+            raise ToolError(str(exc)) from None
+
+    def find_live(session: str) -> dict[str, Any]:
+        found = named_for_voice(reachable(), session)
         if found is not None:
             return found
         raise ToolError(f"No running session called {session!r}; see list_active_sessions")
@@ -1316,7 +1332,7 @@ def build_server(
                 "A session name is letters, digits, '.', '_' and '-', at most 64, starting with a letter or digit"
             )
         rows = [d for d in live_sessions() if under_root(d.get("cwd"))]
-        target = renames.find(rows, by_number(session))
+        target = named_for_voice(rows, session)
         if target is None:
             raise ToolError(f"No running session called {session!r}; see list_active_sessions")
         sid, old = str(target["sessionId"]), str(target["name"])
@@ -1680,6 +1696,15 @@ def build_server(
         return {"session": target["name"], "total_turns": len(turns), "matches": matches}
 
     @tool(annotations=READ_ONLY)
+    def org_chart() -> dict[str, Any]:
+        """Who handles what: each programme's roles, and whether their sessions run.
+        Also what to send each role, and the sessions in no programme.
+        Name a session by its address (voice/manager) or its end (manager)."""
+        chart = org_now()
+        lines = org.overview(chart, reachable(), chart.placer())
+        return {"lines": lines or ["No programme has an org chart file."]}
+
+    @tool(annotations=READ_ONLY)
     def whats_new(cursor: str | None = None) -> dict[str, Any]:
         """Has anything happened since I last asked? Returns only new events.
         An event is a session that finished, failed, needs approval or input, started or ended.
@@ -1802,9 +1827,13 @@ def build_server(
     def resolve_session(session: str) -> dict[str, Any]:
         """A running session or one of the bridge's own, by name or id, as the page shows it."""
         session = by_number(session)
-        for row in fleet_recap()["sessions"]:
+        rows = fleet_recap()["sessions"]
+        for row in rows:
             if session in (row["id"], row["name"]):
                 return {"id": row["id"], "number": row.get("number"), "name": row["name"], "kind": row["kind"]}
+        by_address = org.find(reachable(), session, org_now().placer())
+        if by_address is not None and by_address.get("sessionId") in {row["id"] for row in rows}:
+            return resolve_session(str(by_address.get("sessionId")))
         raise LookupError(f"No session called {session!r}")
 
     def set_active(session: str, by: str) -> dict[str, Any]:
@@ -1854,7 +1883,7 @@ def build_server(
     def lookup(session: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         """The running session, or else the bridge's own, named `session` (name or id)."""
         session = by_number(session)
-        found = renames.find([d for d in live_sessions() if under_root(d.get("cwd"))], session)
+        found = named([d for d in live_sessions() if under_root(d.get("cwd"))], session)
         if found is not None:
             return found, None
         for s in store.list_sessions(limit=200):
