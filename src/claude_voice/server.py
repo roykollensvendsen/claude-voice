@@ -44,6 +44,7 @@ from . import (
     events,
     fleet,
     gitstatus,
+    hints,
     launch,
     machines,
     metrics,
@@ -534,7 +535,8 @@ def build_server(
             last_check[:] = [datetime.now(UTC).isoformat(timespec="seconds")]
             if api.HUB.listening():
                 tell_programmes()
-                fleet_recap()  # notes each session's state, and announces the ones that changed
+                recap = fleet_recap()  # notes each session's state, and announces the ones that changed
+                tell_hints(recap)
                 update_state()  # and each step of an update under way
                 announce_new_turns()
         finally:
@@ -795,16 +797,40 @@ def build_server(
             api.HUB.publish("programmes", {"programmes": now})
         programmes_seen[:] = [now]
 
+    talk_kept: list[Any] = []  # (when it was counted, the messages between two sessions)
+    hints_seen: list[list[dict[str, Any]]] = []
+
+    def talk_now() -> dict[tuple[str, str], int]:
+        """The messages between running sessions in the last week, counted again when ten seconds old."""
+        if talk_kept and manager.clock() - talk_kept[0] < 10:
+            return talk_kept[1]
+        counts = tree.message_counts(hints.WINDOW_SECONDS)
+        talk_kept[:] = [manager.clock(), counts]
+        return counts
+
     def with_org(listing: dict[str, Any]) -> dict[str, Any]:
-        """The page's session list, each session with its place in the org chart."""
+        """The page's session list, each session with its place in the org chart, and
+        the hints that some of the sessions in no programme belong together."""
         chart = org_now()
         live = {str(d.get("sessionId")): d for d in live_sessions()}
         own = {s["id"]: {"cwd": s["project_path"], "name": s["label"]} for s in store.list_sessions(limit=200)}
+        folders: dict[str, str] = {}
         for row in listing.get("sessions", []):
             # another machine's session is placed by its own name only: its folder is not known here
             d = {"name": row.get("name")} if row.get("machine") else live.get(str(row["id"])) or own.get(row["id"], {})
             row.update(chart.placer()(d).fields())
-        return {**listing, "programmes": chart.listing()}
+            folder = hints.folder_key(d.get("cwd"), manager.root)
+            if folder:
+                folders[str(row["id"])] = folder
+        found = hints.hints(listing.get("sessions", []), folders, talk_now())
+        return {**listing, "programmes": chart.listing(), "programme_hints": found}
+
+    def tell_hints(recap: dict[str, Any]) -> None:
+        """Tell open streams when the programme hints have changed since last looked at."""
+        now = with_org(across.listing(recap))["programme_hints"]
+        if hints_seen and hints_seen[0] != now:
+            api.HUB.publish("programme_hints", {"programme_hints": now})
+        hints_seen[:] = [now]
 
     active_plugins = plugins.start_approved(mcp, repos.plugins, plugin_approvals, plugin_client, commit_of)
     developer_mode = devmode.DeveloperMode()
@@ -2133,6 +2159,7 @@ def build_server(
 
     mcp.fleet = across  # type: ignore[attr-defined]  # the other machines, for tests and the CLI
     mcp.org_check = tell_programmes  # type: ignore[attr-defined]  # for tests
+    mcp.hints_check = lambda: tell_hints(fleet_recap())  # type: ignore[attr-defined]  # for tests
     mcp.software_report = software_report  # type: ignore[attr-defined]  # the kept report, for tests
     return mcp
 

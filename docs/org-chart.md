@@ -127,6 +127,32 @@ Acme Robots (acme): manager, acme-robots, not running; send decisions, proposals
 Acme Robots (acme): arm quality, arm-quality, not running; send quality, facts.
 ```
 
+## Hints for the sessions in no programme
+
+Sessions under "Other" sometimes look like one piece of work that has no file
+yet. The bridge then suggests it, as `programme_hints` next to the sessions:
+
+```json
+[{"id": "h-3f2a9c01b7", "sessions": ["5f3c…", "9a1d…"], "reason": "prefix",
+  "detail": "acme-", "messages": null}]
+```
+
+- Only sessions in no programme are hinted, and a hint holds two or more.
+- Each session is in one hint at most, by the strongest reason it has:
+  - `messages`: they sent each other messages in the last seven days. `messages`
+    is how many, each counted once, and `detail` is `null`.
+  - `folder`: they work in the same project folder, a worktree counting as its
+    repository. `detail` is the folder's name. The project root itself is not one.
+  - `prefix`: their names start the same way, up to and including a dash, such
+    as `acme-`. The prefix is four characters or more, and the longest shared
+    one wins. `detail` is the prefix.
+- `id` is `h-` and a short hash of the sorted session ids, so it stays the same
+  while the same sessions belong together.
+
+The messages are counted from the transcripts the session tree already reads,
+from where each stopped, at most every ten seconds. The hints only suggest: the
+chart still changes in its file and nowhere else.
+
 ## Who reads it
 
 - The voice: the `org_chart` tool gives the whole chart in a few short lines,
@@ -134,6 +160,7 @@ Acme Robots (acme): arm quality, arm-quality, not running; send quality, facts.
 - The phone page: each session in `GET /api/v1/sessions` carries its fields,
   and `GET /api/v1/org/{programme}` gives a programme's roles, who fills them
   and which have no running session; see
-  [the event API](event-api.md#the-org-chart).
+  [the event API](event-api.md#the-org-chart). The same list carries
+  `programme_hints`, and the `programme_hints` event says when they change.
 
 Both only read. The chart changes in the file and nowhere else.

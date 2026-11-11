@@ -71,6 +71,7 @@ LAYERS = {
             "devmode",
             "terminals",
             "permissions",
+            "hints",
         ),
         1,
     ),  # parts, each about one thing
