@@ -1985,6 +1985,15 @@ def build_server(
     async def _no_prs() -> dict[str, Any]:
         return {"prs": []}  # another machine's pull requests are not looked up from here
 
+    def org_page(code: str | None) -> dict[str, Any] | None:
+        """The page's org view: every programme with its roles counted, or one in full."""
+        chart = org_now()
+        views = [org.view(p, reachable(), chart.placer()) for p in chart.programmes]
+        if code is None:
+            listed = zip(chart.listing(), views, strict=True)
+            return {"programmes": [{**i, "roles": len(v["roles"]), "unfilled": v["unfilled"]} for i, v in listed]}
+        return next((v for v in views if v["id"] == code), None)
+
     mcp.terminals = terminals or Terminals()  # type: ignore[attr-defined]  # the desktop, swapped in tests
 
     def focus_session(session_id: str) -> tuple[int, dict[str, str]]:
@@ -2035,6 +2044,7 @@ def build_server(
             remote_prompts=across.prompts,
             answer_remote=across.answer,
             focus=focus_session,
+            org=org_page,
         ).routes(mcp)
 
     mcp.fleet = across  # type: ignore[attr-defined]  # the other machines, for tests and the CLI
