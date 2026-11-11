@@ -93,3 +93,24 @@ def test_every_row_in_the_mutation_table_leaves_code_that_compiles():
         if why:
             broken.append(f"{rule['name']}: {why}")
     assert not broken, "rows whose replacement is not a whole line of valid code: " + "; ".join(broken)
+
+
+def test_every_row_switches_off_the_line_beside_its_own_marker():
+    """A row finds its line by pattern, the first match unless it names another.
+
+    New code with a line like the rule's, placed above it in the same file, takes
+    that first match. The run then switches off the new line, and the rule's own
+    test stays green. Of the lines the pattern matches, the one switched off must
+    be the nearest to the rule's marker.
+    """
+    mutate = _mutate()
+    table = tomllib.loads((ROOT / "scripts/mutations.toml").read_text(encoding="utf-8"))
+    astray = []
+    for rule in table.get("rule", []):
+        lines = (ROOT / rule["file"]).read_text(encoding="utf-8").splitlines()
+        hits = [i for i, line in enumerate(lines) if re.search(str(rule["find"]), line)]
+        chosen = mutate.line_of("\n".join(lines), str(rule["find"]), int(rule.get("occurrence", 1)))
+        marks = [i for i, line in enumerate(lines) if (m := MARKER.search(line)) and m.group(1) == rule["name"]]
+        if marks and min(hits, key=lambda i: abs(i - marks[0])) != chosen:
+            astray.append(f"{rule['name']} (line {chosen + 1}; give it an occurrence)")
+    assert not astray, "rows that switch off a line away from their marker: " + "; ".join(astray)
