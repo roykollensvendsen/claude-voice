@@ -170,3 +170,11 @@ async def test_the_work_page_says_whether_developer_mode_is_on(tmp_path, monkeyp
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=build_app(server)), base_url=HOST) as c:
         page = (await c.get("/api/v1/work", headers=BEARER)).json()
     assert page["developer_mode"] == {"on": False, "until": None}
+
+
+def test_the_suite_never_asks_github():
+    """A watched server reads the open pull requests between its looks at the sessions.
+    Over the network that took seconds, and a test waiting for the next look ran out of time."""
+    from claude_voice import software
+
+    assert software._gh(["--version"]) is None

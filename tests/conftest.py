@@ -16,3 +16,12 @@ def no_owner_developer_mode(tmp_path_factory, monkeypatch):
     from claude_voice import devmode
 
     monkeypatch.setattr(devmode, "STATE", tmp_path_factory.mktemp("state") / "developer-mode.json")
+
+
+@pytest.fixture(autouse=True)
+def no_github(monkeypatch):
+    """A watched server asks GitHub for the open pull requests, and waits for the answer before
+    its next look at the sessions. The suite answers as if GitHub's command line were missing."""
+    from claude_voice import software
+
+    monkeypatch.setattr(software, "_gh", lambda args: None)
