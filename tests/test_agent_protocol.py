@@ -215,3 +215,14 @@ def test_a_yes_confirms_only_a_tool_of_the_plugin_that_asked_by_its_list_of_tool
     text = " ".join(DOC.read_text().split())
     assert "the same `<plugin>_` in front" not in text, "plugin names may hold _, so a prefix proves nothing"
     assert "in the `tools` of the same plugin's entry in `agent_info`" in text
+
+
+def test_only_the_voice_can_confirm_a_spoken_yes():
+    plugin = schema("plugin")
+    phone = next(p for p in plugin["examples"] if p["name"] == "phone")
+    assert set(phone["confirms"]) <= set(phone["tools"])
+    with pytest.raises(jsonschema.ValidationError):
+        validate({**phone, "confirms": ["Phone Confirm"]}, plugin)
+    text = " ".join(DOC.read_text().split())
+    assert "only when its caller is `voice`" in text
+    assert "the same caller that got the `needs_yes`" in text

@@ -23,6 +23,15 @@
       "uniqueItems": true,
       "description": "The names of its tools as offered in tools/list, each starting with the plugin's name and an underscore."
     },
+    "confirms": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]{0,31}$"
+      },
+      "uniqueItems": true,
+      "description": "Which of its tools confirm a spoken yes. Each is also in tools. The hub calls one only for the voice, never for a Claude Code session; part of what Roy approves."
+    },
     "uses": {
       "type": "array",
       "items": {
@@ -63,6 +72,9 @@
         "phone_call",
         "phone_confirm",
         "phone_hang_up"
+      ],
+      "confirms": [
+        "phone_confirm"
       ],
       "uses": [
         "calls",

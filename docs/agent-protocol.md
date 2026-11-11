@@ -118,7 +118,7 @@ Two checks, by both sides, on every request. Neither alone is enough.
   connection, and calls nothing while they differ. What is compared is a
   SHA-256 of the canonical JSON (keys sorted) of each tool's name and input
   schema from `tools/list`. In version 1 it also covers each plugin's `name`,
-  `tools` and `uses` from `agent_info`. A new tool, a tool that takes new
+  `tools`, `confirms` and `uses` from `agent_info`. A new tool, a tool that takes new
   inputs or a plugin that uses something new needs Roy's approval again.
 - **Moving to version 1 asks Roy once per machine.** The larger fingerprint
   differs from the one he approved under version 0. At a machine's first
@@ -204,7 +204,9 @@ On the wire it is:
   schemas and descriptions;
 - **its entry in `agent_info`**,
   [`agent-protocol/v1/plugin.json`](agent-protocol/v1/plugin.json): its name,
-  which of the listed tools are its, its own rules for the voice, and `uses`:
+  which of the listed tools are its, which of those confirm a
+  [spoken yes](#a-spoken-yes-new-in-version-1) (`confirms`), its own rules for
+  the voice, and `uses`:
   which private things on the machine it can reach (`microphone`, `camera`,
   `location`, `calls`, `contacts`, `notifications`, `media`, `sensors`, and
   `usage`: the use of the machine and its apps, such as mobile data used). A
@@ -259,8 +261,16 @@ cannot skip the question.
    `tools` of the same plugin's entry in `agent_info` as the tool that asked.
    The name alone proves nothing: plugin names may hold `_`, so
    `phone_x_confirm` starts with `phone_` but may belong to a plugin `phone_x`.
-   The plugin, not the hub, holds the token and decides what it confirms.
-4. A token works once, for that question only. A yes is passed on as a yes,
+   It must also be in that plugin's `confirms`. The plugin, not the hub, holds
+   the token and decides what it confirms.
+4. **Only the voice confirms.** A plugin lists its confirming tools in
+   `confirms`, in its entry in `agent_info`, and each is also in its `tools`.
+   The hub calls one of them only when its caller is `voice`, never for a
+   Claude Code session, which could otherwise ask a question and answer it
+   itself. The plugin checks too: it accepts a confirm only from the same
+   caller that got the `needs_yes`, as `_meta` says, and refuses one that
+   names no caller.
+5. A token works once, for that question only. A yes is passed on as a yes,
    never as a standing permission.
 
 ## Not in version 1
