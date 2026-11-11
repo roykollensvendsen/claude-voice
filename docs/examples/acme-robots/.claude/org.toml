@@ -1,0 +1,31 @@
+[programme]
+code = "acme"                    # short: lowercase letters, digits and dashes
+name = "Acme Robots"             # how it is said and shown
+aliases = ["robots"]             # other words the owner uses for it
+order = 1                        # where it is listed; optional
+
+[components.arm]
+name = "Robot arm"
+aliases = ["the arm"]
+folders = ["."]                  # relative to this repository: "." is the repository itself
+remotes = []
+
+[components.vision]
+name = "Vision"
+folders = ["../acme-vision"]     # a repository next to this one
+remotes = ["acme/vision"]        # or found by its git remote, owner/name
+
+[roles.manager]                  # no component: the role is programme-wide
+name = "Manager"
+purpose = "Keeps the overview and brings the owner's decisions to the others."
+sessions = ["acme-robots"]       # the session names that fill it
+limits = "Never merges someone else's pull request without the owner."
+send_here = ["decisions", "proposals"]
+
+[roles.quality]
+component = "arm"                # a role inside one component
+name = "Quality"
+purpose = "Watches the arm's tests and measurements."
+sessions = ["arm-quality"]
+limits = "Changes tests, never the arm's code."
+send_here = ["quality", "facts"]

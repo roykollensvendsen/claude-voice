@@ -572,3 +572,27 @@ name = "the log says why a plugin could not be listed"
 file = "src/claude_voice/plugins.py"
 find = 'return f"\{said\} \(\{type\(exc\)\.__name__\}\)" if said else type\(exc\)\.__name__'
 replace = 'return str(exc)'
+
+[[rule]]
+name = "a folder in an org file must be relative"
+file = "src/claude_voice/org.py"
+find = 'if text.startswith\("~"\) or Path\(text\).is_absolute\(\):'
+replace = 'if False:'
+
+[[rule]]
+name = "the deepest matching folder places a session"
+file = "src/claude_voice/org.py"
+find = 'if _under\(folder, cwd\) and \(best is None or len\(folder.parts\) > best\[0\]\):'
+replace = 'if _under(folder, cwd) and best is None:'
+
+[[rule]]
+name = "an address that fits several sessions is answered with the choices"
+file = "src/claude_voice/org.py"
+find = 'if len\(hits\) > 1:'
+replace = 'if False:'
+
+[[rule]]
+name = "a role naming a session that is not running is warned about"
+file = "src/claude_voice/org.py"
+find = 'if name not in running:'
+replace = 'if False:'
