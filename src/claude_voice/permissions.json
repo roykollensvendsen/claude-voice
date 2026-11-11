@@ -64,6 +64,11 @@
       "Bash(gh run view*)",
       "Bash(gh run download*)"
     ],
+    "pushing a session's own pull-request branch": [
+      "Bash(git push --force-with-lease origin *)",
+      "Bash(git push --force-with-lease -u origin *)",
+      "Bash(gh pr update-branch * --rebase)"
+    ],
     "the gates of the Python repositories": [
       "Bash(uv sync*)",
       "Bash(uv run ruff*)",
@@ -102,9 +107,42 @@
       "Bash(git worktree remove* -f*)",
       "Bash(git worktree remove*--force*)"
     ],
+    "forced pushes that check nothing, or could land anywhere": [
+      "Bash(git push --force)",
+      "Bash(git push --force *)",
+      "Bash(git push -f*)",
+      "Bash(git push* --force)",
+      "Bash(git push* --force *)",
+      "Bash(git push* -f)",
+      "Bash(git push* -f *)",
+      "Bash(git push --force-with-lease origin)",
+      "Bash(git push --force-with-lease -u origin)",
+      "Bash(git push --force-with-lease* HEAD)",
+      "Bash(git push --force-with-lease* HEAD *)",
+      "Bash(git push --force-with-lease* :*)",
+      "Bash(git push --force-with-lease* --delete*)",
+      "Bash(git push --force-with-lease* -d *)",
+      "Bash(git push --force-with-lease* --all*)",
+      "Bash(git push --force-with-lease* --mirror*)"
+    ],
     "settings and secrets, read broadly with sed": [
       "Bash(sed -n *.config/*)",
       "Bash(sed -n *secrets*)"
+    ]
+  },
+  "protected branches": {
+    "branches": ["main", "master"],
+    "forced pushes": [
+      "git push --force-with-lease* {branch}",
+      "git push --force-with-lease* {branch} *",
+      "git push --force-with-lease*:{branch}",
+      "git push --force-with-lease*:{branch} *",
+      "git push --force-with-lease*+{branch}",
+      "git push --force-with-lease*+{branch} *",
+      "git push --force-with-lease*/heads/{branch}",
+      "git push --force-with-lease*/heads/{branch} *",
+      "git push --force-with-lease={branch}*",
+      "git push --force-with-lease=refs/heads/{branch}*"
     ]
   },
   "secrets": {
