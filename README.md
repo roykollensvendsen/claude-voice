@@ -384,8 +384,10 @@ the rules it follows, which apply to any change.
 
 ## Develop
 
-[CONTRIBUTING.md](CONTRIBUTING.md) has the gates and how a change is made. In
-short:
+[CONTRIBUTING.md](CONTRIBUTING.md) has the gates and how a change is made. Once
+per clone, `uv run claude-voice permissions` gives Claude Code the rules for the
+voice repositories: what it may run without asking, and what it may never run
+([docs/permissions.md](docs/permissions.md)). In short:
 - Tests are written first, and run against a scripted stand-in for Claude, so
   they need no account.
 - A separate set runs against a real signed-in Claude Code. It uses a little of
