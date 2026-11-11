@@ -6,7 +6,14 @@ from fakes import FakeClaude
 from mcp.client import Client
 
 from claude_voice import config
-from claude_voice.server import INSTRUCTIONS, OWN_RULES_BYTES, build_server, voice_instructions
+from claude_voice.server import (
+    BASE_INSTRUCTIONS,
+    DEFAULT_RULES,
+    INSTRUCTIONS,
+    OWN_RULES_BYTES,
+    build_server,
+    voice_instructions,
+)
 from claude_voice.sessions import SessionManager
 from claude_voice.store import Store
 
@@ -74,3 +81,11 @@ def test_the_general_rules_read_out_a_next_step_and_leave_typed_commands_to_the_
     said = " ".join(INSTRUCTIONS.split())
     assert "says what to do next, read that step out" in said
     assert "plain terminal; never run it for them" in said
+
+
+def test_the_default_rules_are_named_and_each_reaches_the_voice_on_a_line_of_its_own():
+    """A later setting switches each one by name, so the names are part of the design."""
+    assert set(DEFAULT_RULES) == {"read_next_step", "plain_terminal", "delegate_unable"}
+    assert INSTRUCTIONS.startswith(BASE_INSTRUCTIONS)
+    lines = INSTRUCTIONS[len(BASE_INSTRUCTIONS) :].splitlines()
+    assert lines == list(DEFAULT_RULES.values())
