@@ -101,6 +101,10 @@
       "Bash(git branch -f*)",
       "Bash(git worktree remove* -f*)",
       "Bash(git worktree remove*--force*)"
+    ],
+    "settings and secrets, read broadly with sed": [
+      "Bash(sed -n *.config/*)",
+      "Bash(sed -n *secrets*)"
     ]
   },
   "secrets": {

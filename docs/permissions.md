@@ -79,6 +79,12 @@ Pushing, merging, opening a pull request and installing anything else still ask.
 | `~/.config/gh/hosts.yml` | the GitHub command line's sign-in |
 | `~/.claude/.credentials.json` | Claude Code's own sign-in |
 
+- **Settings and secrets, read broadly with `sed`.** `sed -n` is refused for
+  anything under a `.config` folder, and for any path that says `secrets`. These
+  two are wider than the pairs above, and were in the first rules the owner
+  installed. A test keeps every rule refused then refused now, so moving the
+  rules into the bridge took nothing away.
+
 The secret rules guard the usual way of reading a file, not every way. A search
 over a whole folder that holds a secret is not refused by them. They are a
 fence against a slip, and the files themselves stay readable by the owner alone.
