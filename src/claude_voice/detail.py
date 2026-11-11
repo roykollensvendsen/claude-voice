@@ -18,6 +18,7 @@ from typing import Any
 TIMELINE = 50  # the newest items kept
 TEXT = 120  # characters of each item's text
 HELPERS = ("Agent", "Task")
+RETRY = "Try again, and if it fails again run `claude-voice check`, which says what is missing."
 # A command counts only where it starts a line or a step, not inside text a command writes.
 STEP = r"(?:^|[;&|(]\s*|\n\s*)"
 COMMIT = re.compile(STEP + r"git\s[^|;&\n]*\bcommit\b")  # git and a space: not git(...) in a program
@@ -242,7 +243,9 @@ class Summaries:
         try:
             summary = (await self.summarize(text, None, language)).strip()
         except Exception as exc:
-            self.errors[sid] = str(exc)[:300] or type(exc).__name__
+            reason = str(exc)[:300].rstrip(". ") or type(exc).__name__
+            # RULE: a failed summary says what to do next
+            self.errors[sid] = f"{reason}. {RETRY}"
             self.publish("summary", {"session": sid, "summary": None, "summary_state": "error"})
             return None
         at = datetime.now(UTC).isoformat(timespec="seconds")

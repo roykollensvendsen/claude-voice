@@ -297,3 +297,17 @@ def test_a_failed_tool_whose_text_comes_in_parts_shows_its_first_line():
     }
     timeline = detail.digest([tool("Bash", 2, "b1", command="ls"), failed])["timeline"]
     assert timeline[0] == {"at": at(3), "kind": "error", "text": "boom"}
+
+
+async def test_a_failed_summary_says_what_to_do_next(world):  # noqa: F811
+    summarizer = Summarizer(fail=True)
+    summarizer.release.set()
+    async with client(build_app(bridge(world, summarizer))) as c:
+        await c.post("/api/v1/sessions/billing-ab/summary", json={}, headers=BEARER)
+        for _ in range(50):
+            await asyncio.sleep(0.02)
+            page = (await c.get("/api/v1/sessions/billing-ab/detail", headers=BEARER)).json()
+            if page["summary_state"] == "error":
+                break
+    assert "unavailable" in page["summary_error"]  # what went wrong
+    assert "claude-voice check" in page["summary_error"]  # and what to do about it
