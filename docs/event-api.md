@@ -249,7 +249,7 @@ not on every refresh.
 
 | Call | Answer |
 | --- | --- |
-| `GET /api/v1/health/software` | `{"as_of", "repos": [{"name", "url", "as_of", "metrics": [{"id", "label", "value", "unit", "text", "status": "ok"\|"warn"\|"bad"\|"unknown", "url", "trend": [≤30 values, oldest first]}]}]}` |
+| `GET /api/v1/health/software` | `{"as_of", "repos": [{"name", "url", "as_of", "metrics": [{"id", "label", "value", "unit", "text", "status": "ok"\|"warn"\|"bad"\|"exempt"\|"unknown", "url", "trend": [≤30 values, oldest first]}]}]}` |
 
 One entry for claude-voice, one for claude-voice-ui and one for each plugin's
 own repository (the one its checked-out branch pushes to), read from the levels
@@ -263,6 +263,22 @@ run of the checks on main; kept for ten minutes. The measures, by `id`:
 `url`). The trend is each measured version, oldest first, so it moves change by
 change. A repository with nothing measured has every measure `unknown` rather
 than a guess.
+
+A measure the owner has agreed to leave outside its limit is `exempt`, never
+`ok`. The agreement is kept in the repository's own `quality.toml`, one entry
+per measure, and counts only with both a written reason and the owner's yes:
+
+<!-- not run: an example entry in a repository's quality.toml -->
+```toml
+[[exempt]]
+measure = "complexity"
+reason = "the tool table is one long match on the tool's name"
+approved = "Roy, 2026-11-11, in pull request #212"
+```
+
+An exempt measure's `text` ends with the reason. A measure inside its limit
+stays `ok` whatever the file says, and an entry missing its reason or its
+approval is ignored.
 
 ## The team's work
 

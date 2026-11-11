@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import subprocess
 import tempfile
+import tomllib
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -21,6 +22,7 @@ from . import procs
 
 TREND = 30  # points of history per measure
 FILE = "quality.json"
+EXEMPTIONS = "quality.toml"  # the measures the owner agreed to leave outside their limits
 ARTIFACT = "quality-levels"  # the name main's checks keep their measured levels under
 NEW_PER_LOOK = 5  # downloads of main's levels per look; the rest wait for the next one
 
@@ -278,6 +280,28 @@ def _measured(folder: Path | None, kept: list[dict[str, Any]] | None) -> list[di
     return past + [{**q, "test_budget": budget} for q in kept or []]
 
 
+def exemptions(folder: Path | None) -> dict[str, str]:
+    """The reason for each measure the owner agreed to leave outside its limit, by its id."""
+    try:
+        entries = tomllib.loads((folder / EXEMPTIONS).read_text()).get("exempt", []) if folder else []
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
+    out = {}
+    for entry in entries if isinstance(entries, list) else []:
+        reason, approved = str(entry.get("reason", "")).strip(), str(entry.get("approved", "")).strip()
+        # RULE: an exemption counts only with a reason and the owners yes
+        if reason and approved:
+            out[str(entry.get("measure", ""))] = reason
+    return out
+
+
+def _exempt(row: dict[str, Any], reason: str | None) -> dict[str, Any]:
+    if reason is None or row["status"] in ("ok", "unknown"):
+        return row
+    # RULE: an exempt measure is shown as exempt and never as ok
+    return {**row, "status": "exempt", "text": f"{row['text']}; exempt: {reason}"}
+
+
 def _metric(measure: tuple[Any, ...], past: list[dict[str, Any]], link: str) -> dict[str, Any]:
     """One measure's row: its value now, how it reads, its status and its trend."""
     id_, label, unit, read, word, judge = measure
@@ -301,7 +325,8 @@ def repo_report(
     """One repository's measures, each with its value, status and trend."""
     past = _measured(folder, kept)
     link = f"{url}/actions/workflows/checks.yml?query=branch%3A{branch}" if kept else f"{url}/blob/{branch}/{FILE}"
-    metrics = [_metric(measure, past, link) for measure in MEASURES]
+    exempt = exemptions(folder)
+    metrics = [_exempt(_metric(measure, past, link), exempt.get(measure[0])) for measure in MEASURES]
     metrics.append(ci_metric(ci))
     return {"name": name, "url": url, "metrics": metrics, "as_of": _now()}
 
