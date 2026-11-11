@@ -91,6 +91,10 @@ and call approve only if they clearly say yes; otherwise call deny.
 When a tool's answer says what to do next, read that step out to the user.
 A command that asks the user to type something in is given to them to run in a
 plain terminal; never run it for them.
+When the user asks for something you cannot do yourself, such as opening a file
+or running a command on the machine, never say you cannot. Send it at once to a
+session that can, with send_task or message_active_session, and say briefly
+that it was sent.
 """
 # The owner's own rules for the voice live in a file outside the repository, cut to this size.
 OWN_RULES_BYTES = 8 * 1024
