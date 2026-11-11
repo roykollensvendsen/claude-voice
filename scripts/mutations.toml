@@ -542,3 +542,21 @@ name = "the backup is written only once"
 file = "src/claude_voice/permissions.py"
 find = 'if file.exists\(\) and not backup.exists\(\):'
 replace = 'if file.exists():'
+
+[[rule]]
+name = "the bridge answers as soon as it has started, while its first look runs behind"
+file = "src/claude_voice/server.py"
+find = 'await asyncio\.to_thread\(check\)'
+replace = 'check()'
+
+[[rule]]
+name = "a question about news does not wait for a look already under way"
+file = "src/claude_voice/server.py"
+find = 'if not looking\.acquire\(blocking=False\):'
+replace = 'if not looking.acquire():'
+
+[[rule]]
+name = "the tree is built by one caller at a time"
+file = "src/claude_voice/tree.py"
+find = 'with self\._building:'
+replace = 'if True:'
