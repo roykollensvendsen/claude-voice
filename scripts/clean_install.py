@@ -47,7 +47,7 @@ def main() -> int:
         ]
     )
     run = subprocess.run(
-        ["docker", "run", "--rm", "-i", "-v", f"{ROOT}:/src-ro:ro", IMAGE, "bash", "-c", script],
+        ["docker", "run", "--rm", "-i", "--network", "host", "-v", f"{ROOT}:/src-ro:ro", IMAGE, "bash", "-c", script],
         capture_output=True,
         text=True,
         check=False,
