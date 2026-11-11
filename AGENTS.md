@@ -77,6 +77,11 @@ If you are a session working on this repository, rather than installing it:
 
 - Follow [CONTRIBUTING.md](CONTRIBUTING.md): the gates, a failing test before
   the code, the mutation run, and the three rules for every change.
+- In a fresh clone, give the repositories their permission rules with
+  `uv run claude-voice permissions`, after a `--dry-run` the person has seen. It
+  only adds rules, keeps theirs and backs the file up once
+  ([docs/permissions.md](docs/permissions.md)). Never edit their settings by hand
+  to get past a refused command.
 - Keep the quality ratchet: `uv run python scripts/ratchet.py check --base origin/main`
   must hold. Never make a measure worse without a `Ratchet-Exception:` line in
   the pull request saying why. Never edit `quality.json` to pass: main keeps the
