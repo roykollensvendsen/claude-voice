@@ -104,8 +104,8 @@ Two checks, by both sides, on every request. Neither alone is enough.
   [`error.json`](agent-protocol/v1/error.json) body.
 - **Refusals carry a `code`** for the hub to read, besides the words in `error`.
   Version 1 knows `wrong_code` (a wrong, late or used-up pairing code),
-  `not_on_tailnet`, `unauthorized` (not the paired hub's key or node) and
-  `unsupported_version`. A hub treats a code it does not know as a refusal.
+  `not_on_tailnet`, `unauthorized` (not the paired hub's key or node),
+  `unsupported_version` and, inside MCP, `duplicate_call` (below). A hub treats a code it does not know as a refusal.
 - **The hub**, before each connection, asks Tailscale who is at the machine's
   address, and talks to it only if it is the node Roy approved.
 - **The hub compares what the machine offers with what Roy approved**, on each
@@ -154,6 +154,23 @@ its tool, the hub's node and this caller. **The log stays on the machine**, and
 for a tool whose plugin `uses` anything private it never holds the call's
 inputs or answer, so the log cannot become a record of where Roy has been or
 whom he called.
+
+**A call is run once (new in version 1).** A call can be cut off after it has
+reached the agent, by the hub's timeout or a dropped connection, and the agent
+may still finish it.
+
+- The hub puts a new random id for each call in the same `_meta`, as
+  `claude-voice/call_id`. It sends that id again only with the same call, when
+  it sends that call again.
+- An agent keeps the ids it has run for at least ten minutes, longer than any
+  timeout. It refuses an id it has already run, with `isError: true` and a
+  structured answer that fits [`error.json`](agent-protocol/v1/error.json),
+  with `code` `duplicate_call`. The call is never run twice.
+- A call without an id, from a version 0 hub, is run as before.
+- **A call that times out is not reported as failed.** The hub tells the voice
+  that it *may have happened*, so the voice says that it does not know and
+  does not ask again as if nothing was done. The hub does not send the call
+  again by itself.
 
 ### `agent_info`
 

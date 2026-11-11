@@ -1,19 +1,25 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/roykollensvendsen/claude-voice/blob/main/docs/agent-protocol/v1/caller-meta.json",
-  "title": "Who is asking",
-  "description": "What the hub puts in a tools/call request's _meta, so the agent's log of every call says who asked.",
+  "title": "Who is asking, and which call",
+  "description": "What the hub puts in a tools/call request's _meta: who asked, so the agent's log of every call says so, and an id for the call, so a call sent twice is run once.",
   "type": "object",
   "properties": {
     "claude-voice/caller": {
       "type": "string",
       "minLength": 1,
       "description": "voice for the voice, or the name of the Claude Code session that asked through the hub."
+    },
+    "claude-voice/call_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{16,64}$",
+      "description": "New and random for each call the voice or a session makes. The hub sends the same id again only when it sends the same call again. An agent refuses an id it has already run, with code duplicate_call."
     }
   },
   "examples": [
     {
-      "claude-voice/caller": "voice"
+      "claude-voice/caller": "voice",
+      "claude-voice/call_id": "c1example0call0id0"
     },
     {
       "claude-voice/caller": "laptop-a/billing"
