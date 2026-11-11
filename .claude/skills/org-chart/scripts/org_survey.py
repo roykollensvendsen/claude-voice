@@ -198,12 +198,13 @@ def exclude(repo: Path) -> str:
         sys.exit(f"org_survey: {repo} is not a git repository; nothing to exclude it from")
     path = Path(found)
     lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
-    if str(org.FILE) in lines or f"/{org.FILE}" in lines:
-        return f"{path}: already excludes {org.FILE}"
+    entry = org.FILE.as_posix()  # git wants forward slashes, on Windows too
+    if entry in lines or f"/{entry}" in lines:
+        return f"{path}: already excludes {entry}"
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
-        f.write(("\n" if lines and lines[-1] else "") + f"/{org.FILE}\n")
-    return f"{path}: now excludes /{org.FILE}"
+        f.write(("\n" if lines and lines[-1] else "") + f"/{entry}\n")
+    return f"{path}: now excludes /{entry}"
 
 
 def entry() -> int:
