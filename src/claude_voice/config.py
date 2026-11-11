@@ -205,23 +205,9 @@ def load(path: Path | None = FILE, own_clone: Path | None = None, env: Mapping[s
     if file is not None and file.is_file():
         with file.open("rb") as f:
             raw = tomllib.load(f)
-    repos_raw, paths_raw = raw.get("repos") or {}, raw.get("paths") or {}
-    repos = Repos(
-        claude_voice=_repo(repos_raw.get("claude_voice", UPSTREAM), "claude_voice"),
-        claude_voice_ui=_repo(repos_raw.get("claude_voice_ui", UPSTREAM_UI), "claude_voice_ui"),
-        fork=_repo(repos_raw["fork"], "fork") if repos_raw.get("fork") else None,
-    )
-    voice = _path(paths_raw.get("claude_voice"), home) or own_clone
-    ui = _path(paths_raw.get("claude_voice_ui"), home) or (voice.parent / "claude-voice-ui" if voice else None)
-    dist = (
-        _path(env.get("CLAUDE_VOICE_UI_DIR"), home)
-        or _path(paths_raw.get("ui_dist"), home)
-        or (ui / "dist" if ui else None)
-    )
-    contribute = _path(paths_raw.get("contribute"), home) or voice
     return Config(
-        repos,
-        Paths(voice, ui, dist, contribute),
+        _repos(raw.get("repos") or {}),
+        _paths(raw.get("paths") or {}, own_clone, env, home),
         file,
         _sessions(raw.get("sessions") or {}),
         _budgets(raw.get("budgets")),
@@ -229,6 +215,26 @@ def load(path: Path | None = FILE, own_clone: Path | None = None, env: Mapping[s
         _machines(raw.get("machines")),
         *_agent(raw.get("agent"), home),
     )
+
+
+def _repos(raw: dict[str, Any]) -> Repos:
+    """The [repos] table over the defaults: each one checked to be owner/name."""
+    return Repos(
+        claude_voice=_repo(raw.get("claude_voice", UPSTREAM), "claude_voice"),
+        claude_voice_ui=_repo(raw.get("claude_voice_ui", UPSTREAM_UI), "claude_voice_ui"),
+        fork=_repo(raw["fork"], "fork") if raw.get("fork") else None,
+    )
+
+
+def _paths(raw: dict[str, Any], own_clone: Path | None, env: Mapping[str, str], home: str) -> Paths:
+    """The [paths] table, each folder falling back to one found from the clone the bridge runs from."""
+    voice = _path(raw.get("claude_voice"), home) or own_clone
+    ui = _path(raw.get("claude_voice_ui"), home) or (voice.parent / "claude-voice-ui" if voice else None)
+    dist = (
+        _path(env.get("CLAUDE_VOICE_UI_DIR"), home) or _path(raw.get("ui_dist"), home) or (ui / "dist" if ui else None)
+    )
+    contribute = _path(raw.get("contribute"), home) or voice
+    return Paths(voice, ui, dist, contribute)
 
 
 def _sessions(raw: dict[str, Any]) -> Sessions:
