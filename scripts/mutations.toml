@@ -566,3 +566,21 @@ name = "the log says why a plugin could not be listed"
 file = "src/claude_voice/plugins.py"
 find = 'return f"\{said\} \(\{type\(exc\)\.__name__\}\)" if said else type\(exc\)\.__name__'
 replace = 'return str(exc)'
+
+[[rule]]
+name = "the bridge answers as soon as it has started, while its first look runs behind"
+file = "src/claude_voice/server.py"
+find = 'await asyncio\.to_thread\(check\)'
+replace = 'check()'
+
+[[rule]]
+name = "a question about news does not wait for a look already under way"
+file = "src/claude_voice/server.py"
+find = 'if not looking\.acquire\(blocking=False\):'
+replace = 'if not looking.acquire():'
+
+[[rule]]
+name = "the tree is built by one caller at a time"
+file = "src/claude_voice/tree.py"
+find = 'with self\._building:'
+replace = 'if True:'
