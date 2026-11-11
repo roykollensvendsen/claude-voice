@@ -68,7 +68,9 @@ The owner approved this list. Each item is a lesson a plugin had to learn late.
 
 1. `[plugins.<name>]` in `~/.config/claude-voice/config.toml`, with `branch` if
    its checkout follows a branch other than `main`.
-2. The owner runs `claude-voice plugins approve <name>` and types the name.
+2. The owner runs `claude-voice plugins approve <name>` and types the name. Hand it over as a
+   command for an ordinary terminal, one per plugin, never as a `!` line in Claude Code. The
+   `!` mode takes no typed answer. Say what to type when it asks: the plugin's name.
 3. A plugin newly in the settings file needs one bridge restart to be read; after
    that, the running bridge picks up each approval by itself. `health` shows the
    plugin `running` after its first call.
