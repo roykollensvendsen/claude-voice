@@ -24,3 +24,12 @@ versions follow [semantic versioning](https://semver.org/spec/v2.0.0.html).
 - `wait_for_session` waits, sending nothing, until a running session's turn ends
   or it needs its user, so a voice assistant can wait for a reply instead of polling.
 - `claude-voice check` and `claude-voice serve`, and a user service installer.
+
+### Security
+
+- A plugin's approval now covers every word the voice reads from it: each tool's
+  description and the plugin's own instructions. Before, a changed plugin could rewrite
+  them and tell the voice to do something without being approved again. After upgrading,
+  every plugin is approved once more, typed or by voice in developer mode.
+- `claude-voice plugins list` checks a plugin the way a restart does, so it no longer
+  says a plugin is approved while the bridge refuses its changed tools.

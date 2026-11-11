@@ -232,7 +232,7 @@ async def test_the_agent_offers_only_the_plugins_its_owner_approved(pairing, tmp
     approvals = tmp_path / "approved.json"
     spec = door(tmp_path)
     unapproved = PluginSpec(name="lock", command="lock-mcp", args=[], cwd=str(tmp_path), tools=["status"])
-    plugins.approve(spec, {"status": {"schema": {"type": "object", "properties": {}}}}, approvals)
+    plugins.approve(spec, plugins.Plugin(spec, FakePlugin).listing(), approvals)
     application = app(pairing, [spec, unapproved], approvals, FakePlugin)
     key = await paired(pairing, application)
     listed, info = await tools(application, key)

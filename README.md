@@ -426,11 +426,14 @@ clients are told the tool list changed:
 claude-voice plugins approve garage
 ```
 
-The approval covers exactly that command, folder and list of tools, and what each
-tool takes as the plugin describes it then; once approved, the command starts the
-plugin and prints those inputs. Change any of them, or let the plugin give a tool a
-new input, and it must be approved again: until then the bridge offers none of its
-tools and logs why. The bridge never holds a plugin's secrets:
+The approval covers exactly that command, folder and list of tools, what each tool
+takes as the plugin describes it then, and every word the voice reads from the plugin:
+each tool's description and the plugin's own instructions. Once approved, the command
+starts the plugin and prints those inputs and words. Change any of them, or let the
+plugin give a tool a new input or rewrite what a tool or its instructions say, and it
+must be approved again: until then the bridge offers none of its tools and logs why.
+`claude-voice plugins list` starts each plugin and checks it the same way, so it says
+`approved` only when a restart would offer the plugin's tools. The bridge never holds a plugin's secrets:
 the plugin reads its own, and starts with only a small default environment. Each
 plugin runs as a process of its own, started again after a failure, and a call
 that runs past `timeout` is cut off. Its tools reach the voice named after it
@@ -446,7 +449,8 @@ Once a plugin is approved, three things can happen to it
   its tools within 60 seconds, or its own `timeout` when that is longer. If it does
   not, it counts as not started, never as changed: the one running stays offered,
   and the voice says to try again.
-- **A tool added, removed, taking new inputs, or with a changed read-only mark.** You
+- **A tool added, removed, taking new inputs, with a changed read-only mark, or with
+  new words for the voice in its description or the plugin's instructions.** You
   can type the approval as above, or approve it by voice in **developer mode**. You
   switch that on by voice: the voice asks, you say yes. It ends by itself after eight
   hours, can be switched off at once from anywhere, and `health` and the work page
@@ -457,10 +461,10 @@ Once a plugin is approved, three things can happen to it
   files out of the plugin's folder or list them in its `.git/info/exclude`.
 - **A new plugin, or a new command or folder.** Always typed, as above.
 
-An approval typed before developer mode existed recorded less about the plugin. The
-first time the bridge finds the plugin exactly as that approval allowed, it completes
-the approval by itself and logs `plugin <name> approval upgraded`; from then on a
-changed tool can be approved by voice. Nothing more is allowed than before.
+An approval written by an older version of the bridge did not cover the words the
+voice reads. So after upgrading, every plugin waits for one more approval, typed as
+above or by voice in developer mode, because its command and folder are still known.
+Until then its tools are not offered, and `claude-voice plugins list` says `tools changed`.
 
 To list them:
 
