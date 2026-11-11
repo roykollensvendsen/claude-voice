@@ -177,6 +177,25 @@ async def test_only_talking_to_a_session_puts_it_in_focus_and_a_look_at_it_does_
     assert ("peek", "billing-ab", tool) in [(n, d.get("session"), d.get("tool")) for n, d in seen]
 
 
+async def test_an_event_published_from_another_thread_reaches_a_waiting_stream_at_once():
+    import threading
+    import time
+
+    hub = api.EventHub()
+    with hub.subscribe() as events:
+
+        def publish():
+            time.sleep(0.05)  # so the stream is already asleep, waiting for the next event
+            hub.publish("status", {"state": "idle"})
+
+        threading.Thread(target=publish).start()
+        asked = time.monotonic()
+        event = await asyncio.wait_for(events.get(), 3)
+        waited = time.monotonic() - asked
+    assert event == ("status", {"state": "idle"})
+    assert waited < 0.5
+
+
 async def test_signing_out_ends_the_cookie(bridge):
     _, app, _, _ = bridge
     async with client(app) as c:
