@@ -201,6 +201,22 @@ $ env -u CLAUDE_VOICE_ALLOW_API_KEY CLAUDE_VOICE_ROOT=src ANTHROPIC_API_KEY=sk-a
 claude-voice: ANTHROPIC_API_KEY is set, so Claude would bill the API instead of your subscription. Unset it, or set CLAUDE_VOICE_ALLOW_API_KEY=1 if that is intended.
 ```
 
+`check` also reads the environment file the service loads,
+`~/.config/claude-voice/env`, when it exists. systemd reads that file, and so
+does a shell that runs `set -a; . ~/.config/claude-voice/env`. A line the two
+would read differently is a warning, not a stop. An unquoted value with a space
+is one: the shell runs its second word as a command. So is an unquoted shell
+character (`` $ ` ; & | < > ( ) `` and quotes, a backslash, or `#` after a
+space), an unclosed quote, or a line that is not `KEY=value`. Each warning names
+the line and its KEY, never the value:
+
+<!-- not run: needs an environment file with a mistake in it -->
+```
+claude-voice: note: env line 4 (SOME_KEY): the value has a space and no quotes. Put the value in double quotes: SOME_KEY="…"
+```
+
+The bridge logs the same lines as warnings when it starts, and starts anyway.
+
 `serve` runs it. Over HTTP it refuses to start without a login secret:
 
 ```console
@@ -231,6 +247,7 @@ also the default.
 | `CLAUDE_VOICE_UI_ORIGINS` | — | comma-separated origins of a companion app served elsewhere, allowed to call the [event API](docs/event-api.md) across sites |
 | `CLAUDE_VOICE_UI_DIR` | — | a folder with a companion app's built files, served at `/ui/` |
 | `CLAUDE_VOICE_DB` | `~/.local/state/claude-voice/bridge.db` | where sessions and events are kept |
+| `CLAUDE_VOICE_ENV_FILE` | `~/.config/claude-voice/env` | the environment file `check` and the bridge look over for lines a shell would misread |
 | `CLAUDE_VOICE_ACCESS_TOKEN_SECONDS` | `3600` | how long a sign-in's access token lasts before the app must refresh it; set it to a week (`604800`) on a computer that sleeps, since the Claude app gives a connector up after about an hour of failed refreshes |
 
 ### Signing in

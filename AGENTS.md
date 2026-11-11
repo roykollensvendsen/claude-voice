@@ -13,6 +13,11 @@ and `fix`. Run it after each step, do the `fix` of the first required check that
 fails, and stop when `ready` is `true`. Add `--transport http` once the person
 wants to reach the bridge from a phone.
 
+A check named `env_file` is a warning about one line of
+`~/.config/claude-voice/env`. It names the line and its KEY, and its `fix` says
+how to quote the value. Ask the person to make that edit; never open the file
+yourself, because it holds the login secret.
+
 ## What only the person can do
 
 - **Sign in to Claude.** `/login` inside `claude` opens a browser for their own
