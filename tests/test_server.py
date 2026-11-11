@@ -476,3 +476,65 @@ def test_the_log_is_kept_in_a_file_next_to_the_database(tmp_path):
         handler.close()
     text = (tmp_path / "state" / "bridge.log").read_text(encoding="utf-8")
     assert "claude_voice.oauth: oauth refresh ok for client abcdef12" in text
+
+
+def slow_first_look(monkeypatch, seconds=1.0):
+    """Make every tree build take `seconds`, as the first one does on a busy machine, where it
+    reads each running session's whole conversation. Returns an event set once one has begun."""
+    import threading
+    import time
+
+    from claude_voice import transcripts
+    from claude_voice.tree import SessionTree
+
+    began = threading.Event()
+    build = SessionTree.build
+
+    def slow(self):
+        began.set()
+        time.sleep(seconds)
+        return build(self)
+
+    async def warm():
+        return None
+
+    monkeypatch.setattr(SessionTree, "build", slow)
+    monkeypatch.setattr(transcripts.shared_reader(), "warm", warm)
+    return began
+
+
+def watched(tmp_path, root):
+    m = SessionManager(Store(tmp_path / "bridge.db"), project_root=root, client_factory=FakeClaude())
+    return build_server(m, live_dir=tmp_path / "live", projects_dir=tmp_path / "projects", watch_interval=60)
+
+
+async def test_the_bridge_answers_as_soon_as_it_has_started_while_its_first_look_runs_behind(
+    tmp_path, root, monkeypatch
+):
+    import time
+
+    slow_first_look(monkeypatch)
+    started = time.monotonic()
+    async with Client(watched(tmp_path, root)) as client:
+        await call(client, "list_pending_approvals")
+        answered = time.monotonic() - started
+        for _ in range(100):  # the first look still happens, behind
+            looked = (await call(client, "health"))["watcher"]["last_check_at"]
+            if looked:
+                break
+            await asyncio.sleep(0.05)
+    assert answered < 0.5
+    assert looked
+
+
+async def test_a_question_about_news_does_not_wait_for_a_look_already_under_way(tmp_path, root, monkeypatch):
+    import time
+
+    began = slow_first_look(monkeypatch)
+    async with Client(watched(tmp_path, root)) as client:
+        await asyncio.to_thread(began.wait, 5)
+        asked = time.monotonic()
+        news = await call(client, "whats_new")
+        answered = time.monotonic() - asked
+    assert news["cursor"]
+    assert answered < 0.5
