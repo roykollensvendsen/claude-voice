@@ -65,21 +65,29 @@ class Desk:
     # -- restarting --------------------------------------------------------------------
 
     async def restart(self, name: str) -> dict[str, Any]:
-        """Stop the plugin and start it again with the code in its folder now; its tools are
-        offered again only if they are as the owner approved them."""
+        """Start the plugin again with the code in its folder now, and only then stop the one
+        running; its tools are offered again only if they are as the owner approved them."""
         spec = self._spec(name)
         if spec is None:
             return _no(f"There is no plugin called {name}.")
-        for old in [p for p in self.active if p.spec.name == name]:
+        plugin, listing, why = await asyncio.to_thread(plugins.check_one, spec, self.approvals, self.client)
+        # Starting it may have upgraded its approval; that is not a new approval to pick up.
+        self._seen = {**self._seen, name: plugins.read_approvals(self.approvals).get(name)}
+        running = [p for p in self.active if p.spec.name == name]
+        # RULE: a restart that fails keeps the plugin that was running
+        if why == "not started":
+            log.info("plugin %s did not start in time; %d running kept", name, len(running))
+            kept = " The one already running stays." if running else ""
+            return _no(f"{name} did not start in time; try again.{kept}")
+        commit = await asyncio.to_thread(self._commit, spec.cwd) if plugin is not None else None
+        for old in running:  # withdrawn and offered with no wait between, so no call finds neither
             plugins.withdraw(self.server, old)
+        if plugin is not None:
+            plugins.present(self.server, plugin, listing, commit)
+        for old in running:
             await old.stop()
             old.state = "stopped"
             self.active.remove(old)
-        plugin, why = await asyncio.to_thread(
-            plugins.start_one, self.server, spec, self.approvals, self.client, self._commit
-        )
-        # Starting it may have upgraded its approval; that is not a new approval to pick up.
-        self._seen = {**self._seen, name: plugins.read_approvals(self.approvals).get(name)}
         if self.announce is not None:
             with contextlib.suppress(Exception):
                 await self.announce()
