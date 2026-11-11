@@ -79,7 +79,7 @@ LOG_FILE = "bridge.log"
 LOG_BYTES = 5_000_000
 LOG_KEPT = 3
 
-INSTRUCTIONS = """\
+BASE_INSTRUCTIONS = """\
 Controls Claude Code sessions running on the user's own machine. The user is
 usually speaking, often while driving, so keep what you read back short.
 Poll whats_new (pass back its cursor) for news; it is cheap.
@@ -91,14 +91,29 @@ list_active_sessions; to continue one, attach_conversation with its id.
 When a recap shows pending_approvals, read the tool and its input to the user
 and call approve only if they clearly say yes; otherwise call deny.
 Call org_chart to know who handles what.
-When a tool's answer says what to do next, read that step out to the user.
-A command that asks the user to type something in is given to them to run in a
-plain terminal; never run it for them.
-When the user asks for something you cannot do yourself, such as opening a file
-or running a command on the machine, never say you cannot. Send it at once to a
-session that can, with send_task or message_active_session, and say briefly
-that it was sent.
 """
+# The voice's default behaviour, one named rule each, so each can later be switched on or off.
+DEFAULT_RULES: dict[str, str] = {
+    "read_next_step": "When a tool's answer says what to do next, read that step out to the user.",
+    "plain_terminal": (
+        "A command that asks the user to type something in is given to them to run in a "
+        "plain terminal; never run it for them."
+    ),
+    "delegate_unable": (
+        "When the user asks for something you cannot do yourself, such as opening a file "
+        "or running a command on the machine, never say you cannot. Send it at once to a "
+        "session that can, with send_task or message_active_session, and say briefly "
+        "that it was sent."
+    ),
+}
+
+
+def general_instructions(rules: Mapping[str, str] = DEFAULT_RULES) -> str:
+    """The instructions every owner gets: the base text, then each default rule on a line of its own."""
+    return BASE_INSTRUCTIONS + "".join(f"{sentence}\n" for sentence in rules.values())
+
+
+INSTRUCTIONS = general_instructions()
 # The owner's own rules for the voice live in a file outside the repository, cut to this size.
 OWN_RULES_BYTES = 8 * 1024
 OWN_RULES_HEADING = "The owner's own rules:"
