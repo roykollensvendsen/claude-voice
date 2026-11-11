@@ -11,7 +11,7 @@ import logging
 
 from mcp.client import Client
 from mcp.server.mcpserver import MCPServer
-from test_plugins import GARAGE, bridge, stand_in, tool_names
+from test_plugins import GARAGE, Unready, bridge, stand_in, tool_names
 
 from claude_voice import devmode, plugin_desk, plugins
 from claude_voice.config import PluginSpec
@@ -122,6 +122,30 @@ async def test_a_restarted_plugin_whose_inputs_changed_is_not_offered(tmp_path):
     out = await made.restart("garage")
     assert not out["ok"] and "approve" in out["say"]
     assert not any(n.startswith("garage") for n in await tool_names(server))
+
+
+async def test_a_restart_that_finds_the_plugin_not_started_says_try_again_and_asks_no_approval(tmp_path):
+    fake, _ = stand_in()
+    made, *_ = desk(tmp_path, fake)
+    made.client = Unready
+    out = await made.restart("garage")
+    assert not out["ok"] and "garage did not start in time; try again" in out["say"]
+    assert "approve" not in out["say"]
+
+
+async def test_a_restart_that_fails_keeps_the_plugin_that_was_running(tmp_path):
+    fake, _ = stand_in()
+    made, _, server, _ = desk(tmp_path, fake)
+    before = made.active[0]
+    async with Client(server) as c:
+        await c.call_tool("garage_status", {})  # the plugin is running
+        made.client = Unready  # its new start does not answer in time
+        out = await made.restart("garage")
+        status = await c.call_tool("garage_status", {})
+    assert not out["ok"]
+    assert made.active == [before] and before.state == "running"
+    assert {"garage_status", "garage_request"} <= await tool_names(server)
+    assert not status.is_error and status.structured_content == {"door": "closed"}
 
 
 async def test_restarting_a_plugin_not_in_the_settings_file_is_refused(tmp_path):
