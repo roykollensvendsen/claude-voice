@@ -83,6 +83,48 @@ def test_a_dry_run_writes_nothing(tmp_path):
     assert outcome.added_allow == 2 and "would add 2 allow and 1 deny" in outcome.line()
 
 
+RETIRING = permissions.Rules(allow=RULES.allow, deny=RULES.deny, retired=["Bash(cp * /tmp/*)"])
+
+
+def test_a_retired_allow_rule_is_removed(tmp_path):
+    """The old installer allowed a copy into /tmp, which got round the secret rules."""
+    with_settings(tmp_path, {"permissions": {"allow": ["Bash(make*)", "Bash(cp * /tmp/*)"]}})
+    outcome = permissions.apply(tmp_path, RETIRING)
+    assert read(tmp_path)["permissions"]["allow"] == ["Bash(make*)", *RULES.allow]
+    assert outcome.removed_allow == 1 and outcome.added_allow == 2
+    assert "removed 1 retired allow rule" in outcome.line()
+
+
+def test_only_the_exact_retired_rule_is_removed(tmp_path):
+    near = ["Bash(cp * /tmp/x)", "Bash(cp *)", "Bash(cp * /tmp/*) ", "bash(cp * /tmp/*)"]
+    with_settings(tmp_path, {"permissions": {"allow": near, "deny": ["Bash(cp * /tmp/*)"]}})
+    outcome = permissions.apply(tmp_path, RETIRING)
+    got = read(tmp_path)["permissions"]
+    assert got["allow"][: len(near)] == near and "Bash(cp * /tmp/*)" in got["deny"]
+    assert outcome.removed_allow == 0 and "retired allow" not in outcome.line()
+
+
+def test_a_dry_run_says_how_many_retired_rules_it_would_remove(tmp_path):
+    file = with_settings(tmp_path, {"permissions": {"allow": [*RULES.allow, "Bash(cp * /tmp/*)"], "deny": RULES.deny}})
+    before = file.read_bytes()
+    outcome = permissions.apply(tmp_path, RETIRING, dry_run=True)
+    assert file.read_bytes() == before
+    assert outcome.line() == f"{tmp_path}: would add 0 allow and 0 deny rules, and remove 1 retired allow rule"
+
+
+def test_removing_a_retired_rule_keeps_the_backup_already_written(tmp_path):
+    original = {"permissions": {"allow": ["Bash(make*)"]}}
+    file = with_settings(tmp_path, original)
+    permissions.apply(tmp_path, RULES)
+    settings = read(tmp_path)
+    settings["permissions"]["allow"].append("Bash(cp * /tmp/*)")
+    file.write_text(json.dumps(settings), encoding="utf-8")
+    outcome = permissions.apply(tmp_path, RETIRING)
+    assert outcome.removed_allow == 1 and not outcome.backed_up
+    backup = file.with_name("settings.local.json.before-quality-rules")
+    assert json.loads(backup.read_text(encoding="utf-8")) == original
+
+
 def test_a_dry_run_does_not_create_a_missing_settings_file(tmp_path):
     permissions.apply(tmp_path, RULES, dry_run=True)
     assert not (tmp_path / ".claude").exists()
@@ -125,10 +167,25 @@ def test_every_command_allowed_to_read_a_file_is_refused_every_secret_file():
     table = json.loads(permissions.TABLE.read_text(encoding="utf-8"))
     readers, files = table["secrets"]["readers"], table["secrets"]["files"]
     assert "*.config/claude-voice/env*" in files
+    allowed = [reader for reader in readers if f"Bash({reader} *)" in rules.allow or f"Bash({reader}*)" in rules.allow]
+    assert {"cat", "head", "tail", "sed -n", "grep"} <= set(allowed)
     for reader in readers:
-        assert f"Bash({reader} *)" in rules.allow or f"Bash({reader}*)" in rules.allow
         for path in files:
             assert f"Bash({reader} {path})" in rules.deny
+
+
+def test_copying_or_printing_a_secret_file_is_refused():
+    """A copy puts the secret where no rule guards it; these print a file's bytes."""
+    rules = permissions.load()
+    for reader in ("cp", "rsync", "base64", "xxd", "od"):
+        for path in ("*.config/claude-voice/env*", "*secrets.yaml*", "*.claude/.credentials.json*"):
+            assert f"Bash({reader} {path})" in rules.deny
+
+
+def test_the_copy_into_tmp_the_old_installer_allowed_is_retired():
+    rules = permissions.load()
+    assert rules.retired == ["Bash(cp * /tmp/*)"]
+    assert not set(rules.retired) & set(rules.allow)
 
 
 #: The rules the first hand-run installer refused. The shipped rules may refuse more, never less:
