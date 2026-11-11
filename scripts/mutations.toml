@@ -452,3 +452,9 @@ name = "a repository with no time budget still shows how long its tests take"
 file = "src/claude_voice/software.py"
 find = 'return f"\{v:\.0f\} s of a \{budget\[.seconds.\]\} s budget" if budget else f"\{v:\.0f\} s"'
 replace = 'return f"{v:.0f} s of a {budget.get("seconds")} s budget"'
+
+[[rule]]
+name = "a restart lets a call already running finish first"
+file = "src/claude_voice/plugins.py"
+find = 'held = await asyncio\.wait_for\(self\._lock\.acquire\(\), self\.spec\.timeout\)'
+replace = 'held = False'
