@@ -40,7 +40,9 @@ and number keep working as before, and come first.
 ## The file
 
 One file per programme, `.claude/org.toml` in the programme's main repository.
-It is optional; a programme without one is simply not shown. This one, for a
+It is optional; a programme without one is simply not shown. The `org-chart`
+skill in [.claude/skills/org-chart](../.claude/skills/org-chart/SKILL.md) finds
+sessions that belong together, proposes the file, and writes it on your yes. This one, for a
 made-up programme, is also in
 [examples/acme-robots/.claude/org.toml](examples/acme-robots/.claude/org.toml):
 
