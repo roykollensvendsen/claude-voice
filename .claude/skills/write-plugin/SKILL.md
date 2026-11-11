@@ -55,6 +55,9 @@ The owner approved this list. Each item is a lesson a plugin had to learn late.
     the cause and the owner's next step, with the exact command when there is one: "The
     SSH key is missing on the MiSTer; run ssh-copy-id again." A bare "not answering" with no
     next step is a bug. This also applies when a quality session goes over an existing plugin.
+11. **A quality round once v1 works.** A separate quality session or helper takes the
+    plugin through the `code-quality` skill. It must be a fresh reader, not the session that
+    built it, as tv, dreame and garage had. Its findings land before the plugin counts as done.
 
 ## The plugin
 
