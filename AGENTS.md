@@ -88,6 +88,13 @@ If you are a session working on this repository, rather than installing it:
   levels, and the file holds only the time budget.
 - Push only to your owner's fork; a pull request goes to
   `roykollensvendsen/claude-voice` with `gh pr create --repo`.
+- You may rebase your own pull-request branch and push it again, with
+  `git push --force-with-lease` only. You may also run
+  `gh pr update-branch <n> --rebase` on your own pull request. Never use plain
+  `--force` or `-f`. Never force-push `main`, `master`, another protected
+  branch, or anyone else's branch. The permission rules refuse the main and
+  master forms, and GitHub's branch protection refuses them too
+  ([docs/permissions.md](docs/permissions.md)).
 - Never rename or remove a tool or field that Hermes or the voice app uses.
 - When an outside contributor's pull request lands, thank them in it and say
   concretely what was good. Hold your own pull requests to what contributions

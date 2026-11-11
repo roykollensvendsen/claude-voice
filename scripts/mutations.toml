@@ -596,3 +596,9 @@ name = "a role naming a session that is not running is warned about"
 file = "src/claude_voice/org.py"
 find = 'if name not in running:'
 replace = 'if False:'
+
+[[rule]]
+name = "a forced push can never reach main or master"
+file = "src/claude_voice/permissions.py"
+find = 'deny \+= \[f"Bash\(\{push\}\)" for push in pushes\]'
+replace = 'deny += []'
