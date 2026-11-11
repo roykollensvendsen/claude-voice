@@ -544,6 +544,12 @@ find = 'if file.exists\(\) and not backup.exists\(\):'
 replace = 'if file.exists():'
 
 [[rule]]
+name = "a retired allow rule is removed"
+file = "src/claude_voice/permissions.py"
+find = 'kept = \[rule for rule in kept if rule not in rules\.retired\]'
+replace = 'kept = kept'
+
+[[rule]]
 name = "a plugin that could not be listed is reported as not started never as changed tools"
 file = "src/claude_voice/plugins.py"
 find = 'if plugin\.unlisted is not None:'

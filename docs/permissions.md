@@ -31,8 +31,11 @@ claude-voice: no-such-folder is not a folder, so it was left alone
 It writes `.claude/settings.local.json` in each repository. That file stays out
 of git, so the rules are the owner's and not the project's.
 
-- **Only adds.** The owner's own rules stay where they are, and every other
-  setting in the file is kept.
+- **Adds, and takes away only a retired rule.** The owner's own rules stay where
+  they are, and every other setting in the file is kept. The one exception is a
+  short list of retired allow rules in the table, under `retired`. An older
+  installer wrote them, and they are no longer safe. Each is removed only where
+  the file has exactly that text; a rule that merely looks like it stays.
 - **Each rule once.** A rule the file already has is not added again.
 - **A backup, once.** Before the first change it keeps the old file as
   `settings.local.json.before-quality-rules`, and never overwrites that copy.
@@ -43,6 +46,17 @@ of git, so the rules are the owner's and not the project's.
 
 A missing file is created with the rules alone. To undo the rules, put the
 backup back, or remove the rules from the file by hand.
+
+The dry run says what it would remove as well as what it would add:
+
+<!-- not run: the counts depend on the reader's own settings -->
+```
+~/src/claude-voice: would add 0 allow and 35 deny rules, and remove 1 retired allow rule
+```
+
+The only retired rule so far is `Bash(cp * /tmp/*)`. The first installer
+allowed it, and a copy into `/tmp` got round the secret rules. So every
+computer that ran that installer kept a way round them until this removed it.
 
 ## The groups
 
@@ -66,8 +80,10 @@ Pushing, merging, opening a pull request and installing anything else still ask.
   `checkout --`, `git clean -f`, deleting or moving a branch, and forcing a
   worktree away. Each one can lose work no commit holds.
 - **Secrets.** Each command allowed to read a file is refused for each secret
-  file by its path. The table lists the readers and the files once, and the
-  bridge writes every pair as a rule. The files are:
+  file by its path. So are the commands that copy a file, `cp` and `rsync`,
+  and those that print its bytes in another form, `base64`, `xxd` and `od`.
+  The table lists these readers and the files once, and the bridge writes every
+  pair as a rule. The files are:
 
 | File | Whose secret |
 | --- | --- |
