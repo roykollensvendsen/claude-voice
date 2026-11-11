@@ -500,3 +500,33 @@ name = "a terminal already attached to a tmux session is raised, not opened agai
 file = "src/claude_voice/terminals.py"
 find = 'if self._attached\(tmux_session\):'
 replace = 'if False:'
+
+[[rule]]
+name = "rules already in the settings are kept"
+file = "src/claude_voice/permissions.py"
+find = 'kept = list\(have.get\(key\) or \[\]\)'
+replace = 'kept = []'
+
+[[rule]]
+name = "a rule the settings already have is not added again"
+file = "src/claude_voice/permissions.py"
+find = 'if rule not in kept:'
+replace = 'if True:'
+
+[[rule]]
+name = "a second run writes nothing"
+file = "src/claude_voice/permissions.py"
+find = 'if after == before:'
+replace = 'if False:'
+
+[[rule]]
+name = "a dry run writes nothing"
+file = "src/claude_voice/permissions.py"
+find = 'if dry_run:'
+replace = 'if False:'
+
+[[rule]]
+name = "the backup is written only once"
+file = "src/claude_voice/permissions.py"
+find = 'if file.exists\(\) and not backup.exists\(\):'
+replace = 'if file.exists():'

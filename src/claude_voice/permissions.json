@@ -1,0 +1,126 @@
+{
+  "allow": {
+    "read files and folders": [
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(sed -n *)",
+      "Bash(grep *)",
+      "Bash(ls*)",
+      "Bash(wc *)"
+    ],
+    "git, looking only": [
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git blame*)",
+      "Bash(git ls-files*)",
+      "Bash(git rev-parse*)",
+      "Bash(git merge-base*)",
+      "Bash(git remote -v)",
+      "Bash(git remote get-url*)",
+      "Bash(git branch)",
+      "Bash(git branch --show-current)",
+      "Bash(git branch --list*)",
+      "Bash(git branch --contains*)",
+      "Bash(git branch -a*)",
+      "Bash(git branch -r*)",
+      "Bash(git branch -v*)",
+      "Bash(git fetch*)",
+      "Bash(git worktree list*)",
+      "Bash(git -C * status*)",
+      "Bash(git -C * diff*)",
+      "Bash(git -C * log*)",
+      "Bash(git -C * show*)",
+      "Bash(git -C * ls-files*)",
+      "Bash(git -C * rev-parse*)",
+      "Bash(git -C * remote -v)",
+      "Bash(git -C * branch --show-current)",
+      "Bash(git -C * branch -a*)",
+      "Bash(git -C * branch -r*)",
+      "Bash(git -C * fetch*)",
+      "Bash(git -C * worktree list*)"
+    ],
+    "git, making work on a branch": [
+      "Bash(git add *)",
+      "Bash(git commit -m *)",
+      "Bash(git commit -F *)",
+      "Bash(git checkout -b *)",
+      "Bash(git switch -c *)",
+      "Bash(git cherry-pick *)",
+      "Bash(git -C * cherry-pick *)",
+      "Bash(git worktree add *)",
+      "Bash(git -C * worktree add *)",
+      "Bash(git worktree prune*)",
+      "Bash(git worktree remove *)"
+    ],
+    "GitHub, looking only": [
+      "Bash(gh pr checks*)",
+      "Bash(gh pr diff*)",
+      "Bash(gh pr list*)",
+      "Bash(gh pr view*)",
+      "Bash(gh run list*)",
+      "Bash(gh run view*)",
+      "Bash(gh run download*)"
+    ],
+    "the gates of the Python repositories": [
+      "Bash(uv sync*)",
+      "Bash(uv run ruff*)",
+      "Bash(uv run mypy*)",
+      "Bash(uv run pytest*)",
+      "Bash(uv run python scripts/mutate.py*)",
+      "Bash(uv run python scripts/ratchet.py*)",
+      "Bash(python scripts/mutate.py*)",
+      "Bash(python scripts/ratchet.py*)"
+    ],
+    "the gates of the companion app": [
+      "Bash(npm ci)",
+      "Bash(npm test*)",
+      "Bash(npm run test*)",
+      "Bash(npm run lint*)",
+      "Bash(npm run build*)"
+    ],
+    "the gates of the Android app": [
+      "Bash(./gradlew assemble*)",
+      "Bash(./gradlew check*)",
+      "Bash(./gradlew lint*)",
+      "Bash(./gradlew test*)"
+    ]
+  },
+  "deny": {
+    "history that cannot be got back": [
+      "Bash(git reset --hard*)",
+      "Bash(git checkout -- *)",
+      "Bash(git clean -f*)",
+      "Bash(git branch -d*)",
+      "Bash(git branch -D*)",
+      "Bash(git branch * -d*)",
+      "Bash(git branch * -D*)",
+      "Bash(git branch --delete*)",
+      "Bash(git branch -f*)",
+      "Bash(git worktree remove* -f*)",
+      "Bash(git worktree remove*--force*)"
+    ]
+  },
+  "secrets": {
+    "readers": [
+      "cat",
+      "head",
+      "tail",
+      "sed -n",
+      "grep",
+      "git diff",
+      "git -C * diff"
+    ],
+    "files": [
+      "*.config/claude-voice/env*",
+      "*.config/claude-voice/machines/*",
+      "*.config/dreame*",
+      "*.config/tv-mcp*",
+      "*secrets.yaml*",
+      "*.config/gh/hosts.yml*",
+      "*.claude/.credentials.json*"
+    ]
+  }
+}
