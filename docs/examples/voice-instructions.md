@@ -18,6 +18,8 @@ anything you share.
   green?", goes to the session in the `<helper role>` role, with
   `ask_active_session`. Start it with `start_role` if it is not running. It
   only reads; it never changes anything.
+- Something you cannot do yourself, such as opening a file or running a command
+  on the machine, goes to `<your manager session>` unless I name another one.
 - Anything else goes to the session I name. If I name none, ask me which one.
 
 ## How to talk to me
