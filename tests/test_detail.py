@@ -262,3 +262,38 @@ def test_a_commit_is_read_from_its_own_command(command, text):
 def test_code_that_calls_git_from_a_program_is_not_a_commit():
     command = 'cat > t.py <<\'EOF\'\ndef f(tmp_path):\n    git(tmp_path, "-c", "user.name=t", "commit", "-m", "x")\nEOF'
     assert detail.digest([tool("Bash", 1, "b1", command=command)])["timeline"] == []
+
+
+def test_a_helpers_own_turns_are_left_out():
+    side = {**tool("Bash", 2, "s1", command="git commit -m 'inside a helper'"), "isSidechain": True}
+    digest = detail.digest([prompt("Go", 1), side])
+    assert digest["tool_calls"]["total"] == 0
+    assert [item["kind"] for item in digest["timeline"]] == ["prompt"]
+
+
+def test_a_helper_handed_back_through_the_queue_is_no_longer_running():
+    entries = [
+        tool("Agent", 1, "a1", run_in_background=True),
+        result("a1", 1, toolUseResult={"agentId": "agent-9", "status": "async_launched"}),
+        {"type": "queue-operation", "timestamp": at(2), "content": "<task-id>agent-9</task-id> done"},
+    ]
+    assert detail.digest(entries)["subagents"] == {"running": 0, "total": 1}
+
+
+def test_a_failed_tool_whose_text_comes_in_parts_shows_its_first_line():
+    failed = {
+        "type": "user",
+        "timestamp": at(3),
+        "message": {
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "b1",
+                    "is_error": True,
+                    "content": [{"type": "text", "text": "boom\nmore"}, {"type": "text", "text": "later"}],
+                }
+            ]
+        },
+    }
+    timeline = detail.digest([tool("Bash", 2, "b1", command="ls"), failed])["timeline"]
+    assert timeline[0] == {"at": at(3), "kind": "error", "text": "boom"}
