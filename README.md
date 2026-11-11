@@ -107,6 +107,7 @@ the bridge says which are missing, with the exact fix, through its
 | `cancel`, `close_session` | stop a turn, retire a session |
 | `list_sessions` | the sessions this bridge started, and every one running on the computer |
 | `session_tree` | the sessions as a tree, including which ones have been messaging each other |
+| `org_chart` | who handles what: each programme's roles, who fills them and whether they run, from the [org chart](docs/org-chart.md); a session can then be named by its address, such as `voice/manager` |
 | `list_active_sessions` | every Claude Code session running on the computer now, terminal or background |
 | `start_active_session` | start a new Claude Code session in the background, ready to talk to at once; with `create_folder`, a new project folder by a plain name under the root, only when asked |
 | `start_role` | start a session for a role, such as `contribute`: say what to change in claude-voice and get a pull request |

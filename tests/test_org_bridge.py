@@ -8,6 +8,7 @@ from pathlib import Path
 import httpx
 import pytest
 from fakes import FakeClaude
+from mcp.client import Client
 
 from claude_voice import api
 from claude_voice.oauth import OAuthProvider
@@ -137,3 +138,79 @@ async def test_a_change_to_the_programmes_is_told_to_open_streams(tmp_path, worl
             },
         )
     ]
+
+
+# -- reaching a session by its address, and the voice's overview ------------------------
+
+
+class Delivered:
+    def __init__(self):
+        self.sent = []
+
+    async def __call__(self, name, text):
+        self.sent.append((name, text))
+        return {"delivered": True, "detail": ""}
+
+
+def voice(tmp_path, world):
+    root, live = world
+    deliver = Delivered()
+    m = SessionManager(Store(tmp_path / "v.db"), project_root=root, client_factory=FakeClaude(), clock=Clock())
+    server = build_server(
+        m, conversations=lambda **k: [], live_dir=live, read_transcript=lambda s, d: [], deliver=deliver, org_folders=[]
+    )
+    return server, deliver
+
+
+async def call(server, name, **args):
+    async with Client(server) as c:
+        return await c.call_tool(name, args)
+
+
+async def test_a_message_reaches_a_session_by_its_address(tmp_path, world):
+    server, deliver = voice(tmp_path, world)
+    res = await call(server, "message_active_session", session="acme/manager", message="hello")
+    assert not res.is_error, res.content
+    assert deliver.sent == [("acme-robots", "hello")]
+
+
+async def test_the_end_of_an_address_reaches_its_session_when_it_names_only_one(tmp_path, world):
+    server, deliver = voice(tmp_path, world)
+    res = await call(server, "message_active_session", session="Robot arm", message="hi")
+    assert not res.is_error, res.content
+    assert deliver.sent == [("fix-gripper", "hi")]
+
+
+async def test_words_that_fit_several_sessions_are_answered_with_the_choices_to_ask(tmp_path, world):
+    server, deliver = voice(tmp_path, world)
+    res = await call(server, "message_active_session", session="manager", message="hi")
+    assert res.is_error and deliver.sent == []
+    text = res.content[0].text
+    assert "acme/manager (acme-robots)" in text and "shop/manager (shop)" in text and "Ask the owner" in text
+
+
+async def test_a_session_is_renamed_and_chosen_by_its_address(tmp_path, world):
+    server, _ = voice(tmp_path, world)
+    renamed = await call(server, "rename_session", session="arm", new_name="gripper")
+    assert not renamed.is_error, renamed.content
+    assert renamed.structured_content["was"] == "fix-gripper"
+    chosen = await call(server, "set_active_session", session="shop/manager")
+    assert not chosen.is_error, chosen.content
+    assert chosen.structured_content["name"] == "shop"
+
+
+async def test_the_org_chart_tool_says_who_handles_what(tmp_path, world):
+    server, _ = voice(tmp_path, world)
+    res = await call(server, "org_chart")
+    assert res.structured_content["lines"] == [
+        "Web shop (shop): manager, shop, running.",
+        "Acme Robots (acme): manager, acme-robots, running; send decisions, proposals.",
+        "Acme Robots (acme): arm quality, arm-quality, not running; send quality, facts.",
+        "Outside any programme: loose.",
+    ]
+
+
+def test_the_voice_is_told_to_ask_the_org_chart_who_handles_what():
+    from claude_voice.server import INSTRUCTIONS
+
+    assert "org_chart" in INSTRUCTIONS
