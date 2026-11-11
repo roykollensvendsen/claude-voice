@@ -19,6 +19,21 @@ def no_owner_developer_mode(tmp_path_factory, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_real_side_reader(monkeypatch):
+    """A watched server warms the shared side-question reader. A real one starts Claude Code,
+    which slows the suite and holds its folder open after it, so the suite gets a fake."""
+    from fakes import FakeClaude
+
+    from claude_voice import transcripts
+
+    reader = transcripts.SideReader(client_factory=FakeClaude())
+    monkeypatch.setattr(transcripts, "_reader", reader)
+    yield
+    if reader._cwd is not None:
+        reader._cwd.cleanup()
+
+
+@pytest.fixture(autouse=True)
 def no_github(monkeypatch):
     """A watched server asks GitHub for the open pull requests, and waits for the answer before
     its next look at the sessions. The suite answers as if GitHub's command line were missing."""
