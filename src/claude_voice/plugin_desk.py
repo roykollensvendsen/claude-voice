@@ -72,7 +72,7 @@ class Desk:
             return _no(f"There is no plugin called {name}.")
         for old in [p for p in self.active if p.spec.name == name]:
             plugins.withdraw(self.server, old)
-            await old._drop()
+            await old.stop()
             old.state = "stopped"
             self.active.remove(old)
         plugin, why = await asyncio.to_thread(

@@ -304,6 +304,19 @@ class Plugin:
             with contextlib.suppress(Exception, asyncio.CancelledError):
                 await asyncio.wait_for(asyncio.shield(runner), 5)
 
+    async def stop(self) -> None:
+        """Stop the process once a call already running has had its answer, waiting no
+        longer than a call may take."""
+        # RULE: a restart lets a call already running finish first
+        held = False
+        with contextlib.suppress(TimeoutError):
+            held = await asyncio.wait_for(self._lock.acquire(), self.spec.timeout)
+        try:
+            await self._drop()
+        finally:
+            if held:
+                self._lock.release()
+
     async def call(self, tool: str, arguments: dict[str, Any]) -> Any:
         """The plugin's answer, or RuntimeError saying what went wrong; a failed process is
         dropped, so the next call starts it again."""
