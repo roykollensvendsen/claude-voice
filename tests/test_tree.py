@@ -299,3 +299,28 @@ def test_the_tree_is_built_by_one_caller_at_a_time(world):
     for caller in callers:
         caller.join()
     assert most[0] == 1
+
+
+# -- how many messages each pair of sessions exchanged, for the programme hints ---------
+
+
+def test_a_message_is_counted_once_where_it_was_read(world):
+    a, a_cwd = world.session("alpha", pid=PID)
+    b, b_cwd = world.session("beta")
+    world.transcript(a, a_cwd, [send("beta"), send("beta")])
+    world.transcript(b, b_cwd, [peer_message("alpha", "uds:/x.sock"), peer_message("alpha", "uds:/x.sock")])
+    assert world.tree().message_counts(7 * 24 * 3600) == {tuple(sorted((a, b))): 2}
+
+
+def test_only_messages_inside_the_window_are_counted(world):
+    world.session("alpha")
+    b, b_cwd = world.session("beta")
+    world.transcript(b, b_cwd, [peer_message("alpha", "uds:/x.sock", minutes_ago=60 * 24 * 8)])
+    world.transcript(b, b_cwd, [peer_message("alpha", "uds:/x.sock", minutes_ago=60 * 24 * 6)], append=True)
+    assert list(world.tree().message_counts(7 * 24 * 3600).values()) == [1]
+
+
+def test_messages_from_the_bridge_are_not_counted_between_sessions(world):
+    b, b_cwd = world.session("beta")
+    world.transcript(b, b_cwd, [peer_message("claude-voice-msg-ab-cd", "uds:/run/user/1000/cc-socks/1.sock")])
+    assert world.tree().message_counts(7 * 24 * 3600) == {}

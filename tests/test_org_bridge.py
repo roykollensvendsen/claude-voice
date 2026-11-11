@@ -140,6 +140,35 @@ async def test_a_change_to_the_programmes_is_told_to_open_streams(tmp_path, worl
     ]
 
 
+def loose_pair(world, pid):
+    """A second session in the loose folder, so the two in no programme seem to belong together."""
+    root, live = world
+    record = {"pid": pid, "sessionId": "loose2-id", "cwd": str(root / "loose"), "name": "loose-two"}
+    (live / f"{pid}.json").write_text(json.dumps({**record, "status": "idle", "kind": "interactive", "updatedAt": 0}))
+
+
+async def test_the_session_list_hints_which_sessions_in_no_programme_belong_together(tmp_path, world, pids):
+    loose_pair(world, pids[4])
+    _, app = bridge(tmp_path, world)
+    hinted = (await listing(app))["programme_hints"]
+    assert [(h["sessions"], h["reason"], h["detail"], h["messages"]) for h in hinted] == [
+        (["loose-id", "loose2-id"], "folder", "loose", None)
+    ]
+    assert hinted[0]["id"].startswith("h-")
+
+
+async def test_a_change_to_the_programme_hints_is_told_to_open_streams(tmp_path, world, pids):
+    server, _ = bridge(tmp_path, world)
+    with api.HUB.subscribe() as events:
+        server.hints_check()
+        server.hints_check()  # nothing changed: nothing told
+        loose_pair(world, pids[4])
+        server.hints_check()
+        told = [e for e in (events.get_nowait() for _ in range(events.qsize())) if e[0] == "programme_hints"]
+    assert len(told) == 1
+    assert [h["sessions"] for h in told[0][1]["programme_hints"]] == [["loose-id", "loose2-id"]]
+
+
 # -- reaching a session by its address, and the voice's overview ------------------------
 
 

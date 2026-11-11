@@ -58,6 +58,7 @@ ran in the last day, with the session the owner talks to:
      "role": null, "programme_wide": false, "address": "acme/arm"}
   ],
   "programmes": [{"id": "acme", "name": "Acme Robots", "order": 0}],
+  "programme_hints": [],
   "active": {"id": "5f3c…", "name": "billing-ab", "kind": "terminal",
              "set_by": "page", "set_at": "2026-11-02T13:05:00+00:00"}
 }
@@ -119,6 +120,12 @@ ran in the last day, with the session the owner talks to:
 - `programmes`, next to `sessions`: every programme that has an org file, in the
   order to show them, `[{"id": "acme", "name": "Acme Robots", "order": 0}]`.
   The `programmes` event says when it changes.
+- `programme_hints`, next to `sessions`: groups of sessions in no programme that
+  seem to belong together, `[{"id": "h-…", "sessions": ["<id>", …], "reason":
+  "messages" | "folder" | "prefix", "detail": "acme-" or a folder's name or null,
+  "messages": <how many in the last 7 days> or null}]`. Empty when there are none.
+  [The org chart](org-chart.md#hints-for-the-sessions-in-no-programme) gives the
+  rules. The `programme_hints` event says when they change.
 
 ## The session the owner talks to
 
@@ -464,6 +471,7 @@ that must send a bearer token reads the stream with `fetch`.
 | `output` | `{"session": "<id>", "index", "role"}` | a running session wrote a new turn; read it with `/sessions/{id}/output?after=` |
 | `update` | one step: `{"step", "ok", "detail", "at"}`, with `step` one of `check`, `fetch`, `pull`, `install`, `test`, `restart`, `verify`, `rollback`, `done` | an update made progress |
 | `programmes` | `{"programmes": [{"id", "name", "order"}]}` | an org file was added, removed or changed what it lists; looked at every ten seconds while a stream is open |
+| `programme_hints` | `{"programme_hints": [...]}`, the list the session list carries | a hint was added, removed or changed; looked at every ten seconds while a stream is open |
 | `work` | the `/api/v1/work` body | what waits on the owner, or an open pull request, changed; looked at every ten seconds while a stream is open |
 | `news` | one item: `{"kind", "session", "text", …}` | something happened worth telling: a session finished, failed, started waiting, asked for an approval |
 

@@ -729,3 +729,64 @@ name = "a misread env file line is a warning and never stops the check"
 file = "src/claude_voice/cli.py"
 find = 'add\("env_file", False, problem\.detail, problem\.fix, required=False\)'
 replace = 'add("env_file", False, problem.detail, problem.fix, required=True)'
+
+[[rule]]
+name = "the same sessions always get the same hint id"
+file = "src/claude_voice/hints.py"
+find = 'joined = ",".join\(sorted\(sessions\)\)'
+replace = 'joined = ",".join(sessions)'
+
+[[rule]]
+name = "a hint holds two sessions or more"
+file = "src/claude_voice/hints.py"
+find = 'return len\(sessions\) >= 2'
+replace = 'return len(sessions) >= 1'
+
+[[rule]]
+name = "a worktree is grouped with its repository"
+file = "src/claude_voice/hints.py"
+find = 'path = PurePath\(\*parts\[:i\]\)'
+replace = 'pass'
+
+[[rule]]
+name = "the project root is no shared folder"
+file = "src/claude_voice/hints.py"
+find = 'if path == top:'
+replace = 'if False:'
+
+[[rule]]
+name = "a name prefix ends in a dash and is at least four characters"
+file = "src/claude_voice/hints.py"
+find = 'return \[text\[: i \+ 1\] for i in range'
+replace = 'return [text[: i + 1] for i in range(len(text) - 1, -1, -1) if text[i] == "-"]'
+
+[[rule]]
+name = "only sessions in no programme are hinted"
+file = "src/claude_voice/hints.py"
+find = 'left = \{str\(r\["id"\]\): r for r in rows if r.get\("programme"\) is None\}'
+replace = 'left = {str(r["id"]): r for r in rows}'
+
+[[rule]]
+name = "the strongest reason places a session first"
+file = "src/claude_voice/hints.py"
+find = 'reasons: tuple\[Reason, \.\.\.\] = \(_by_messages, _by_folder, _by_prefix\)'
+replace = 'reasons: tuple[Reason, ...] = (_by_prefix, _by_folder, _by_messages)'
+
+[[rule]]
+name = "a session is in one hint at most"
+file = "src/claude_voice/hints.py"
+find = 'left\.pop\(sid\)'
+replace = 'left.get(sid)'
+
+[[rule]]
+name = "a message is counted once, where it was read"
+file = "src/claude_voice/tree.py"
+find = 'if kind != "received":'
+replace = 'if False:'
+
+[[rule]]
+name = "only messages inside the window are counted"
+file = "src/claude_voice/tree.py"
+find = 'if when is not None and when < cutoff:'
+occurrence = 2
+replace = 'if False:'
