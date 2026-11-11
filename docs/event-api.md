@@ -53,8 +53,11 @@ ran in the last day, with the session the owner talks to:
   "sessions": [
     {"id": "5f3c…", "name": "billing-ab", "kind": "terminal", "project": "billing",
      "status": "idle", "doing": "Fixed the export totals.", "minutes_since_update": 2,
-     "question": {"text": "Which file?", "options": ["a.py", "b.py"]}}
+     "question": {"text": "Which file?", "options": ["a.py", "b.py"]},
+     "programme": {"id": "acme", "name": "Acme Robots"}, "component": {"id": "arm", "name": "Robot arm"},
+     "role": null, "programme_wide": false, "address": "acme/arm"}
   ],
+  "programmes": [{"id": "acme", "name": "Acme Robots", "order": 0}],
   "active": {"id": "5f3c…", "name": "billing-ab", "kind": "terminal",
              "set_by": "page", "set_at": "2026-11-02T13:05:00+00:00"}
 }
@@ -104,7 +107,18 @@ ran in the last day, with the session the owner talks to:
   and for a fork the `upstream` remote's main branch. Only local refs are read
   and nothing is fetched, so `behind` is as fresh as the folder's last fetch.
   The answer is kept for 45 seconds per folder.
+- `programme`, `component` and `role`: where the session sits in the
+  [org chart](org-chart.md), each `{"id", "name"}` or `null`. A session with no
+  `programme` belongs to no programme and is shown under "Other". A
+  programme-wide role, such as a manager, has `component` `null` and
+  `programme_wide` `true`. `address` is `"acme/arm/quality"`, `"acme/manager"`
+  or `"acme/arm"` for a worker, and `null` outside any programme. A session on
+  another machine is placed by its name only, so it can hold a role but has no
+  component. An older bridge sends none of these.
 - `active` is `null` until something has chosen a session.
+- `programmes`, next to `sessions`: every programme that has an org file, in the
+  order to show them, `[{"id": "acme", "name": "Acme Robots", "order": 0}]`.
+  The `programmes` event says when it changes.
 
 ## The session the owner talks to
 
@@ -408,6 +422,7 @@ that must send a bearer token reads the stream with `fetch`.
 | `git` | `{"session": "<id>", "git": {...}}` | a session's git status changed |
 | `output` | `{"session": "<id>", "index", "role"}` | a running session wrote a new turn; read it with `/sessions/{id}/output?after=` |
 | `update` | one step: `{"step", "ok", "detail", "at"}`, with `step` one of `check`, `fetch`, `pull`, `install`, `test`, `restart`, `verify`, `rollback`, `done` | an update made progress |
+| `programmes` | `{"programmes": [{"id", "name", "order"}]}` | an org file was added, removed or changed what it lists; looked at every ten seconds while a stream is open |
 | `work` | the `/api/v1/work` body | what waits on the owner, or an open pull request, changed; looked at every ten seconds while a stream is open |
 | `news` | one item: `{"kind", "session", "text", …}` | something happened worth telling: a session finished, failed, started waiting, asked for an approval |
 

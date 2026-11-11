@@ -45,6 +45,7 @@ from . import (
     launch,
     machines,
     metrics,
+    org,
     plugin_desk,
     plugins,
     procs,
@@ -389,6 +390,7 @@ def build_server(
     work_board: work.Board | None = None,
     tmux: Any = None,
     terminals: Terminals | None = None,
+    org_folders: list[Path] | None = None,
 ) -> MCPServer:
     auth = None
     if oauth is not None:
@@ -460,6 +462,7 @@ def build_server(
         tree_version[:] = [version]
         last_check[:] = [datetime.now(UTC).isoformat(timespec="seconds")]
         if api.HUB.listening():
+            tell_programmes()
             fleet_recap()  # notes each session's state, and announces the ones that changed
             update_state()  # and each step of an update under way
             announce_new_turns()
@@ -692,6 +695,36 @@ def build_server(
             return config.load(config.FILE, own_clone=roles.own_clone()).plugins
         except config.ConfigError:
             return repos.plugins
+
+    org_kept: list[Any] = []  # (when it was read, the chart)
+    programmes_seen: list[list[dict[str, Any]]] = []
+
+    def org_now() -> org.Chart:
+        """The org chart, read again from the files when it is ten seconds old."""
+        if org_kept and manager.clock() - org_kept[0] < 10:
+            return org_kept[1]
+        given = org_folders if org_folders is not None else [repos.paths.claude_voice, *(p.cwd for p in plugin_specs())]
+        chart = org.load(org.known_folders(manager.root, given))
+        org_kept[:] = [manager.clock(), chart]
+        return chart
+
+    def tell_programmes() -> None:
+        """Tell open streams when the programmes have changed since last looked at."""
+        now = org_now().listing()
+        if programmes_seen and programmes_seen[0] != now:
+            api.HUB.publish("programmes", {"programmes": now})
+        programmes_seen[:] = [now]
+
+    def with_org(listing: dict[str, Any]) -> dict[str, Any]:
+        """The page's session list, each session with its place in the org chart."""
+        chart = org_now()
+        live = {str(d.get("sessionId")): d for d in live_sessions()}
+        own = {s["id"]: {"cwd": s["project_path"], "name": s["label"]} for s in store.list_sessions(limit=200)}
+        for row in listing.get("sessions", []):
+            # another machine's session is placed by its own name only: its folder is not known here
+            d = {"name": row.get("name")} if row.get("machine") else live.get(str(row["id"])) or own.get(row["id"], {})
+            row.update(chart.placer()(d).fields())
+        return {**listing, "programmes": chart.listing()}
 
     active_plugins = plugins.start_approved(mcp, repos.plugins, plugin_approvals, plugin_client, commit_of)
     developer_mode = devmode.DeveloperMode()
@@ -1942,7 +1975,7 @@ def build_server(
             oauth.login_secret,
             oauth.public_url,
             check_token,
-            sessions=lambda: across.listing(fleet_recap()),
+            sessions=lambda: with_org(across.listing(fleet_recap())),
             get_active=lambda: store.get_setting("active_session"),
             set_active=set_active,
             clear_active=clear_active,
@@ -1976,6 +2009,7 @@ def build_server(
         ).routes(mcp)
 
     mcp.fleet = across  # type: ignore[attr-defined]  # the other machines, for tests and the CLI
+    mcp.org_check = tell_programmes  # type: ignore[attr-defined]  # for tests
     return mcp
 
 
