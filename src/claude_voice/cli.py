@@ -45,6 +45,18 @@ def claude_code_login() -> tuple[bool, str]:
     return False, "Claude Code is not signed in"
 
 
+def _config_check_name(text: str) -> str:
+    """The check a configuration error belongs to, by the setting its message starts with."""
+    for prefix, name in (
+        ("ANTHROPIC_API_KEY", "api_key"),
+        ("CLAUDE_VOICE_ROOT", "project_root"),
+        ("CLAUDE_VOICE_TOKEN", "secret"),
+    ):
+        if text.startswith(prefix):
+            return name
+    return "configuration"
+
+
 def checks(
     env: Mapping[str, str], transport: str, login: Callable[[], tuple[bool, str]]
 ) -> tuple[Config | None, list[dict[str, Any]]]:
@@ -60,17 +72,8 @@ def checks(
         add("configuration", True, "the configuration is usable")
     except ConfigError as exc:
         text = str(exc)
-        name = (
-            "api_key"
-            if text.startswith("ANTHROPIC_API_KEY")
-            else "project_root"
-            if text.startswith("CLAUDE_VOICE_ROOT")
-            else "secret"
-            if text.startswith("CLAUDE_VOICE_TOKEN")
-            else "configuration"
-        )
         detail, _, fix = text.partition(". ")
-        add(name, False, detail, fix)
+        add(_config_check_name(text), False, detail, fix)
     names = {c["name"] for c in found}
     if "project_root" not in names:
         root = Path(env.get("CLAUDE_VOICE_ROOT", "~/src")).expanduser()
