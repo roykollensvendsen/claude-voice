@@ -126,5 +126,9 @@ Acme Robots (acme): arm quality, arm-quality, not running; send quality, facts.
 
 - The voice: the `org_chart` tool gives the whole chart in a few short lines,
   one per role, and one more for the sessions in no programme.
+- The phone page: each session in `GET /api/v1/sessions` carries its fields,
+  and `GET /api/v1/org/{programme}` gives a programme's roles, who fills them
+  and which have no running session; see
+  [the event API](event-api.md#the-org-chart).
 
-It only reads. The chart changes in the file and nowhere else.
+Both only read. The chart changes in the file and nowhere else.

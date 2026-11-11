@@ -210,6 +210,41 @@ async def test_the_org_chart_tool_says_who_handles_what(tmp_path, world):
     ]
 
 
+async def test_the_page_reads_a_programme_s_roles_and_who_fills_them(tmp_path, world):
+    _, app = bridge(tmp_path, world)
+    async with client(app) as c:
+        r = await c.get("/api/v1/org/acme", headers=BEARER)
+    assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
+    out = r.json()
+    assert (out["id"], out["name"], out["unfilled"]) == ("acme", "Acme Robots", ["quality"])
+    manager, quality = out["roles"]
+    assert manager["sessions"] == ["acme-id"] and manager["running"] is True
+    assert manager["routing"] == ["decisions", "proposals"] and manager["programme_wide"] is True
+    assert quality["sessions"] == [] and quality["running"] is False
+    assert quality["limits"] == "Changes tests, never the arm's code."
+
+
+async def test_the_page_lists_the_programmes_with_their_unfilled_roles(tmp_path, world):
+    _, app = bridge(tmp_path, world)
+    async with client(app) as c:
+        r = await c.get("/api/v1/org", headers=BEARER)
+    assert r.json() == {
+        "programmes": [
+            {"id": "shop", "name": "Web shop", "order": 0, "roles": 1, "unfilled": []},
+            {"id": "acme", "name": "Acme Robots", "order": 1, "roles": 2, "unfilled": ["quality"]},
+        ]
+    }
+
+
+async def test_the_org_chart_is_only_read_and_only_after_signing_in(tmp_path, world):
+    _, app = bridge(tmp_path, world)
+    async with client(app) as c:
+        unknown = await c.get("/api/v1/org/nope", headers=BEARER)
+        anonymous = await c.get("/api/v1/org/acme")
+        changed = await c.put("/api/v1/org/acme", headers=BEARER, json={})
+    assert unknown.status_code == 404 and anonymous.status_code == 401 and changed.status_code == 405
+
+
 def test_the_voice_is_told_to_ask_the_org_chart_who_handles_what():
     from claude_voice.server import INSTRUCTIONS
 
