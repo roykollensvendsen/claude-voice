@@ -4,19 +4,20 @@
   "title": "Privacy settings",
   "description": "The privacy settings the machine keeps, as it reports them. Read only: they are changed on the machine itself, never by the hub, and no tool takes them as input.",
   "type": "object",
-  "additionalProperties": false,
   "required": [
     "microphone",
     "location_log"
   ],
   "properties": {
     "microphone": {
-      "enum": [
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,31}$",
+      "examples": [
         "none",
         "must-answer",
         "after-warning"
       ],
-      "description": "none: nothing here opens a microphone. must-answer: the person at the machine accepts first. after-warning: it opens after the warning sound. The sound plays under both."
+      "description": "Known in version 1: none: nothing here opens a microphone. must-answer: the person at the machine accepts first. after-warning: it opens after the warning sound. The sound plays under both. A hub shows a value it does not know to Roy as unknown, and treats it as one that may open a microphone."
     },
     "location_log": {
       "type": "boolean",

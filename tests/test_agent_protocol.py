@@ -83,7 +83,7 @@ def test_every_schema_is_described_and_every_described_schema_exists():
 
 def test_the_version_one_schemas_name_version_one():
     info = schema("agent-info")
-    assert info["properties"]["protocol"] == {"const": 1}
+    assert info["properties"]["protocol"]["minimum"] == 1
     assert "protocol" in info["required"]
     assert "Claude-Voice-Protocol: 1" in DOC.read_text()
 
@@ -166,3 +166,31 @@ def test_a_plugin_that_reads_which_apps_are_used_says_so():
     data = {"name": "mobiledata", "tools": ["mobiledata_left"], "uses": ["usage"]}
     validate(data, schema("plugin"))
     assert "`usage`" in DOC.read_text()
+
+
+# A later version may add fields and values. A receiver of an older one ignores what it
+# does not know, so a newer phone or hub never breaks an older one.
+
+
+@pytest.mark.parametrize("path", schema_files(), ids=lambda p: f"{p.parent.name}/{p.name}")
+def test_every_message_lets_a_newer_sender_add_a_field(path):
+    body = load(path)
+    validate({**body["examples"][0], "added_later": 1}, body)
+
+
+def test_a_newer_machine_may_report_what_an_older_hub_does_not_know():
+    info = schema("agent-info")
+    machine = {**info["examples"][0], "protocol": 2}
+    machine["plugins"] = [{"name": "radio", "tools": ["radio_tune"], "uses": ["radio"]}]
+    machine["privacy"] = {"microphone": "on-request", "location_log": False}
+    validate(machine, info)
+
+
+def test_a_refusal_says_what_went_wrong_in_a_code_a_hub_can_read():
+    error = schema("error")
+    validate({"error": "this agent speaks version 1", "code": "unsupported_version", "versions": [1]}, error)
+    with pytest.raises(jsonschema.ValidationError):
+        validate({"error": "bad", "code": "Not A Code"}, error)
+    text = DOC.read_text()
+    assert "Claude-Voice-Protocol: 1,2" in text
+    assert "`unsupported_version`" in text

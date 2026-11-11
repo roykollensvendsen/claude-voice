@@ -4,7 +4,6 @@
   "title": "Pairing request",
   "description": "What the hub sends to POST /pair: the code the agent shows, as Roy typed it, in capitals.",
   "type": "object",
-  "additionalProperties": false,
   "required": [
     "code"
   ],

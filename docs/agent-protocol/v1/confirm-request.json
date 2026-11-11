@@ -4,7 +4,6 @@
   "title": "Confirming a spoken yes",
   "description": "The input of the tool named in confirm_with. Sent only after Roy clearly said yes to the question just read.",
   "type": "object",
-  "additionalProperties": false,
   "required": [
     "token"
   ],

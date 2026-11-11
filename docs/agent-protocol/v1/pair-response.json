@@ -4,7 +4,6 @@
   "title": "Pairing answer",
   "description": "What the agent answers to a right code, once: the key for this hub alone, and the hub's name as the tailnet gave it.",
   "type": "object",
-  "additionalProperties": false,
   "required": [
     "key",
     "hub"
