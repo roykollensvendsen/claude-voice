@@ -16,7 +16,7 @@ from .server import Config, ConfigError, load_config, serve_forever
 
 #: Every verb this command has. The documentation test requires each one to
 #: appear in a worked example, so a verb cannot be added without one.
-COMMANDS: tuple[str, ...] = ("serve", "check", "plugins", "agent", "machines")
+COMMANDS: tuple[str, ...] = ("serve", "check", "plugins", "agent", "machines", "org")
 
 SIGN_IN = (
     "Run `claude`, type /login and sign in with your Claude account, then check again. If `claude` "
@@ -128,7 +128,12 @@ def main(
     machine_cmd = sub.add_parser("machines", help="list other machines, or pair with one by typing its code")
     machine_cmd.add_argument("action", nargs="?", choices=["list", "approve"], default="list")
     machine_cmd.add_argument("name", nargs="?")
+    org_cmd = sub.add_parser("org", help="print the org chart, or check its files")
+    org_cmd.add_argument("action", nargs="?", choices=["show", "check"], default="show")
     parsed = parser.parse_args(args)
+
+    if parsed.command == "org":
+        return org_command(parsed.action, env)
 
     if parsed.command == "machines":
         return machines_command(parsed.action, parsed.name, env)
@@ -268,6 +273,30 @@ def machines_command(action: str, name: str | None, env: Mapping[str, str]) -> i
         sys.stderr.write(f"claude-voice: no machine {name!r} in the settings file\n")
         return 1
     return 0 if asyncio.run(machines.pair(chosen, folder=folder))["approved"] else 1
+
+
+def org_command(action: str, env: Mapping[str, str]) -> int:
+    """Print the org chart as the voice hears it, or check its files (docs/org-chart.md)."""
+    from . import config as settings
+    from . import events, org, roles
+
+    home = Path(env.get("HOME") or Path.home())
+    try:
+        cfg = settings.load(settings.FILE, own_clone=roles.own_clone(), env=env)
+    except settings.ConfigError as exc:
+        sys.stderr.write(f"claude-voice: {exc}\n")
+        return 1
+    root = Path(env.get("CLAUDE_VOICE_ROOT", "~/src")).expanduser()
+    chart = org.load(org.known_folders(root, [cfg.paths.claude_voice, *(p.cwd for p in cfg.plugins)]))
+    live = events.read_live(home / ".claude" / "sessions")
+    if action == "show":
+        for line in org.overview(chart, live, chart.placer()) or ["No programme has an org file."]:
+            sys.stdout.write(line + "\n")
+        return 0
+    running = {str(d.get("name")) for d in live}
+    for line in org.check(chart, running):
+        sys.stdout.write(line + "\n")
+    return 1 if chart.problems else 0
 
 
 def _systemctl(command: list[str]) -> None:
