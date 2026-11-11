@@ -94,70 +94,104 @@ def _from_command(command: str) -> tuple[str, str] | None:
     return "commit", "a commit"
 
 
-def digest(entries: Iterable[dict[str, Any]]) -> dict[str, Any]:
-    """Tool calls per tool, helpers running and in all, and the newest timeline items."""
-    timeline: list[dict[str, Any]] = []
-    tools: Counter[str] = Counter()
-    helpers: dict[str, str | None] = {}  # the helper call's id -> its background id, if any
-    answered: set[str] = set()
-    handed_back: set[str] = set()
-    linked: set[Any] = set()
-    for entry in entries:
-        if entry.get("isSidechain"):
-            continue
-        at = entry.get("timestamp")
-        kind = entry.get("type")
+def _error_text(block: dict[str, Any]) -> str:
+    """The first line of a failed tool's result, which may come in parts."""
+    content = block.get("content")
+    if isinstance(content, list):
+        content = " ".join(str(c.get("text", "")) for c in content if isinstance(c, dict))
+    return str(content or "a tool failed").strip().splitlines()[0]
+
+
+class _Reading:
+    """What `digest` gathers while it walks a transcript, one entry at a time."""
+
+    def __init__(self) -> None:
+        self.timeline: list[dict[str, Any]] = []
+        self.tools: Counter[str] = Counter()
+        self.helpers: dict[str, str | None] = {}  # the helper call's id -> its background id, if any
+        self.answered: set[str] = set()
+        self.handed_back: set[str] = set()
+        self.linked: set[Any] = set()
+
+    def entry(self, entry: dict[str, Any]) -> None:
+        at, kind = entry.get("timestamp"), entry.get("type")
         typed = _typed(entry)
         if typed:
-            timeline.append(_item(at, "prompt", typed))
-        # Claude Code links the same pull request again and again; it was opened once.
-        if kind == "pr-link" and (entry.get("prUrl") or entry.get("prNumber")) not in linked:
-            linked.add(entry.get("prUrl") or entry.get("prNumber"))
-            number = entry.get("prNumber")
-            timeline.append(_item(at, "pr_opened", f"#{number}" if number else "pull request", url=entry.get("prUrl")))
+            self.timeline.append(_item(at, "prompt", typed))
+        if kind == "pr-link":
+            self._pr_link(at, entry)
         if kind == "system" and entry.get("subtype") == "compact_boundary":
-            timeline.append(_item(at, "compact", "The conversation was compacted"))
-        origin = entry.get("origin") or {}
-        if isinstance(origin, dict) and origin.get("senderTaskId"):
-            handed_back.add(str(origin["senderTaskId"]))
-        if kind == "queue-operation":
-            handed_back.update(re.findall(r"<task-id>([^<]+)</task-id>", str(entry.get("content", ""))))
+            self.timeline.append(_item(at, "compact", "The conversation was compacted"))
+        self._hand_back(kind, entry)
         # Claude Code also keeps copies of turns (such as api-request-blob); only the turns count.
         for block in _blocks(entry) if kind in ("user", "assistant") else []:
             if block.get("type") == "tool_use":
-                name, given = str(block.get("name", "")), block.get("input") or {}
-                tools[name] += 1
-                if name in HELPERS:
-                    helpers[str(block.get("id"))] = None
-                elif name == "AskUserQuestion":
-                    first = (given.get("questions") or [{}])[0]
-                    timeline.append(_item(at, "question", str(first.get("question", "")) or "a question"))
-                elif name == "Bash":
-                    found = _from_command(str(given.get("command", "")))
-                    if found:
-                        timeline.append(_item(at, *found))
+                self._tool_use(at, block)
             elif block.get("type") == "tool_result":
-                tool_id = str(block.get("tool_use_id"))
-                answered.add(tool_id)
-                if tool_id in helpers:
-                    launched = entry.get("toolUseResult") or {}
-                    if isinstance(launched, dict) and launched.get("status") == "async_launched":
-                        helpers[tool_id] = str(launched.get("agentId"))
-                if block.get("is_error"):
-                    content = block.get("content")
-                    if isinstance(content, list):
-                        content = " ".join(str(c.get("text", "")) for c in content if isinstance(c, dict))
-                    timeline.append(_item(at, "error", str(content or "a tool failed").strip().splitlines()[0]))
+                self._tool_result(at, entry, block)
+
+    def _pr_link(self, at: Any, entry: dict[str, Any]) -> None:
+        # Claude Code links the same pull request again and again; it was opened once.
+        key = entry.get("prUrl") or entry.get("prNumber")
+        if key in self.linked:
+            return
+        self.linked.add(key)
+        number = entry.get("prNumber")
+        self.timeline.append(_item(at, "pr_opened", f"#{number}" if number else "pull request", url=entry.get("prUrl")))
+
+    def _hand_back(self, kind: Any, entry: dict[str, Any]) -> None:
+        origin = entry.get("origin") or {}
+        if isinstance(origin, dict) and origin.get("senderTaskId"):
+            self.handed_back.add(str(origin["senderTaskId"]))
+        if kind == "queue-operation":
+            self.handed_back.update(re.findall(r"<task-id>([^<]+)</task-id>", str(entry.get("content", ""))))
+
+    def _tool_use(self, at: Any, block: dict[str, Any]) -> None:
+        name, given = str(block.get("name", "")), block.get("input") or {}
+        self.tools[name] += 1
+        found: tuple[str, str] | None = None
+        if name in HELPERS:
+            self.helpers[str(block.get("id"))] = None
+        elif name == "AskUserQuestion":
+            first = (given.get("questions") or [{}])[0]
+            found = "question", str(first.get("question", "")) or "a question"
+        elif name == "Bash":
+            found = _from_command(str(given.get("command", "")))
+        if found:
+            self.timeline.append(_item(at, *found))
+
+    def _tool_result(self, at: Any, entry: dict[str, Any], block: dict[str, Any]) -> None:
+        tool_id = str(block.get("tool_use_id"))
+        self.answered.add(tool_id)
+        launched = entry.get("toolUseResult") or {}
+        if tool_id in self.helpers and isinstance(launched, dict) and launched.get("status") == "async_launched":
+            self.helpers[tool_id] = str(launched.get("agentId"))
+        if block.get("is_error"):
+            self.timeline.append(_item(at, "error", _error_text(block)))
+
+    def running(self) -> int:
+        return _running(self.helpers, self.answered, self.handed_back)
+
+
+def _running(helpers: dict[str, str | None], answered: set[str], handed_back: set[str]) -> int:
     # RULE: a helper counts as running until it has handed back
-    running = sum(
+    return sum(
         1
         for call, background in helpers.items()
         if (background is None and call not in answered) or (background is not None and background not in handed_back)
     )
+
+
+def digest(entries: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    """Tool calls per tool, helpers running and in all, and the newest timeline items."""
+    reading = _Reading()
+    for entry in entries:
+        if not entry.get("isSidechain"):
+            reading.entry(entry)
     return {
-        "tool_calls": {"total": sum(tools.values()), "by_tool": dict(tools.most_common())},
-        "subagents": {"running": running, "total": len(helpers)},
-        "timeline": list(reversed(timeline))[:TIMELINE],
+        "tool_calls": {"total": sum(reading.tools.values()), "by_tool": dict(reading.tools.most_common())},
+        "subagents": {"running": reading.running(), "total": len(reading.helpers)},
+        "timeline": list(reversed(reading.timeline))[:TIMELINE],
     }
 
 
