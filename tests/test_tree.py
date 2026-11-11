@@ -238,3 +238,27 @@ def test_a_courier_with_a_friendly_name_is_still_the_bridge(world, tmp_path):
     world.transcript(b, b_cwd, [peer_message("Roy via stemmen", "uds:/run/user/1000/cc-socks/4242.sock")])
     nodes = by_id(world.tree().build())
     assert nodes[BRIDGE_NODE]["talks_to"] == [b]
+
+
+def test_the_tree_is_built_by_one_caller_at_a_time(world):
+    import threading
+    import time
+
+    sid, _ = world.session("app-1")
+    inside, most = [0], [0]
+
+    def counting(session, directory):
+        inside[0] += 1
+        most[0] = max(most[0], inside[0])
+        time.sleep(0.2)  # long enough that a second caller would arrive while the first is in
+        inside[0] -= 1
+        return []
+
+    tree = world.tree()
+    tree.subagents = counting
+    callers = [threading.Thread(target=tree.build) for _ in range(2)]
+    for caller in callers:
+        caller.start()
+    for caller in callers:
+        caller.join()
+    assert most[0] == 1
