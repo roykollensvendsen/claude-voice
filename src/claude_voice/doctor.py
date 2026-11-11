@@ -150,6 +150,35 @@ def _tailscale(host: Host) -> dict[str, Any]:
     )
 
 
+def _serve_status(host: Host) -> dict[str, Any]:
+    """What `tailscale serve` says it serves, or nothing when it cannot be read."""
+    code, out = host.run("tailscale", "serve", "status", "--json")
+    try:
+        return json.loads(out) if code == 0 and out.strip() else {}
+    except ValueError:
+        return {}
+
+
+def _web_ports(status: dict[str, Any], port: int, funnel: set[str]) -> list[str]:
+    """The web ports, answered only by name, that lead to the bridge and Funnel does not open."""
+    return [
+        hostport
+        for hostport, web in (status.get("Web") or {}).items()
+        if hostport not in funnel
+        and any(f"127.0.0.1:{port}" in str(h.get("Proxy", "")) for h in (web.get("Handlers") or {}).values())
+    ]
+
+
+def _tcp_ports(status: dict[str, Any], port: int, funnel: set[str]) -> list[str]:
+    """The plain TCP forwards, which answer by address too, that lead to the bridge off Funnel."""
+    funnel_ports = {h.rsplit(":", 1)[-1] for h in funnel}
+    return [
+        f"tcp port {listen}"
+        for listen, tcp in (status.get("TCP") or {}).items()
+        if str((tcp or {}).get("TCPForward", "")).endswith(f":{port}") and listen not in funnel_ports
+    ]
+
+
 def _tailnet_port(host: Host, port: int) -> dict[str, Any]:
     """A `tailscale serve` port, not open to Funnel, that leads to this bridge."""
     fix = (
@@ -159,25 +188,9 @@ def _tailnet_port(host: Host, port: int) -> dict[str, Any]:
     affects = "the companion app on the phone"
     if not host.which("tailscale"):
         return check("tailnet_port", "Tailnet-only port", False, "tailscale is not installed", affects=affects, fix=fix)
-    code, out = host.run("tailscale", "serve", "status", "--json")
-    try:
-        status = json.loads(out) if code == 0 and out.strip() else {}
-    except ValueError:
-        status = {}
+    status = _serve_status(host)
     funnel = set((status.get("AllowFunnel") or {}).keys())
-    ours = [
-        hostport
-        for hostport, web in (status.get("Web") or {}).items()
-        if hostport not in funnel
-        and any(f"127.0.0.1:{port}" in str(h.get("Proxy", "")) for h in (web.get("Handlers") or {}).values())
-    ]
-    # A plain TCP forward answers by address too; web ports answer only by name.
-    ours += [
-        f"tcp port {listen}"
-        for listen, tcp in (status.get("TCP") or {}).items()
-        if str((tcp or {}).get("TCPForward", "")).endswith(f":{port}")
-        and listen not in {h.rsplit(":", 1)[-1] for h in funnel}
-    ]
+    ours = _web_ports(status, port, funnel) + _tcp_ports(status, port, funnel)
     return check(
         "tailnet_port",
         "Tailnet-only port",
