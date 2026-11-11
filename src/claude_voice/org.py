@@ -175,14 +175,13 @@ def _tables(raw: dict[str, Any], key: str) -> list[tuple[str, dict[str, Any]]]:
     return [(str(k), v if isinstance(v, dict) else {}) for k, v in (raw.get(key) or {}).items()]
 
 
-def read(repo: Path, problems: list[str]) -> Programme | None:
-    """The programme in `repo`'s org file; None when it has none. A file that cannot be
-    used at all raises OrgError; a part of it that cannot be used goes to `problems`."""
-    path = repo / FILE
+def _raw(path: Path) -> dict[str, Any] | None:
+    """What the org file at `path` says; None when there is none. Raises OrgError when it
+    is there but cannot be read."""
     try:
         if not path.is_file():
             return None
-        raw = tomllib.loads(path.read_text(encoding="utf-8"))
+        return tomllib.loads(path.read_text(encoding="utf-8"))
     # RULE: an org file that cannot be reached is a problem not a crash
     except PermissionError:
         raise OrgError(
@@ -191,6 +190,15 @@ def read(repo: Path, problems: list[str]) -> Programme | None:
         ) from None
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
         raise OrgError(f"{path}: cannot be read: {exc}") from None
+
+
+def read(repo: Path, problems: list[str]) -> Programme | None:
+    """The programme in `repo`'s org file; None when it has none. A file that cannot be
+    used at all raises OrgError; a part of it that cannot be used goes to `problems`."""
+    path = repo / FILE
+    raw = _raw(path)
+    if raw is None:
+        return None
     found = raw.get("programme")
     head: dict[str, Any] = found if isinstance(found, dict) else {}
     code = _code(head.get("code"), str(path))
