@@ -592,6 +592,12 @@ find = 'if not _relative\(text\):'
 replace = 'if False:'
 
 [[rule]]
+name = "an org file that cannot be reached is a problem not a crash"
+file = "src/claude_voice/org.py"
+find = 'except PermissionError:'
+replace = 'except ZeroDivisionError:'
+
+[[rule]]
 name = "the deepest matching folder places a session"
 file = "src/claude_voice/org.py"
 find = 'if _under\(folder, cwd\) and \(best is None or len\(folder.parts\) > best\[0\]\):'

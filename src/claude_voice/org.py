@@ -179,10 +179,16 @@ def read(repo: Path, problems: list[str]) -> Programme | None:
     """The programme in `repo`'s org file; None when it has none. A file that cannot be
     used at all raises OrgError; a part of it that cannot be used goes to `problems`."""
     path = repo / FILE
-    if not path.is_file():
-        return None
     try:
+        if not path.is_file():
+            return None
         raw = tomllib.loads(path.read_text(encoding="utf-8"))
+    # RULE: an org file that cannot be reached is a problem not a crash
+    except PermissionError:
+        raise OrgError(
+            f"{path}: cannot be read (permission denied); "
+            "fix the folder's permissions or move it out of the projects folder"
+        ) from None
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
         raise OrgError(f"{path}: cannot be read: {exc}") from None
     found = raw.get("programme")

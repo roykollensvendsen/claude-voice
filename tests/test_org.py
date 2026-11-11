@@ -162,6 +162,22 @@ def test_a_file_that_cannot_be_read_is_a_problem_not_a_crash(home):
     assert any("shop" in p for p in c.problems)
 
 
+def test_an_org_file_that_cannot_be_reached_is_a_problem_not_a_crash(home, monkeypatch):
+    # a folder whose .claude cannot be entered: even asking whether the file is there fails
+    blocked = home / "shop" / ".claude" / "org.toml"
+    is_file = org.Path.is_file
+
+    def denied(path):
+        if path == blocked:
+            raise PermissionError(13, "Permission denied", str(path))
+        return is_file(path)
+
+    monkeypatch.setattr(org.Path, "is_file", denied)
+    c = chart(home)
+    assert [p.code for p in c.programmes] == ["acme"]
+    assert any(str(blocked) in p and "permission denied" in p for p in c.problems)
+
+
 def test_a_programme_without_a_code_is_a_problem(home):
     (home / "shop" / ".claude" / "org.toml").write_text('[programme]\nname = "Shop"\n')
     c = chart(home)
