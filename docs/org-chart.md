@@ -146,8 +146,8 @@ yet. The bridge then suggests it, as `programme_hints` next to the sessions:
   - `prefix`: their names start the same way, up to and including a dash, such
     as `acme-`. The prefix is four characters or more, and the longest shared
     one wins. `detail` is the prefix.
-- `id` is `h-` and a short hash of the sorted session ids, so it stays the same
-  while the same sessions belong together.
+- `sessions` lists the ids in sorted order. `id` is `h-` and a short hash of
+  them, so it stays the same while the same sessions belong together.
 
 The messages are counted from the transcripts the session tree already reads,
 from where each stopped, at most every ten seconds. The hints only suggest: the

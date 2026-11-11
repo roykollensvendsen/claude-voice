@@ -1,6 +1,6 @@
 """Hints that sessions in no programme seem to belong together."""
 
-from pathlib import Path
+from pathlib import Path, PurePath
 
 from claude_voice import hints
 
@@ -82,14 +82,19 @@ def test_the_same_sessions_always_get_the_same_hint_id():
     assert hints.hint_id(["a", "b"]).startswith("h-")
 
 
+def here(path):
+    """A path as this system writes it, so the tests hold on Windows too."""
+    return str(PurePath(path))
+
+
 def test_a_worktree_is_grouped_with_its_repository():
-    assert hints.folder_key("/work/acme/.claude/worktrees/agent-1", ROOT) == "/work/acme"
-    assert hints.folder_key("/elsewhere/acme/.claude/worktrees/agent-1", ROOT) == "/elsewhere/acme"
+    assert hints.folder_key("/work/acme/.claude/worktrees/agent-1", ROOT) == here("/work/acme")
+    assert hints.folder_key("/elsewhere/acme/.claude/worktrees/agent-1", ROOT) == here("/elsewhere/acme")
 
 
 def test_a_folder_inside_a_project_belongs_to_the_project():
-    assert hints.folder_key("/work/acme/src/deep", ROOT) == "/work/acme"
-    assert hints.folder_key("/elsewhere/tools", ROOT) == "/elsewhere/tools"
+    assert hints.folder_key("/work/acme/src/deep", ROOT) == here("/work/acme")
+    assert hints.folder_key("/elsewhere/tools", ROOT) == here("/elsewhere/tools")
     assert hints.folder_key(None, ROOT) is None
 
 
