@@ -38,10 +38,15 @@ def _unique(rules: list[str]) -> list[str]:
 
 
 def load(table: Path = TABLE) -> Rules:
-    """The rules, each group flattened, with every secret file refused to every reader."""
+    """The rules, each group flattened, every protected branch refused to every forced push,
+    and every secret file refused to every reader."""
     raw = json.loads(table.read_text(encoding="utf-8"))
     allow = [rule for group in raw["allow"].values() for rule in group]
     deny = [rule for group in raw["deny"].values() for rule in group]
+    branches, forms = raw["protected branches"]["branches"], raw["protected branches"]["forced pushes"]
+    pushes = [form.replace("{branch}", branch) for branch in branches for form in forms]
+    # RULE: a forced push can never reach main or master
+    deny += [f"Bash({push})" for push in pushes]
     secrets = raw["secrets"]
     deny += [f"Bash({reader} {path})" for path in secrets["files"] for reader in secrets["readers"]]
     return Rules(_unique(allow), _unique(deny))

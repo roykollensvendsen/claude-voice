@@ -566,3 +566,9 @@ name = "the log says why a plugin could not be listed"
 file = "src/claude_voice/plugins.py"
 find = 'return f"\{said\} \(\{type\(exc\)\.__name__\}\)" if said else type\(exc\)\.__name__'
 replace = 'return str(exc)'
+
+[[rule]]
+name = "a forced push can never reach main or master"
+file = "src/claude_voice/permissions.py"
+find = 'deny \+= \[f"Bash\(\{push\}\)" for push in pushes\]'
+replace = 'deny += []'

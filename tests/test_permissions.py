@@ -8,6 +8,7 @@ never run (deleting history, reading a secret). The owner's own rules are kept.
 
 import json
 import os
+import re
 
 import pytest
 
@@ -173,6 +174,95 @@ def test_the_shipped_rules_name_no_person_host_or_home_folder():
     text = permissions.TABLE.read_text(encoding="utf-8")
     for private in ("/home/", "/users/", "~/", "roykollensvendsen", "192.168.", "100.", ".local/"):
         assert private not in text.lower(), private
+
+
+# -- forced pushes: a session's own branch, never main ---------------------------------
+#
+# The permissions module has no matcher of its own: Claude Code does the matching. This is a
+# small faithful copy of it. A rule without `*` matches the whole command exactly. With `*`,
+# each `*` matches any run of characters, spaces included, and the rule must match the whole
+# command. A command matching any deny rule is refused, even when an allow rule matches too.
+
+
+def _matches(rule, command):
+    assert rule.startswith("Bash(") and rule.endswith(")"), rule
+    pattern = rule[len("Bash(") : -1]
+    if "*" not in pattern:
+        return command == pattern
+    return re.fullmatch(".*".join(re.escape(part) for part in pattern.split("*")), command, re.DOTALL) is not None
+
+
+def decision(rules, command):
+    if any(_matches(rule, command) for rule in rules.deny):
+        return "refused"
+    if any(_matches(rule, command) for rule in rules.allow):
+        return "allowed"
+    return "asked"
+
+
+def test_the_matcher_reads_rules_the_way_claude_code_does():
+    rules = permissions.Rules(allow=["Bash(git status*)", "Bash(ls)"], deny=["Bash(git status --x*)"])
+    assert decision(rules, "git status") == "allowed"
+    assert decision(rules, "git status --short") == "allowed"
+    assert decision(rules, "git status --x y") == "refused"
+    assert decision(rules, "ls -la") == "asked"
+
+
+OWN_BRANCH_PUSHES = (
+    "git push --force-with-lease origin feature",
+    "git push --force-with-lease origin fix/the-pager",
+    "git push --force-with-lease -u origin feature",
+    "git push --force-with-lease origin maintenance",
+    "gh pr update-branch 42 --rebase",
+)
+
+PUSHES_TO_A_PROTECTED_BRANCH = tuple(
+    form.format(branch=branch)
+    for branch in ("main", "master")
+    for form in (
+        "git push --force-with-lease origin {branch}",
+        "git push --force-with-lease -u origin {branch}",
+        "git push --force-with-lease origin HEAD:{branch}",
+        "git push --force-with-lease origin +{branch}",
+        "git push --force-with-lease origin feature:{branch}",
+        "git push --force-with-lease origin feature:refs/heads/{branch}",
+        "git push --force-with-lease origin feature {branch}",
+        "git push --force-with-lease origin {branch} --no-verify",
+        "git push --force-with-lease={branch} origin {branch}",
+        "git push --force-with-lease={branch}:abc123 origin feature",
+    )
+)
+
+PUSHES_THAT_CHECK_NOTHING = (
+    "git push --force origin feature",
+    "git push --force",
+    "git push -f origin feature",
+    "git push -fu origin feature",
+    "git push origin feature --force",
+    "git push origin feature -f",
+    "git push --force-with-lease origin feature --force",
+    "git push --force-with-lease origin",
+    "git push --force-with-lease origin HEAD",
+    "git push --force-with-lease origin :feature",
+    "git push --force-with-lease origin --delete feature",
+    "git push --force-with-lease origin --all",
+    "git push --force-with-lease origin --mirror",
+)
+
+
+@pytest.mark.parametrize("command", OWN_BRANCH_PUSHES)
+def test_a_session_may_force_push_its_own_branch_with_a_lease(command):
+    assert decision(permissions.load(), command) == "allowed"
+
+
+@pytest.mark.parametrize("command", PUSHES_TO_A_PROTECTED_BRANCH)
+def test_a_forced_push_can_never_reach_main_or_master(command):
+    assert decision(permissions.load(), command) == "refused"
+
+
+@pytest.mark.parametrize("command", PUSHES_THAT_CHECK_NOTHING)
+def test_a_plain_forced_push_or_one_that_could_land_anywhere_is_refused(command):
+    assert decision(permissions.load(), command) == "refused"
 
 
 # -- which folders, and the command ----------------------------------------------------
