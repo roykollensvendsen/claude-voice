@@ -333,6 +333,8 @@ or to keep the clones elsewhere, write `~/.config/claude-voice/config.toml`
 
 <!-- not run: a configuration example, not commands -->
 ```toml
+voice_instructions_file = "~/.config/claude-voice/voice-instructions.md"  # your own rules for the voice
+
 [repos]
 claude_voice = "roykollensvendsen/claude-voice"        # the project, on GitHub
 claude_voice_ui = "roykollensvendsen/claude-voice-ui"
@@ -368,6 +370,17 @@ section: the Claude app drops a tool call after about 30 seconds, so it gets 20
 else gets `default`, 60. A message that takes Claude Code longer to deliver is
 answered "sending" and delivered in the background, and a wait for a session's
 answer ends at the budget with "still working".
+
+Your own rules for the voice go in the file `voice_instructions_file` names,
+outside this repository: which session takes your proposals, which role answers
+small questions, how you like to be spoken to. The bridge adds its text to the
+voice's instructions under "The owner's own rules:". Keep the setting at the top
+of the file, before any `[section]`, or TOML reads it as part of that section.
+Without it the voice gets the general rules only. A file that cannot be read
+never stops the bridge: the log names the path and what to do. Only the first
+8 KB is used, and the log says when a file was cut. A starting point, with
+placeholders, is [docs/examples/voice-instructions.md](docs/examples/voice-instructions.md).
+The file is read when the bridge starts, so restart it after a change.
 
 The update works in `claude_voice`. The contribute session works in
 `contribute`, and sends its pull request to `repos.claude_voice`; it may push

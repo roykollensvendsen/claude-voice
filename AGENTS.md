@@ -52,6 +52,16 @@ what to add on the hub. Then:
 - **Ask before installing** the agent on a machine, before `sudo` of any kind
   there, and before keeping a shell login on it once the agent is set up.
 
+## Talking to the person
+
+- **When a tool's answer says what to do next, say that step.** Read it out or
+  pass it on as it is; never swallow it into "it failed". The same holds for
+  errors you write: name what is wrong and the next step (the `write-plugin`
+  skill, through [the plugin standard](docs/plugin-standard.md), A.4).
+- **A command that asks for input is the person's to type.** Give it to them to
+  run in a plain terminal, such as `claude-voice plugins approve <name>`. Never
+  run it for them, and never pipe an answer into it.
+
 ## When something fails
 
 - **`check` is not ready:** do its `fix`.
