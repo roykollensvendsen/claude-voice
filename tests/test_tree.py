@@ -275,3 +275,27 @@ def test_a_message_a_session_sends_itself_makes_no_edge(world):
     a, a_cwd = world.session("alpha")
     world.transcript(a, a_cwd, [send("alpha")])
     assert by_id(world.tree().build())[a]["talks_to"] == []
+
+
+def test_the_tree_is_built_by_one_caller_at_a_time(world):
+    import threading
+    import time
+
+    sid, _ = world.session("app-1")
+    inside, most = [0], [0]
+
+    def counting(session, directory):
+        inside[0] += 1
+        most[0] = max(most[0], inside[0])
+        time.sleep(0.2)  # long enough that a second caller would arrive while the first is in
+        inside[0] -= 1
+        return []
+
+    tree = world.tree()
+    tree.subagents = counting
+    callers = [threading.Thread(target=tree.build) for _ in range(2)]
+    for caller in callers:
+        caller.start()
+    for caller in callers:
+        caller.join()
+    assert most[0] == 1
