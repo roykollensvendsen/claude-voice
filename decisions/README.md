@@ -42,6 +42,7 @@ decision nobody writes down.
 | [ADR-CV-011](ADR-CV-011-a-short-list-of-owner-actions-is-approved-by-voice.md) | A short, fixed list of the owner's own actions is approved by voice | Accepted |
 | [ADR-CV-012](ADR-CV-012-a-session-opens-where-the-owner-is.md) | A session opens where the owner is | Accepted |
 | [ADR-CV-013](ADR-CV-013-an-agreed-exception-is-shown-as-exempt.md) | A measure left outside its limit by agreement is shown as exempt, never green | Accepted |
+| [ADR-CV-014](ADR-CV-014-each-programme-describes-itself-in-its-own-repository.md) | Each programme describes its org chart in a file in its own repository | Accepted |
 
 What is deliberately left undone, and what would make each worth doing, is
 [`deferred.md`](deferred.md). A thing left undone with no trigger is a thing
