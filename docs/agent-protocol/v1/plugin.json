@@ -35,11 +35,12 @@
           "contacts",
           "notifications",
           "media",
-          "sensors"
+          "sensors",
+          "usage"
         ]
       },
       "uniqueItems": true,
-      "description": "What private thing on the machine the plugin can reach. Shown to Roy when he approves it, and part of what he approves."
+      "description": "What private thing on the machine the plugin can reach with its settings as they are now. usage is the use of the machine and its apps, such as data used. Shown to Roy when he approves it, and part of what he approves; a setting that reaches more changes this, and Roy approves the plugin again."
     },
     "instructions": {
       "type": "string",
@@ -67,6 +68,16 @@
         "contacts"
       ],
       "instructions": "A number not on the phone's own list waits for a spoken yes."
+    },
+    {
+      "name": "mobiledata",
+      "tools": [
+        "mobiledata_left"
+      ],
+      "uses": [
+        "usage"
+      ],
+      "instructions": "Reads the phone's total mobile data, never any one app's."
     }
   ]
 }

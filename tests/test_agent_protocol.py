@@ -160,3 +160,9 @@ def test_every_machine_says_whether_it_logs_location():
     machine = {**info["examples"][0], "privacy": {"microphone": "none"}}
     with pytest.raises(jsonschema.ValidationError):
         validate(machine, info)
+
+
+def test_a_plugin_that_reads_which_apps_are_used_says_so():
+    data = {"name": "mobiledata", "tools": ["mobiledata_left"], "uses": ["usage"]}
+    validate(data, schema("plugin"))
+    assert "`usage`" in DOC.read_text()
