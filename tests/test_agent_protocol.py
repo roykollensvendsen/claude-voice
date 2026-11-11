@@ -194,3 +194,13 @@ def test_a_refusal_says_what_went_wrong_in_a_code_a_hub_can_read():
     text = DOC.read_text()
     assert "Claude-Voice-Protocol: 1,2" in text
     assert "`unsupported_version`" in text
+
+
+def test_a_call_carries_an_id_so_a_repeat_is_never_run_twice():
+    meta = schema("caller-meta")
+    validate({"claude-voice/caller": "voice", "claude-voice/call_id": "c1example0call0id0"}, meta)
+    with pytest.raises(jsonschema.ValidationError):
+        validate({"claude-voice/call_id": "short"}, meta)
+    text = DOC.read_text()
+    assert "`duplicate_call`" in text
+    assert "may have happened" in text

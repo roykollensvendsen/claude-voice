@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/roykollensvendsen/claude-voice/blob/main/docs/agent-protocol/v1/error.json",
   "title": "Refusal",
-  "description": "The body of every refusal outside MCP: a wrong or late pairing code, a caller off the tailnet, a request without the paired hub's key, a version the agent does not speak.",
+  "description": "The body of every refusal outside MCP (a wrong or late pairing code, a caller off the tailnet, a request without the paired hub's key, a version the agent does not speak), and the structured answer of a call refused as already run.",
   "type": "object",
   "required": [
     "error"
@@ -44,6 +44,10 @@
       "versions": [
         1
       ]
+    },
+    {
+      "error": "this call has already been run",
+      "code": "duplicate_call"
     },
     {
       "error": "not the paired hub"
