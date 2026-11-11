@@ -4,7 +4,6 @@
   "title": "Plugin",
   "description": "One plugin as the agent reports it in agent_info. A plugin is an MCP server on the machine: a name, its tools and their inputs. Its tools are in tools/list, each named <plugin>_<tool>, with their input schemas; this says which tools are its, and what on the machine it uses.",
   "type": "object",
-  "additionalProperties": false,
   "required": [
     "name",
     "tools",
@@ -27,7 +26,9 @@
     "uses": {
       "type": "array",
       "items": {
-        "enum": [
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]{0,31}$",
+        "examples": [
           "microphone",
           "camera",
           "location",
@@ -40,7 +41,7 @@
         ]
       },
       "uniqueItems": true,
-      "description": "What private thing on the machine the plugin can reach with its settings as they are now. usage is the use of the machine and its apps, such as data used. Shown to Roy when he approves it, and part of what he approves; a setting that reaches more changes this, and Roy approves the plugin again."
+      "description": "What private thing on the machine the plugin can reach with its settings as they are now. Known in version 1: microphone, camera, location, calls, contacts, notifications, media, sensors, and usage, the use of the machine and its apps, such as data used. A later version may add more; a hub shows a value it does not know to Roy as unknown, and it needs his approval like any other. Part of what he approves: a setting that reaches more changes this, and Roy approves the plugin again."
     },
     "instructions": {
       "type": "string",

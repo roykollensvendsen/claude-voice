@@ -4,7 +4,6 @@
   "title": "About this machine",
   "description": "The structured answer of the agent_info tool, which every agent offers. The hub reads it when pairing and on every connection.",
   "type": "object",
-  "additionalProperties": false,
   "required": [
     "protocol",
     "machine",
@@ -17,7 +16,9 @@
   ],
   "properties": {
     "protocol": {
-      "const": 1
+      "type": "integer",
+      "minimum": 1,
+      "description": "The version this answer is in. A hub accepts any version it knows; the header wins if they disagree."
     },
     "machine": {
       "type": "string",

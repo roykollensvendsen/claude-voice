@@ -37,19 +37,29 @@ addresses here are examples: `laptop-a` is a hub, `phone-a` an agent,
 
 ## The version (new in version 1)
 
-- **Every answer from the agent carries `Claude-Voice-Protocol: 1`** as an HTTP
-  header: pairing answers, MCP answers and refusals alike. The hub can then
-  refuse an agent before any MCP is spoken.
-- **Every request from the hub carries `Claude-Voice-Protocol: 1`** too. A
-  request with no header is from a version 0 hub, and the agent accepts it
-  until the same switch-over as below.
+- **Every request from the hub names the versions it accepts**, in an HTTP
+  header: `Claude-Voice-Protocol: 1` today, `Claude-Voice-Protocol: 1,2` from a
+  hub that also knows a version 2. A request with no header is from a version
+  0 hub, and the agent accepts it until the same switch-over as below.
+- **Every answer from the agent carries the one version it answers in**, such as
+  `Claude-Voice-Protocol: 1`: the highest version both speak. That covers
+  pairing answers, MCP answers and refusals alike, so the hub can refuse an
+  agent before any MCP is spoken.
+- **When they share no version, the agent answers `400`** with
+  [`error.json`](agent-protocol/v1/error.json), `code` `unsupported_version`,
+  and `versions`: the versions it speaks.
 - **No header means version 0**, the protocol as the agent in this package
   speaks it before version 1: everything on this page except the parts marked
   new.
 - **`agent_info` also says `"protocol": 1`**, for people to read. If it and the
   header disagree, the header wins.
-- **The hub refuses a version it does not know.** It tells Roy which machine,
-  which version it speaks, and which the hub knows.
+- **The hub refuses an answer in a version it did not offer.** It tells Roy
+  which machine, which versions it speaks, and which the hub knows.
+- **A receiver ignores what it does not know.** In every message, in every
+  version, a field a receiver does not know is ignored, never refused. A later
+  version may add fields, and new values to the lists that say so here (`uses`,
+  the microphone setting and an error's `code`); it never removes a field or
+  changes what one means. So a newer phone or hub never breaks an older one.
 - **Version 0 is accepted until a switch-over Roy decides.** Freezing version 1
   and refusing version 0 are two separate events, and each is Roy's decision.
   Until the second, hub and agent each accept a peer that sends no header, so
@@ -92,6 +102,10 @@ Two checks, by both sides, on every request. Neither alone is enough.
   the address Tailscale says is the paired hub's node. Anything else gets `401`,
   `WWW-Authenticate: Bearer` and an
   [`error.json`](agent-protocol/v1/error.json) body.
+- **Refusals carry a `code`** for the hub to read, besides the words in `error`.
+  Version 1 knows `wrong_code` (a wrong, late or used-up pairing code),
+  `not_on_tailnet`, `unauthorized` (not the paired hub's key or node) and
+  `unsupported_version`. A hub treats a code it does not know as a refusal.
 - **The hub**, before each connection, asks Tailscale who is at the machine's
   address, and talks to it only if it is the node Roy approved.
 - **The hub compares what the machine offers with what Roy approved**, on each
@@ -170,7 +184,9 @@ On the wire it is:
   which of the listed tools are its, its own rules for the voice, and `uses`:
   which private things on the machine it can reach (`microphone`, `camera`,
   `location`, `calls`, `contacts`, `notifications`, `media`, `sensors`, and
-  `usage`: the use of the machine and its apps, such as mobile data used).
+  `usage`: the use of the machine and its apps, such as mobile data used). A
+  later version may add values. A hub shows one it does not know to Roy as
+  *unknown*, with its name, and it needs his approval like any other.
 
 Each plugin is approved on its own, first on its machine and then on the hub,
 and `uses` is shown to Roy when he approves it. `uses` follows the plugin's
@@ -185,8 +201,9 @@ them and cannot change them. What travels between the two:
 
 - **The settings are reported, never written.** `agent_info` carries
   [`agent-protocol/v1/privacy.json`](agent-protocol/v1/privacy.json): the
-  microphone setting (`none`, `must-answer` or `after-warning`) and whether
-  location is logged over time. No tool an agent offers may take the microphone
+  microphone setting (`none`, `must-answer` or `after-warning`; a hub shows a
+  value it does not know as *unknown*, and treats it as one that may open a
+  microphone) and whether location is logged over time. No tool an agent offers may take the microphone
   setting, location logging, the list of people who may be called straight away,
   or the camera as an input. Those are changed on the machine itself, and a
   test on each machine proves it.
@@ -196,8 +213,10 @@ them and cannot change them. What travels between the two:
   in its plugin's `uses`.** The agent logs every such call with its caller, as
   above, without its inputs.
 - **The report has to agree with the plugins.** An `agent_info` in which a
-  plugin `uses` the microphone while `privacy.microphone` is `none` does not fit
-  the schema, and the hub refuses that machine. Every machine reports
+  plugin `uses` the microphone while `privacy.microphone` is `none` breaks this
+  rule, and the hub refuses that machine. That is a refusal for a broken rule,
+  not for something the hub does not know: a field or value it does not know is
+  ignored or shown as unknown, as above. Every machine reports
   `location_log`, whether or not a plugin uses location.
 
 ### A spoken yes (new in version 1)

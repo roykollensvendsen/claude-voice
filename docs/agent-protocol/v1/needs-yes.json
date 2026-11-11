@@ -4,7 +4,6 @@
   "title": "Waiting for a spoken yes",
   "description": "The structured answer of a tool that will not act until Roy says yes aloud, such as calling a number not on the phone's own list. The voice reads say aloud; on a clear yes it calls confirm_with with the token, once.",
   "type": "object",
-  "additionalProperties": false,
   "required": [
     "needs_yes",
     "say",

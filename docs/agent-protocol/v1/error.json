@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/roykollensvendsen/claude-voice/blob/main/docs/agent-protocol/v1/error.json",
   "title": "Refusal",
-  "description": "The body of every refusal outside MCP: a wrong or late pairing code, a caller off the tailnet, a request without the paired hub's key.",
+  "description": "The body of every refusal outside MCP: a wrong or late pairing code, a caller off the tailnet, a request without the paired hub's key, a version the agent does not speak.",
   "type": "object",
   "required": [
     "error"
@@ -12,14 +12,41 @@
       "type": "string",
       "minLength": 1,
       "description": "What went wrong, in words a person can act on."
+    },
+    "code": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,31}$",
+      "description": "What went wrong, for the hub to read. A version 1 agent always sends it; version 0 sends only error. A hub treats a code it does not know as a refusal and passes on error."
+    },
+    "versions": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "With unsupported_version: the versions this agent speaks."
     }
   },
   "examples": [
     {
-      "error": "not the paired hub"
+      "error": "not the paired hub",
+      "code": "unauthorized"
     },
     {
-      "error": "pair from a machine on the tailnet"
+      "error": "pair from a machine on the tailnet",
+      "code": "not_on_tailnet"
+    },
+    {
+      "error": "this agent speaks version 1",
+      "code": "unsupported_version",
+      "versions": [
+        1
+      ]
+    },
+    {
+      "error": "not the paired hub"
     }
   ]
 }
