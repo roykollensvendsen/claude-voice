@@ -542,3 +542,27 @@ name = "the backup is written only once"
 file = "src/claude_voice/permissions.py"
 find = 'if file.exists\(\) and not backup.exists\(\):'
 replace = 'if file.exists():'
+
+[[rule]]
+name = "a plugin that could not be listed is reported as not started never as changed tools"
+file = "src/claude_voice/plugins.py"
+find = 'if plugin\.unlisted is not None:'
+replace = 'if False:'
+
+[[rule]]
+name = "a restart that fails keeps the plugin that was running"
+file = "src/claude_voice/plugin_desk.py"
+find = 'if why == "not started":'
+replace = 'if False:'
+
+[[rule]]
+name = "a first listing waits as long as the plugins own time limit"
+file = "src/claude_voice/plugins.py"
+find = 'return max\(LIST_SECONDS, self\.spec\.timeout\)'
+replace = 'return LIST_SECONDS'
+
+[[rule]]
+name = "the log says why a plugin could not be listed"
+file = "src/claude_voice/plugins.py"
+find = 'return f"\{said\} \(\{type\(exc\)\.__name__\}\)" if said else type\(exc\)\.__name__'
+replace = 'return str(exc)'

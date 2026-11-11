@@ -30,10 +30,23 @@ from .config import PluginSpec
 log = logging.getLogger("claude_voice")
 APPROVALS = Path("~/.config/claude-voice/plugins-approved.json")
 START_SECONDS = 15.0  # how long a plugin may take to start
+# How long a plugin's first answer may take: after new code, uv may install packages first and
+# heavy libraries load (the vacuum's imports alone take 5 to 10 s), so 15 s was too short.
+LIST_SECONDS = 60.0
 
 
 class NotReady(ConnectionError):
     """A plugin or machine that did not start or answer in time."""
+
+
+def _reason(exc: BaseException, limit: float) -> str:
+    """Why a listing failed, in words: a time-out carries no message of its own, and a task
+    group hides the error that ended it."""
+    while isinstance(exc, BaseExceptionGroup) and exc.exceptions:
+        exc = exc.exceptions[0]
+    said = f"no answer within {limit:g} s" if isinstance(exc, TimeoutError) else str(exc)
+    # RULE: the log says why a plugin could not be listed
+    return f"{said} ({type(exc).__name__})" if said else type(exc).__name__
 
 
 def _hash(shape: Any) -> str:
@@ -222,6 +235,7 @@ class Plugin:
         self.state = "not started"
         self.instructions: str | None = None
         self.offered: list[str] = []
+        self.unlisted: str | None = None  # why the latest listing got no answer, or None
         self._failure: Exception | None = None
         self.last_failure: Exception | None = None  # what made the latest call fail, for a caller to tell apart
         self._client: Any = None
@@ -230,10 +244,18 @@ class Plugin:
         self._ready = asyncio.Event()
         self._closing = asyncio.Event()
 
+    def list_seconds(self) -> float:
+        """How long the first listing may wait for the plugin to answer."""
+        # RULE: a first listing waits as long as the plugins own time limit
+        return max(LIST_SECONDS, self.spec.timeout)
+
     def listing(self) -> dict[str, dict[str, Any]]:
         """The allowed tools as the plugin describes them, read once at start in a thread of
-        its own, so the voice sees each tool's real description and arguments."""
+        its own, so the voice sees each tool's real description and arguments. When the
+        plugin gave no answer, `unlisted` says why."""
         found: dict[str, dict[str, Any]] = {}
+        limit = self.list_seconds()
+        self.unlisted = None
 
         async def read() -> None:
             async with self.open() as client:
@@ -249,15 +271,21 @@ class Plugin:
 
         def run() -> None:
             try:
-                asyncio.run(asyncio.wait_for(read(), START_SECONDS))
-            except Exception as exc:  # a plugin that cannot start yet still gets its tools, plainly described
-                log.info("plugin %s could not be listed: %s", self.spec.name, exc)
-                self.state = "failed to start"
+                asyncio.run(asyncio.wait_for(read(), limit))
+            except Exception as exc:
+                self._unlisted(_reason(exc, limit))
 
         worker = threading.Thread(target=run, daemon=True)
         worker.start()
-        worker.join(START_SECONDS + 5)
+        worker.join(limit + 5)
+        if worker.is_alive():  # still reading: what it found so far is not the whole answer
+            self._unlisted(f"no answer within {limit + 5:g} s")
+            return {}
         return found
+
+    def _unlisted(self, why: str) -> None:
+        self.unlisted, self.state = why, "failed to start"
+        log.info("plugin %s could not be listed: %s", self.spec.name, why)
 
     async def _run(self) -> None:
         """Hold the connection open in a task of its own: the client must be closed in the
@@ -403,6 +431,35 @@ def withdraw(server: Any, plugin: Plugin) -> None:
     plugin.offered = []
 
 
+Checked = tuple[Plugin | None, dict[str, dict[str, Any]], str]
+
+
+def check_one(spec: PluginSpec, approvals: Path | None = None, client: Callable[[Any], Any] | None = None) -> Checked:
+    """List one plugin's tools and check them against the owner's approval, offering nothing
+    yet: the plugin or None, its listing, and in a word why."""
+    if not approved(spec, approvals):
+        log.info("plugin %s is not approved; run: claude-voice plugins approve %s", spec.name, spec.name)
+        return None, {}, "not approved"
+    plugin = Plugin(spec, client or CLIENT)
+    listing = plugin.listing()
+    # RULE: a plugin that could not be listed is reported as not started never as changed tools
+    if plugin.unlisted is not None:
+        log.info("plugin %s did not start in time, so it is not offered: %s", spec.name, plugin.unlisted)
+        return None, {}, "not started"
+    if not inputs_approved(spec, listing, approvals):
+        log.info("plugin %s's tools changed; run: claude-voice plugins approve %s", spec.name, spec.name)
+        return None, listing, "tools changed"
+    upgrade(spec, listing, approvals)
+    return plugin, listing, "started"
+
+
+def present(server: Any, plugin: Plugin, listing: dict[str, dict[str, Any]], commit: str | None) -> None:
+    """Offer a checked plugin's tools to the voice, and log at which commit it was accepted."""
+    plugin.offered = offer(server, plugin, listing)
+    log.info("plugin %s accepted again unchanged at %s", plugin.spec.name, commit or "an unknown commit")
+    log.info("plugin %s offers %s", plugin.spec.name, ", ".join(plugin.offered))
+
+
 def start_one(
     server: Any,
     spec: PluginSpec,
@@ -412,20 +469,10 @@ def start_one(
 ) -> tuple[Plugin | None, str]:
     """Start one plugin and offer its tools if it is as the owner approved it: the plugin,
     or None, and in a word why."""
-    if not approved(spec, approvals):
-        log.info("plugin %s is not approved; run: claude-voice plugins approve %s", spec.name, spec.name)
-        return None, "not approved"
-    plugin = Plugin(spec, client or CLIENT)
-    listing = plugin.listing()
-    if not inputs_approved(spec, listing, approvals):
-        log.info("plugin %s's tools changed; run: claude-voice plugins approve %s", spec.name, spec.name)
-        return None, "tools changed"
-    upgrade(spec, listing, approvals)
-    plugin.offered = offer(server, plugin, listing)
-    commit = (commit_of(spec.cwd) if commit_of else None) or "an unknown commit"
-    log.info("plugin %s accepted again unchanged at %s", spec.name, commit)
-    log.info("plugin %s offers %s", spec.name, ", ".join(plugin.offered))
-    return plugin, "started"
+    plugin, listing, why = check_one(spec, approvals, client)
+    if plugin is not None:
+        present(server, plugin, listing, commit_of(spec.cwd) if commit_of else None)
+    return plugin, why
 
 
 def start_approved(
