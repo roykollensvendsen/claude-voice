@@ -17,7 +17,10 @@ until the owner approves version 2.
 - **A yes from the phone's own screen.** Version 1 lets only the voice confirm
   a spoken yes. A location trigger may ask in a notification as well, for when
   the voice is not running, so a tap by the owner on the phone itself would
-  count as a yes, under a caller name of its own.
+  count as a yes, under a caller name of its own. A notification can be tapped
+  on a locked phone, by anyone holding it. So the tap counts only once the
+  phone is unlocked, with its PIN, pattern or a fingerprint. And a yes from
+  the phone never reaches a door or a lock, such as the garage door's.
 - **Calls between machines**, the `call` plugin of ADR-CV-007, and their
   one-time tokens, once the audio-focus prototype has been measured (named in
   version 1 as left out).
