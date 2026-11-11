@@ -238,3 +238,40 @@ def test_a_courier_with_a_friendly_name_is_still_the_bridge(world, tmp_path):
     world.transcript(b, b_cwd, [peer_message("Roy via stemmen", "uds:/run/user/1000/cc-socks/4242.sock")])
     nodes = by_id(world.tree().build())
     assert nodes[BRIDGE_NODE]["talks_to"] == [b]
+
+
+def test_a_session_whose_helpers_cannot_be_listed_still_shows(world):
+    a, _ = world.session("alpha")
+
+    def broken(sid, directory):
+        raise RuntimeError("no helpers here")
+
+    tree = world.tree()
+    tree.subagents = broken
+    nodes = by_id(tree.build())
+    assert nodes[a]["kind"] == "terminal"
+    assert not any(n["parent_id"] == a for n in nodes.values())
+
+
+def test_bridge_sessions_quiet_for_a_day_are_left_out(world):
+    _, cwd = world.session("app-1")
+    world.store.clock = lambda: (NOW - timedelta(hours=25)).timestamp()
+    stale = world.store.create_session(str(cwd), label="stale")
+    assert stale["id"] not in by_id(world.tree().build())
+
+
+def test_messages_with_a_session_that_is_not_running_make_no_edge(world):
+    a, a_cwd = world.session("alpha")
+    world.transcript(
+        a,
+        a_cwd,
+        [send("nobody"), peer_message("stranger", "uds:/run/user/1000/cc-socks/999999999.sock")],
+    )
+    nodes = by_id(world.tree().build())
+    assert all(n["talks_to"] == [] for n in nodes.values())
+
+
+def test_a_message_a_session_sends_itself_makes_no_edge(world):
+    a, a_cwd = world.session("alpha")
+    world.transcript(a, a_cwd, [send("alpha")])
+    assert by_id(world.tree().build())[a]["talks_to"] == []
