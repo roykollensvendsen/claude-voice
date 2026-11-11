@@ -51,6 +51,10 @@ The owner approved this list. Each item is a lesson a plugin had to learn late.
 9. **Upstream work is public.** A pull request's text on a public fork is read
    by strangers. A security finding in someone else's code is held, unpushed,
    until the owner decides how to report it.
+10. **Every error says what is wrong and what to do next.** A refusal or failure names
+    the cause and the owner's next step, with the exact command when there is one: "The
+    SSH key is missing on the MiSTer; run ssh-copy-id again." A bare "not answering" with no
+    next step is a bug. This also applies when a quality session goes over an existing plugin.
 
 ## The plugin
 
