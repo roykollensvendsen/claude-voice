@@ -1,6 +1,7 @@
 """Reading Claude Code's own transcript file, including messages that arrive mid-turn."""
 
 import json
+from types import SimpleNamespace
 
 from claude_agent_sdk import project_key_for_directory
 
@@ -105,3 +106,50 @@ def test_a_growing_transcript_is_read_from_where_it_left_off(tmp_path):
         "two",
         "three",
     ]
+
+
+def test_what_a_person_reads_skips_empty_prompts_and_assistant_lines_that_are_not_blocks():
+    msgs = [
+        SimpleNamespace(type="user", message={"content": "   "}),
+        SimpleNamespace(type="user", message={"content": None}),
+        SimpleNamespace(type="user", message={"content": [{"type": "text", "text": "a"}, {"type": "text"}]}),
+        SimpleNamespace(type="assistant", message={"content": "plain words are not blocks"}),
+        SimpleNamespace(type="system", message={"content": "not a turn"}),
+        SimpleNamespace(type="assistant", message={"content": [{"type": "tool_use"}, {"type": "text", "text": " "}]}),
+        SimpleNamespace(type="assistant", message={"content": [{"type": "text", "text": "done"}]}),
+    ]
+    assert transcripts.recent_turns(msgs, None) == [
+        {"role": "user", "text": "a"},
+        {"role": "assistant", "text": "done", "tools": ["?"]},
+    ]
+
+
+def asks(id_, question):
+    tool = {"type": "tool_use", "id": id_, "name": "AskUserQuestion", "input": {"questions": [question]}}
+    return json.dumps({"type": "assistant", "message": {"content": [tool]}})
+
+
+def answers(id_):
+    return json.dumps({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": id_}]}})
+
+
+def test_the_open_question_is_the_newest_unanswered_one_and_odd_lines_are_skipped(tmp_path):
+    path = tmp_path / project_key_for_directory("/w") / "q.jsonl"
+    path.parent.mkdir(parents=True)
+
+    def add(*lines):
+        with path.open("a") as f:
+            f.write("".join(line + "\n" for line in lines))
+
+    bare = json.dumps({"type": "assistant", "message": {"content": ["a bare string"]}})
+    add(asks("q1", {"question": "First?"}), "not json at all", bare, json.dumps({"type": "user"}))
+    add(asks("q2", {"question": "Second?"}), asks("q3", {"question": "Third?"}), answers("q3"))
+    assert transcripts.open_question("q", "/w", tmp_path) == {"text": "Second?", "options": []}
+
+    add(asks("q4", "not a dict"), asks("q5", {"question": "Fifth?", "options": [{"label": "Ja"}, 3]}))
+    assert transcripts.open_question("q", "/w", tmp_path) == {"text": "Fifth?", "options": ["Ja"]}
+    add(answers("q5"))
+    assert transcripts.open_question("q", "/w", tmp_path) == {"text": "", "options": []}  # q4 asks nothing
+    add(answers("q1"), answers("q2"), answers("q4"))
+    assert transcripts.open_question("q", "/w", tmp_path) is None
+    assert transcripts.open_question("missing", "/w", tmp_path) is None
