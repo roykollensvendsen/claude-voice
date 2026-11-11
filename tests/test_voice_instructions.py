@@ -61,3 +61,16 @@ def test_an_owners_rules_file_over_eight_kilobytes_is_cut(tmp_path, caplog):
     assert "a" * OWN_RULES_BYTES in said and "TAIL" not in said
     lines = [r.getMessage() for r in caplog.records]
     assert len(lines) == 1 and str(file) in lines[0] and "cut" in lines[0]
+
+
+def test_the_general_rules_tell_the_voice_to_pass_on_what_it_cannot_do_itself():
+    """Opening a file or running a command is a session's work: the voice sends it there at once."""
+    said = " ".join(INSTRUCTIONS.split())
+    assert "cannot do yourself" in said and "never say you cannot" in said
+    assert "send_task" in said and "message_active_session" in said and "say briefly that it was sent" in said
+
+
+def test_the_general_rules_read_out_a_next_step_and_leave_typed_commands_to_the_owner():
+    said = " ".join(INSTRUCTIONS.split())
+    assert "says what to do next, read that step out" in said
+    assert "plain terminal; never run it for them" in said
