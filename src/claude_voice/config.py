@@ -5,6 +5,9 @@ else can install the bridge, or contribute to it, with their clones wherever the
 them and from a fork. Every setting has a default, worked out from the clone the bridge
 runs from, so the file is only needed to change something:
 
+    voice_instructions_file = "~/.config/claude-voice/voice-instructions.md"  # your own rules for the voice;
+                                                # at the top, before any [table]; default: none
+
     [repos]
     claude_voice = "roykollensvendsen/claude-voice"        # the project, on GitHub
     claude_voice_ui = "roykollensvendsen/claude-voice-ui"
@@ -179,6 +182,7 @@ class Config:
     machines: list[MachineSpec] = field(default_factory=list)
     agent_sessions: bool = False  # on another machine: whether its agent offers its sessions
     agent_root: Path = field(default_factory=Path.home)  # where that agent starts sessions
+    voice_instructions_file: Path | None = None  # the owner's own rules, added to the voice's instructions
 
 
 def _repo(value: Any, key: str) -> str:
@@ -214,6 +218,7 @@ def load(path: Path | None = FILE, own_clone: Path | None = None, env: Mapping[s
         _plugins(raw.get("plugins"), home),
         _machines(raw.get("machines")),
         *_agent(raw.get("agent"), home),
+        _path(raw.get("voice_instructions_file"), home),
     )
 
 

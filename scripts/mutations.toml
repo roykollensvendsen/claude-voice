@@ -638,3 +638,27 @@ name = "an event published from another thread reaches a waiting stream at once"
 file = "src/claude_voice/api.py"
 find = 'loop\.call_soon_threadsafe\(self\._put, q, \(event, data\)\)'
 replace = 'self._put(q, (event, data))'
+
+[[rule]]
+name = "without an owners rules file the voice gets the general rules only"
+file = "src/claude_voice/server.py"
+find = 'if file is None:'
+replace = 'if False:'
+
+[[rule]]
+name = "an owners rules file that cannot be read is logged and the bridge runs on"
+file = "src/claude_voice/server.py"
+find = 'except OSError as exc:'
+replace = 'except ZeroDivisionError as exc:'
+
+[[rule]]
+name = "an owners rules file over eight kilobytes is cut"
+file = "src/claude_voice/server.py"
+find = 'if len\(raw\) > OWN_RULES_BYTES:'
+replace = 'if False:'
+
+[[rule]]
+name = "the owners own rules file reaches the voice"
+file = "src/claude_voice/server.py"
+find = 'return f"\{INSTRUCTIONS\}\\n\{OWN_RULES_HEADING\}\\n\{own\}\\n"'
+replace = 'return INSTRUCTIONS'
