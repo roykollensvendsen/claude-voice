@@ -1,4 +1,5 @@
 import pytest
+from claude_agent_sdk import SystemMessage
 from fakes import Boom, FakeClaude, Pause, init, result, say, use_tool
 
 from claude_voice.sessions import SessionBusy, SessionClosed, SessionManager
@@ -169,6 +170,29 @@ async def test_a_crash_inside_claude_is_recorded_as_an_error(store, root):
     assert got["status"] == "error"
     assert "cli died" in got["last_error"]
     assert kinds(store, s["id"])[-1] == "error"
+
+
+async def test_a_blank_reply_and_a_later_system_note_leave_no_trace(store, root):
+    note = SystemMessage(subtype="status", data={"session_id": "c-other"})
+    m = manager(store, root, FakeClaude([init("c-1"), say("  \n"), note, result("ok", "")]))
+    s = m.create("app")
+
+    await m.send(s["id"], "go")
+    await m.wait(s["id"])
+
+    assert kinds(store, s["id"]) == ["prompt", "result"]
+    assert store.get_session(s["id"])["claude_session_id"] == "c-1"
+
+
+async def test_an_error_result_with_no_text_is_reported_by_its_kind(store, root):
+    m = manager(store, root, FakeClaude([result("", "c-1", is_error=True)]))
+    s = m.create("app")
+
+    await m.send(s["id"], "go")
+    await m.wait(s["id"])
+
+    got = store.get_session(s["id"])
+    assert got["status"] == "error" and got["last_error"] == "error"
 
 
 async def test_an_error_result_is_reported_as_an_error(store, root):
