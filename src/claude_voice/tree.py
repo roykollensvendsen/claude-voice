@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import threading
 import time
 from collections.abc import Callable
 from datetime import datetime
@@ -118,6 +119,7 @@ class SessionTree:
         self.rename = rename
         self._transcripts: dict[Path, _Transcript] = {}
         self._couriers: tuple[set[int], set[str]] = (set(), set())  # pids, names
+        self._building = threading.Lock()
 
     def _project(self, cwd: str | None) -> str | None:
         if not cwd:
@@ -167,6 +169,13 @@ class SessionTree:
             return False
 
     def build(self) -> dict[str, Any]:
+        # The watcher and the tools build it from different threads, and a transcript's
+        # place in its file must move on for one reader at a time.
+        # RULE: the tree is built by one caller at a time
+        with self._building:
+            return self._build()
+
+    def _build(self) -> dict[str, Any]:
         live = self._live()
         nodes: dict[str, dict[str, Any]] = {
             BRIDGE_NODE: {
