@@ -1,7 +1,7 @@
 # The agent protocol, version 1
 
-**Status: draft.** It is frozen when Roy approves it. Nothing is built on it
-before then. A frozen version is never edited: a change is a new version, with
+**Status: frozen** on 2026-11-11, by Roy's decision. Machines and the phone app
+are built on it. A frozen version is never edited: a change is a new version, with
 schemas of its own. `tests/test_agent_protocol.py` holds each frozen file to the
 bytes it was frozen with, listed in
 [`agent-protocol/frozen.json`](agent-protocol/frozen.json).
