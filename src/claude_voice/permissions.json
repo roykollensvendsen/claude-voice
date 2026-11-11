@@ -107,6 +107,11 @@
       "Bash(sed -n *secrets*)"
     ]
   },
+  "retired": {
+    "allow": [
+      "Bash(cp * /tmp/*)"
+    ]
+  },
   "secrets": {
     "readers": [
       "cat",
@@ -115,7 +120,12 @@
       "sed -n",
       "grep",
       "git diff",
-      "git -C * diff"
+      "git -C * diff",
+      "cp",
+      "rsync",
+      "base64",
+      "xxd",
+      "od"
     ],
     "files": [
       "*.config/claude-voice/env*",
