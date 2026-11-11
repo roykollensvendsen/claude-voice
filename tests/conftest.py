@@ -40,3 +40,15 @@ def no_github(monkeypatch):
     from claude_voice import software
 
     monkeypatch.setattr(software, "_gh", lambda args: None)
+
+
+@pytest.fixture(autouse=True)
+def no_real_github_for_the_software_report(monkeypatch):
+    """A bridge started in a test builds its software report behind; it finds no `gh` to ask,
+    so no test reaches GitHub. A test that wants answers passes its own fake runner."""
+    import types
+
+    from claude_voice import procs, software
+
+    finder = types.SimpleNamespace(find=lambda name: None if name == "gh" else procs.find(name))
+    monkeypatch.setattr(software, "procs", finder)

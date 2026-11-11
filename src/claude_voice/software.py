@@ -9,9 +9,13 @@ nothing recorded says so.
 
 from __future__ import annotations
 
+import contextlib
 import json
+import logging
 import subprocess
 import tempfile
+import threading
+import time
 import tomllib
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -25,6 +29,10 @@ FILE = "quality.json"
 EXEMPTIONS = "quality.toml"  # the measures the owner agreed to leave outside their limits
 ARTIFACT = "quality-levels"  # the name main's checks keep their measured levels under
 NEW_PER_LOOK = 5  # downloads of main's levels per look; the rest wait for the next one
+EVERY = 600.0  # seconds between two builds of the report when no main has moved
+LOOK = 60.0  # seconds between two looks at whether a build is due or a main has moved
+
+log = logging.getLogger("claude_voice.software")
 
 
 def _now() -> str:
@@ -362,3 +370,102 @@ def latest_run(repo: str, branch: str = "main") -> dict[str, Any] | None:
     except (OSError, subprocess.SubprocessError, ValueError):
         return None
     return runs[0] if runs else None
+
+
+def head(repo: str, branch: str = "main", run: Callable[[list[str]], str | None] = _gh) -> str | None:
+    """The commit the followed branch is at on GitHub, or None when GitHub does not say."""
+    said = run(["api", f"repos/{repo}/commits/{branch}", "--jq", ".sha"])
+    return (said or "").strip() or None
+
+
+class Refresher:
+    """The software report, built behind the bridge's back and kept, so a page gets it at once.
+
+    A build reads git history and asks GitHub about every repository, which takes a long
+    while. It runs on its own thread: at start, every ten minutes, and when a followed
+    branch has moved. Asking for the report never builds it.
+    """
+
+    def __init__(
+        self,
+        build: Callable[[], dict[str, Any]],
+        heads: Callable[[], dict[str, str | None]],
+        every: float = EVERY,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._build, self._heads, self._every, self._clock = build, heads, every, clock
+        self._building = threading.Lock()
+        self._report: dict[str, Any] | None = None
+        self._measured_at: str | None = None
+        self._last: float | None = None  # when the last build ended, by the clock
+        self._seen: dict[str, str] = {}  # each branch's head when the last build began
+        # RULE: before the first build the software page is empty and says it is refreshing
+        self._refreshing = True
+
+    def answer(self) -> dict[str, Any]:
+        """The kept report, dated now, with the time it was measured."""
+        # RULE: the software page answers at once from the report it keeps
+        report = self._report
+        if report is None:
+            return {"repos": [], "measured_at": None, "refreshing": self._refreshing}
+        now, measured = _now(), self._measured_at
+        repos = [{**r, "as_of": now, "measured_at": measured} for r in report.get("repos", [])]
+        return {**report, "repos": repos, "as_of": now, "measured_at": measured, "refreshing": self._refreshing}
+
+    def _due(self) -> bool:
+        return self._last is None or self._clock() - self._last >= self._every
+
+    def _moved(self, heads: dict[str, str | None]) -> bool:
+        return any(sha and self._seen.get(repo) not in (None, sha) for repo, sha in heads.items())
+
+    def tick(self) -> None:
+        """Build the report when it is due or a followed branch has moved since the last build."""
+        heads = self._heads()
+        # RULE: a moved main starts a new build
+        if self._due() or self._moved(heads):
+            self.refresh(heads)
+
+    def refresh(self, heads: dict[str, str | None] | None = None) -> bool:
+        """Build the report once; False, at once, when a build is already under way."""
+        # RULE: only one software build runs at a time
+        if not self._building.acquire(blocking=False):
+            return False
+        self._refreshing = True
+        try:
+            self._swap(heads or {})
+        finally:
+            self._refreshing = False
+            self._building.release()
+        return True
+
+    def _swap(self, heads: dict[str, str | None]) -> None:
+        measured = self._measured_at
+        report: dict[str, Any] | None
+        try:
+            report, measured = self._build(), _now()
+        except Exception as exc:
+            # RULE: a failed refresh keeps the report it had
+            report = self._report
+            log.warning(
+                "The software page could not be measured again (%s); it keeps the report measured at %s. "
+                "Check GitHub's command line with `gh auth status`; the bridge tries again in ten minutes.",
+                exc,
+                measured or "no time yet",
+            )
+        self._report, self._measured_at = report, measured
+        self._last = self._clock()
+        self._seen.update({repo: sha for repo, sha in heads.items() if sha})
+
+    def start(self, look: float = LOOK) -> Callable[[], None]:
+        """Keep the report fresh on a thread of its own, starting now; returns what stops it."""
+        stop = threading.Event()
+
+        def loop() -> None:
+            while True:
+                with contextlib.suppress(Exception):
+                    self.tick()
+                if stop.wait(look):
+                    return
+
+        threading.Thread(target=loop, name="software-report", daemon=True).start()
+        return stop.set
