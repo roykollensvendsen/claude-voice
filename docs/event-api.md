@@ -310,8 +310,9 @@ summary: only the POST does, with a small model, and so does the voice tool
 `prompt` (what the owner typed), `question`, `error` (a tool that failed),
 `commit`, `pr_opened` (with `url`), `pr_merged` and `compact`. A helper
 (`subagents`) runs until it has handed its result back. `summary_state` is
-`none`, `generating`, `ready` or `error` (then `summary_error` says why, and the
-last good `summary` is kept). The stream carries `summary` with
+`none`, `generating`, `ready` or `error` (then `summary_error` says why and what to
+do next: try again, and if it fails again run `claude-voice check`, which says what is
+missing; the last good `summary` is kept). The stream carries `summary` with
 `{"session", "summary", "summary_state"}` when one is ready or has failed.
 
 ## Opening a session's terminal
