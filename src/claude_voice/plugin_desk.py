@@ -76,18 +76,8 @@ class Desk:
         running = [p for p in self.active if p.spec.name == name]
         # RULE: a restart that fails keeps the plugin that was running
         if why == "not started":
-            log.info("plugin %s did not start in time; %d running kept", name, len(running))
-            kept = " The one already running stays." if running else ""
-            return _no(f"{name} did not start in time; try again.{kept}")
-        commit = await asyncio.to_thread(self._commit, spec.cwd) if plugin is not None else None
-        for old in running:  # withdrawn and offered with no wait between, so no call finds neither
-            plugins.withdraw(self.server, old)
-        if plugin is not None:
-            plugins.present(self.server, plugin, listing, commit)
-        for old in running:
-            await old.stop()
-            old.state = "stopped"
-            self.active.remove(old)
+            return self._kept(name, running)
+        await self._swap(spec, running, plugin, listing)
         if self.announce is not None:
             with contextlib.suppress(Exception):
                 await self.announce()
@@ -98,6 +88,30 @@ class Desk:
         self.active.append(plugin)
         log.info("plugin %s restarted by voice", name)
         return {"ok": True, "say": f"{name} started again with its new code.", "tools": plugin.offered}
+
+    def _kept(self, name: str, running: list[plugins.Plugin]) -> dict[str, Any]:
+        """The answer when the new process did not start: the one running, if any, stays."""
+        log.info("plugin %s did not start in time; %d running kept", name, len(running))
+        kept = " The one already running stays." if running else ""
+        return _no(f"{name} did not start in time; try again.{kept}")
+
+    async def _swap(
+        self,
+        spec: PluginSpec,
+        running: list[plugins.Plugin],
+        plugin: plugins.Plugin | None,
+        listing: dict[str, dict[str, Any]],
+    ) -> None:
+        """Offer the checked plugin, if any, in place of the running ones, then stop those."""
+        commit = await asyncio.to_thread(self._commit, spec.cwd) if plugin is not None else None
+        for old in running:  # withdrawn and offered with no wait between, so no call finds neither
+            plugins.withdraw(self.server, old)
+        if plugin is not None:
+            plugins.present(self.server, plugin, listing, commit)
+        for old in running:
+            await old.stop()
+            old.state = "stopped"
+            self.active.remove(old)
 
     async def pick_up(self) -> list[str]:
         """Start again each plugin whose approval changed in the file since the last look,
