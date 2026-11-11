@@ -135,3 +135,12 @@ async def test_the_reader_stays_warm_between_questions_and_starts_afresh_now_and
     assert "norsk" in made[0].prompts[0] and "Hva skjer?" in made[0].prompts[0]
     assert made[0].prompts[1] == "/clear"  # each answer is forgotten, so the next stays fast
     await reader.close()
+
+
+def test_the_suite_never_starts_a_real_claude_for_side_questions():
+    """A watched server warms the shared reader. A real one left a process running after the suite."""
+    from claude_agent_sdk import ClaudeSDKClient
+
+    from claude_voice import transcripts
+
+    assert transcripts.shared_reader().client_factory is not ClaudeSDKClient
