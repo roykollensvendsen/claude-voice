@@ -203,3 +203,17 @@ async def test_a_session_that_ends_during_the_wait_keeps_the_words_it_wrote(tmp_
         out = await call(c, "wait_for_session", session="billing-ab", after=1, wait_seconds=5)
     assert out["status"] == "session_ended"
     assert out["reply"] == "Halfway through the export." and out["reply_final"] is False
+
+
+@pytest.mark.parametrize("value", ["ten", "", "nan", "inf", True])
+@pytest.mark.parametrize("tool", ["wait_for_session", "ask_active_session"])
+async def test_a_wait_time_that_is_not_a_number_is_refused(tmp_path, root, live, tool, value):
+    # A wait of "nan" never reached its deadline, so the voice call hung until the app gave up.
+    target = Target(live, str(root / "billing"), status="busy")
+    args = {"session": "billing-ab", "wait_seconds": value}
+    if tool == "ask_active_session":
+        args["message"] = "go"
+    async with Client(bridge(tmp_path, root, live, target, None)) as c:
+        res = await asyncio.wait_for(c.call_tool(tool, args), 2)
+    assert res.is_error
+    assert "wait_seconds is a number of seconds, such as 60" in res.content[0].text
