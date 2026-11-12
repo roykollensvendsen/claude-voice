@@ -796,3 +796,9 @@ file = "src/claude_voice/tree.py"
 find = 'if when is not None and when < cutoff:'
 occurrence = 2
 replace = 'if False:'
+
+[[rule]]
+name = "a sign-in that runs out within three days waits on the owner"
+file = "src/claude_voice/work.py"
+find = 'if expires is None or expires - now > LOGIN_WARNING:'
+replace = 'if True:'
