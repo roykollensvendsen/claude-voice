@@ -59,6 +59,20 @@ def test_the_deferred_list_gives_every_row_a_trigger():
         assert cells[2], f"no reason on: {cells[0]}"
 
 
+def test_the_contributing_guide_gives_the_first_line_limit_the_suite_checks():
+    """The guide states the rule for a tool's first line; the figure in it is the one tested."""
+    from test_surface import FIRST_LINE_CHARS
+
+    guide = " ".join(read("CONTRIBUTING.md").split())
+    rule = "first line of its description says what the tool is for, in one whole sentence"
+    assert f"{rule} of at most {FIRST_LINE_CHARS} characters" in guide
+
+
+def test_checking_plugin_tools_first_lines_is_on_the_deferred_list():
+    """The bridge checks only its own tools' first lines; the plugins' wait for a trigger."""
+    assert "Checking the first line of each plugin tool" in read("decisions/deferred.md")
+
+
 def test_the_readme_lists_exactly_the_tools_the_bridge_offers(tmp_path):
     """The tool table is the only place a reader learns what they can ask for."""
     import asyncio
