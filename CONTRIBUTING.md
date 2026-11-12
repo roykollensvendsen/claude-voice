@@ -136,8 +136,15 @@ cannot be tidied at the end by squashing it, which is why `committed.toml`
 refuses a fixup and a work-in-progress commit rather than trusting you to clean
 up later.
 
-## Five more rules for every change
+## More rules for every change
 
+- **A tool's first line says what it is for.** The Claude app shows an
+  assistant each tool by the start of its description until the tool is
+  loaded. So the first line of its description says what the tool is for, in
+  one whole sentence of at most 78 characters, where the app cuts it.
+  `tests/test_surface.py` checks every tool the bridge offers itself. A
+  plugin's tools are not checked here yet; [`decisions/deferred.md`](decisions/deferred.md)
+  says when they will be.
 - **One pull request per topic.** Several small changes on one subject go
   together; changes on different subjects go apart, so each can be reviewed,
   tested and, if need be, reverted on its own.
