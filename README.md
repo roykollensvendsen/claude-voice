@@ -363,6 +363,7 @@ claude_voice = "~/src/claude-voice"          # default: the clone the bridge run
 claude_voice_ui = "~/src/claude-voice-ui"    # default: next to it
 ui_dist = "~/src/claude-voice-ui/dist"       # default: inside it; CLAUDE_VOICE_UI_DIR wins
 contribute = "~/src/claude-voice"            # the contribute session's clone; default: claude_voice
+claude_voice_mobile = "~/src/claude-voice-mobile"  # the phone app's clone; default: next to it
 
 [sessions]
 remote_control = true                        # a started session can be opened in the Claude app

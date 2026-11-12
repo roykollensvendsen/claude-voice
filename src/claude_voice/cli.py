@@ -335,9 +335,10 @@ def permissions_command(folders: list[Path], dry_run: bool, env: Mapping[str, st
         sys.stderr.write(f"claude-voice: no clone was found; name the folders, or set [paths] in {settings.FILE}\n")
         return 1
     rules, code = permissions.load(), 0
+    backups = permissions.backup_root(Path(env.get("HOME") or Path.home()))
     for folder in folders:
         try:
-            sys.stdout.write(permissions.apply(folder, rules, dry_run).line() + "\n")
+            sys.stdout.write(permissions.apply(folder, rules, dry_run, backup_root=backups).line() + "\n")
         except permissions.PermissionsError as exc:
             sys.stderr.write(f"claude-voice: {exc}\n")
             code = 1

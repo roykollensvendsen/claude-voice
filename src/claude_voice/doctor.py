@@ -18,8 +18,8 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from . import procs
+from .config import STATE_DIR
 
-STATE_DIR = Path("~/.local/state/claude-voice")
 STATUSLINE_FILE = "statusline"  # a folder of one file per session
 STATUSLINE_FRESH = 6 * 3600
 

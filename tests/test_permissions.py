@@ -38,7 +38,7 @@ def test_rules_already_in_the_settings_are_kept(tmp_path):
         tmp_path,
         {"model": "opus", "permissions": {"allow": ["Bash(make*)"], "deny": ["Bash(rm -rf*)"], "ask": ["Bash(x)"]}},
     )
-    permissions.apply(tmp_path, RULES)
+    apply(tmp_path, RULES)
     got = read(tmp_path)
     assert got["model"] == "opus"
     assert got["permissions"]["allow"] == ["Bash(make*)", "Bash(git status*)", "Bash(uv run pytest*)"]
@@ -48,7 +48,7 @@ def test_rules_already_in_the_settings_are_kept(tmp_path):
 
 def test_a_rule_the_settings_already_have_is_not_added_again(tmp_path):
     with_settings(tmp_path, {"permissions": {"allow": ["Bash(git status*)"]}})
-    outcome = permissions.apply(tmp_path, RULES)
+    outcome = apply(tmp_path, RULES)
     got = read(tmp_path)["permissions"]
     assert got["allow"].count("Bash(git status*)") == 1
     assert outcome.added_allow == 1 and outcome.added_deny == 1
@@ -56,31 +56,56 @@ def test_a_rule_the_settings_already_have_is_not_added_again(tmp_path):
 
 def test_a_second_run_writes_nothing(tmp_path):
     with_settings(tmp_path, {"permissions": {"allow": ["Bash(make*)"]}})
-    permissions.apply(tmp_path, RULES)
+    apply(tmp_path, RULES)
     file = settings_file(tmp_path)
     before = (file.read_bytes(), os.stat(file).st_ino, os.stat(file).st_mtime_ns)
-    outcome = permissions.apply(tmp_path, RULES)
+    outcome = apply(tmp_path, RULES)
     assert (file.read_bytes(), os.stat(file).st_ino, os.stat(file).st_mtime_ns) == before
     assert outcome.added_allow == 0 and outcome.added_deny == 0
     assert "already has every rule" in outcome.line()
 
 
-def test_the_backup_is_written_only_once(tmp_path):
+def backups(tmp_path):
+    """Where the tests keep backups: under a state folder, never in the repository."""
+    return tmp_path / "state" / "settings-backups"
+
+
+def apply(folder, rules, backup_root=None, **kwargs):
+    return permissions.apply(folder, rules, backup_root=backup_root or backups(folder), **kwargs)
+
+
+STAMP = 1794478500.0  # 2026-11-12 10:15:00 UTC
+
+
+def test_the_old_file_is_kept_outside_the_repository_before_every_change(tmp_path):
+    """A file left in the repository makes its checkout dirty, and plugins approve then refuses it."""
+    repo = tmp_path / "garage-door"
     original = {"permissions": {"allow": ["Bash(make*)"]}}
-    file = with_settings(tmp_path, original)
-    first = permissions.apply(tmp_path, RULES)
-    backup = file.with_name("settings.local.json.before-quality-rules")
-    assert first.backed_up and json.loads(backup.read_text(encoding="utf-8")) == original
-    permissions.apply(tmp_path, permissions.Rules(allow=["Bash(ls*)"], deny=[]))
-    assert json.loads(backup.read_text(encoding="utf-8")) == original
+    with_settings(repo, original)
+    outcome = apply(repo, RULES, backups(tmp_path), clock=lambda: STAMP)
+    kept = backups(tmp_path) / "garage-door" / "settings.local.json.20261112T101500Z"
+    assert outcome.backup == kept and json.loads(kept.read_text(encoding="utf-8")) == original
+    assert [p.name for p in (repo / ".claude").iterdir()] == ["settings.local.json"]
+    assert f"kept the old file as {kept}" in outcome.line()
+
+
+def test_an_older_backup_is_never_overwritten(tmp_path):
+    original = {"permissions": {"allow": ["Bash(make*)"]}}
+    with_settings(tmp_path, original)
+    first = apply(tmp_path, RULES, backups(tmp_path), clock=lambda: STAMP)
+    second = apply(tmp_path, permissions.Rules(allow=["Bash(ls*)"], deny=[]), backups(tmp_path), clock=lambda: STAMP)
+    assert first.backup is not None and second.backup is not None and first.backup != second.backup
+    assert json.loads(first.backup.read_text(encoding="utf-8")) == original
+    after_first = {"permissions": {"allow": ["Bash(make*)", *RULES.allow], "deny": RULES.deny}}
+    assert json.loads(second.backup.read_text(encoding="utf-8")) == after_first
 
 
 def test_a_dry_run_writes_nothing(tmp_path):
     file = with_settings(tmp_path, {"permissions": {"allow": ["Bash(make*)"]}})
     before = file.read_bytes()
-    outcome = permissions.apply(tmp_path, RULES, dry_run=True)
+    outcome = apply(tmp_path, RULES, backups(tmp_path), dry_run=True)
     assert file.read_bytes() == before
-    assert not file.with_name("settings.local.json.before-quality-rules").exists()
+    assert not backups(tmp_path).exists()
     assert outcome.added_allow == 2 and "would add 2 allow and 1 deny" in outcome.line()
 
 
@@ -90,7 +115,7 @@ RETIRING = permissions.Rules(allow=RULES.allow, deny=RULES.deny, retired=["Bash(
 def test_a_retired_allow_rule_is_removed(tmp_path):
     """The old installer allowed a copy into /tmp, which got round the secret rules."""
     with_settings(tmp_path, {"permissions": {"allow": ["Bash(make*)", "Bash(cp * /tmp/*)"]}})
-    outcome = permissions.apply(tmp_path, RETIRING)
+    outcome = apply(tmp_path, RETIRING)
     assert read(tmp_path)["permissions"]["allow"] == ["Bash(make*)", *RULES.allow]
     assert outcome.removed_allow == 1 and outcome.added_allow == 2
     assert "removed 1 retired allow rule" in outcome.line()
@@ -99,7 +124,7 @@ def test_a_retired_allow_rule_is_removed(tmp_path):
 def test_only_the_exact_retired_rule_is_removed(tmp_path):
     near = ["Bash(cp * /tmp/x)", "Bash(cp *)", "Bash(cp * /tmp/*) ", "bash(cp * /tmp/*)"]
     with_settings(tmp_path, {"permissions": {"allow": near, "deny": ["Bash(cp * /tmp/*)"]}})
-    outcome = permissions.apply(tmp_path, RETIRING)
+    outcome = apply(tmp_path, RETIRING)
     got = read(tmp_path)["permissions"]
     assert got["allow"][: len(near)] == near and "Bash(cp * /tmp/*)" in got["deny"]
     assert outcome.removed_allow == 0 and "retired allow" not in outcome.line()
@@ -108,7 +133,7 @@ def test_only_the_exact_retired_rule_is_removed(tmp_path):
 def test_a_dry_run_says_how_many_retired_rules_it_would_remove(tmp_path):
     file = with_settings(tmp_path, {"permissions": {"allow": [*RULES.allow, "Bash(cp * /tmp/*)"], "deny": RULES.deny}})
     before = file.read_bytes()
-    outcome = permissions.apply(tmp_path, RETIRING, dry_run=True)
+    outcome = apply(tmp_path, RETIRING, dry_run=True)
     assert file.read_bytes() == before
     assert outcome.line() == f"{tmp_path}: would add 0 allow and 0 deny rules, and remove 1 retired allow rule"
 
@@ -116,26 +141,25 @@ def test_a_dry_run_says_how_many_retired_rules_it_would_remove(tmp_path):
 def test_removing_a_retired_rule_keeps_the_backup_already_written(tmp_path):
     original = {"permissions": {"allow": ["Bash(make*)"]}}
     file = with_settings(tmp_path, original)
-    permissions.apply(tmp_path, RULES)
+    first = apply(tmp_path, RULES, backups(tmp_path))
     settings = read(tmp_path)
     settings["permissions"]["allow"].append("Bash(cp * /tmp/*)")
     file.write_text(json.dumps(settings), encoding="utf-8")
-    outcome = permissions.apply(tmp_path, RETIRING)
-    assert outcome.removed_allow == 1 and not outcome.backed_up
-    backup = file.with_name("settings.local.json.before-quality-rules")
-    assert json.loads(backup.read_text(encoding="utf-8")) == original
+    outcome = apply(tmp_path, RETIRING, backups(tmp_path))
+    assert outcome.removed_allow == 1 and outcome.backup is not None
+    assert first.backup is not None and json.loads(first.backup.read_text(encoding="utf-8")) == original
 
 
 def test_a_dry_run_does_not_create_a_missing_settings_file(tmp_path):
-    permissions.apply(tmp_path, RULES, dry_run=True)
+    apply(tmp_path, RULES, dry_run=True)
     assert not (tmp_path / ".claude").exists()
 
 
 def test_a_missing_settings_file_is_created_with_the_rules(tmp_path):
-    outcome = permissions.apply(tmp_path, RULES)
+    outcome = apply(tmp_path, RULES, backups(tmp_path))
     assert read(tmp_path) == {"permissions": {"allow": RULES.allow, "deny": RULES.deny}}
-    assert outcome.created and not outcome.backed_up
-    assert not settings_file(tmp_path).with_name("settings.local.json.before-quality-rules").exists()
+    assert outcome.created and outcome.backup is None
+    assert not backups(tmp_path).exists()
 
 
 def test_a_settings_file_that_is_not_json_is_left_alone(tmp_path):
@@ -143,13 +167,13 @@ def test_a_settings_file_that_is_not_json_is_left_alone(tmp_path):
     file.parent.mkdir()
     file.write_text("{ not json", encoding="utf-8")
     with pytest.raises(permissions.PermissionsError, match="not JSON"):
-        permissions.apply(tmp_path, RULES)
+        apply(tmp_path, RULES)
     assert file.read_text(encoding="utf-8") == "{ not json"
 
 
 def test_a_folder_that_does_not_exist_is_refused(tmp_path):
     with pytest.raises(permissions.PermissionsError, match="not a folder"):
-        permissions.apply(tmp_path / "nowhere", RULES)
+        apply(tmp_path / "nowhere", RULES)
 
 
 # -- the rules this repository ships ---------------------------------------------------
@@ -328,6 +352,8 @@ def test_a_plain_forced_push_or_one_that_could_land_anywhere_is_refused(command)
 def config_naming(tmp_path, *folders, plugin=None):
     # Literal TOML strings, so a Windows path's backslashes are not read as escapes.
     lines = ["[paths]", f"claude_voice = '{folders[0]}'", f"claude_voice_ui = '{folders[1]}'"]
+    if len(folders) > 2:
+        lines.append(f"claude_voice_mobile = '{folders[2]}'")
     if plugin:
         lines += ["[plugins.garage]", 'command = "uv"', f"cwd = '{plugin}'", 'tools = ["garage_status"]']
     file = tmp_path / "config.toml"
@@ -346,6 +372,35 @@ def test_with_no_folders_named_the_bridge_and_plugin_clones_from_the_settings_ar
     assert not ui.exists()  # a clone that is not there is skipped, not made
     out = capsys.readouterr().out
     assert str(voice.resolve()) in out and str(garage.resolve()) in out
+
+
+def test_with_no_folders_named_the_phone_app_clone_next_to_the_bridge_is_used(tmp_path, capsys):
+    voice, mobile = tmp_path / "claude-voice", tmp_path / "claude-voice-mobile"
+    for folder in (voice, mobile):
+        folder.mkdir()
+    file = tmp_path / "config.toml"
+    file.write_text(f"[paths]\nclaude_voice = '{voice}'\n", encoding="utf-8")
+    assert main(["permissions"], env={"HOME": str(tmp_path), "CLAUDE_VOICE_CONFIG": str(file)}) == 0
+    assert "Bash(git status*)" in read(mobile)["permissions"]["allow"]
+    assert str(mobile.resolve()) in capsys.readouterr().out
+
+
+def test_the_phone_app_clone_can_be_named_in_the_settings(tmp_path):
+    voice, mobile = tmp_path / "voice", tmp_path / "elsewhere" / "phone"
+    for folder in (voice, mobile):
+        folder.mkdir(parents=True)
+    env = config_naming(tmp_path, voice, tmp_path / "ui", mobile)
+    assert main(["permissions"], env=env) == 0
+    assert "Bash(git status*)" in read(mobile)["permissions"]["allow"]
+
+
+def test_the_command_keeps_the_old_file_under_the_home_state_folder(tmp_path, capsys):
+    repo = tmp_path / "garage-door"
+    with_settings(repo, {"permissions": {"allow": ["Bash(make*)"]}})
+    assert main(["permissions", str(repo)], env={"HOME": str(tmp_path)}) == 0
+    kept = list((tmp_path / ".local" / "state" / "claude-voice" / "settings-backups" / "garage-door").iterdir())
+    assert len(kept) == 1 and kept[0].name.startswith("settings.local.json.")
+    assert str(kept[0]) in capsys.readouterr().out
 
 
 def test_the_command_takes_folders_and_a_dry_run(tmp_path, capsys):

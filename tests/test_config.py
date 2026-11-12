@@ -27,6 +27,7 @@ def test_without_a_file_the_defaults_follow_the_clone_the_bridge_runs_from(tmp_p
     assert out.paths.claude_voice == here
     assert out.paths.claude_voice_ui == here.parent / "claude-voice-ui"
     assert out.paths.ui_dist == here.parent / "claude-voice-ui" / "dist"
+    assert out.paths.claude_voice_mobile == here.parent / "claude-voice-mobile"
     assert out.paths.contribute == here
 
 
@@ -55,18 +56,21 @@ def test_the_file_can_name_the_ui_repository_and_its_folders(tmp_path):
         "[paths]\n"
         "claude_voice_ui = '~/ui'\n"
         "ui_dist = '~/built'\n"
+        "claude_voice_mobile = '~/phone'\n"
     )
     out = config.load(file, own_clone=tmp_path / "cv", env={"HOME": str(tmp_path)})
     assert out.repos.claude_voice_ui == "someone/claude-voice-ui"
     assert out.paths.claude_voice == tmp_path / "cv"
     assert out.paths.claude_voice_ui == tmp_path / "ui"
     assert out.paths.ui_dist == tmp_path / "built"
+    assert out.paths.claude_voice_mobile == tmp_path / "phone"
     assert out.file == file
 
 
 def test_without_a_clone_or_a_file_no_folder_is_known(tmp_path):
     out = config.load(None, own_clone=None, env={"HOME": str(tmp_path)})
     assert out.file is None
+    assert out.paths.claude_voice_mobile is None
     assert (out.paths.claude_voice, out.paths.claude_voice_ui, out.paths.ui_dist, out.paths.contribute) == (
         None,
         None,
