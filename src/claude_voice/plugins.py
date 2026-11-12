@@ -379,6 +379,7 @@ def offer(server: Any, plugin: Plugin, listing: dict[str, dict[str, Any]]) -> li
     """Offer the plugin's allowed tools on the bridge's MCP server; the names offered."""
     from mcp.server.mcpserver.exceptions import ToolError
     from mcp.server.mcpserver.tools.base import Tool
+    from mcp.types import ToolAnnotations
 
     class PluginTool(Tool):
         async def run(self, arguments: dict[str, Any], context: Any, convert_result: bool = False) -> Any:
@@ -403,7 +404,11 @@ def offer(server: Any, plugin: Plugin, listing: dict[str, dict[str, Any]]) -> li
         description = known.get("description") or f"{tool}, from the {plugin.spec.name} plugin"
         if rules:  # the plugin's own rules travel with every tool, whatever the client reads
             description = f"{description}\n\n{plugin.spec.name} rules: {rules}"
-        base = Tool.from_function(placeholder, name=name, description=description, structured_output=True)
+        # RULE: a plugin tool that only reads is shown as read-only
+        marks = ToolAnnotations(read_only_hint=known["read_only"]) if known.get("read_only") is not None else None
+        base = Tool.from_function(
+            placeholder, name=name, description=description, annotations=marks, structured_output=True
+        )
         fields = {k: getattr(base, k) for k in type(base).model_fields}
         made = PluginTool(**{**fields, "meta": {"plugin": plugin.spec.name, "plugin_tool": tool}})
         made.parameters = known.get("schema") or {"type": "object", "properties": {}}
