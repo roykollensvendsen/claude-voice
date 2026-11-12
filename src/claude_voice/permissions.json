@@ -44,10 +44,14 @@
     ],
     "git, making work on a branch": [
       "Bash(git add *)",
-      "Bash(git commit -m *)",
-      "Bash(git commit -F *)",
+      "Bash(git -C * add *)",
+      "Bash(git commit *)",
+      "Bash(git -C * commit *)",
       "Bash(git checkout -b *)",
       "Bash(git switch -c *)",
+      "Bash(git switch *)",
+      "Bash(git rebase origin/main)",
+      "Bash(git rebase --continue)",
       "Bash(git cherry-pick *)",
       "Bash(git -C * cherry-pick *)",
       "Bash(git worktree add *)",
@@ -62,9 +66,19 @@
       "Bash(gh pr view*)",
       "Bash(gh run list*)",
       "Bash(gh run view*)",
-      "Bash(gh run download*)"
+      "Bash(gh run download*)",
+      "Bash(gh run watch*)",
+      "Bash(gh pr status*)",
+      "Bash(gh issue view*)",
+      "Bash(gh issue list*)",
+      "Bash(gh repo view*)",
+      "Bash(gh release view*)",
+      "Bash(gh release list*)"
     ],
     "pushing a session's own pull-request branch": [
+      "Bash(git push -u origin *)",
+      "Bash(git push -q -u origin *)",
+      "Bash(git push origin *)",
       "Bash(git push --force-with-lease origin *)",
       "Bash(git push --force-with-lease -u origin *)",
       "Bash(gh pr update-branch * --rebase)"
@@ -74,6 +88,9 @@
       "Bash(uv run ruff*)",
       "Bash(uv run mypy*)",
       "Bash(uv run pytest*)",
+      "Bash(uv run --quiet ruff*)",
+      "Bash(uv run --quiet mypy*)",
+      "Bash(uv run --quiet pytest*)",
       "Bash(uv run python scripts/mutate.py*)",
       "Bash(uv run python scripts/ratchet.py*)",
       "Bash(python scripts/mutate.py*)",
@@ -84,13 +101,91 @@
       "Bash(npm test*)",
       "Bash(npm run test*)",
       "Bash(npm run lint*)",
-      "Bash(npm run build*)"
+      "Bash(npm run build*)",
+      "Bash(npm run typecheck*)"
     ],
     "the gates of the Android app": [
       "Bash(./gradlew assemble*)",
       "Bash(./gradlew check*)",
       "Bash(./gradlew lint*)",
       "Bash(./gradlew test*)"
+    ],
+    "editing files in the repository": [
+      "Edit(./**)"
+    ]
+  },
+  "ask": {
+    "pushes that delete a branch or could land on main without naming it": [
+      "Bash(git push* --delete*)",
+      "Bash(git push* -d *)",
+      "Bash(git push* :*)",
+      "Bash(git push* HEAD)",
+      "Bash(git push* HEAD *)",
+      "Bash(git push* --all*)",
+      "Bash(git push origin)",
+      "Bash(git push -u origin)",
+      "Bash(git push -q -u origin)"
+    ],
+    "a lease push in any other form than the one allowed": [
+      "Bash(git push origin *--force-with-lease*)",
+      "Bash(git push -u origin *--force-with-lease*)",
+      "Bash(git push -q -u origin *--force-with-lease*)"
+    ],
+    "GitHub, writing what others read": [
+      "Bash(gh pr comment*)",
+      "Bash(gh pr close*)",
+      "Bash(gh pr review*)",
+      "Bash(gh issue create*)",
+      "Bash(gh issue comment*)",
+      "Bash(gh release create*)",
+      "Bash(gh release edit*)",
+      "Bash(gh repo edit*)",
+      "Bash(gh secret*)",
+      "Bash(gh api graphql*)",
+      "Bash(gh api* -X*)",
+      "Bash(gh api* --method*)",
+      "Bash(gh api* -f *)",
+      "Bash(gh api* -F *)",
+      "Bash(gh api* --field*)",
+      "Bash(gh api* --raw-field*)",
+      "Bash(gh api* --input*)"
+    ],
+    "deleting files": [
+      "Bash(rm -r*)",
+      "Bash(rm -f*)"
+    ],
+    "changing the session's own settings": [
+      "Edit(./.claude/**)"
+    ],
+    "the garage door's own server, run in its repository": [
+      "mcp__garage-door__garage_request",
+      "mcp__garage-door__garage_confirm",
+      "mcp__garage-door__garage_switch",
+      "mcp__garage-door__garage_press_button"
+    ],
+    "sending mail": [
+      "mcp__claude_ai_Gmail__send_message",
+      "mcp__claude_ai_Gmail__reply",
+      "mcp__claude_ai_Gmail__forward"
+    ]
+  },
+  "device tools": {
+    "servers": ["claude-voice", "claude_ai_claude-voice"],
+    "tools": [
+      "garage_request",
+      "garage_confirm",
+      "garage_switch",
+      "garage_press_button",
+      "tv_power_request",
+      "tv_power_confirm",
+      "vacuum_start",
+      "vacuum_stop",
+      "vacuum_pause",
+      "vacuum_go_home",
+      "vacuum_find",
+      "vacuum_clean_rooms",
+      "vacuum_clean_all",
+      "vacuum_confirm"
     ]
   },
   "deny": {
@@ -105,7 +200,11 @@
       "Bash(git branch --delete*)",
       "Bash(git branch -f*)",
       "Bash(git worktree remove* -f*)",
-      "Bash(git worktree remove*--force*)"
+      "Bash(git worktree remove*--force*)",
+      "Bash(git switch* -f*)",
+      "Bash(git switch* --force*)",
+      "Bash(git switch* --discard-changes*)",
+      "Bash(git switch* -C *)"
     ],
     "forced pushes that check nothing, or could land anywhere": [
       "Bash(git push --force)",
@@ -115,6 +214,12 @@
       "Bash(git push* --force *)",
       "Bash(git push* -f)",
       "Bash(git push* -f *)",
+      "Bash(git push* -f*)",
+      "Bash(git push* -uf*)",
+      "Bash(git push* -qf*)",
+      "Bash(git push* -vf*)",
+      "Bash(git push* +*)",
+      "Bash(git push* --mirror*)",
       "Bash(git push --force-with-lease origin)",
       "Bash(git push --force-with-lease -u origin)",
       "Bash(git push --force-with-lease* HEAD)",
@@ -133,22 +238,35 @@
   "protected branches": {
     "branches": ["main", "master"],
     "forced pushes": [
-      "git push --force-with-lease* {branch}",
-      "git push --force-with-lease* {branch} *",
-      "git push --force-with-lease*:{branch}",
-      "git push --force-with-lease*:{branch} *",
-      "git push --force-with-lease*+{branch}",
-      "git push --force-with-lease*+{branch} *",
-      "git push --force-with-lease*/heads/{branch}",
-      "git push --force-with-lease*/heads/{branch} *",
-      "git push --force-with-lease={branch}*",
-      "git push --force-with-lease=refs/heads/{branch}*"
+      "git push*--force-with-lease* {branch}",
+      "git push*--force-with-lease* {branch} *",
+      "git push*--force-with-lease*:{branch}",
+      "git push*--force-with-lease*:{branch} *",
+      "git push*--force-with-lease*+{branch}",
+      "git push*--force-with-lease*+{branch} *",
+      "git push*--force-with-lease*/heads/{branch}",
+      "git push*--force-with-lease*/heads/{branch} *",
+      "git push*--force-with-lease={branch}*",
+      "git push*--force-with-lease=refs/heads/{branch}*"
+    ],
+    "other pushes": [
+      "git push* {branch}",
+      "git push* {branch} *",
+      "git push* *:{branch}",
+      "git push* *:{branch} *",
+      "git push* */heads/{branch}",
+      "git push* */heads/{branch} *",
+      "git push* +{branch}",
+      "git push* +{branch} *"
     ]
   },
   "retired": {
     "allow": [
-      "Bash(cp * /tmp/*)"
-    ]
+      "Bash(cp * /tmp/*)",
+      "Bash(git commit -m *)",
+      "Bash(git commit -F *)"
+    ],
+    "ask": []
   },
   "secrets": {
     "readers": [

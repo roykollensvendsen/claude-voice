@@ -3,7 +3,9 @@
 A Claude Code session asks before every command it has no rule for. In the
 bridge's repositories that means a question for each `git log` and each test
 run, and from a phone each one is a tap. These rules let a session look and
-test without asking, and refuse what must never happen without the owner.
+test without asking. They make it ask before anything others would see or that
+moves something in the house, and they refuse what must never happen without
+the owner.
 
 They live in [`src/claude_voice/permissions.json`](../src/claude_voice/permissions.json),
 in named groups, so they ship with the bridge. One command adds them to each
@@ -33,11 +35,13 @@ claude-voice: no-such-folder is not a folder, so it was left alone
 It writes `.claude/settings.local.json` in each repository. That file stays out
 of git, so the rules are the owner's and not the project's.
 
-- **Adds, and takes away only a retired rule.** The owner's own rules stay where
-  they are, and every other setting in the file is kept. The one exception is a
-  short list of retired allow rules in the table, under `retired`. An older
-  installer wrote them, and they are no longer safe. Each is removed only where
-  the file has exactly that text; a rule that merely looks like it stays.
+- **Adds, and takes away only a retired rule.** It writes three lists,
+  `permissions.allow`, `permissions.ask` and `permissions.deny`. The owner's own
+  rules stay where they are, and every other setting in the file is kept. The
+  one exception is a short list of retired rules in the table, under
+  `retired.allow` and `retired.ask`. An older table wrote them, and they are
+  gone now. Each is removed only from its own list, and only where the file has
+  exactly that text; a rule that merely looks like it stays.
 - **Each rule once.** A rule the file already has is not added again.
 - **A backup before each change, outside the repository.** It copies the old
   file to
@@ -57,12 +61,17 @@ The dry run says what it would remove as well as what it would add:
 
 <!-- not run: the counts depend on the reader's own settings -->
 ```
-~/src/claude-voice: would add 0 allow and 35 deny rules, and remove 1 retired allow rule
+~/src/claude-voice: would add 21 allow, 83 ask and 30 deny rules, and remove 2 retired allow rules
 ```
 
-The only retired rule so far is `Bash(cp * /tmp/*)`. The first installer
-allowed it, and a copy into `/tmp` got round the secret rules. So every
-computer that ran that installer kept a way round them until this removed it.
+The retired rules so far are all allow rules:
+
+- `Bash(cp * /tmp/*)`. The first installer allowed it, and a copy into `/tmp`
+  got round the secret rules. So every computer that ran that installer kept a
+  way round them until this removed it.
+- `Bash(git commit -m *)` and `Bash(git commit -F *)`. One rule,
+  `Bash(git commit *)`, took their place, so a commit with `-q` or `--amend`
+  no longer asks.
 
 ## The groups
 
@@ -72,15 +81,43 @@ computer that ran that installer kept a way round them until this removed it.
 | --- | --- |
 | read files and folders | `cat`, `head`, `tail`, `sed -n`, `grep`, `ls` and `wc`, to look at code |
 | git, looking only | status, diffs, logs, branches and worktrees, read but not changed |
-| git, making work on a branch | adding, committing, new branches and worktrees, cherry-picks; nothing that pushes |
-| GitHub, looking only | reading pull requests, their checks and workflow runs |
-| pushing a session's own pull-request branch | `git push --force-with-lease origin <branch>`, with or without `-u`, and `gh pr update-branch <n> --rebase` |
-| the gates of the Python repositories | `uv sync`, ruff, mypy, pytest, the mutation run and the ratchet |
-| the gates of the companion app | `npm ci`, its tests, lint and build |
+| git, making work on a branch | adding and committing, also with `git -C`; new branches, switching branch, worktrees, cherry-picks; `git rebase origin/main` and `--continue` |
+| GitHub, looking only | reading pull requests, their checks and status, workflow runs and watching one, issues, the repository and its releases |
+| pushing a session's own pull-request branch | `git push origin <branch>`, with `-u` or `-q -u`; `git push --force-with-lease origin <branch>`, with or without `-u`; and `gh pr update-branch <n> --rebase` |
+| the gates of the Python repositories | `uv sync`, ruff, mypy and pytest, also with `uv run --quiet`, the mutation run and the ratchet |
+| the gates of the companion app | `npm ci`, its tests, lint, typecheck and build |
 | the gates of the Android app | Gradle's assemble, check, lint and test |
+| editing files in the repository | `Edit(./**)`, every file under the repository. Claude Code checks a file write against `Edit` rules, so there is no `Write` rule |
 
-Any other push, merging, opening a pull request and installing anything else
-still ask.
+Merging, opening a pull request, `gh api` and installing anything else still
+ask, as does anything no rule names. Merging gets no rule of either kind on
+purpose: the owner lets a session merge its own pull request once every check
+is green.
+
+**Asked, even where an allow rule would let it through.** An ask rule wins over
+an allow rule, and a deny rule wins over both. The question reaches the phone
+like any other.
+
+| Group | What it is for |
+| --- | --- |
+| pushes to `main` or `master` | a push naming the branch alone, `HEAD:main`, `feature:refs/heads/main` or `+main`; written for each protected branch, like the forced pushes below |
+| pushes that delete a branch or could land on main without naming it | `--delete`, `-d`, `origin :feature`, pushing `HEAD`, `--all`, and a push naming no branch |
+| a lease push in any other form than the one allowed | `--force-with-lease` after the remote, as in `git push origin feature --force-with-lease` |
+| GitHub, writing what others read | commenting on, closing or reviewing a pull request; creating or commenting on an issue; creating or editing a release; editing the repository; secrets; `gh api graphql`; and `gh api` with `-X`, `--method`, `-f`, `-F`, `--field`, `--raw-field` or `--input` |
+| deleting files | `rm -r` and `rm -f`, in any combination |
+| changing the session's own settings | `Edit(./.claude/**)`, so a session cannot edit its own rules without the owner |
+| the devices in the house | the tools that open the garage door, switch a TV on or off, or start, stop, pause, send home, find or clean with the vacuum |
+| the garage door's own server, run in its repository | the same garage tools, by the name the garage door's repository gives its own server |
+| sending mail | Gmail's send, reply and forward |
+
+The device tools are listed once, under `device tools`, with the names a session
+sees the bridge under. Added with `claude mcp add` it is `claude-voice`, so a
+tool is `mcp__claude-voice__garage_request`. As a claude.ai connector it is
+`claude_ai_claude-voice`, so the same tool is
+`mcp__claude_ai_claude-voice__garage_request`. The bridge writes each pair as a
+rule. Looking at a device, such as `garage_status` or `vacuum_where`, does not
+ask. A new plugin whose tools move something adds them to `device tools.tools`
+in the same pull request as the plugin.
 
 ### Forced pushes to a session's own branch
 
@@ -100,18 +137,25 @@ clone whose remote has no such protection. They refuse a forced push that names
 - a forced refspec: `+main`;
 - the lease itself naming it: `--force-with-lease=main` or `--force-with-lease=refs/heads/main`.
 
+They match wherever the lease stands in the command, so
+`git push origin --force-with-lease main` is refused too.
+
 The table lists the branches once and these forms once. The bridge writes each
-pair as a rule, the way it writes the secret rules.
+pair as a rule, the way it writes the secret rules. A push that is not forced
+but names `main` or `master` is asked, from the forms under `other pushes`.
 
 **Refused, even when the owner would say yes:**
 
 - **History that cannot be got back.** A hard reset, discarding changes with
-  `checkout --`, `git clean -f`, deleting or moving a branch, and forcing a
-  worktree away. Each one can lose work no commit holds.
+  `checkout --`, `git clean -f`, deleting or moving a branch, forcing a
+  worktree away, and a `git switch` with `-f`, `--force`, `--discard-changes`
+  or `-C`. Each one can lose work no commit holds.
 - **Forced pushes that check nothing, or could land anywhere.** Plain `--force`
-  and `-f`, anywhere in a push. A lease push that names no branch or only
-  `HEAD`, since that could be `main`. A lease push that deletes a branch, or
-  pushes every branch with `--all` or `--mirror`.
+  and `-f`, anywhere in a push, also run together with `-u`, `-q` or `-v`. A
+  forced refspec such as `+feature`, and `--mirror`. A lease push that names no
+  branch or only `HEAD`, since that could be `main`. A lease push that deletes
+  a branch, or pushes every branch with `--all`. The plain pushes the table
+  allows would let all of these through without these rules.
 - **A forced push to `main` or `master`,** in every form listed above.
 - **Secrets.** Each command allowed to read a file is refused for each secret
   file by its path. So are the commands that copy a file, `cp` and `rsync`,
