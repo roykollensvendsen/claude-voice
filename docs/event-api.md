@@ -313,7 +313,10 @@ approval is ignored.
 
 What waits on the owner is the manager session's own list, read fresh on every
 call from `~/.local/state/claude-voice/waiting.json`; an item with no `id` or
-`text` is left out. The open pull requests are those of claude-voice,
+`text` is left out. Three days before Claude Code's sign-in runs out, the bridge
+puts an item of its own first, with the `id` `claude-login`, saying to run
+`claude` and type `/login`. It asks `claude auth status` for the date at most once
+an hour, and reads no secret to do it. The open pull requests are those of claude-voice,
 claude-voice-ui and every plugin's repository, asked of GitHub at most once a
 minute; a repository whose pull requests could not be read is named in
 `unreadable` rather than shown as having none. `text` and `command` are plain
