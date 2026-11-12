@@ -8,6 +8,7 @@ import functools
 import json
 import logging
 import logging.handlers
+import math
 import os
 import re
 import secrets
@@ -20,7 +21,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 from claude_agent_sdk import SDKSessionInfo, project_key_for_directory
 from claude_agent_sdk import list_sessions as list_claude_sessions
@@ -31,7 +32,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.shared.subscriptions import ToolsListChanged
 from mcp.types import ToolAnnotations
-from pydantic import AnyHttpUrl
+from pydantic import AnyHttpUrl, BeforeValidator
 from starlette.types import ASGIApp
 
 from . import (
@@ -347,6 +348,22 @@ async def log_requests(ctx, call_next):
 
 
 BUSY = ("busy", "shell")  # a session's statuses while it works
+
+
+def wait_time(value: Any) -> float:
+    """A tool's wait in seconds, refused at once unless it is a finite number."""
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        seconds = math.nan
+    # RULE: a wait time that is not a number is refused
+    if isinstance(value, bool) or not math.isfinite(seconds):
+        raise ValueError(f"wait_seconds is a number of seconds, such as 60, not {value!r}; call again with a number.")
+    return seconds
+
+
+# A wait that is not a finite number would never reach its deadline, and the call would hang.
+WaitSeconds = Annotated[float, BeforeValidator(wait_time)]
 
 
 def _not_sent(target: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
@@ -1582,7 +1599,7 @@ def build_server(
 
     @tool(annotations=READ_ONLY)
     async def wait_for_session(
-        session: str, wait_seconds: float = 60, after: int | None = None, max_chars: int = 600
+        session: str, wait_seconds: WaitSeconds = 60, after: int | None = None, max_chars: int = 600
     ) -> dict[str, Any]:
         """Wait for a running session's turn to end or need its user, sending nothing.
         Pass a next_after you were given as `after` to wait for a reply past that turn, even
@@ -1643,7 +1660,7 @@ def build_server(
 
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
     async def ask_active_session(
-        session: str, message: str, wait_seconds: float = 60, max_chars: int = 600
+        session: str, message: str, wait_seconds: WaitSeconds = 60, max_chars: int = 600
     ) -> dict[str, Any]:
         """Ask a Claude Code session that is open right now, and wait for its answer.
         reply_final is true once its turn has ended, so reply is its last word; while false,
