@@ -233,6 +233,7 @@ class Plugin:
         self.offered: list[str] = []
         self.unlisted: str | None = None  # why the latest listing got no answer, or None
         self._failure: Exception | None = None
+        self._down = False  # its latest start failed, and that was logged once
         self.last_failure: Exception | None = None  # what made the latest call fail, for a caller to tell apart
         self._client: Any = None
         self._lock = asyncio.Lock()
@@ -291,11 +292,20 @@ class Plugin:
             async with self.open() as client:
                 self._client, self.state = client, "running"
                 self._ready.set()
-                log.info("plugin %s started", self.spec.name)
+                log.info("plugin %s started%s", self.spec.name, " again" if self._down else "")
+                self._down = False
                 await self._closing.wait()
         except Exception as exc:
             self._failure = exc
-            log.info("plugin %s ended: %s", self.spec.name, exc)
+            # RULE: a plugin that stays down is logged once not on every try
+            if not self._down:
+                why = _reason(exc, self.start_seconds)
+                log.info(
+                    "plugin %s ended: %s; tried again on each call, and logged again once it is back",
+                    self.spec.name,
+                    why,
+                )
+            self._down = True
         finally:
             self._client = None
             self._ready.set()  # wake a caller waiting for a start that failed
@@ -359,7 +369,8 @@ class Plugin:
                 self.last_failure = exc
                 await self._drop()
                 self.state = "restarting"
-                log.info("plugin %s failed: %s", self.spec.name, exc)
+                if exc is not self._failure:  # a start that failed was logged when it ended
+                    log.info("plugin %s failed: %s", self.spec.name, _reason(exc, self.spec.timeout))
                 raise RuntimeError(self.trouble(exc)) from None
 
     def status(self) -> dict[str, Any]:

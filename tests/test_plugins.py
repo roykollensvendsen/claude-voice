@@ -388,3 +388,35 @@ def test_a_first_listing_waits_as_long_as_the_plugins_own_time_limit(monkeypatch
     patient = config.PluginSpec(**{**GARAGE.__dict__, "timeout": 3.0})
     listing = plugins.Plugin(patient, lambda params: Unhurried(fake, 0.5)).listing()
     assert set(listing) == {"garage_status", "garage_request"}
+
+
+class Unreachable:
+    """A plugin, or another machine, that is switched off: the MCP client wraps the refused
+    connection in a task group, as it does for a machine that is not there."""
+
+    def __init__(self, params=None):
+        pass
+
+    async def __aenter__(self):
+        raise ExceptionGroup("unhandled errors in a TaskGroup", [ConnectionError("All connection attempts failed")])
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+async def test_a_plugin_that_stays_down_is_logged_once_not_on_every_try(caplog):
+    # Seen live: a laptop switched off filled the log with the same line every 12 seconds.
+    fake, _ = stand_in()
+    up = False
+    plugin = plugins.Plugin(GARAGE, lambda params: Client(fake) if up else Unreachable())
+    with caplog.at_level(logging.INFO, logger="claude_voice"):
+        for _ in range(4):
+            with pytest.raises(RuntimeError):
+                await plugin.call("garage_status", {})
+        up = True
+        await plugin.call("garage_status", {})
+        await plugin.stop()
+    said = [r.getMessage() for r in caplog.records if r.name == "claude_voice"]
+    down = [line for line in said if "garage" in line and "All connection attempts failed" in line]
+    assert len(down) == 1 and "TaskGroup" not in down[0], said
+    assert [line for line in said if line.startswith("plugin garage started")] == ["plugin garage started again"]
