@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from fakes import FakeClaude
@@ -170,6 +171,67 @@ async def test_the_work_page_says_whether_developer_mode_is_on(tmp_path, monkeyp
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=build_app(server)), base_url=HOST) as c:
         page = (await c.get("/api/v1/work", headers=BEARER)).json()
     assert page["developer_mode"] == {"on": False, "until": None}
+
+
+NOW = datetime(2026, 11, 13, 9, 0, tzinfo=UTC)
+READ_LOGIN_EXPIRY = work.read_login_expiry  # the real one: the suite stands in for it everywhere else
+
+
+class Expiry:
+    """Claude Code's sign-in date as `claude auth status` gives it, counting the looks."""
+
+    def __init__(self, at):
+        self.at, self.looks = at, 0
+
+    def __call__(self):
+        self.looks += 1
+        return self.at
+
+
+def board_with(tmp_path, expiry, clock=lambda: 0.0):
+    path = write_waiting(tmp_path / "waiting.json", [{"id": "a", "text": "One thing."}])
+    return work.Board({}, lambda args: "[]", waiting_file=path, login_expiry=expiry, now=lambda: NOW, clock=clock)
+
+
+def test_a_sign_in_that_runs_out_within_three_days_waits_on_the_owner(tmp_path):
+    soon = Expiry(NOW + timedelta(days=2, hours=23))
+    first = board_with(tmp_path, soon).report()["waiting_on_owner"][0]
+    assert first["id"] == "claude-login" and "/login" in first["text"] and "2026-11-16" in first["text"]
+    assert first["command"] == "claude"
+    later = board_with(tmp_path, Expiry(NOW + timedelta(days=3, hours=1))).report()["waiting_on_owner"]
+    unknown = board_with(tmp_path, Expiry(None)).report()["waiting_on_owner"]
+    assert [i["id"] for i in later] == ["a"] and [i["id"] for i in unknown] == ["a"]
+
+
+def test_a_sign_in_that_has_run_out_says_so():
+    item = work.login_item(NOW - timedelta(hours=1), NOW)
+    assert item is not None and "has run out" in item["text"]
+
+
+def test_the_sign_in_date_is_asked_for_at_most_once_an_hour(tmp_path):
+    at = [0.0]
+    soon = Expiry(NOW + timedelta(days=1))
+    board = board_with(tmp_path, soon, clock=lambda: at[0])
+    for seconds in (0.0, 600.0, 3700.0):
+        at[0] = seconds
+        board.report()
+    assert soon.looks == 2
+
+
+def test_the_sign_in_date_is_read_from_claude_code_without_a_secret(monkeypatch):
+    seen = []
+
+    def run(command, **kwargs):
+        seen.append(command)
+        out = json.dumps({"loggedIn": True, "loginExpiresAt": "2026-12-09T10:33:47.475Z"})
+        return subprocess.CompletedProcess(command, 0, stdout=out)
+
+    monkeypatch.setattr(work.subprocess, "run", run)
+    monkeypatch.setattr(work, "_claude", lambda: "/bin/claude")
+    assert READ_LOGIN_EXPIRY() == datetime(2026, 12, 9, 10, 33, 47, 475000, tzinfo=UTC)
+    assert seen == [["/bin/claude", "auth", "status"]]
+    monkeypatch.setattr(work.subprocess, "run", lambda c, **k: subprocess.CompletedProcess(c, 1, stdout="no"))
+    assert READ_LOGIN_EXPIRY() is None
 
 
 def test_the_suite_never_asks_github():
