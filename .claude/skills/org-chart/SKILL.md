@@ -77,6 +77,9 @@ after a person or a machine, propose renaming it first, with `rename_session`.
 7. Propose how the programme runs day to day, following "Running a programme
    day to day" in references/patterns.md. When running sessions join it, ask
    each for its handover, and read them before recommending anything.
+8. Offer a night shift, following "Night shift" in references/patterns.md.
+   Its queue and the shared morning list stay outside every repository. Start
+   one only on the owner's yes.
 
 The bridge reads only files in folders it knows: its clone, its plugins'
 folders, and folders directly under the projects folder. When the main
