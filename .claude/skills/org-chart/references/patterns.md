@@ -104,6 +104,80 @@ ends with why it exists.
 - **Give more autonomy on the owner's own PC than on shared machines.**
   Why: a mistake there hits only the owner.
 
+## Night shift
+
+Every programme can work overnight while the owner sleeps, all in the same
+way. Each manager runs its own programme's shift, and nothing in a shift
+waits for the owner.
+
+- **Keep the night queue and the morning list out of every repository.**
+  They are working notes, not code. Keep a queue in the programme's local
+  folder, such as `~/acme/.claude/night-queue.md`, and the list in
+  `~/.local/state/claude-voice/morning.md`.
+  Why: notes inside a repository get committed, pushed or lost in a rebase.
+- **Each manager keeps one ordered night queue.** Each item says what to do,
+  what done looks like and which allowed actions it needs. A shift takes the
+  top item that is ready.
+  Why: a shift that has to choose its own work spends the night choosing.
+- **At night a session may write code, run tests, commit locally, analyse and
+  draft.** It pushes only its own branches, and only when the owner has
+  allowed pushes for that programme.
+  Why: all of this stays on the machine, and can be read and undone in the morning.
+- **No merges, no writes to outside systems and no shared hardware at night.**
+  An outside write needs the owner's yes beforehand. Shared hardware needs a
+  reservation, such as acme's test rack from 01 to 03.
+  Why: nobody is awake to catch a mistake that reaches other people.
+- **The night's limits are rules, not words in the queue.** Before the first
+  shift, check the settings and push guard each session runs under, following
+  "Rights" below.
+  Why: a queue line saying "no merges" stops nothing.
+- **A question never stops the shift.** At night the manager does not ask
+  the owner. The question goes to the morning list, its item is marked as
+  waiting, and the shift takes the next item that does not depend on it.
+  Why: one open question would otherwise cost the whole night.
+- **All programmes share one morning list, most important first.** Each entry
+  names the programme, the question, the options, a recommendation and what
+  waits on it.
+  Why: the owner answers one short list in the morning, not one per programme.
+- **All programmes share the owner's usage limit and the GitHub rate limit.**
+  So the night's order is set across programmes, not only within each. Say
+  which programme goes first, and leave room for the owner's own morning.
+  Why: one busy programme can spend the limit that the others needed.
+- **At a limit, the shift writes where it stopped and ends.** It does not
+  retry in a loop. The next shift starts once the limit has reset.
+  Why: retrying against a spent limit burns what little is left.
+- **Shifts that run at the same time get lanes.** Name each session after the
+  programme, the night and its lane, such as `acme-night-20261112-lane1`. A lane
+  marks the item it takes with its name, so no other lane takes it.
+  Why: the name shows which shift did what, and the mark stops double work.
+- **A shift stops when the queue has no ready item, at a limit, or at a set
+  morning hour.** One that has done nothing for 45 minutes is asked once
+  whether it is done, then stopped.
+  Why: a shift with no end runs into the owner's day, or hangs unseen.
+- **Each shift ends tidy.** It writes in the queue what it did, what comes
+  next and where its branch is. The next shift starts from the queue, not
+  from the conversation.
+  Why: a shift can be stopped at any time, and its work must survive that.
+- **Each manager ends the night with three lines in the morning list.** What
+  got done, what failed, and which branches wait for review.
+  Why: the owner needs the result, not the transcript.
+- **The machine must stay awake all night, on mains power.** Check that
+  idle suspend is off, and that a closed lid does not suspend. On GNOME,
+  `gsettings get org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type`
+  should say `'nothing'`. In `/etc/systemd/logind.conf`, `HandleLidSwitchExternalPower`
+  should be `ignore`, or the lid stays open. `systemd-inhibit --list` shows who
+  holds sleep off now.
+  Why: a laptop that suspends at one in the morning ends every shift without a word.
+- **Planned: the voice reads the morning list.** "What happened overnight?"
+  would read the top entries and each programme's three lines. No tool reads
+  the list yet. Today `fleet_recap` says what each session did, and the owner
+  reads the list himself.
+  Why: the owner hears the night's result before he reaches a screen.
+- **Planned: the bridge starts and stops the night shift.** Today a shift
+  starts with a message to the manager, or from a timer the owner installs.
+  `start_role` starts a session but has no clock and no stop.
+  Why: say what is built, so nobody counts on a stop that is not there.
+
 ## Signs a programme needs a role
 
 - Messages pile up between two sessions and neither has a manager.
