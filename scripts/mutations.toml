@@ -550,10 +550,16 @@ find = 'if dry_run:'
 replace = 'if False:'
 
 [[rule]]
-name = "the backup is written only once"
+name = "the old file is kept outside the repository before every change"
 file = "src/claude_voice/permissions.py"
-find = 'if file.exists\(\) and not backup.exists\(\):'
-replace = 'if file.exists():'
+find = 'backup = _backup\(file, folder, backup_root, clock\(\)\) if file.exists\(\) else None'
+replace = 'backup = _backup(file, folder, folder / ".claude", clock()) if file.exists() else None'
+
+[[rule]]
+name = "an older backup is never overwritten"
+file = "src/claude_voice/permissions.py"
+find = 'with backup.open\("xb"\) as out:'
+replace = 'with backup.open("wb") as out:'
 
 [[rule]]
 name = "a retired allow rule is removed"

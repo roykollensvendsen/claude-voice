@@ -16,8 +16,10 @@ claude-voice permissions                # add it
 ```
 
 With no folders named it uses the clones the settings file knows. Those are
-the bridge's own clone, the companion app's, and each plugin's `cwd`. A clone
-that is not on this computer is skipped. Name folders to choose them instead:
+the bridge's own clone, the companion app's, the phone app's
+(`claude-voice-mobile`, next to the bridge's clone unless `[paths]
+claude_voice_mobile` names another), and each plugin's `cwd`. A clone that is
+not on this computer is skipped. Name folders to choose them instead:
 `claude-voice permissions ~/src/garage-door`. A folder that is not there is
 refused and the rest go on:
 
@@ -37,8 +39,12 @@ of git, so the rules are the owner's and not the project's.
   installer wrote them, and they are no longer safe. Each is removed only where
   the file has exactly that text; a rule that merely looks like it stays.
 - **Each rule once.** A rule the file already has is not added again.
-- **A backup, once.** Before the first change it keeps the old file as
-  `settings.local.json.before-quality-rules`, and never overwrites that copy.
+- **A backup before each change, outside the repository.** It copies the old
+  file to
+  `~/.local/state/claude-voice/settings-backups/<repository>/settings.local.json.<time>`
+  and says where. It never overwrites an older backup. A copy inside the
+  repository would make its checkout dirty, and `claude-voice plugins approve`
+  refuses a plugin whose checkout is dirty.
 - **A second run writes nothing.** When every rule is there already, the file is
   not touched.
 - **`--dry-run` writes nothing,** not even a missing file.
