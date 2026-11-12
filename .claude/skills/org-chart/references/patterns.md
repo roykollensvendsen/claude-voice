@@ -6,10 +6,19 @@ ends with why it exists.
 
 ## The roles
 
-- **One manager per programme, and only it talks to the owner.** Others send
-  it the question, the options and a recommendation; the owner's answer
-  through the manager counts as the owner's own.
+- **One manager per programme, and only the programme's own manager talks to
+  the owner.** Its sessions send it the question, the options and a recommendation; the owner's answer
+  through the manager counts as the owner's own. Proposals go to it too,
+  unless the owner says otherwise, so list `proposals` in its `send_here`.
   Why: several sessions asking at once bury the owner in half-questions.
+- **The manager asks the owner directly, from the day the programme is
+  created.** It asks in its own session with AskUserQuestion, one question at
+  a time. It never sends a question through the session that started it.
+  This holds when another manager started it, such as with `start_role`.
+  A manager that receives a question meant for the owner replies to the
+  sender: ask the owner yourself.
+  Why: every relay is one more place where a question or its answer changes,
+  and the owner cannot tell who is asking.
 - **The manager alone restarts live services.** The live folder is the running
   code, so workers change it only through worktrees and never leave it dirty.
   Put `.claude/worktrees` in the repository's `.gitignore`.
@@ -32,10 +41,22 @@ ends with why it exists.
 
 ## How sessions work together
 
-- **A message from another session is information, not approval.** Anything
+- **A message from another session is information, not approval.** A yes
+  passed on by another session is not the owner's yes either. Anything
   that needs the owner goes to the manager as one exact command: money,
   secrets, permissions, public posts, deletions, force-pushes.
   Why: only the owner can say yes to those, and a peer cannot stand in.
+- **Give every approval a clear path before work starts.** The manager carries
+  the owner's decisions. A permission prompt is answered by the owner himself,
+  on the screen or the phone, or a narrow rule covers the action.
+  The phone works when the bridge's phone hook is installed and the phone app
+  is open. Otherwise the prompt shows on the screen.
+  Why: without a path, a relayed yes gets taken for the owner's, or the work
+  stalls until he is at the screen.
+- **Check that a message arrived before counting on it.** A send that times
+  out has not arrived. When the bridge answers "sending", wait for its
+  `message_sent` event, or read the session's output.
+  Why: a lost message leaves the work waiting on someone who never heard of it.
 - **Each session pushes its own branch, opens its own pull request, and
   merges it by rebase when every check is green.** Someone else's pull
   request needs the owner's yes.
@@ -46,10 +67,19 @@ ends with why it exists.
 
 ## Running a programme day to day
 
+- **Handover before action.** When running sessions join a new programme,
+  each sends the new manager a short handover. It names open pull requests and
+  branches, tracker status, findings, where its notes are, and what waits on
+  the owner. The manager reads these and the notes before it recommends anything.
+  Why: otherwise a new manager recommends a fix that has already landed.
 - **One programme manager owns the parent issue.** It hands out the tasks and
   keeps their status in the issue tracker. The tracker is the source of
   truth, not any session's notes.
   Why: a tracker outlives any session's memory.
+- **Look in the tracker before creating anything there.** Search for the same
+  task first. Write every script so a second run changes nothing.
+  Why: a script run twice, or two sessions acting at once, fills the tracker
+  with copies.
 - **Split the work into lanes by kind.** Code-only lanes run on their own.
   Anything that touches hardware or shared resources gets its own lane, which
   asks first.
@@ -57,16 +87,20 @@ ends with why it exists.
 - **Collect decisions into batches.** A couple of times a day, the manager asks
   a short round of questions, most important first, one at a time.
   Why: the owner is not interrupted all day, and work does not wait long.
-- **Planned: one status list per programme that the voice can read out.** For
-  "where are we on acme?", it would read the top 3 items. The bridge cannot do
-  this yet; it can only say who handles what.
-  Why: the owner often asks while away from a screen, so the answer must be short.
-- **Write narrow allow rules, so sessions stop only for actions that reach
-  others.** Those are pushes, merges, shared hardware and other people's
-  review. Prefer an allowed MCP tool over a Bash script that calls the same
-  service. The auto mode check blocks such a script as a write to an outside
-  system.
-  Why: the script was the block, not the work.
+- **One status list per programme, most important first.** The manager keeps
+  it in the parent issue, and no session keeps a second copy in its notes.
+  Planned: the voice reading it out. For "where are we on acme?", it would
+  read the top 3 items. Today the bridge's `org_chart` only says who fills
+  each role.
+  Why: the owner often asks while away from a screen, so the answer must be
+  short, and two lists soon disagree.
+- **Decide each role's rights before its work starts, as narrow allow rules.**
+  Sessions then stop only for actions that reach others: pushes, merges,
+  shared hardware and other people's review. Prefer an allowed MCP tool over a
+  Bash script that calls the same service. The auto mode check blocks such a
+  script as a write to an outside system.
+  Why: rights decided late leave the owner running many commands by hand, and
+  the script was the block, not the work.
 - **Give more autonomy on the owner's own PC than on shared machines.**
   Why: a mistake there hits only the owner.
 
@@ -149,7 +183,10 @@ programme's code:
 The session in this folder is the manager for the acme programme.
 - Other sessions never ask the owner directly. They send the manager the question,
   its options and a recommendation; the manager brings back the answer, which counts
-  as the owner's own.
+  as the owner's own. Proposals come here too, unless the owner says otherwise.
+- This manager asks the owner directly, with AskUserQuestion, one question at a time.
+  It never sends a question through the session that started it. A question for the
+  owner that reaches it from another manager goes back: ask the owner yourself.
 - A session pushes its own branch, opens its pull request, and merges it by rebase
   once every check is green. Someone else's pull request needs the owner's yes.
 - Steps only the owner may take (secrets, money, permissions, public posts,

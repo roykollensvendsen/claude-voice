@@ -75,7 +75,8 @@ after a person or a machine, propose renaming it first, with `rename_session`.
 6. Offer rules for what each role may and may not do, following "Rights" in
    references/patterns.md. Write them only on a yes.
 7. Propose how the programme runs day to day, following "Running a programme
-   day to day" in references/patterns.md.
+   day to day" in references/patterns.md. When running sessions join it, ask
+   each for its handover, and read them before recommending anything.
 
 The bridge reads only files in folders it knows: its clone, its plugins'
 folders, and folders directly under the projects folder. When the main
