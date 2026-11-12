@@ -586,6 +586,12 @@ find = 'return max\(LIST_SECONDS, self\.spec\.timeout\)'
 replace = 'return LIST_SECONDS'
 
 [[rule]]
+name = "a plugin that stays down is logged once not on every try"
+file = "src/claude_voice/plugins.py"
+find = 'if not self\._down:'
+replace = 'if True:'
+
+[[rule]]
 name = "the log says why a plugin could not be listed"
 file = "src/claude_voice/plugins.py"
 find = 'return f"\{said\} \(\{type\(exc\)\.__name__\}\)" if said else type\(exc\)\.__name__'
