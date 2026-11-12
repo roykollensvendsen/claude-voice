@@ -10,6 +10,7 @@ import pytest
 from fakes import FakeClaude
 from mcp.client import Client
 from mcp.server.mcpserver import MCPServer
+from mcp.types import ToolAnnotations
 
 from claude_voice import cli, config, plugins
 from claude_voice.server import build_server
@@ -420,3 +421,24 @@ async def test_a_plugin_that_stays_down_is_logged_once_not_on_every_try(caplog):
     down = [line for line in said if "garage" in line and "All connection attempts failed" in line]
     assert len(down) == 1 and "TaskGroup" not in down[0], said
     assert [line for line in said if line.startswith("plugin garage started")] == ["plugin garage started again"]
+
+
+async def test_a_plugin_tool_that_only_reads_is_shown_as_read_only(tmp_path):
+    # The plugin standard asks each plugin to mark its read-only tools; the bridge dropped the mark.
+    fake = MCPServer("garage")
+
+    @fake.tool(annotations=ToolAnnotations(read_only_hint=True))
+    async def garage_status() -> dict:
+        """Where the door is."""
+        return {"door": "closed"}
+
+    @fake.tool(annotations=ToolAnnotations(read_only_hint=False))
+    async def garage_request(action: str) -> dict:
+        """Ask to open or close the door."""
+        return {"token": "t1"}
+
+    server = bridge(tmp_path, [GARAGE], factory=lambda params: Client(fake))
+    async with Client(server) as c:
+        tools = {t.name: t for t in (await c.list_tools()).tools}
+    assert tools["garage_status"].annotations.read_only_hint is True
+    assert tools["garage_request"].annotations.read_only_hint is False

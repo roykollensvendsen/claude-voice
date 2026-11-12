@@ -862,3 +862,9 @@ name = "a permission prompt is not hidden by an old question"
 file = "src/claude_voice/server.py"
 find = 'if waiting_for in transcripts.PERMISSION_WAITS:'
 replace = 'if False:'
+
+[[rule]]
+name = "a plugin tool that only reads is shown as read-only"
+file = "src/claude_voice/plugins.py"
+find = 'marks = ToolAnnotations\(read_only_hint=known\["read_only"\]\) if known\.get\("read_only"\) is not None else None'
+replace = 'marks = None'
