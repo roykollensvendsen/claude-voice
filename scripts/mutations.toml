@@ -562,10 +562,22 @@ find = 'with backup.open\("xb"\) as out:'
 replace = 'with backup.open("wb") as out:'
 
 [[rule]]
-name = "a retired allow rule is removed"
+name = "a retired allow or ask rule is removed"
 file = "src/claude_voice/permissions.py"
-find = 'kept = \[rule for rule in kept if rule not in rules\.retired\]'
+find = 'kept = \[rule for rule in kept if rule not in rules\.retired_from\(key\)\]'
 replace = 'kept = kept'
+
+[[rule]]
+name = "any other push to main or master asks first"
+file = "src/claude_voice/permissions.py"
+find = 'ask \+= _for_each_branch\(protected\["branches"\], protected\.get\("other pushes", \[\]\)\)'
+replace = 'ask += []'
+
+[[rule]]
+name = "a tool that moves something in the house asks first, by every name it is seen under"
+file = "src/claude_voice/permissions.py"
+find = 'ask \+= \[f"mcp__\{server\}__\{tool\}" for server in devices\["servers"\] for tool in devices\["tools"\]\]'
+replace = 'ask += []'
 
 [[rule]]
 name = "a plugin that could not be listed is reported as not started never as changed tools"
@@ -624,7 +636,7 @@ replace = 'if False:'
 [[rule]]
 name = "a forced push can never reach main or master"
 file = "src/claude_voice/permissions.py"
-find = 'deny \+= \[f"Bash\(\{push\}\)" for push in pushes\]'
+find = 'deny \+= _for_each_branch\(protected\["branches"\], protected\["forced pushes"\]\)'
 replace = 'deny += []'
 
 [[rule]]
