@@ -1235,6 +1235,7 @@ def build_server(
         {"claude-voice": repos.repos.claude_voice, "claude-voice-ui": repos.repos.claude_voice_ui}
         | {name: repo for name, repo, _ in plugin_repos},
         run=software._gh,
+        login_expiry=lambda: work.read_login_expiry(),  # looked up late, so the suite can stand in for it
     )
 
     def software_listed() -> list[tuple[str, str, Path | None, str]]:

@@ -63,3 +63,12 @@ def no_owner_env_file(tmp_path_factory, monkeypatch):
     none = tmp_path_factory.mktemp("env") / "none"
     monkeypatch.setattr(envfile, "ENV_FILE", none)
     monkeypatch.setenv("CLAUDE_VOICE_ENV_FILE", str(none))  # for the commands the docs run
+
+
+@pytest.fixture(autouse=True)
+def no_real_claude_sign_in(monkeypatch):
+    """The work page asks Claude Code when its sign-in runs out. The suite answers that it
+    cannot say, so no test runs the owner's Claude Code or depends on his sign-in date."""
+    from claude_voice import work
+
+    monkeypatch.setattr(work, "read_login_expiry", lambda: None)

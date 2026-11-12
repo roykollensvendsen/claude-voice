@@ -976,3 +976,9 @@ name = "a write from one thread never lands inside another"
 file = "src/claude_voice/store.py"
 find = 'self\.db = sqlite3\.connect\(path, check_same_thread=False, factory=OneWriterAtATime\)'
 replace = 'self.db = sqlite3.connect(path, check_same_thread=False)'
+
+[[rule]]
+name = "a sign-in that runs out within three days waits on the owner"
+file = "src/claude_voice/work.py"
+find = 'if expires is None or expires - now > LOGIN_WARNING:'
+replace = 'if True:'
