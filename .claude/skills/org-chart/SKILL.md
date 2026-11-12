@@ -61,8 +61,9 @@ after a person or a machine, propose renaming it first, with `rename_session`.
 
    An error (exit 1) must be fixed. A warning, such as a role whose session is
    not running, is about how things stand now; say it to the owner.
-2. Write it to `<main repo>/.claude/org.toml`.
-3. Keep it out of git. This adds it to that repository's `.git/info/exclude`:
+2. Write it to `<main repo>/.claude/org.toml`. A main folder that is not a
+   git repository is best: nothing in it can be committed by mistake.
+3. In a git repository, keep it out of git. This adds it to `.git/info/exclude`:
 
    <!-- not run: changes the owner's own repository -->
    ```
@@ -71,10 +72,41 @@ after a person or a machine, propose renaming it first, with `rename_session`.
 4. Run `check <main repo>` again and report its problems list as it is.
 5. Offer the local manager rule in references/patterns.md as the main
    folder's `CLAUDE.local.md`, if it has none. Write it only on a yes.
+6. Offer rules for what each role may and may not do, following "Rights" in
+   references/patterns.md. Write them only on a yes.
+7. Propose how the programme runs day to day, following "Running a programme
+   day to day" in references/patterns.md.
 
 The bridge reads only files in folders it knows: its clone, its plugins'
 folders, and folders directly under the projects folder. When the main
 repository is elsewhere, say so; the owner may move it or add it as a plugin.
+
+## Rights
+
+A role's `limits` line is advice; the bridge does not enforce it. Only rules
+hold. Rights per org role, applied when the bridge starts a session, are
+planned and not built. What exists today:
+
+- `claude-voice permissions` writes rules to a repository's
+  `.claude/settings.local.json`. They hold for every session in that folder.
+- A start role in `roles.toml` with `guard = true` gets a push guard. It holds
+  only when the bridge starts that session.
+
+A message never changes a session's rights. Where each rule goes is in
+references/patterns.md.
+
+## When a session is blocked
+
+Read the refusal text before proposing anything:
+
+- **"denied by the Claude Code auto mode classifier"**: Claude Code's own
+  safety check. Do not propose an allow rule. Give the owner the exact command.
+- **"Permission to use … has been denied"**: a deny or ask rule in a settings
+  file. Either the owner changes the rule, or the owner runs the command.
+- **A hook's reason**, often naming the hook or the guard: either the hook is
+  changed, or the owner runs the command.
+
+Never work round a block by another route.
 
 ## Updating a programme
 
