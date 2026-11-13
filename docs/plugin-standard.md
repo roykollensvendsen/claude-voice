@@ -43,7 +43,8 @@ These hold for every plugin, wherever it lives, a fork included.
    request alone. Nothing is retried on the plugin's own initiative. The token
    is spent only once the action has been sent, so a confirm that never arrived
    can be tried again with the same token while it is fresh. A plugin may be
-   stricter and spend the token on arrival, if a decision record says so. A spoken phrase the
+   stricter and spend the token on arrival, so a wrong answer cancels the
+   question, if a rule and its test in that plugin say so. A spoken phrase the
    owner sets in their own file may stand in for the yes, if a decision record
    in that plugin says so.
 8. **Hands off.** A device the owner has marked to be left alone is left alone
@@ -106,7 +107,7 @@ owner's fork, with checks of its own there.
 | A simulator on the clock, marked in every answer | dreame-mcp, `simulator.py`, `test_a_simulated_answer_says_so` |
 | Rules that must fail when switched off, in Python and C++ | garage-door, `scripts/mutate.py` and `scripts/mutations.toml` |
 | Documented commands that run in a test | garage-door, `tests/test_documented_commands.py` |
-| A one-time token that a wrong answer cancels | garage-door, ADR-GD-008 and its tests |
+| A one-time token that a wrong answer cancels | garage-door, `GarageService.confirm`, `test_a_token_works_once` |
 
 When a plugin does something better than this page asks, it goes in the table,
 and the others take it up.
