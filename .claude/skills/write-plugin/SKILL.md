@@ -76,6 +76,9 @@ The owner approved this list. Each item is a lesson a plugin had to learn late.
    says why. The limit is one constant that both the client and the fake use, so
    they cannot drift. A limit that isn't documented is measured once against the
    real device, with the date written next to it.
+   To show that the old code fails against the new fake, run the old copy in
+   isolation, for example from a checkout of main with `PYTHONPATH=src`. A shared
+   environment can load the branch's code and pass wrongly.
 
    A fake knows only the limits someone wrote down. The backstop is the read-back
    rule (process rule 7), plus one live try on the real device before a tool
