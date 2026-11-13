@@ -103,6 +103,33 @@ ends with why it exists.
   the script was the block, not the work.
 - **Give more autonomy on the owner's own PC than on shared machines.**
   Why: a mistake there hits only the owner.
+- **A stuck role may get a temporary stand-in, without asking the owner.**
+  A role is stuck when it has waited about 15 minutes, such as on a permission
+  prompt. The manager then starts a stand-in with `start_role`. The stand-in
+  takes only work that does not depend on the stuck question. It never uses
+  the stuck role's branch or worktree, so it makes its own. A programme runs
+  at most one or two stand-ins at once. The stuck question still goes to the
+  owner, with reminders until he answers. Mark the stand-in as temporary,
+  such as `acme-review-temp`, with `rename_session` if the role's own name
+  differs. When its task is done, or the stuck role is free again, it writes a
+  short handover. The manager then retires it.
+  Why: one prompt should not stop a whole programme, but every stand-in spends
+  the usage all programmes share.
+- **Move a session started in a terminal to a role the bridge starts**, in
+  four steps:
+  1. Wait for a natural stopping point, such as a finished commit or green checks.
+  2. The old session writes a handover to a local file outside git, such as
+     `~/acme/.claude/handover-review.md`. It names branches, uncommitted work,
+     running checks and what waits on the owner.
+  3. Start the role with `start_role` in the same folder, under the same rules.
+     Pass the handover as its `task`. The role's prompt places it where its
+     `{task}` stands, so check the prompt has one.
+  4. Retire the old session only after the owner confirms the new one works.
+
+  `attach_conversation` is no substitute. It carries the old conversation, but
+  the terminal copy carries on beside it, and neither gets the role's rights.
+  Why: only a session the bridge started sends its prompts to the voice and the
+  phone, so the owner can answer them away from the screen.
 
 ## Night shift
 
