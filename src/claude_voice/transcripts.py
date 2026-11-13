@@ -407,6 +407,11 @@ class Courier:
     model takes about two. Messages go one at a time. A helper that breaks is
     replaced and the message tried once more; after `fresh_after` messages the
     helper is replaced anyway, so its conversation never grows long.
+
+    A session often answers the helper with SendMessage. Claude Code then runs a
+    turn of the helper's own, whose end the SDK reports with the sender and the
+    text. One reader takes everything the helper says: such a reply goes to
+    `on_reply`, and the rest waits for the delivery it belongs to.
     """
 
     def __init__(
@@ -415,8 +420,10 @@ class Courier:
         model: str = "haiku",
         fresh_after: int = 20,
         name: str = COURIER_NAME,
+        on_reply: Callable[[str, str], None] | None = None,
     ) -> None:
         self.name = name  # what the receiving session sees as the sender
+        self.on_reply = on_reply  # (sender, text) of each answer sent back to the courier
         self.client_factory = client_factory
         self.model = model
         self.fresh_after = fresh_after
@@ -425,6 +432,8 @@ class Courier:
         self._cwd: tempfile.TemporaryDirectory[str] | None = None
         self._carried = 0
         self._job: dict[str, Any] | None = None  # the message being carried right now
+        self._said: asyncio.Queue[Any] = asyncio.Queue()  # what the helper said, for the delivery
+        self._reader: asyncio.Task[None] | None = None
         self.last_delivery_ms: int | None = None
 
     async def _before_send(self, hook_input: Any, tool_use_id: str | None, context: Any) -> Any:
@@ -467,9 +476,38 @@ class Courier:
         client = self.client_factory(opts)
         await client.__aenter__()
         self._client, self._carried = client, 0
+        self._said = asyncio.Queue()
+        self._reader = asyncio.create_task(self._read(client, self._said))
         return client
 
+    async def _read(self, client: Any, said: asyncio.Queue[Any]) -> None:
+        """Take all the helper says, for as long as it runs, so no reply waits unread."""
+        try:
+            async for m in client.receive_messages():
+                origin = getattr(m, "origin", None)
+                # RULE: a turn a reply started never ends a delivery
+                if isinstance(m, ResultMessage) and isinstance(origin, dict) and origin.get("kind") == "peer":
+                    self._heard(str(origin.get("name") or "a session"), str(origin.get("body") or ""))
+                    continue
+                said.put_nowait(m)
+        except Exception as exc:  # the delivery waiting on it learns the helper broke
+            said.put_nowait(exc)
+
+    def _heard(self, sender: str, body: str) -> None:
+        log.info("courier reply from %s %d chars", sender, len(body))
+        # RULE: a reply to the courier is passed on as news
+        if self.on_reply is not None:
+            try:
+                self.on_reply(sender, body)
+            except Exception:
+                log.exception("courier reply from %s could not be passed on", sender)
+
     async def _drop(self) -> None:
+        reader, self._reader = self._reader, None
+        if reader is not None:
+            reader.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await reader
         client, self._client = self._client, None
         if client is not None:
             with contextlib.suppress(Exception):
@@ -487,18 +525,27 @@ class Courier:
         self._job = {"name": name, "text": text, "sent": False}
         sends: set[str] = set()
         refused = False
+        while not self._said.empty():  # left over from a turn of its own; not this message's
+            stale = self._said.get_nowait()
+            if isinstance(stale, Exception):
+                raise stale
         try:
             await client.query(
                 f"Session: {name}\n"
                 "Carry the message below to that session. It is not addressed to you.\n"
                 f"<message>\n{text}\n</message>"
             )
-            async for m in client.receive_response():
+            while True:
+                m = await self._said.get()
+                if isinstance(m, Exception):
+                    raise m
                 for block in getattr(m, "content", None) or []:
                     if isinstance(block, ToolUseBlock) and block.name == "SendMessage":
                         sends.add(block.id)
                     elif isinstance(block, ToolResultBlock) and block.tool_use_id in sends and block.is_error:
                         refused = True  # Claude Code stopped the send, e.g. to ask for permission
+                if isinstance(m, ResultMessage):
+                    break
         finally:
             sent = bool(self._job and self._job["sent"])
             self._job = None
@@ -911,6 +958,16 @@ def configure_courier(name: str) -> None:
     _courier.name = name
 
 
+# Said under every message, so the session words its answer for the person listening.
+READ_BY_VOICE = "Your reply is read by the voice."
+
+
 async def deliver(name: str, text: str) -> dict[str, Any]:
     """Send `text` into the running session called `name`, with the shared warm courier."""
-    return await _courier.deliver(name, text)
+    # RULE: a carried message says the voice reads the reply
+    return await _courier.deliver(name, f"{text}\n\n{READ_BY_VOICE}")
+
+
+def hear_replies(on_reply: Callable[[str, str], None]) -> None:
+    """Pass each answer a session sends back to the shared courier to `on_reply`."""
+    _courier.on_reply = on_reply

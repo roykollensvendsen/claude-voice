@@ -36,6 +36,7 @@ class FakeCourierClient:
         self.prompts = []
         self.closed = False
         self.executed = []
+        self.stream = asyncio.Queue()  # what Claude Code writes out, in order
 
     async def __aenter__(self):
         return self
@@ -63,32 +64,44 @@ class FakeCourierClient:
 
     async def query(self, prompt):
         self.prompts.append(prompt)
+        self.stream.put_nowait(self.replies.pop(0))
+
+    def arrives(self, *messages):
+        """A turn the session runs on its own, such as one a reply from a peer started."""
+        self.stream.put_nowait(list(messages))
+
+    async def receive_messages(self):
+        while True:
+            reply = await self.stream.get()
+            if isinstance(reply, Exception):
+                raise reply
+            for message in reply:
+                await asyncio.sleep(0)
+                # Like Claude Code: every tool call goes through the permission callback,
+                # and what actually runs is the input the callback hands back.
+                refused = None
+                for block in getattr(message, "content", None) or []:
+                    if isinstance(block, ToolUseBlock) and block.input.get("_refused"):
+                        refused = block  # stopped by Claude Code before any hook runs
+                    elif isinstance(block, ToolUseBlock):
+                        await self._run(block)
+                yield message
+                if refused is not None:
+                    yield UserMessage(
+                        content=[
+                            ToolResultBlock(
+                                tool_use_id=refused.id,
+                                content="The user doesn't want to take this action right now.",
+                                is_error=True,
+                            )
+                        ]
+                    )
 
     async def receive_response(self):
-        reply = self.replies.pop(0)
-        if isinstance(reply, Exception):
-            raise reply
-        for message in reply:
-            await asyncio.sleep(0)
-            # Like Claude Code: every tool call goes through the permission callback,
-            # and what actually runs is the input the callback hands back.
-            refused = None
-            for block in getattr(message, "content", []):
-                if isinstance(block, ToolUseBlock) and block.input.get("_refused"):
-                    refused = block  # stopped by Claude Code before any hook runs
-                elif isinstance(block, ToolUseBlock):
-                    await self._run(block)
+        async for message in self.receive_messages():
             yield message
-            if refused is not None:
-                yield UserMessage(
-                    content=[
-                        ToolResultBlock(
-                            tool_use_id=refused.id,
-                            content="The user doesn't want to take this action right now.",
-                            is_error=True,
-                        )
-                    ]
-                )
+            if isinstance(message, ResultMessage):
+                return
 
 
 class Factory:
@@ -309,3 +322,62 @@ async def test_the_couriers_own_words_never_reach_the_caller():
     failed = await courier.deliver("billing", "hello")
     assert failed["delivered"] is False and "Hermes" not in failed["detail"] and "Sure" not in failed["detail"]
     await courier.close()
+
+
+def replied(sender, body):
+    """The end of a turn a reply from another session started, as the SDK reports it."""
+    return ResultMessage(
+        subtype="success",
+        duration_ms=1,
+        duration_api_ms=1,
+        is_error=False,
+        num_turns=1,
+        session_id="c",
+        result="Noted.",
+        origin={"kind": "peer", "name": sender, "body": body, "from": "uds:/run/user/1000/cc-socks/7.sock"},
+    )
+
+
+async def settle():
+    for _ in range(20):
+        await asyncio.sleep(0)
+
+
+async def test_a_reply_to_the_courier_is_passed_on_as_news(caplog):
+    import logging
+
+    heard = []
+    factory = Factory([ok("hi")])
+    courier = Courier(client_factory=factory, on_reply=lambda sender, body: heard.append((sender, body)))
+    await courier.deliver("billing", "hi")
+    with caplog.at_level(logging.INFO, logger="claude_voice"):
+        factory.clients[0].arrives(replied("billing", "pong, and the build is green"))
+        await settle()
+    assert heard == [("billing", "pong, and the build is green")]
+    lines = [r.getMessage() for r in caplog.records if r.name == "claude_voice"]
+    assert "courier reply from billing 28 chars" in lines
+    assert not any("pong" in line for line in lines)  # who and how long, never what
+    await courier.close()
+
+
+async def test_a_turn_a_reply_started_never_ends_a_delivery():
+    factory = Factory([ok("m0"), ok("m1")])
+    courier = Courier(client_factory=factory, on_reply=lambda sender, body: None)
+    await courier.deliver("billing", "m0")
+    factory.clients[0].arrives(AssistantMessage(content=[], model="fake"), replied("billing", "pong"))
+    out = await courier.deliver("billing", "m1")
+    assert out["delivered"] is True
+    assert len(factory.clients) == 1  # no fresh courier, so no second copy and no lost seconds
+    await courier.close()
+
+
+async def test_a_carried_message_says_the_voice_reads_the_reply(monkeypatch):
+    from claude_voice import transcripts
+
+    factory = Factory([[sent_text("billing", "x"), done("DELIVERED")]])
+    monkeypatch.setattr(transcripts, "_courier", Courier(client_factory=factory))
+    await transcripts.deliver("billing", "Is the build green?")
+    message = factory.clients[0].executed[0][1]["message"]
+    assert message.startswith("Is the build green?")
+    assert message.endswith("Your reply is read by the voice.")
+    await transcripts._courier.close()
