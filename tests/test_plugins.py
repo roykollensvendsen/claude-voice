@@ -159,6 +159,24 @@ def test_the_owner_sees_which_tools_only_read_before_approving_a_plugin(tmp_path
     assert not any("garage_request" in line and "only reads" in line for line in before), seen[0]
 
 
+def test_the_owner_is_told_the_plugin_starts_before_it_does(tmp_path, monkeypatch, capsys):
+    # Its tools are read before the name is typed, so the plugin's own command runs first.
+    f = tmp_path / "c.toml"
+    f.write_text('[plugins.garage]\ncommand = "garage-door-mcp"\ncwd = "/g"\ntools = ["garage_status"]\n')
+    monkeypatch.setattr(plugins, "APPROVALS", tmp_path / "approved.json")
+    seen = []
+
+    def start(params):
+        seen.append(capsys.readouterr().out)  # what was on the screen when the plugin started
+        return Client(stand_in()[0])
+
+    monkeypatch.setattr(plugins, "CLIENT", start)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "no")
+    env = {"HOME": str(tmp_path), "CLAUDE_VOICE_CONFIG": str(f)}
+    assert cli.main(["plugins", "approve", "garage"], env=env) == 1
+    assert seen and "Starting it to read its tools" in seen[0], seen
+
+
 def test_approving_with_nothing_typed_approves_nothing(tmp_path, monkeypatch, capsys):
     f = tmp_path / "c.toml"
     f.write_text('[plugins.garage]\ncommand = "garage-door-mcp"\ncwd = "/g"\ntools = ["garage_status"]\n')
