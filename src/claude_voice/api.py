@@ -641,7 +641,11 @@ class EventApi:
         self.book.add(prompt)
         HUB.publish("prompt", self._public(prompt))
         # Wait for the phone only while someone has the app open; else the box shows at once.
-        return JSONResponse({"id": prompt["id"], "wait": HUB.listening()})
+        wait = HUB.listening()
+        # RULE: an opened prompt is logged with its kind and tool, never its input
+        what = f"{kind} {prompt.get('tool', 'question')}"
+        log.info("prompt %s opened for %s: %s, wait=%s", prompt["id"], prompt["session"], what, wait)
+        return JSONResponse({"id": prompt["id"], "wait": wait})
 
     def _fits(self, prompt: dict[str, Any], body: dict[str, Any]) -> str | None:
         """Why an answer does not fit its prompt, or None."""

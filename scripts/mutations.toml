@@ -862,3 +862,9 @@ name = "a permission prompt is not hidden by an old question"
 file = "src/claude_voice/server.py"
 find = 'if waiting_for in transcripts.PERMISSION_WAITS:'
 replace = 'if False:'
+
+[[rule]]
+name = "an opened prompt is logged with its kind and tool, never its input"
+file = "src/claude_voice/api.py"
+find = 'log.info\("prompt %s opened for %s: %s, wait=%s", .*\)'
+replace = 'pass'
