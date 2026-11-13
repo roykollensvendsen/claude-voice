@@ -288,9 +288,40 @@
       "*.config/claude-voice/machines/*",
       "*.config/dreame*",
       "*.config/tv-mcp*",
+      "*.config/heatpump-mcp*",
+      "*.config/xbox-mcp*",
+      "*.config/ams-mcp*",
+      "*.config/mister-mcp*",
+      "*.config/garage-door*",
+      "*.config/personal-terms*",
       "*secrets.yaml*",
       "*.config/gh/hosts.yml*",
       "*.claude/.credentials.json*"
+    ],
+    "read by the Read tool, in the home folder": [
+      ".config/claude-voice/env*",
+      ".config/claude-voice/machines/**",
+      ".config/dreame*",
+      ".config/dreame*/**",
+      ".config/tv-mcp*",
+      ".config/tv-mcp*/**",
+      ".config/heatpump-mcp*",
+      ".config/heatpump-mcp*/**",
+      ".config/xbox-mcp*",
+      ".config/xbox-mcp*/**",
+      ".config/ams-mcp*",
+      ".config/ams-mcp*/**",
+      ".config/mister-mcp*",
+      ".config/mister-mcp*/**",
+      ".config/garage-door*",
+      ".config/garage-door*/**",
+      ".config/personal-terms*",
+      ".config/personal-terms*/**",
+      ".config/gh/hosts.yml*",
+      ".claude/.credentials.json*"
+    ],
+    "read by the Read tool, anywhere": [
+      "**/*secrets.yaml*"
     ]
   }
 }

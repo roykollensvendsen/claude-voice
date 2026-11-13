@@ -161,7 +161,13 @@ but names `main` or `master` is asked, from the forms under `other pushes`.
   file by its path. So are the commands that copy a file, `cp` and `rsync`,
   and those that print its bytes in another form, `base64`, `xxd` and `od`.
   The table lists these readers and the files once, and the bridge writes every
-  pair as a rule. The files are:
+  pair as a rule. The Read tool opens a file with no shell command at all, so
+  each file is also refused to it by its own `Read(...)` rule, folder and all.
+  A Read rule without `~/` or `//` in front counts from the session's own
+  folder only, so `secrets.yaml` is refused as `//**/…secrets.yaml…`, from the
+  root: a session in this repository must not read the one in the garage
+  door's. A test gives one real path for each file and checks that both kinds of
+  rule refuse it, so neither list can lose a file the other has. The files are:
 
 | File | Whose secret |
 | --- | --- |
@@ -169,7 +175,13 @@ but names `main` or `master` is asked, from the forms under `other pushes`.
 | `~/.config/claude-voice/machines/` | the hub's keys for the other machines |
 | `~/.config/dreame…` | the robot vacuum plugin's cloud sign-in |
 | `~/.config/tv-mcp…` | the TV plugin's keys |
-| `secrets.yaml` | the garage door's firmware secrets |
+| `~/.config/heatpump-mcp…` | the heat pump plugin's own files |
+| `~/.config/xbox-mcp…` | the Xbox plugin's own files |
+| `~/.config/ams-mcp…` | the power meter plugin's own files |
+| `~/.config/mister-mcp…` | the MiSTer plugin's own files |
+| `~/.config/garage-door…` | the garage door plugin's own files |
+| `~/.config/personal-terms…` | the owner's personal terms |
+| `secrets.yaml`, in any folder | the garage door's firmware secrets |
 | `~/.config/gh/hosts.yml` | the GitHub command line's sign-in |
 | `~/.claude/.credentials.json` | Claude Code's own sign-in |
 
