@@ -17,7 +17,10 @@ from . import prompts
 
 log = logging.getLogger("claude_voice.answers")
 
-ON_THE_SCREEN = "That question is not waiting for the voice any more. It is on the screen, if it is still open."
+ON_THE_SCREEN = (
+    "That question is not waiting for the voice any more. If it is still open, answer it on the computer's screen."
+)
+NOTHING_PICKED = "nothing was picked: give an option's number or label, or the owner's own words"
 
 
 def fits(prompt: dict[str, Any], body: dict[str, Any]) -> str | None:
@@ -73,7 +76,7 @@ def waiting(book: prompts.Book, live: list[dict[str, Any]], session: str | None 
             "asked_at": p["asked_at"],
         }
         for p in book.items.values()
-        if p["kind"] == "question" and p["answer"] is None and session in (None, p["session"])
+        if p["kind"] == "question" and p["answer"] is None and session in (None, p["session"]) and book.hook_waits(p)
     ]
 
 
@@ -93,7 +96,12 @@ def body_for(question: dict[str, Any], choice: Any, own_words: str | None) -> di
         return {"error": "give either a choice from the options or the owner's own words, not both"}
     if own_words is not None:
         return {"answer": {"text": own_words}}
-    picked = [_label(question, c) for c in (choice if isinstance(choice, list) else [choice])]
+    said = [c for c in (choice if isinstance(choice, list) else [choice]) if str(c).strip()]
+    # RULE: an empty pick is refused
+    if not said:
+        return {"error": NOTHING_PICKED}
+    # RULE: a choice named twice counts once
+    picked = list(dict.fromkeys(_label(question, c) for c in said))
     return {"answer": picked if len(picked) > 1 or question["multi"] else picked[0]}
 
 
@@ -107,6 +115,8 @@ def answer(
         return 410, {"answered": False, "status": 410, "say": ON_THE_SCREEN}
     if prompt["kind"] != "question":
         return 409, {"answered": False, "error": "this is a tool call to approve; use approve or deny"}
+    if not book.hook_waits(prompt):
+        return 410, {"answered": False, "status": 410, "say": ON_THE_SCREEN}
     body = body_for(prompt["question"], choice, own_words)
     # RULE: a spoken choice that is not an option is refused with the options
     reason = body.get("error") or fits(prompt, body)

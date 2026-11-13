@@ -121,10 +121,19 @@ async def test_a_question_no_hook_waits_on_is_refused_as_on_the_screen(server):
     async with http(server) as h, Client(server) as c:
         gone = await call(c, "answer_question", question_id="0123456789abcdef", choice="1")
         made = (await h.post("/api/v1/prompts", json=question(), headers=BEARER)).json()
-        first = await call(c, "answer_question", question_id=made["id"], choice="1")
-        second = await call(c, "answer_question", question_id=made["id"], choice="2")  # before the hook collected
+        unwaited = await call(c, "answer_question", question_id=made["id"], choice="1")
+        pid, wait = await opened_and_waiting(h, question())
+        first = await call(c, "answer_question", question_id=pid, choice="1")
+        second = await call(c, "answer_question", question_id=pid, choice="2")  # before the hook collected
+        await wait
     assert gone["answered"] is False and gone["status"] == 410 and "screen" in gone["say"]
+    assert unwaited["status"] == 410 and "screen" in unwaited["say"]
     assert first["answered"] is True and second["status"] == 410
+    book, prompt, _ = asked()  # answered, and the hook has not yet collected the answer
+    with book.waiting(prompt):
+        answers.answer(book, "q1", "1", None)
+        again = answers.answer(book, "q1", "2", None)
+    assert again[0] == 410 and prompt["answer"] == {"answer": "Red"}
 
 
 async def test_an_answered_question_is_not_listed_again(server):
@@ -166,3 +175,65 @@ def test_an_approval_is_not_answered_as_a_question():
     book.add({"id": "p1", "session": "s", "kind": "approval", "answer": None, "done": asyncio.Event()})
     status, said = answers.answer(book, "p1", "1", None)
     assert status == 409 and said["answered"] is False
+
+
+def asked(multi=False):
+    """A question as the book holds it, with a clock the test turns."""
+    now = [100.0]
+    book = prompts.Book(clock=lambda: now[0])
+    options = [{"label": "Red", "description": ""}, {"label": "Blue", "description": ""}]
+    prompt = {
+        "id": "q1",
+        "session": "s",
+        "kind": "question",
+        "answer": None,
+        "done": asyncio.Event(),
+        "asked_at": "2026-11-13T12:00:00+00:00",
+        "question": {"text": "Which colour?", "header": "Colour", "options": options, "multi": multi},
+    }
+    book.add(prompt)
+    return book, prompt, now
+
+
+def test_a_prompt_counts_as_waited_on_only_while_a_hook_waits_or_did_a_moment_ago():
+    book, prompt, now = asked()
+    never = book.hook_waits(prompt), answers.waiting(book, [])
+    with book.waiting(prompt):
+        during = book.hook_waits(prompt), len(answers.waiting(book, []))
+    now[0] += prompts.RECENT - 1
+    between = book.hook_waits(prompt)  # the hook's next wait is on its way
+    now[0] += 2
+    after = book.hook_waits(prompt), answers.waiting(book, [])
+    status, said = answers.answer(book, "q1", "1", None)
+    assert never == (False, []) and during == (True, 1) and between is True and after == (False, [])
+    assert status == 410 and said["answered"] is False and "screen" in said["say"]
+    assert prompt["answer"] is None
+
+
+def test_an_empty_pick_is_refused():
+    for multi in (False, True):
+        book, prompt, _ = asked(multi)
+        with book.waiting(prompt):
+            status, said = answers.answer(book, "q1", [], None)
+        assert status == 409 and said["answered"] is False
+        assert "number" in said["error"] and [o["label"] for o in said["options"]] == ["Red", "Blue"]
+        assert prompt["answer"] is None
+
+
+def test_a_choice_named_twice_counts_once():
+    book, prompt, _ = asked(multi=True)
+    with book.waiting(prompt):
+        status, said = answers.answer(book, "q1", ["1", "red", "Blue", "2"], None)
+    assert status == 200 and said["answer"] == ["Red", "Blue"]
+
+
+def test_a_wait_goes_on_and_is_counted_off_when_its_news_fails():
+    def broken(prompt):
+        raise RuntimeError("the news database is locked")
+
+    book = prompts.Book(waited_on=broken)
+    prompt = {"id": "q1", "session": "s", "kind": "question", "answer": None}
+    book.add(prompt)
+    with book.waiting(prompt):
+        inside = prompt["hook"]["waiting"]
+    assert inside == 1 and prompt["hook"]["waiting"] == 0

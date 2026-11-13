@@ -554,8 +554,15 @@ def build_server(
     def question_is_news(prompt: dict[str, Any]) -> None:
         """Tell whats_new about a question a hook now waits on, so the voice can read it out."""
         item = answers.news(prompt, events.read_live(live_dir))
-        if item:
-            watcher.record(*item)
+        if not item:
+            return
+
+        def record() -> None:
+            with looking:  # a look writes the same database; wait for it rather than share it
+                watcher.record(*item)
+
+        # On a thread of its own, so the hook's wait never stands behind a look of many seconds.
+        threading.Thread(target=record, name="question-news", daemon=True).start()
 
     # the phone hook's open questions and approvals
     prompt_book = prompts.Book(api.HUB.publish, waited_on=question_is_news)
@@ -1982,7 +1989,7 @@ def build_server(
     ) -> dict[str, Any]:
         """Answer a session's waiting question with the owner's clear choice.
         Give choice (an option's number or label, or a list when it takes several) or own_words
-        (his own answer when no option fits), only once he has clearly picked; never guess.
+        (their own answer when no option fits), only once they have clearly picked; never guess.
         When answered is false, read 'say' aloud (it is on the screen), or ask again from 'options'."""
         return answers.answer(prompt_book, question_id, choice, own_words)[1]
 
