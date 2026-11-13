@@ -12,6 +12,9 @@ When it is set up, the voice gets that machine's tools with its name in front:
 Its sessions are also in the hub's own lists, `list_active_sessions` and
 `fleet_recap`, named with the machine in front: `lukas-laptop/hub-test`. The
 session tools take that name, so "message lukas-laptop/hub-test" reaches it. The
+hub's lists give it a short number from the hub's own pool, and the session tools
+take that number too. The machine's own tools leave its numbers out, because they
+come from a pool of its own. The
 same lists say whether each machine is online, slow, offline or not approved. A
 machine that does not answer within two seconds is reported, not waited for.
 
