@@ -410,6 +410,7 @@ the session through that wait and no other way. It closes, with `how` saying why
 | `how` | What happened |
 | --- | --- |
 | `phone` | it was answered here |
+| `voice` | it was answered by voice, through the `answer_question` tool |
 | `timeout` | no answer came in time, and the box showed in the terminal |
 | `screen` | nobody had the app open, so the hook stepped aside at once and the box showed in the terminal |
 | `ended` | the hook stopped waiting and the session is no longer running |

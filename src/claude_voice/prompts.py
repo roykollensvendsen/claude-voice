@@ -11,12 +11,16 @@ simply went away.
 from __future__ import annotations
 
 import contextlib
+import logging
 import time
 from collections.abc import Callable, Iterator
 from datetime import datetime
 from typing import Any
 
 GRACE = 30.0  # seconds a prompt may go with no hook waiting on it before it closes
+RECENT = 5.0  # seconds after a hook's wait ends that it still counts: its next wait is on its way
+
+log = logging.getLogger("claude_voice.prompts")
 
 
 class Book:
@@ -31,7 +35,8 @@ class Book:
         self.waited_on = waited_on  # told once per prompt, when a hook first waits on it
 
     def add(self, prompt: dict[str, Any]) -> None:
-        prompt["hook"] = {"waiting": 0, "last": self.clock(), "told": False}
+        # "ended" is when a hook's wait last ended: None until a hook has waited at all.
+        prompt["hook"] = {"waiting": 0, "last": self.clock(), "ended": None, "told": False}
         self.items[prompt["id"]] = prompt
 
     @contextlib.contextmanager
@@ -39,15 +44,30 @@ class Book:
         """Held while the hook's wait call is under way, so the prompt is kept."""
         hook = prompt["hook"]
         hook["waiting"] += 1
-        # RULE: a question is news once a hook waits on it
-        if not hook["told"]:
-            hook["told"] = True
-            self.waited_on(prompt)
         try:
+            # RULE: a question is news once a hook waits on it
+            if not hook["told"]:
+                hook["told"] = True
+                self._tell(prompt)
             yield
         finally:
             hook["waiting"] -= 1
-            hook["last"] = self.clock()
+            hook["last"] = hook["ended"] = self.clock()
+
+    def _tell(self, prompt: dict[str, Any]) -> None:
+        """Pass on that a hook now waits on the prompt; a failure there never stops the wait."""
+        try:
+            self.waited_on(prompt)
+        # RULE: a wait goes on and is counted off when its news fails
+        except Exception:
+            log.exception("could not tell the news of prompt %s", prompt.get("id"))
+
+    def hook_waits(self, prompt: dict[str, Any]) -> bool:
+        """Whether a hook waits on the prompt now, or did a moment ago and is about to again."""
+        hook = prompt["hook"]
+        ended = hook["ended"]
+        # RULE: a prompt counts as waited on only while a hook waits or did a moment ago
+        return bool(hook["waiting"]) or (ended is not None and self.clock() - ended < RECENT)
 
     def close(self, prompt_id: str, how: str) -> dict[str, Any] | None:
         """Take a prompt out; an unanswered one is announced as closed, with how."""

@@ -178,6 +178,30 @@ find = 'if not hook\["told"\]:'
 replace = 'if True:'
 
 [[rule]]
+name = "a prompt counts as waited on only while a hook waits or did a moment ago"
+file = "src/claude_voice/prompts.py"
+find = 'return bool\(hook\["waiting"\]\) or \(ended is not None'
+replace = 'return True'
+
+[[rule]]
+name = "a wait goes on and is counted off when its news fails"
+file = "src/claude_voice/prompts.py"
+find = 'except Exception:'
+replace = 'except KeyError:'
+
+[[rule]]
+name = "an empty pick is refused"
+file = "src/claude_voice/answers.py"
+find = 'if not said:'
+replace = 'if False:'
+
+[[rule]]
+name = "a choice named twice counts once"
+file = "src/claude_voice/answers.py"
+find = 'picked = list\(dict.fromkeys\(_label\(question, c\) for c in said\)\)'
+replace = 'picked = [_label(question, c) for c in said]'
+
+[[rule]]
 name = "a way of starting a session that does not exist is refused"
 file = "src/claude_voice/config.py"
 find = 'if launch not in LAUNCHES:'
