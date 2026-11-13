@@ -652,6 +652,12 @@ find = 'deny \+= _for_each_branch\(protected\["branches"\], protected\["forced p
 replace = 'deny += []'
 
 [[rule]]
+name = "every secret file is refused to the Read tool"
+file = "src/claude_voice/permissions.py"
+find = 'deny \+= \[f"Read\(~/\{path\}\)" for path in secrets\["read by the Read tool, in the home folder"\]\]'
+replace = 'deny += []'
+
+[[rule]]
 name = "the bridge answers as soon as it has started, while its first look runs behind"
 file = "src/claude_voice/server.py"
 find = 'await asyncio\.to_thread\(check\)'
