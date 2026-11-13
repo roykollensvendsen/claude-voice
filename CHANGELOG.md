@@ -27,6 +27,7 @@ versions follow [semantic versioning](https://semver.org/spec/v2.0.0.html).
 - A session's choice box can be answered by voice while the phone hook waits on it.
   `list_pending_approvals` also lists these questions with numbered options,
   `answer_question` answers one, and `whats_new` reports a new one as `needs_answer`.
+  `send_task` and `message_active_session` say, in `waiting_on`, what box a session waits on.
 
 ### Security
 
