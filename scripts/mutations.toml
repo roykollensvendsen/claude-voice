@@ -886,3 +886,9 @@ name = "a session number from another machine is never passed on"
 file = "src/claude_voice/machines.py"
 find = 'return \{k: without_numbers\(v\) for k, v in body.items\(\) if k != "number"\}'
 replace = 'return {k: without_numbers(v) for k, v in body.items()}'
+
+[[rule]]
+name = "a session on another machine is made the active one by its number"
+file = "src/claude_voice/fleet.py"
+find = 'if target is not None and tool not in target\[0\].spec.tools:'
+replace = 'if False:'

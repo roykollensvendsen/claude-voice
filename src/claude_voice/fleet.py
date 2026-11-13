@@ -39,6 +39,7 @@ ROUTED = {
     "send_task": "session_id",
     "cancel": "session_id",
     "close_session": "session_id",
+    "set_active_session": "session",  # answered by the hub itself, which keeps the active session
 }
 LISTS = ("list_active_sessions", "fleet_recap")
 # A session named by its short number, as said aloud: "3", "nr 3", "nr. 3", "nummer 3", "number 3".
@@ -391,6 +392,10 @@ def middleware(fleet: Fleet) -> Any:
             return await call_next(ctx)
         arguments = dict(params.get("arguments") or {})
         key, target = _routed(fleet, tool, arguments)
+        # RULE: a session on another machine is made the active one by its number
+        if target is not None and tool not in target[0].spec.tools:
+            ctx.params = {**params, "arguments": arguments}  # the hub answers, given the full name
+            return await call_next(ctx)
         if target is not None and key is not None:
             machine, own = target
             try:
