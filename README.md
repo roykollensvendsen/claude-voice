@@ -104,6 +104,7 @@ the bridge says which are missing, with the exact fix, through its
 | `developer_mode_request`, `developer_mode_confirm`, `developer_mode_off` | switch developer mode on by voice with a question and your yes (only from the Claude app; it ends by itself after eight hours), or off at once |
 | `plugin_approve_request`, `plugin_approve_confirm` | in developer mode, approve a plugin whose tools changed: the voice names each changed tool and approves on your yes |
 | `list_pending_approvals`, `approve`, `deny` | answer Claude's requests to edit files, run commands and so on |
+| `answer_question` | answer a session's choice box by voice, by an option's number or label or in your own words, while the phone hook waits on it; `list_pending_approvals` lists these questions, and `whats_new` reports each as `needs_answer` |
 | `cancel`, `close_session` | stop a turn, retire a session |
 | `list_sessions` | the sessions this bridge started, and every one running on the computer |
 | `session_tree` | the sessions as a tree, including which ones have been messaging each other |

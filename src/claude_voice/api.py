@@ -28,7 +28,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from . import prompts
+from . import answers, prompts
 
 COOKIE = "cv_ui"
 SIGN_IN_SECONDS = 30 * 24 * 3600
@@ -643,23 +643,7 @@ class EventApi:
         # Wait for the phone only while someone has the app open; else the box shows at once.
         return JSONResponse({"id": prompt["id"], "wait": HUB.listening()})
 
-    def _fits(self, prompt: dict[str, Any], body: dict[str, Any]) -> str | None:
-        """Why an answer does not fit its prompt, or None."""
-        if prompt["kind"] == "approval":
-            if body.get("decision") not in ("allow", "deny"):
-                return "an approval is answered with decision allow or deny"
-            return None
-        answer = body.get("answer")
-        if answer is None:
-            return "a question is answered with answer"
-        if isinstance(answer, dict):
-            return None if str(answer.get("text", "")).strip() else "a free answer needs text"
-        labels = [o["label"] for o in prompt["question"]["options"]]
-        chosen = answer if isinstance(answer, list) else [answer]
-        if len(chosen) > 1 and not prompt["question"]["multi"]:
-            return "this question takes one choice"
-        unknown = [c for c in chosen if c not in labels]
-        return f"not an option: {', '.join(map(str, unknown))}" if unknown else None
+    _fits = staticmethod(answers.fits)  # the same check a spoken answer gets
 
     async def answer_prompt(self, request: Request) -> Response:
         refused = await self._change_allowed(request)
@@ -676,17 +660,7 @@ class EventApi:
         reason = self._fits(prompt, body)
         if reason:
             return JSONResponse({"error": reason}, 409)
-        prompt["answer"] = {k: body[k] for k in ("answer", "decision", "reason") if k in body}
-        prompt["done"].set()
-        caller = "page" if self._cookie(request) else "bearer"
-        log.info(
-            "prompt %s for %s answered %s from %s",
-            prompt["id"],
-            prompt["session"],
-            json.dumps(prompt["answer"], ensure_ascii=False),
-            caller,
-        )
-        HUB.publish("prompt_closed", {"id": prompt["id"], "how": "phone"})
+        answers.settle(prompt, body, "page" if self._cookie(request) else "bearer", HUB.publish)
         return JSONResponse({"id": prompt["id"], "answered": True})
 
     async def wait_prompt(self, request: Request) -> Response:

@@ -36,6 +36,7 @@ from pydantic import AnyHttpUrl, BeforeValidator
 from starlette.types import ASGIApp
 
 from . import (
+    answers,
     api,
     config,
     detail,
@@ -537,7 +538,15 @@ def build_server(
     running_version = metrics.version()
 
     looking = threading.Lock()  # held while one look runs; the watcher and whats_new both look
-    prompt_book = prompts.Book(api.HUB.publish)  # the phone hook's open questions and approvals
+
+    def question_is_news(prompt: dict[str, Any]) -> None:
+        """Tell whats_new about a question a hook now waits on, so the voice can read it out."""
+        item = answers.news(prompt, events.read_live(live_dir))
+        if item:
+            watcher.record(*item)
+
+    # the phone hook's open questions and approvals
+    prompt_book = prompts.Book(api.HUB.publish, waited_on=question_is_news)
 
     def sweep_prompts() -> None:
         """Close the prompts no hook waits on any more, so the phone stops showing them."""
@@ -1853,6 +1862,7 @@ def build_server(
     def whats_new(cursor: str | None = None) -> dict[str, Any]:
         """Has anything happened since I last asked? Returns only new events.
         An event is a session that finished, failed, needs approval or input, started or ended.
+        Kind needs_answer is a question waiting for the owner: list_pending_approvals reads it.
         Each answer carries a cursor to pass next time; call without one first. Cheap enough to poll."""
         check()
         b, f = _parse_cursor(cursor)
@@ -1944,10 +1954,23 @@ def build_server(
 
     @tool(annotations=READ_ONLY)
     def list_pending_approvals(session_id: str | None = None) -> dict[str, Any]:
-        """Tool calls Claude is waiting to be allowed to make. Read each one to the user."""
+        """What sessions wait on: tool calls to allow, and questions to answer.
+        Read each one to the user; a question comes with its session's name and numbered options,
+        for answer_question. session_id narrows both lists to one session."""
+        questions = answers.waiting(prompt_book, events.read_live(live_dir), session_id)
         if manager.approvals is None:
-            return {"approvals": []}
-        return {"approvals": manager.approvals.pending(session_id)}
+            return {"approvals": [], "questions": questions}
+        return {"approvals": manager.approvals.pending(session_id), "questions": questions}
+
+    @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+    async def answer_question(
+        question_id: str, choice: str | list[str] | None = None, own_words: str | None = None
+    ) -> dict[str, Any]:
+        """Answer a session's waiting question with the owner's clear choice.
+        Give choice (an option's number or label, or a list when it takes several) or own_words
+        (his own answer when no option fits), only once he has clearly picked; never guess.
+        When answered is false, read 'say' aloud (it is on the screen), or ask again from 'options'."""
+        return answers.answer(prompt_book, question_id, choice, own_words)[1]
 
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
     def approve(approval_id: str) -> dict[str, Any]:

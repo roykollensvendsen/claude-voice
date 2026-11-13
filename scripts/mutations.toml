@@ -154,6 +154,30 @@ find = 'reason = self\._fits\(prompt, body\)'
 replace = 'reason = None'
 
 [[rule]]
+name = "an option is chosen by its number or its label"
+file = "src/claude_voice/answers.py"
+find = 'if text.isdigit\(\) and 1 <= int\(text\) <= len\(options\):'
+replace = 'if False:'
+
+[[rule]]
+name = "a question no hook waits on is refused as on the screen"
+file = "src/claude_voice/answers.py"
+find = 'if prompt is None or prompt\["answer"\] is not None:'
+replace = 'if prompt is None:'
+
+[[rule]]
+name = "a spoken choice that is not an option is refused with the options"
+file = "src/claude_voice/answers.py"
+find = 'reason = body.get\("error"\) or fits\(prompt, body\)'
+replace = 'reason = body.get("error")'
+
+[[rule]]
+name = "a question is news once a hook waits on it"
+file = "src/claude_voice/prompts.py"
+find = 'if not hook\["told"\]:'
+replace = 'if True:'
+
+[[rule]]
 name = "a way of starting a session that does not exist is refused"
 file = "src/claude_voice/config.py"
 find = 'if launch not in LAUNCHES:'
