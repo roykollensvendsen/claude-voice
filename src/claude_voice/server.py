@@ -317,6 +317,14 @@ async def log_requests(ctx, call_next):
     started = time.monotonic()
     try:
         result = await call_next(ctx)
+    except asyncio.CancelledError:
+        # RULE: a cancelled tool call is logged as cancelled
+        ms = (time.monotonic() - started) * 1000
+        log.info("mcp %s -> cancelled %dms trace=%s", what, ms, trace or "-")
+        if ctx.method == "tools/call":
+            gave_up = "the caller stopped waiting; the work may still have been done, so check before repeating it"
+            METRICS.record(tool, ms, error=gave_up, kind="cancelled", trace_id=trace)
+        raise
     except Exception as exc:
         ms = (time.monotonic() - started) * 1000
         log.info("mcp %s -> %s %dms trace=%s", what, type(exc).__name__, ms, trace or "-")
