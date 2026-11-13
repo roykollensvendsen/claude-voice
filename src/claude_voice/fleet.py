@@ -401,7 +401,7 @@ def middleware(fleet: Fleet) -> Any:
                 return CallToolResult(content=[TextContent(type="text", text=str(exc))], is_error=True)
             if answer.is_error:
                 return answer
-            return _result(_named_back(answer.structured_content, machine.machine.name, own))
+            return _result(_named_back(machine.shown(answer.structured_content), machine.machine.name, own))
         result = await call_next(ctx)
         if tool in (*LISTS, "health") and not _failed(result):
             await fleet.refresh()

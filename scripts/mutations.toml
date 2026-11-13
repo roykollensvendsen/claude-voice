@@ -880,3 +880,9 @@ name = "a session on another machine gets its number from the same pool as the h
 file = "src/claude_voice/fleet.py"
 find = 'return dict\(self.numbers.number_sessions\(ids, scope=lambda sid: "/" in sid\)\)'
 replace = 'return {}'
+
+[[rule]]
+name = "a session number from another machine is never passed on"
+file = "src/claude_voice/machines.py"
+find = 'return \{k: without_numbers\(v\) for k, v in body.items\(\) if k != "number"\}'
+replace = 'return {k: without_numbers(v) for k, v in body.items()}'
