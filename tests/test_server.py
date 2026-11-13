@@ -405,6 +405,27 @@ async def test_tool_calls_are_logged_by_name(tmp_path, root, caplog):
     )
 
 
+async def test_a_cancelled_tool_call_is_logged_as_cancelled(caplog):
+    """A client that gives up on a call cancels it; that must show in the log, not vanish."""
+    import logging
+    from types import SimpleNamespace
+
+    from claude_voice.metrics import METRICS
+    from claude_voice.server import log_requests
+
+    METRICS.reset()
+    ctx = SimpleNamespace(method="tools/call", params={"name": "message_active_session"}, request_id=7)
+
+    async def gives_up(_ctx):
+        raise asyncio.CancelledError
+
+    with caplog.at_level(logging.INFO, logger="claude_voice"), pytest.raises(asyncio.CancelledError):
+        await log_requests(ctx, gives_up)
+    lines = [r.getMessage() for r in caplog.records if r.name == "claude_voice"]
+    assert any(line.startswith("mcp tools/call message_active_session -> cancelled ") for line in lines)
+    assert METRICS.snapshot()["errors"][0]["kind"] == "cancelled"
+
+
 async def test_a_trace_id_sent_with_a_call_is_logged_with_it_and_its_time(tmp_path, root, caplog):
     import logging
     import re
