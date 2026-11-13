@@ -26,7 +26,7 @@ runs from, so the file is only needed to change something:
     terminal_command = "kitty --directory {cwd}"  # default: the first of gnome-terminal, kgx, konsole, xterm
 
     [budgets]                                   # seconds each client is answered within
-    claude_app = 20                             # the Claude app drops a call after about 30 s
+    claude_app = 10                             # the Claude app drops a call after about 30 s
     voice_app = 120
     default = 60
 """
@@ -151,12 +151,13 @@ def _agent(raw: dict[str, Any] | None, home: str) -> tuple[bool, Path]:
     return sessions, _path(raw.get("root"), home) or Path(home)
 
 
-BUDGETS = {"claude_app": 20.0, "voice_app": 120.0, "default": 60.0}
+BUDGETS = {"claude_app": 10.0, "voice_app": 120.0, "default": 60.0}
 
 
 class Budgets:
     """How long each client is answered within, in seconds: the Claude app drops a tool call
-    after about 30 seconds, the voice app waits longer. Slow work goes on in the background."""
+    after about 30 seconds, counted from before a reconnect, so it gets a third of that. The
+    voice app waits longer. Slow work goes on in the background."""
 
     def __init__(self, seconds: Mapping[str, float] | None = None) -> None:
         self._seconds = {**BUDGETS, **(seconds or {})}

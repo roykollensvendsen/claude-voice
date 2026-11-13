@@ -75,6 +75,10 @@ from .tree import PROJECTS_DIR, SessionTree
 MIN_TOKEN_CHARS = 32
 READ_ONLY = ToolAnnotations(read_only_hint=True)
 COURIER_PREFIX = "claude-voice-msg-"
+SENDING_SAY = (
+    "The message to {name} is on its way but not yet confirmed. Read the session's output "
+    "with read_session_output in a moment to see that it arrived."
+)
 # Claude Code keeps one JSON file per running session here.
 LIVE_DIR = Path("~/.claude/sessions").expanduser()
 # The log is kept in a file next to the database too: the console is gone after a restart,
@@ -1555,7 +1559,9 @@ def build_server(
             api.HUB.publish("message_sent", report)
 
         delivery.add_done_callback(done)
-        return {"session": name, "status": "sending", "delivered": None, "id": item["id"]}
+        # RULE: a message still sending says it is not yet confirmed and what to do next
+        say = SENDING_SAY.format(name=name)
+        return {"session": name, "status": "sending", "delivered": None, "id": item["id"], "say": say}
 
     def numbered_turns(target: dict[str, Any]) -> list[dict[str, Any]]:
         msgs = read_transcript(target["sessionId"], target.get("cwd"))

@@ -371,7 +371,7 @@ launch = "terminal"                          # or "background"
 terminal_command = "kitty --directory {cwd}" # default: gnome-terminal, kgx, konsole or xterm, the first found
 
 [budgets]                                    # seconds each kind of client is answered within
-claude_app = 20
+claude_app = 10
 voice_app = 120
 default = 60
 ```
@@ -384,11 +384,14 @@ app's settings page changes `remote_control` and where sessions start, and one
 start can ask otherwise; the terminal command is set only here.
 
 Each kind of client is answered within its own time budget, set in a `[budgets]`
-section: the Claude app drops a tool call after about 30 seconds, so it gets 20
-(`claude_app`); the voice app waits longer and gets 120 (`voice_app`); anything
-else gets `default`, 60. A message that takes Claude Code longer to deliver is
-answered "sending" and delivered in the background, and a wait for a session's
-answer ends at the budget with "still working".
+section. The Claude app drops a tool call after about 30 seconds, and its clock
+may already have run while it reconnected, so it gets 10 (`claude_app`). The
+voice app waits longer and gets 120 (`voice_app`); anything else gets
+`default`, 60. A message that takes Claude Code longer to deliver is answered
+"sending" and delivered in the background. Its `say` tells the caller the
+message is on its way but not yet confirmed, and that the session's output
+shows whether it arrived. A wait for a session's answer ends at the budget with
+"still working".
 
 Your own rules for the voice go in the file `voice_instructions_file` names,
 outside this repository: which session takes your proposals, which role answers
