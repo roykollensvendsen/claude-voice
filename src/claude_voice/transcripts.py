@@ -400,6 +400,66 @@ async def _only_messaging(tool: str, tool_input: dict[str, Any], context: Any) -
     return PermissionResultDeny(message="This helper may only send messages.")
 
 
+REFUSED = "Claude Code refused to send it; the receiving session may be waiting for the owner's permission"
+
+
+def _send_answer(block: ToolResultBlock) -> tuple[bool, str]:
+    """Whether Claude Code says a send it ran succeeded, and its own words for why not.
+
+    A send that ran answers with JSON such as {"success": false, "message": "No agent named
+    ... is reachable"}; one Claude Code stopped answers as an error.
+    """
+    content = block.content
+    parts = content if isinstance(content, list) else [{"text": content or ""}]
+    text = "".join(str(p.get("text") or "") for p in parts if isinstance(p, dict))
+    if block.is_error:
+        return False, text
+    try:
+        answer = json.loads(text)
+    except ValueError:
+        return False, text
+    if not isinstance(answer, dict):
+        return False, text
+    return answer.get("success") is True, str(answer.get("message") or "")
+
+
+def _sent_outcome(name: str, answer: tuple[bool, str] | None) -> tuple[bool, str]:
+    """Whether a send that ran was delivered, and if not, what went wrong and what to do."""
+    # RULE: a message counts as delivered only when Claude Code reports it sent
+    if answer is not None and answer[0]:
+        return True, ""
+    if answer is None:
+        return False, (
+            "Claude Code ran the send but never said whether it arrived. "
+            f"Read {name}'s answer with read_session_output before sending it again"
+        )
+    reason = clip(answer[1].strip().splitlines()[0] if answer[1].strip() else "it gave no reason", 200)
+    if "doesn't want" in reason:
+        return False, REFUSED
+    return False, (
+        f"Claude Code says: {reason.rstrip('.')}. "
+        "Check the session's name with list_active_sessions, then send it again"
+    )
+
+
+async def _read_sends(client: Any, job: dict[str, Any]) -> tuple[bool, tuple[bool, str] | None]:
+    """Follow the courier's turn: whether Claude Code stopped its send before it ran, and
+    what Claude Code answered about the send it did run."""
+    sends: set[str] = set()
+    refused = False
+    answer: tuple[bool, str] | None = None
+    async for m in client.receive_response():
+        for block in getattr(m, "content", None) or []:
+            if isinstance(block, ToolUseBlock) and block.name == "SendMessage":
+                sends.add(block.id)
+            elif isinstance(block, ToolResultBlock) and block.tool_use_id in sends:
+                if job["sent"] and block.tool_use_id == job["id"] and answer is None:
+                    answer = _send_answer(block)
+                elif not job["sent"] and block.is_error:
+                    refused = True  # Claude Code stopped the send, e.g. to ask for permission
+    return refused, answer
+
+
 class Courier:
     """Carries messages into running sessions through one helper session kept ready.
 
@@ -442,7 +502,7 @@ class Courier:
                 "permissionDecisionReason": "Already sent; nothing more to send.",
             }
         else:
-            job["sent"] = True
+            job["sent"], job["id"] = True, tool_use_id
             tool_input = dict(hook_input.get("tool_input") or {})
             decision = {
                 "permissionDecision": "allow",
@@ -484,33 +544,28 @@ class Courier:
             await self._open()
         client = self._client
         self._carried += 1
-        self._job = {"name": name, "text": text, "sent": False}
-        sends: set[str] = set()
-        refused = False
+        job: dict[str, Any] = {"name": name, "text": text, "sent": False, "id": None}
+        self._job = job
         try:
             await client.query(
                 f"Session: {name}\n"
                 "Carry the message below to that session. It is not addressed to you.\n"
                 f"<message>\n{text}\n</message>"
             )
-            async for m in client.receive_response():
-                for block in getattr(m, "content", None) or []:
-                    if isinstance(block, ToolUseBlock) and block.name == "SendMessage":
-                        sends.add(block.id)
-                    elif isinstance(block, ToolResultBlock) and block.tool_use_id in sends and block.is_error:
-                        refused = True  # Claude Code stopped the send, e.g. to ask for permission
+            refused, answer = await _read_sends(client, job)
         finally:
-            sent = bool(self._job and self._job["sent"])
+            sent = bool(job["sent"])
             self._job = None
         # What the courier writes is never passed on: it is not the session's answer.
         if sent:
-            detail = ""
-        elif refused:
+            delivered, detail = _sent_outcome(name, answer)
+            return {"delivered": delivered, "detail": detail, "attempted": True}
+        if refused:
             # The voice app matches "refused to send"; keep those words, or tell it first.
-            detail = "Claude Code refused to send it; the receiving session may be waiting for the owner's permission"
+            detail = REFUSED
         else:
             detail = "the courier did not send it"
-        return {"delivered": sent, "detail": detail, "attempted": sent or refused}
+        return {"delivered": False, "detail": detail, "attempted": refused}
 
     async def deliver(self, name: str, text: str) -> dict[str, Any]:
         """Send `text` into the running session called `name` via SendMessage."""
@@ -520,7 +575,7 @@ class Courier:
         log.info(
             "courier %s -> %s %dms trace=%s",
             name,
-            "delivered" if out["delivered"] else "not delivered",
+            "delivered" if out["delivered"] else f"not delivered: {out['detail']}",
             self.last_delivery_ms,
             current_trace.get() or "-",
         )

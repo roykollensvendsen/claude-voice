@@ -56,10 +56,20 @@ class FakeCourierClient:
                     tool_input = spec.get("updatedInput", tool_input)
                     if spec.get("permissionDecision") == "allow":
                         self.executed.append((block.name, tool_input))
-                        return
+                        return self._result(block)
         verdict = await self.options.can_use_tool(block.name, tool_input, ToolPermissionContext())
         if isinstance(verdict, PermissionResultAllow):
             self.executed.append((block.name, verdict.updated_input or tool_input))
+            return self._result(block)
+
+    @staticmethod
+    def _result(block):
+        """What Claude Code hands back from a send it ran: JSON saying whether it succeeded."""
+        answer = block.input.get("_result", {"success": True, "message": "in that session's inbox"})
+        if answer is None:
+            return None  # a run that never reports back
+        text = json.dumps(answer)
+        return UserMessage(content=[ToolResultBlock(tool_use_id=block.id, content=[{"type": "text", "text": text}])])
 
     async def query(self, prompt):
         self.prompts.append(prompt)
@@ -72,13 +82,15 @@ class FakeCourierClient:
             await asyncio.sleep(0)
             # Like Claude Code: every tool call goes through the permission callback,
             # and what actually runs is the input the callback hands back.
-            refused = None
+            refused, results = None, []
             for block in getattr(message, "content", []):
                 if isinstance(block, ToolUseBlock) and block.input.get("_refused"):
                     refused = block  # stopped by Claude Code before any hook runs
-                elif isinstance(block, ToolUseBlock):
-                    await self._run(block)
+                elif isinstance(block, ToolUseBlock) and (ran := await self._run(block)) is not None:
+                    results.append(ran)
             yield message
+            for ran in results:
+                yield ran
             if refused is not None:
                 yield UserMessage(
                     content=[
@@ -324,4 +336,44 @@ async def test_a_failed_first_try_of_the_courier_is_logged_with_its_reason(caplo
     assert len(retries) == 2
     assert "RuntimeError: cli died" in retries[0] and "starting a fresh courier" in retries[0]
     assert "the courier did not send it" in retries[1]
+    await courier.close()
+
+
+def sent_with_result(to, message, result):
+    """A send Claude Code runs and answers with `result`, or never answers when it is None."""
+    block = ToolUseBlock(id="s", name="SendMessage", input={"to": to, "message": message, "_result": result})
+    return AssistantMessage(content=[block], model="fake")
+
+
+async def test_a_message_counts_as_delivered_only_when_claude_code_reports_it_sent():
+    unreachable = {"success": False, "message": "No agent named 'billing' is reachable.\nUse ListAgents to see."}
+    factory = Factory([[sent_with_result("billing", "hi", unreachable), done("FAILED")]])
+    courier = Courier(client_factory=factory)
+    out = await courier.deliver("billing", "hi")
+    assert out["delivered"] is False
+    assert "No agent named 'billing' is reachable" in out["detail"] and "ListAgents" not in out["detail"]
+    assert "list_active_sessions" in out["detail"]  # what the owner can do next
+    assert len(factory.clients) == 1  # it reached Claude Code, so it is not sent a second time
+    await courier.close()
+
+
+async def test_a_send_claude_code_never_answers_is_not_counted_as_delivered():
+    factory = Factory([[sent_with_result("billing", "hi", None), done("DELIVERED")]])
+    courier = Courier(client_factory=factory)
+    out = await courier.deliver("billing", "hi")
+    assert out["delivered"] is False and "read_session_output" in out["detail"]
+    assert len(factory.clients) == 1
+    await courier.close()
+
+
+async def test_a_not_delivered_message_is_logged_with_its_reason(caplog):
+    import logging
+
+    unreachable = {"success": False, "message": "No agent named 'billing' is reachable."}
+    factory = Factory([[sent_with_result("billing", "hi", unreachable), done("FAILED")]])
+    courier = Courier(client_factory=factory)
+    with caplog.at_level(logging.INFO, logger="claude_voice"):
+        await courier.deliver("billing", "hi")
+    lines = [r.getMessage() for r in caplog.records if r.name == "claude_voice"]
+    assert any(line.startswith("courier billing -> not delivered: ") and "reachable" in line for line in lines)
     await courier.close()
