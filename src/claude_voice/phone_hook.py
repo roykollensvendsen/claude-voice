@@ -14,6 +14,7 @@ Installed in the owner's own Claude Code settings; run as
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sys
@@ -62,14 +63,22 @@ def _ask_phone(body: dict[str, Any], bridge: Bridge, timeout: float) -> dict[str
     """The phone's answer, or None when nobody is looking, none came in time, or the bridge failed."""
     try:
         opened = bridge.open(body)
-        if not opened.get("wait"):
-            return None  # nobody is looking at the phone: the box shows as before
-        answer = bridge.wait_for(str(opened["id"]), timeout)
-        if answer is None:
-            bridge.close(str(opened["id"]), "timeout")
-        return answer
     except Exception:
         return None  # a bridge that is down or broken never stops a session
+    prompt_id = str(opened.get("id"))
+    try:
+        if not opened.get("wait"):
+            # RULE: the hook closes a prompt it steps aside from
+            bridge.close(prompt_id, "screen")
+            return None  # nobody is looking at the phone: the box shows as before
+        answer = bridge.wait_for(prompt_id, timeout)
+        if answer is None:
+            bridge.close(prompt_id, "timeout")
+        return answer
+    except Exception:
+        with contextlib.suppress(Exception):
+            bridge.close(prompt_id, "screen")  # the box shows, so the phone stops showing it
+        return None
 
 
 def _question_answer(tool_input: dict[str, Any], answer: dict[str, Any]) -> dict[str, Any]:

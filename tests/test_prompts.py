@@ -8,7 +8,7 @@ import httpx
 import pytest
 from fakes import FakeClaude
 
-from claude_voice import api, phone_hook
+from claude_voice import api, phone_hook, prompts
 from claude_voice.oauth import OAuthProvider
 from claude_voice.server import build_app, build_server
 from claude_voice.sessions import SessionManager
@@ -148,7 +148,22 @@ def question_input():
 def test_the_hook_steps_aside_at_once_when_the_app_is_not_open():
     bridge = Bridge(wait=False)
     assert phone_hook.handle(question_input(), bridge, timeout=5) == {}
-    assert bridge.closed == []
+
+
+def test_the_hook_closes_a_prompt_it_steps_aside_from():
+    bridge = Bridge(wait=False)
+    phone_hook.handle(question_input(), bridge, timeout=5)
+    assert bridge.closed == ["screen"]
+
+
+def test_a_hook_that_fails_while_waiting_still_closes_its_prompt():
+    class Failing(Bridge):
+        def wait_for(self, prompt_id, seconds):
+            raise OSError("connection dropped")
+
+    bridge = Failing()
+    assert phone_hook.handle(question_input(), bridge, timeout=5) == {}
+    assert bridge.closed == ["screen"]
 
 
 def test_the_hook_hands_the_phones_choice_back_as_the_questions_answer():
@@ -229,3 +244,75 @@ def test_installing_the_hook_keeps_every_other_setting_and_hook_and_can_run_twic
     assert other["command"] in commands and commands.count("/opt/cv/bin/python -m claude_voice.phone_hook") == 1
     assert len(after["hooks"]["PermissionRequest"]) == 1
     assert (tmp_path / "settings.json.bak").exists()  # the file as it was, kept beside it
+
+
+# -- prompts nobody waits on any more ----------------------------------------------------
+
+
+class Clock:
+    def __init__(self):
+        self.now = 1000.0
+
+    def __call__(self):
+        return self.now
+
+
+ASKED_MS = 1794564000000  # 2026-11-13T10:00:00Z, when the prompt below was asked
+
+
+def book_with():
+    clock, seen = Clock(), []
+    book = prompts.Book(lambda kind, data: seen.append((kind, data)), clock)
+    asked = "2026-11-13T10:00:00+00:00"
+    book.add({"id": "p1", "session": "s1", "kind": "question", "asked_at": asked, "answer": None})
+    return book, clock, seen
+
+
+def test_a_prompt_the_hook_still_waits_on_is_never_closed():
+    book, clock, _ = book_with()
+    with book.waiting(book.items["p1"]):
+        clock.now += 3600
+        assert book.sweep([]) == []
+    clock.now += prompts.GRACE - 1  # between two of the hook's wait calls
+    assert book.sweep([]) == []
+    assert "p1" in book.items
+
+
+@pytest.mark.parametrize(
+    ("live", "how"),
+    [
+        ([], "ended"),
+        ([{"sessionId": "s1", "status": "busy", "statusUpdatedAt": ASKED_MS + 5000}], "moved_on"),
+        ([{"sessionId": "s1", "status": "waiting", "statusUpdatedAt": ASKED_MS + 5000}], "hook_gone"),
+        ([{"sessionId": "s1", "status": "busy", "statusUpdatedAt": ASKED_MS - 5000}], "hook_gone"),
+    ],
+)
+def test_a_prompt_with_no_hook_waiting_on_it_closes(live, how):
+    book, clock, seen = book_with()
+    clock.now += prompts.GRACE + 1
+    assert book.sweep(live) == [("p1", how)]
+    assert book.items == {} and seen == [("prompt_closed", {"id": "p1", "how": how})]
+
+
+def test_an_answered_prompt_the_hook_never_collected_goes_quietly():
+    book, clock, seen = book_with()
+    book.items["p1"]["answer"] = {"answer": "blue"}
+    clock.now += prompts.GRACE + 1
+    book.sweep([])
+    assert book.items == {} and seen == []  # it was announced as closed when it was answered
+
+
+async def test_the_phone_no_longer_lists_a_prompt_whose_hook_went_away(tmp_path):
+    (tmp_path / "home").mkdir()
+    store = Store(tmp_path / "b.db")
+    oauth = OAuthProvider(store, SECRET, HOST, static_token=SECRET)
+    m = SessionManager(store, project_root=tmp_path / "home", client_factory=FakeClaude())
+    server = build_server(m, oauth=oauth, conversations=lambda **k: [], live_dir=tmp_path / "live")
+    clock = server.prompt_book.clock = Clock()
+    async with client(build_app(server)) as c:
+        made = (await c.post("/api/v1/prompts", json=APPROVAL, headers=BEARER)).json()
+        await c.get(f"/api/v1/prompts/{made['id']}/wait?seconds=0", headers=BEARER)
+        clock.now += prompts.GRACE + 1
+        server.sweep_prompts()
+        listed = (await c.get("/api/v1/prompts", headers=BEARER)).json()["prompts"]
+    assert listed == []

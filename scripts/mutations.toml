@@ -820,3 +820,21 @@ file = "src/claude_voice/tree.py"
 find = 'if when is not None and when < cutoff:'
 occurrence = 2
 replace = 'if False:'
+
+[[rule]]
+name = "the hook closes a prompt it steps aside from"
+file = "src/claude_voice/phone_hook.py"
+find = 'bridge.close\(prompt_id, "screen"\)$'
+replace = 'pass'
+
+[[rule]]
+name = "a prompt with no hook waiting on it closes"
+file = "src/claude_voice/prompts.py"
+find = 'if how:'
+replace = 'if False:'
+
+[[rule]]
+name = "a prompt the hook still waits on is never closed"
+file = "src/claude_voice/prompts.py"
+find = 'if hook\["waiting"\] or self.clock\(\) - hook\["last"\] < GRACE:'
+replace = 'if False:'

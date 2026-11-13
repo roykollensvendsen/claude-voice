@@ -28,6 +28,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from . import prompts
+
 COOKIE = "cv_ui"
 SIGN_IN_SECONDS = 30 * 24 * 3600
 MAX_FAILURES = 5
@@ -262,6 +264,7 @@ class EventApi:
         focus: Callable[[str], tuple[int, dict[str, str]]] | None = None,
         org: Callable[[str | None], dict[str, Any] | None] | None = None,
         clock: Callable[[], float] = time.monotonic,
+        book: prompts.Book | None = None,
     ) -> None:
         self.store = store
         self.login_secret = login_secret
@@ -281,7 +284,9 @@ class EventApi:
         self.work = work  # what waits on the owner, and the open pull requests: work.Board.report
         self.detail, self.summary = detail, summary
         self.update_changes = update_changes
-        self.prompts: dict[str, dict[str, Any]] = {}  # open questions and approvals, by id
+        # Open questions and approvals; the bridge sweeps out the ones no hook waits on.
+        self.book = book or prompts.Book(HUB.publish)
+        self.prompts = self.book.items  # by id
         # Questions on other machines, and how to answer one (fleet.Fleet); none without machines.
         self.remote_prompts = remote_prompts or (lambda: [])
         self.answer_remote = answer_remote
@@ -595,7 +600,7 @@ class EventApi:
         return (text[:300], True) if len(text) > 300 else (text, False)
 
     def _public(self, prompt: dict[str, Any]) -> dict[str, Any]:
-        return {k: v for k, v in prompt.items() if k not in ("done", "answer", "raw_input")}
+        return {k: v for k, v in prompt.items() if k not in ("done", "answer", "raw_input", "hook")}
 
     async def prompts_route(self, request: Request) -> Response:
         if request.method == "GET":
@@ -633,7 +638,7 @@ class EventApi:
             prompt["input"], prompt["cut"] = self._readable(prompt["tool"], body.get("input"))
         else:
             return JSONResponse({"error": "kind is question or approval"}, 400)
-        self.prompts[prompt["id"]] = prompt
+        self.book.add(prompt)
         HUB.publish("prompt", self._public(prompt))
         # Wait for the phone only while someone has the app open; else the box shows at once.
         return JSONResponse({"id": prompt["id"], "wait": HUB.listening()})
@@ -691,7 +696,7 @@ class EventApi:
         if prompt is None:
             return JSONResponse({"error": "this prompt is gone"}, 404)
         seconds = min(float(request.query_params.get("seconds", "30") or 30), 60.0)
-        with contextlib.suppress(TimeoutError):
+        with self.book.waiting(prompt), contextlib.suppress(TimeoutError):
             await asyncio.wait_for(prompt["done"].wait(), seconds)
         if prompt["answer"] is None:
             return Response(status_code=204)
@@ -701,11 +706,10 @@ class EventApi:
     async def close_prompt(self, request: Request) -> Response:
         if not await self._bearer(request):
             return JSONResponse({"error": "sign in first"}, 401)
-        prompt = self.prompts.pop(request.path_params["prompt"], None)
+        how = str((await request.json()).get("how", "screen"))
+        prompt = self.book.close(request.path_params["prompt"], how)
         if prompt is not None:
-            how = str((await request.json()).get("how", "screen"))
             log.info("prompt %s for %s left to the %s", prompt["id"], prompt["session"], how)
-            HUB.publish("prompt_closed", {"id": prompt["id"], "how": how})
         return Response(status_code=204)
 
     # -- roles -----------------------------------------------------------------------

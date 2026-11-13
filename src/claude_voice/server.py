@@ -53,6 +53,7 @@ from . import (
     plugin_desk,
     plugins,
     procs,
+    prompts,
     renames,
     roles,
     software,
@@ -536,6 +537,12 @@ def build_server(
     running_version = metrics.version()
 
     looking = threading.Lock()  # held while one look runs; the watcher and whats_new both look
+    prompt_book = prompts.Book(api.HUB.publish)  # the phone hook's open questions and approvals
+
+    def sweep_prompts() -> None:
+        """Close the prompts no hook waits on any more, so the phone stops showing them."""
+        for prompt_id, how in prompt_book.sweep(events.read_live(live_dir)):
+            log.info("prompt %s closed: %s", prompt_id, how)
 
     def check() -> None:
         """Look at the running sessions and the tree's shape; record what changed.
@@ -576,6 +583,8 @@ def build_server(
                         await across.refresh()  # the other machines, asked every ten seconds
                     with contextlib.suppress(Exception):
                         await desk.pick_up()  # an approval typed while the bridge runs
+                    with contextlib.suppress(Exception):
+                        sweep_prompts()  # whether or not anyone has the page open
                     with contextlib.suppress(Exception):
                         if api.HUB.listening() and (changed := await asyncio.to_thread(board.changed)):
                             api.HUB.publish("work", changed)  # the phone page updates at once
@@ -2172,7 +2181,11 @@ def build_server(
             answer_remote=across.answer,
             focus=focus_session,
             org=org_page,
+            book=prompt_book,
         ).routes(mcp)
+
+    mcp.prompt_book = prompt_book  # type: ignore[attr-defined]  # for tests
+    mcp.sweep_prompts = sweep_prompts  # type: ignore[attr-defined]  # for tests
 
     mcp.fleet = across  # type: ignore[attr-defined]  # the other machines, for tests and the CLI
     mcp.org_check = tell_programmes  # type: ignore[attr-defined]  # for tests
