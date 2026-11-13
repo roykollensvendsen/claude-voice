@@ -852,6 +852,12 @@ find = 'if status in \(404, 410\):'
 replace = 'if False:'
 
 [[rule]]
+name = "a wait the bridge refuses goes back to the screen at once"
+file = "src/claude_voice/phone_hook.py"
+find = 'if status not in \(200, 204\):'
+replace = 'if False:'
+
+[[rule]]
 name = "a prompt with no hook waiting on it closes"
 file = "src/claude_voice/prompts.py"
 find = 'if how:'

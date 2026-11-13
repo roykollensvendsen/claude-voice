@@ -29,8 +29,7 @@ versions follow [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 - A choice box no longer shows on the phone twice, as the question and as a
   permission for the question. One that asks several questions, or that comes from
-  the session the voice is talking to, goes straight to the screen. A prompt the
-  bridge has lost shows on the screen at once.
+  the session the voice is talking to, goes straight to the screen.
 
 ### Security
 
