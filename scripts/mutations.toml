@@ -976,3 +976,21 @@ name = "a write from one thread never lands inside another"
 file = "src/claude_voice/store.py"
 find = 'self\.db = sqlite3\.connect\(path, check_same_thread=False, factory=OneWriterAtATime\)'
 replace = 'self.db = sqlite3.connect(path, check_same_thread=False)'
+
+[[rule]]
+name = "a plugin tool that only reads is shown as read-only"
+file = "src/claude_voice/plugins.py"
+find = 'marks = ToolAnnotations\(read_only_hint=known\["read_only"\]\) if known\.get\("read_only"\) is not None else None'
+replace = 'marks = None'
+
+[[rule]]
+name = "the owner sees which tools only read before approving a plugin"
+file = "src/claude_voice/cli.py"
+find = '_show_tools\(spec, listing\)'
+replace = 'pass'
+
+[[rule]]
+name = "the owner is told the plugin starts before it does"
+file = "src/claude_voice/cli.py"
+find = 'sys\.stdout\.write\("Starting it to read its tools\.\.\.\\n"\)'
+replace = 'pass'

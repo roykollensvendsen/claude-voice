@@ -10,6 +10,7 @@ import pytest
 from fakes import FakeClaude
 from mcp.client import Client
 from mcp.server.mcpserver import MCPServer
+from mcp.types import ToolAnnotations
 
 from claude_voice import cli, config, plugins
 from claude_voice.server import build_server
@@ -124,10 +125,63 @@ def test_the_owner_approves_a_plugin_by_typing_its_name(tmp_path, monkeypatch, c
     assert plugins.inputs_approved(spec, plugins.Plugin(spec, plugins.CLIENT).listing(), approvals)
 
 
+def test_the_owner_sees_which_tools_only_read_before_approving_a_plugin(tmp_path, monkeypatch, capsys):
+    # A plugin's own "only reads" mark lets a client call the tool unasked, so the owner sees it first.
+    f = tmp_path / "c.toml"
+    f.write_text(
+        '[plugins.garage]\ncommand = "garage-door-mcp"\ncwd = "/g"\ntools = ["garage_status", "garage_request"]\n'
+    )
+    fake = MCPServer("garage")
+
+    @fake.tool(annotations=ToolAnnotations(read_only_hint=True))
+    async def garage_status() -> dict:
+        """Where the door is."""
+        return {"door": "closed"}
+
+    @fake.tool(annotations=ToolAnnotations(read_only_hint=False))
+    async def garage_request(action: str) -> dict:
+        """Ask to open or close the door."""
+        return {"token": "t1"}
+
+    monkeypatch.setattr(plugins, "APPROVALS", tmp_path / "approved.json")
+    monkeypatch.setattr(plugins, "CLIENT", lambda params: Client(fake))
+    seen = []
+
+    def owner(prompt=""):
+        seen.append(capsys.readouterr().out)  # what was on the screen when the name was asked for
+        return "garage"
+
+    monkeypatch.setattr("builtins.input", owner)
+    env = {"HOME": str(tmp_path), "CLAUDE_VOICE_CONFIG": str(f)}
+    assert cli.main(["plugins", "approve", "garage"], env=env) == 0
+    before = seen[0].splitlines()
+    assert any("garage_status" in line and "only reads" in line for line in before), seen[0]
+    assert not any("garage_request" in line and "only reads" in line for line in before), seen[0]
+
+
+def test_the_owner_is_told_the_plugin_starts_before_it_does(tmp_path, monkeypatch, capsys):
+    # Its tools are read before the name is typed, so the plugin's own command runs first.
+    f = tmp_path / "c.toml"
+    f.write_text('[plugins.garage]\ncommand = "garage-door-mcp"\ncwd = "/g"\ntools = ["garage_status"]\n')
+    monkeypatch.setattr(plugins, "APPROVALS", tmp_path / "approved.json")
+    seen = []
+
+    def start(params):
+        seen.append(capsys.readouterr().out)  # what was on the screen when the plugin started
+        return Client(stand_in()[0])
+
+    monkeypatch.setattr(plugins, "CLIENT", start)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "no")
+    env = {"HOME": str(tmp_path), "CLAUDE_VOICE_CONFIG": str(f)}
+    assert cli.main(["plugins", "approve", "garage"], env=env) == 1
+    assert seen and "Starting it to read its tools" in seen[0], seen
+
+
 def test_approving_with_nothing_typed_approves_nothing(tmp_path, monkeypatch, capsys):
     f = tmp_path / "c.toml"
     f.write_text('[plugins.garage]\ncommand = "garage-door-mcp"\ncwd = "/g"\ntools = ["garage_status"]\n')
     monkeypatch.setattr(plugins, "APPROVALS", tmp_path / "approved.json")
+    monkeypatch.setattr(plugins, "CLIENT", lambda params: Client(stand_in()[0]))
 
     def no_terminal(prompt=""):
         raise EOFError
@@ -420,3 +474,24 @@ async def test_a_plugin_that_stays_down_is_logged_once_not_on_every_try(caplog):
     down = [line for line in said if "garage" in line and "All connection attempts failed" in line]
     assert len(down) == 1 and "TaskGroup" not in down[0], said
     assert [line for line in said if line.startswith("plugin garage started")] == ["plugin garage started again"]
+
+
+async def test_a_plugin_tool_that_only_reads_is_shown_as_read_only(tmp_path):
+    # The plugin standard asks each plugin to mark its read-only tools; the bridge dropped the mark.
+    fake = MCPServer("garage")
+
+    @fake.tool(annotations=ToolAnnotations(read_only_hint=True))
+    async def garage_status() -> dict:
+        """Where the door is."""
+        return {"door": "closed"}
+
+    @fake.tool(annotations=ToolAnnotations(read_only_hint=False))
+    async def garage_request(action: str) -> dict:
+        """Ask to open or close the door."""
+        return {"token": "t1"}
+
+    server = bridge(tmp_path, [GARAGE], factory=lambda params: Client(fake))
+    async with Client(server) as c:
+        tools = {t.name: t for t in (await c.list_tools()).tools}
+    assert tools["garage_status"].annotations.read_only_hint is True
+    assert tools["garage_request"].annotations.read_only_hint is False

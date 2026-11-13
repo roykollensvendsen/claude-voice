@@ -463,8 +463,9 @@ claude-voice plugins approve garage
 
 The approval covers exactly that command, folder and list of tools, what each tool
 takes as the plugin describes it then, and every word the voice reads from the plugin:
-each tool's description and the plugin's own instructions. Once approved, the command
-starts the plugin and prints those inputs and words. Change any of them, or let the
+each tool's description and the plugin's own instructions. Before it asks for the name,
+the command starts the plugin, says it is doing so, and prints those inputs and words. It
+marks each tool the plugin says only reads. Change any of them, or let the
 plugin give a tool a new input or rewrite what a tool or its instructions say, and it
 must be approved again: until then the bridge offers none of its tools and logs why.
 `claude-voice plugins list` starts each plugin and checks it the same way, so it says
