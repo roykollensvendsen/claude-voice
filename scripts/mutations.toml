@@ -874,3 +874,9 @@ name = "a cancelled tool call is logged as cancelled"
 file = "src/claude_voice/server.py"
 find = 'except asyncio\.CancelledError:'
 replace = 'except ZeroDivisionError:'
+
+[[rule]]
+name = "a failed first try of the courier is logged with its reason"
+file = "src/claude_voice/transcripts.py"
+find = 'log\.info\("courier %s: first try failed, %s; starting a fresh courier", name, why\)'
+replace = 'pass'

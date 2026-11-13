@@ -530,11 +530,15 @@ class Courier:
         async with self._lock:
             try:
                 out = await self._carry(name, text)
-            except Exception:
+                why = out["detail"]
+            except Exception as exc:
                 out = {"delivered": False, "detail": "the courier broke", "attempted": False}
+                why = f"the courier broke ({type(exc).__name__}: {exc})"
             if out["delivered"] or out["attempted"]:
                 # Once anything was sent, trying again could deliver it twice.
                 return {k: v for k, v in out.items() if k != "attempted"}
+            # RULE: a failed first try of the courier is logged with its reason
+            log.info("courier %s: first try failed, %s; starting a fresh courier", name, why)
             await self._drop()  # a courier that failed once starts afresh
             out = await self._carry(name, text)
             return {k: v for k, v in out.items() if k != "attempted"}
