@@ -8,6 +8,7 @@ never run (deleting history, reading a secret). The owner's own rules are kept.
 
 import json
 import os
+import pathlib
 import re
 
 import pytest
@@ -249,6 +250,48 @@ def test_every_command_allowed_to_read_a_file_is_refused_every_secret_file():
     for reader in readers:
         for path in files:
             assert f"Bash({reader} {path})" in rules.deny
+
+
+#: One path each secret-file pattern stands for, as the owner's machine has it.
+SECRET_EXAMPLES = {
+    "*.config/claude-voice/env*": "~/.config/claude-voice/env",
+    "*.config/claude-voice/machines/*": "~/.config/claude-voice/machines/laptop.json",
+    "*.config/dreame*": "~/.config/dreame/session.json",
+    "*.config/tv-mcp*": "~/.config/tv-mcp/keys.json",
+    "*.config/heatpump-mcp*": "~/.config/heatpump-mcp/config.toml",
+    "*.config/xbox-mcp*": "~/.config/xbox-mcp/tokens.json",
+    "*.config/ams-mcp*": "~/.config/ams-mcp/config.toml",
+    "*.config/mister-mcp*": "~/.config/mister-mcp/config.toml",
+    "*.config/garage-door*": "~/.config/garage-door/key",
+    "*.config/personal-terms*": "~/.config/personal-terms",
+    "*secrets.yaml*": "firmware/secrets.yaml",
+    "*.config/gh/hosts.yml*": "~/.config/gh/hosts.yml",
+    "*.claude/.credentials.json*": "~/.claude/.credentials.json",
+}
+
+
+def _read_rule_covers(rule, path):
+    """Whether a Read rule's path pattern, in Claude Code's gitignore form, takes in this path."""
+    pattern = re.escape(rule).replace(r"/\*\*/", "/(.*/)?").replace(r"/\*\*", "/.*")
+    pattern = pattern.replace(r"\*\*/", "(.*/)?").replace(r"\*", "[^/]*")
+    return re.fullmatch(pattern, path) is not None
+
+
+def test_every_secret_file_is_refused_to_the_read_tool():
+    """The Read tool reads a file without any shell command, so each secret needs its own Read rule."""
+    rules = permissions.load()
+    table = json.loads(permissions.TABLE.read_text(encoding="utf-8"))
+    files = table["secrets"]["files"]
+    assert set(SECRET_EXAMPLES) == set(files), "each secret-file pattern needs an example here"
+    reads = [rule[len("Read(") : -1] for rule in rules.deny if rule.startswith("Read(")]
+    for bash_pattern, path in SECRET_EXAMPLES.items():
+        assert re.fullmatch(bash_pattern.replace(".", r"\.").replace("*", ".*"), path), bash_pattern
+        assert any(_read_rule_covers(read, path) for read in reads), f"no Read rule refuses {path}"
+    folders = {str(pathlib.PurePosixPath(path).parent) for path in SECRET_EXAMPLES.values()}
+    for read in reads:
+        bare = read.removesuffix("/**")
+        guarded = [*SECRET_EXAMPLES.values(), *folders]
+        assert any(_read_rule_covers(bare, path) for path in guarded), f"{read} guards no secret"
 
 
 def test_copying_or_printing_a_secret_file_is_refused():
