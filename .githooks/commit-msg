@@ -7,6 +7,13 @@
 #
 set -e
 
+# A fixup, amend or squash commit is a note to fold into an earlier commit
+# before the branch is pushed, so it is let through here. Continuous
+# integration still refuses one, so none can reach main.
+case "$(sed -n '/^[^#]/{p;q;}' "$1")" in
+    "fixup! "* | "amend! "* | "squash! "*) exit 0 ;;
+esac
+
 if command -v committed >/dev/null 2>&1; then
     committed --commit-file "$1" || exit 1
 else
