@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import threading
 
 import httpx
 import pytest
@@ -53,7 +54,8 @@ def bridge(tmp_path, desk=AT_THE_DESK):
     store = Store(tmp_path / "b.db")
     oauth = OAuthProvider(store, SECRET, HOST, static_token=SECRET)
     m = SessionManager(store, project_root=tmp_path / "home", client_factory=FakeClaude())
-    seen = presence.Presence(desktop=lambda: desk)
+    seen = presence.Presence(desktop=desk if callable(desk) else lambda: desk)
+    seen.cache = 0  # every check reads the desktop afresh
     server = build_server(m, oauth=oauth, conversations=lambda **k: [], live_dir=tmp_path / "live", presence=seen)
     return build_app(server), seen
 
@@ -78,11 +80,46 @@ async def test_a_question_waits_for_the_phone_only_while_the_owner_is_away_from_
 
 
 async def test_a_prompt_waits_for_the_phone_after_the_voice_called(tmp_path):
-    app, seen = bridge(tmp_path)
+    app, seen = bridge(tmp_path, presence.Desktop(locked=None, idle_seconds=None))
     seen.heard_voice()
     async with client(app) as c:
         opened = (await c.post("/api/v1/prompts", json=QUESTION, headers=BEARER)).json()
     assert opened["wait"] is True
+
+
+async def test_reading_the_desktop_never_holds_up_the_bridge(tmp_path):
+    threads = []
+
+    def desk():
+        threads.append(threading.get_ident())
+        return AT_THE_DESK
+
+    app, _ = bridge(tmp_path, desk)
+    async with client(app) as c:
+        await c.post("/api/v1/prompts", json=QUESTION, headers=BEARER)
+    assert threads and threading.get_ident() not in threads
+
+
+class Lock:
+    """A screen that is locked until the test unlocks it."""
+
+    def __init__(self):
+        self.locked = True
+
+    def __call__(self):
+        return presence.Desktop(locked=self.locked, idle_seconds=0.0)
+
+
+async def test_a_waiting_prompt_goes_back_to_the_screen_once_the_owner_is_back(tmp_path, monkeypatch):
+    monkeypatch.setattr(api, "RECHECK", 0.05)
+    screen = Lock()
+    app, _ = bridge(tmp_path, screen)
+    async with client(app) as c:
+        opened = (await c.post("/api/v1/prompts", json=QUESTION, headers=BEARER)).json()
+        assert opened["wait"] is True
+        screen.locked = False
+        waited = await asyncio.wait_for(c.get(f"/api/v1/prompts/{opened['id']}/wait?seconds=30", headers=BEARER), 5)
+    assert waited.status_code == 409
 
 
 async def test_an_answer_from_the_phone_reaches_the_waiting_session_and_is_logged(app, caplog):
