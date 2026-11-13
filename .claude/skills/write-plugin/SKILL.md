@@ -69,6 +69,17 @@ The owner approved this list. Each item is a lesson a plugin had to learn late.
    variable the bridge would hold.
 5. Starts without a terminal: no questions, only MCP on stdout.
 6. A simulated mode, for tests and the first try.
+
+   A fake for a device or service copies its documented limits: rate limits,
+   timeouts, attempt caps, expiry, and the error each one returns. Each limit has
+   one test that breaks it and checks what the plugin does: waits, retries, or
+   says why. The limit is one constant that both the client and the fake use, so
+   they cannot drift. A limit that isn't documented is measured once against the
+   real device, with the date written next to it.
+
+   A fake knows only the limits someone wrote down. The backstop is the read-back
+   rule (process rule 7), plus one live try on the real device before a tool
+   counts as done.
 7. Its instructions say when to ask the owner and which tool takes which token.
 
 ## Wiring it in

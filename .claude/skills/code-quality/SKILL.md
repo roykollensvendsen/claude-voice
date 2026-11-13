@@ -125,6 +125,10 @@ budget is the owner's decision, not a fix.
 **Lint, type errors or a cycle.** Fix them as they are reported; a cycle is
 broken the same way as a layer breach, by moving shared code down.
 
+**When you review code**, as a quality round does, add this to the checklist:
+for each outside call, name the documented limit and the test that breaks it;
+a missing one is a finding.
+
 Before you push, run the gates in CONTRIBUTING.md and the ratchet against main.
 The ratchet refuses anything worse than main; a pull request that must make a
 measure worse says why on a `Ratchet-Exception:` line, and that is the owner's
