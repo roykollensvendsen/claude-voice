@@ -976,3 +976,27 @@ name = "a write from one thread never lands inside another"
 file = "src/claude_voice/store.py"
 find = 'self\.db = sqlite3\.connect\(path, check_same_thread=False, factory=OneWriterAtATime\)'
 replace = 'self.db = sqlite3.connect(path, check_same_thread=False)'
+
+[[rule]]
+name = "a turn a reply started never ends a delivery"
+file = "src/claude_voice/transcripts.py"
+find = 'if isinstance\(m, ResultMessage\) and isinstance\(origin, dict\) and origin\.get\("kind"\) == "peer":'
+replace = 'if False:'
+
+[[rule]]
+name = "a reply to the courier is passed on as news"
+file = "src/claude_voice/transcripts.py"
+find = 'if self\.on_reply is not None:'
+replace = 'if False:'
+
+[[rule]]
+name = "a carried message says the voice reads the reply"
+file = "src/claude_voice/transcripts.py"
+find = 'return await _courier\.deliver\(name, f"\{text\}\\n\\n\{READ_BY_VOICE\}"\)'
+replace = 'return await _courier.deliver(name, text)'
+
+[[rule]]
+name = "a reply to the courier is news the voice reads"
+file = "src/claude_voice/server.py"
+find = 'transcripts\.hear_replies\('
+replace = '(lambda listen: None)('
