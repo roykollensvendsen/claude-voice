@@ -838,3 +838,27 @@ name = "a prompt the hook still waits on is never closed"
 file = "src/claude_voice/prompts.py"
 find = 'if hook\["waiting"\] or self.clock\(\) - hook\["last"\] < GRACE:'
 replace = 'if False:'
+
+[[rule]]
+name = "a session waiting on a permission prompt has no open question"
+file = "src/claude_voice/transcripts.py"
+find = 'if waiting_for in PERMISSION_WAITS:'
+replace = 'if False:'
+
+[[rule]]
+name = "a question asked inside a subagent is not open"
+file = "src/claude_voice/transcripts.py"
+find = 'if isinstance\(entry, dict\) and not entry.get\("isSidechain"\):'
+replace = 'if isinstance(entry, dict):'
+
+[[rule]]
+name = "a question the session went past is not open"
+file = "src/claude_voice/transcripts.py"
+find = 'return \(str\(block.get\("id"\)\), block.get\("input"\) or \{\}\) if mine else None'
+replace = 'return (str(block.get("id")), block.get("input") or {}) if mine else asked'
+
+[[rule]]
+name = "a permission prompt is not hidden by an old question"
+file = "src/claude_voice/server.py"
+find = 'if waiting_for in transcripts.PERMISSION_WAITS:'
+replace = 'if False:'

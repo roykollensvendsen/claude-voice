@@ -142,14 +142,54 @@ def test_the_open_question_is_the_newest_unanswered_one_and_odd_lines_are_skippe
             f.write("".join(line + "\n" for line in lines))
 
     bare = json.dumps({"type": "assistant", "message": {"content": ["a bare string"]}})
-    add(asks("q1", {"question": "First?"}), "not json at all", bare, json.dumps({"type": "user"}))
+    add(asks("q1", {"question": "First?"}), "not json at all", bare, json.dumps({"type": "user"}), "[1, 2]")
+    assert transcripts.open_question("q", "/w", tmp_path) == {"text": "First?", "options": []}
     add(asks("q2", {"question": "Second?"}), asks("q3", {"question": "Third?"}), answers("q3"))
-    assert transcripts.open_question("q", "/w", tmp_path) == {"text": "Second?", "options": []}
+    assert transcripts.open_question("q", "/w", tmp_path) is None  # it went past the second
 
-    add(asks("q4", "not a dict"), asks("q5", {"question": "Fifth?", "options": [{"label": "Ja"}, 3]}))
+    add(asks("q5", {"question": "Fifth?", "options": [{"label": "Ja"}, 3]}))
     assert transcripts.open_question("q", "/w", tmp_path) == {"text": "Fifth?", "options": ["Ja"]}
-    add(answers("q5"))
+    add(answers("q1"))  # an answer to another question leaves this one open
+    assert transcripts.open_question("q", "/w", tmp_path) == {"text": "Fifth?", "options": ["Ja"]}
+    add(asks("q4", "not a dict"))
     assert transcripts.open_question("q", "/w", tmp_path) == {"text": "", "options": []}  # q4 asks nothing
-    add(answers("q1"), answers("q2"), answers("q4"))
+    add(answers("q4"))
     assert transcripts.open_question("q", "/w", tmp_path) is None
     assert transcripts.open_question("missing", "/w", tmp_path) is None
+
+
+def uses(id_, name="Bash"):
+    tool = {"type": "tool_use", "id": id_, "name": name, "input": {}}
+    return json.dumps({"type": "assistant", "message": {"content": [tool]}})
+
+
+def transcript_of(tmp_path, *lines):
+    path = tmp_path / project_key_for_directory("/w") / "q.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(line + "\n" for line in lines))
+
+
+def test_a_question_the_session_went_past_is_not_open(tmp_path):
+    interrupted = json.dumps({"type": "user", "message": {"content": "[Request interrupted by user]"}})
+    typed = json.dumps({"type": "user", "message": {"content": [{"type": "text", "text": "do the other thing"}]}})
+    reminder = json.dumps({"type": "user", "isMeta": True, "message": {"content": "a note from a hook"}})
+    for later in (uses("t1"), interrupted, typed):
+        transcript_of(tmp_path, asks("q1", {"question": "Old?"}), later)
+        assert transcripts.open_question("q", "/w", tmp_path) is None, later
+    transcript_of(tmp_path, asks("q1", {"question": "Still open?"}), reminder)
+    assert transcripts.open_question("q", "/w", tmp_path) == {"text": "Still open?", "options": []}
+
+
+def test_a_question_asked_inside_a_subagent_is_not_open(tmp_path):
+    side = json.loads(asks("q2", {"question": "Asked inside a subagent?"}))
+    side["isSidechain"] = True
+    tool = json.loads(uses("t9"))
+    tool["isSidechain"] = True
+    transcript_of(tmp_path, asks("q1", {"question": "Mine?"}), json.dumps(side), json.dumps(tool))
+    assert transcripts.open_question("q", "/w", tmp_path) == {"text": "Mine?", "options": []}
+
+
+def test_a_session_waiting_on_a_permission_prompt_has_no_open_question(tmp_path):
+    transcript_of(tmp_path, asks("q1", {"question": "Open?"}))
+    assert transcripts.open_question("q", "/w", tmp_path, waiting_for="input needed") is not None
+    assert transcripts.open_question("q", "/w", tmp_path, waiting_for="permission prompt") is None

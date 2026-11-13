@@ -155,12 +155,25 @@ def continued_in(session_id: str, cwd: str, projects_dir: Path = PROJECTS_DIR) -
     return None
 
 
-def open_question(session_id: str, cwd: str, projects_dir: Path = PROJECTS_DIR) -> dict[str, Any] | None:
+# What Claude Code's registry says a session waits for when it is a permission box.
+PERMISSION_WAITS = frozenset({"permission prompt", "sandbox request", "worker request"})
+Asked = tuple[str, dict[str, Any]] | None  # an open question's tool call id and its input
+
+
+def open_question(
+    session_id: str, cwd: str, projects_dir: Path = PROJECTS_DIR, waiting_for: str | None = None
+) -> dict[str, Any] | None:
     """The multiple-choice question a session is waiting on its user to answer, if any.
 
     Claude Code asks with an AskUserQuestion tool call; the answer comes back as
-    its tool result. A call with no result after it is still open.
+    its tool result. Only the session's own latest act counts: a question it went
+    past, by using another tool or by being told something new, is no longer open.
+    A subagent's lines are not the session's, and a session Claude Code says waits
+    on a permission prompt is not waiting on a question.
     """
+    # RULE: a session waiting on a permission prompt has no open question
+    if waiting_for in PERMISSION_WAITS:
+        return None
     path = projects_dir / project_key_for_directory(cwd) / f"{session_id}.jsonl"
     try:
         with path.open("rb") as f:
@@ -169,27 +182,41 @@ def open_question(session_id: str, cwd: str, projects_dir: Path = PROJECTS_DIR) 
             tail = f.read().decode(errors="replace").splitlines()
     except OSError:
         return None
-    asked: dict[str, Any] = {}
+    asked: Asked = None
     for line in tail:
         try:
             entry = json.loads(line)
         except ValueError:
             continue
-        _track_questions(entry, asked)
-    if not asked:
+        # RULE: a question asked inside a subagent is not open
+        if isinstance(entry, dict) and not entry.get("isSidechain"):
+            asked = _follow_question(entry, asked)
+    return _first_question(asked[1]) if asked else None
+
+
+def _follow_question(entry: dict[str, Any], asked: Asked) -> Asked:
+    """The question still open after one line of the session's own: the one it asks,
+    or None once the line answers it, uses another tool, or tells the session something new."""
+    message = entry.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    told = entry.get("type") == "user" and not entry.get("isMeta")  # a prompt, or an interruption
+    if told and isinstance(content, str) and content.strip():
         return None
-    return _first_question(list(asked.values())[-1])
+    for block in content if isinstance(content, list) else []:
+        if isinstance(block, dict):
+            asked = _after_block(block, asked, told)
+    return asked
 
 
-def _track_questions(entry: dict[str, Any], asked: dict[str, Any]) -> None:
-    """Note each question one transcript line asks, and forget each one it answers."""
-    for block in (entry.get("message") or {}).get("content") or []:
-        if not isinstance(block, dict):
-            continue
-        if block.get("type") == "tool_use" and block.get("name") == "AskUserQuestion":
-            asked[str(block.get("id"))] = block.get("input") or {}
-        elif block.get("type") == "tool_result":
-            asked.pop(str(block.get("tool_use_id")), None)
+def _after_block(block: dict[str, Any], asked: Asked, told: bool) -> Asked:
+    """The question still open after one block of a line: see _follow_question."""
+    kind = block.get("type")
+    if kind == "tool_use":
+        mine = block.get("name") == "AskUserQuestion"
+        # RULE: a question the session went past is not open
+        return (str(block.get("id")), block.get("input") or {}) if mine else None
+    answered = kind == "tool_result" and asked is not None and str(block.get("tool_use_id")) == asked[0]
+    return None if answered or (kind == "text" and told) else asked
 
 
 def _first_question(asked: dict[str, Any]) -> dict[str, Any]:
