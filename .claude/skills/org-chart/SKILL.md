@@ -36,6 +36,7 @@ holding everything is no evidence, and the script ignores it.
 For each group worth keeping, propose one programme. Read
 [references/patterns.md](references/patterns.md) first, and propose the roles
 that work, not only the ones that exist. Say which patterns the group lacks.
+A programme with no architect gets one when its first proposal arrives.
 
 - `code`: short, lowercase, from the main repository's name; not one in use.
 - `components`: one per repository, with `folders` relative to the main

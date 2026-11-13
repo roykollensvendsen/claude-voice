@@ -10,6 +10,9 @@ ends with why it exists.
   the owner.** Its sessions send it the question, the options and a recommendation; the owner's answer
   through the manager counts as the owner's own. Proposals go to it too,
   unless the owner says otherwise, so list `proposals` in its `send_here`.
+  The manager passes each one to the architect, as below. This is convention
+  only until roles carry their own identity: MCP calls carry no session
+  identity today.
   Why: several sessions asking at once bury the owner in half-questions.
 - **The manager asks the owner directly, from the day the programme is
   created.** It asks in its own session with AskUserQuestion, one question at
@@ -26,6 +29,10 @@ ends with why it exists.
 - **A quality role** watches tests and measurements, ships through pull
   requests and never restarts anything.
   Why: whoever judges the code should not also be the one who deploys it.
+- **An architect owns the programme's design.** It assesses new proposals
+  before anything is built. The manager coordinates, and does not design big
+  cross-cutting changes alone.
+  Why: a manager that designs and coordinates at once has nobody checking its design.
 - **A read-only analyst** answers small fact questions: what runs, what a log
   says, what a file holds.
   Why: a quick look should not cost a worker its context or tempt an edit.
@@ -84,6 +91,21 @@ ends with why it exists.
   Anything that touches hardware or shared resources gets its own lane, which
   asks first.
   Why: one hardware question does not stall everything else.
+- **A new proposal from the owner goes to the architect before anything is
+  built.** A proposal is a feature, a process change or a tool. The manager
+  sends it to the architect first. The architect asks whether it fits the
+  existing system and whether something already covers it. It names the
+  alternatives and the risks, and how it should be integrated. It may
+  recommend not doing it, or doing it differently. The quality role reviews
+  the assessment. The manager then brings the owner a short recommendation to
+  decide on. Small, clearly scoped fixes and bugs may skip the architect, at
+  the manager's judgement. The manager always says which path each proposal took.
+  Why: an idea built before anyone checks the system often repeats what exists or fights it.
+- **A programme without an architect gets one when the first proposal
+  arrives.** Start it with `start_role` as a start role with `guard = true`,
+  which refuses pushes, such as `acme-architect`. Its prompt tells it not to
+  edit or commit; that part is convention, see "Rights".
+  Why: no proposal waits for a role nobody planned, and no architect runs idle before one.
 - **Collect decisions into batches.** A couple of times a day, the manager asks
   a short round of questions, most important first, one at a time.
   Why: the owner is not interrupted all day, and work does not wait long.
@@ -128,8 +150,8 @@ ends with why it exists.
 
   `attach_conversation` is no substitute. It carries the old conversation, but
   the terminal copy carries on beside it, and neither gets the role's rights.
-  Why: only a session the bridge started sends its prompts to the voice and the
-  phone, so the owner can answer them away from the screen.
+  Why: only a session the bridge started can be stopped by it and shows as the
+  role's session, with the role's prompt, first task and push guard.
 
 ## Night shift
 
@@ -285,6 +307,10 @@ The session in this folder is the manager for the acme programme.
 - Other sessions never ask the owner directly. They send the manager the question,
   its options and a recommendation; the manager brings back the answer, which counts
   as the owner's own. Proposals come here too, unless the owner says otherwise.
+  This is convention until roles carry their own identity: MCP calls carry no
+  session identity today.
+- A new proposal from the owner goes to the architect before anything is built. Small,
+  clearly scoped fixes may skip it. This manager says which path each one took.
 - This manager asks the owner directly, with AskUserQuestion, one question at a time.
   It never sends a question through the session that started it. A question for the
   owner that reaches it from another manager goes back: ask the owner yourself.
