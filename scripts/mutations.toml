@@ -886,3 +886,21 @@ name = "a message counts as delivered only when Claude Code reports it sent"
 file = "src/claude_voice/transcripts.py"
 find = 'if answer is not None and answer\[0\]:'
 replace = 'if True:'
+
+[[rule]]
+name = "the owner counts as away for ten minutes after the voice called"
+file = "src/claude_voice/presence.py"
+find = 'if self.voice_at is not None and self.clock\(\) - self.voice_at < VOICE_WINDOW:'
+replace = 'if False:'
+
+[[rule]]
+name = "the owner is away while the screen is locked"
+file = "src/claude_voice/presence.py"
+find = 'return desk.locked or desk.idle_seconds > IDLE_LIMIT'
+replace = 'return desk.idle_seconds > IDLE_LIMIT'
+
+[[rule]]
+name = "a question waits for the phone only while the owner is away from the laptop"
+file = "src/claude_voice/api.py"
+find = 'return JSONResponse\(\{"id": prompt\["id"\], "wait": self.away\(HUB.listening\(\)\)\}\)'
+replace = 'return JSONResponse({"id": prompt["id"], "wait": HUB.listening()})'
