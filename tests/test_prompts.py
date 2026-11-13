@@ -433,3 +433,29 @@ async def test_the_phone_no_longer_lists_a_prompt_whose_hook_went_away(tmp_path)
         server.sweep_prompts()
         listed = (await c.get("/api/v1/prompts", headers=BEARER)).json()["prompts"]
     assert listed == []
+
+
+def _opened(caplog):
+    return [r.getMessage() for r in caplog.records if r.name == "claude_voice" and " opened for " in r.getMessage()]
+
+
+async def test_an_approval_and_a_question_each_log_the_prompt_they_open(app, caplog):
+    async with client(app) as c:
+        with caplog.at_level(logging.INFO, logger="claude_voice"):
+            approval = (await c.post("/api/v1/prompts", json=APPROVAL, headers=BEARER)).json()
+            question = (await c.post("/api/v1/prompts", json=QUESTION, headers=BEARER)).json()
+    assert _opened(caplog) == [
+        f"prompt {approval['id']} opened for s1: approval Bash, wait=False",
+        f"prompt {question['id']} opened for s1: question question, wait=False",
+    ]
+    assert "Which colour" not in caplog.text and "rm -rf" not in caplog.text
+
+
+async def test_an_opened_prompt_is_logged_with_its_kind_and_tool_never_its_input(app, caplog):
+    secret = "sk-ant-api03-not-a-real-key-but-looks-like-one"
+    body = {**APPROVAL, "input": {"command": f"curl -H 'x-api-key: {secret}' example.org"}}
+    async with client(app) as c:
+        with caplog.at_level(logging.DEBUG):
+            made = (await c.post("/api/v1/prompts", json=body, headers=BEARER)).json()
+    assert _opened(caplog) == [f"prompt {made['id']} opened for s1: approval Bash, wait=False"]
+    assert secret not in caplog.text and "curl" not in caplog.text
