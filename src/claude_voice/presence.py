@@ -3,8 +3,8 @@
 Waiting for the phone while he sits at the laptop delays the box he would answer at once,
 and not waiting while he is away sends him walking back (ADR-CV-008). He counts as away
 while the companion app is open, while the screen is locked, after five minutes without
-keyboard or mouse, and for ten minutes after the voice called the bridge, unless he has
-used the keyboard or mouse since.
+keyboard or mouse, and for ten minutes after a voice call, from the voice app or the Claude
+app, unless he has used the keyboard or mouse since.
 """
 
 from __future__ import annotations

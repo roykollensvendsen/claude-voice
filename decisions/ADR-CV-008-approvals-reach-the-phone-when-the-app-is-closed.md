@@ -55,7 +55,7 @@ otherwise behaves as today:
 
 - the app is open (as now);
 - the laptop's screen is locked;
-- the voice called the bridge in the last ten minutes;
+- the voice app or the Claude app called the bridge in the last ten minutes;
 - the laptop has been idle for more than five minutes.
 
 Keyboard or mouse used since the voice last called counts as at the laptop. The

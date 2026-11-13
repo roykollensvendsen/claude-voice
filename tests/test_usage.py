@@ -182,3 +182,15 @@ def test_a_call_from_the_voice_app_counts_the_owner_as_away(bridge):
     assert seen.voice_at is None
     bridge_module.note_voice_call(SimpleNamespace(request=request), "whats_new", "ab12cd34ef56", None)
     assert seen.voice_at is not None
+
+
+def test_a_call_from_the_claude_app_or_the_voice_app_starts_the_voice_window(bridge):
+    from types import SimpleNamespace
+
+    from claude_voice import server as bridge_module
+
+    request = SimpleNamespace(scope={"client": ("100.64.0.5", 4321), "headers": []}, headers={})
+    seen = bridge_module.PRESENCE[0]
+    assert seen.voice_at is None
+    bridge_module.note_voice_call(SimpleNamespace(request=request), "whats_new", None, None)
+    assert seen.voice_at is not None  # the Claude app's voice, used while driving
