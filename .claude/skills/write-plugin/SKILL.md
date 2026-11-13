@@ -76,14 +76,15 @@ The owner approved this list. Each item is a lesson a plugin had to learn late.
    says why. The limit is one constant that both the client and the fake use, so
    they cannot drift. A limit that isn't documented is measured once against the
    real device, with the date written next to it.
-   To show the old code fails, run it from its own checkout
-   (`git worktree add <dir> main; PYTHONPATH=<dir>/src`), and print the module's
-   `__file__` in the run, so it's clear which copy was tested. A shared environment
-   installed in editable mode loads the branch, and the old code then "passes".
 
-   A fake knows only the limits someone wrote down. The backstop is the read-back
-   rule (process rule 7), plus one live try on the real device before a tool
-   counts as done.
+   To show the old code fails, run it from its own checkout: `git worktree add <dir> main`,
+   then run the tests with `PYTHONPATH=<dir>/src`. Print the module's `__file__` in that
+   run, so the output shows which copy was tested. An editable install in a shared
+   environment loads the branch, and the old code then 'passes'.
+
+   A fake knows only the limits someone wrote down. The backstop is checklist
+   rule 7 (every change is read back), plus one live try on the real device
+   before a tool counts as done.
 7. Its instructions say when to ask the owner and which tool takes which token.
 
 ## Wiring it in
