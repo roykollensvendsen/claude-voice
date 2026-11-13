@@ -371,12 +371,16 @@ def _named_back(body: Any, machine: str, own: str) -> Any:
 
 
 def _routed(fleet: Fleet, tool: str, arguments: dict[str, Any]) -> tuple[str | None, Any]:
-    """The argument naming the session, and its machine if that is another one. A spoken
-    number is turned into the session's name first."""
+    """The argument naming the session, and its machine if that machine answers the tool.
+    A spoken number is turned into the session's name first."""
     key = ROUTED.get(tool)
     if not key:
         return None, None
     arguments[key] = fleet.resolve(arguments.get(key))
+    target = fleet.split(arguments.get(key))
+    # RULE: a session on another machine is made the active one by its number
+    if target is not None and tool not in target[0].spec.tools:
+        return key, None  # the hub answers it itself, given the full name
     # RULE: a session on another machine is reached by the machine name in front
     return key, fleet.split(arguments.get(key))
 
@@ -392,10 +396,7 @@ def middleware(fleet: Fleet) -> Any:
             return await call_next(ctx)
         arguments = dict(params.get("arguments") or {})
         key, target = _routed(fleet, tool, arguments)
-        # RULE: a session on another machine is made the active one by its number
-        if target is not None and tool not in target[0].spec.tools:
-            ctx.params = {**params, "arguments": arguments}  # the hub answers, given the full name
-            return await call_next(ctx)
+        ctx.params = {**params, "arguments": arguments}  # with a spoken number turned into its name
         if target is not None and key is not None:
             machine, own = target
             try:
