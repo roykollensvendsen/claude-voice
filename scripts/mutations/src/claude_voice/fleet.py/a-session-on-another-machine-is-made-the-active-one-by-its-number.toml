@@ -1,0 +1,5 @@
+[[rule]]
+name = "a session on another machine is made the active one by its number"
+file = "src/claude_voice/fleet.py"
+find = 'if target is not None and tool not in target\[0\].spec.tools:'
+replace = 'if False:'
