@@ -101,7 +101,8 @@ jobs:
 
   quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 50          # the mutation run is the slow part: each rule runs the test files naming it
+    # No time limit, on purpose: this job holds the mutation run, which grows with every rule,
+    # and a run cut short proves nothing. Never cap it; remove a cap rather than raise it.
     permissions:
       contents: read
       actions: read              # to fetch the levels main kept with its own run
