@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 import time
 import uuid
 from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Any
+from types import TracebackType
+from typing import Any, Literal
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions(
@@ -86,13 +88,40 @@ class SessionNotFound(KeyError):
     pass
 
 
+class OneWriterAtATime(sqlite3.Connection):
+    """A connection whose `with` blocks take turns, one thread at a time.
+
+    The bridge writes its one database from the event loop and from the watcher's thread,
+    and the watcher and the sign-in share this connection. On a shared connection a write
+    started in the middle of another joins its transaction: its commit commits the other's
+    half, and the other's rollback is lost. Waiting for the turn keeps each one whole.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._turn = threading.RLock()  # re-entrant: a write may call another on the same thread
+
+    def __enter__(self) -> OneWriterAtATime:
+        self._turn.acquire()
+        return super().__enter__()
+
+    def __exit__(
+        self, kind: type[BaseException] | None, error: BaseException | None, trace: TracebackType | None
+    ) -> Literal[False]:
+        try:
+            return super().__exit__(kind, error, trace)
+        finally:
+            self._turn.release()
+
+
 class Store:
     def __init__(self, path: str | Path, clock: Callable[[], float] = time.time) -> None:
         if str(path) != ":memory:":
             Path(path).expanduser().parent.mkdir(parents=True, exist_ok=True)
             path = Path(path).expanduser()
         self.clock = clock
-        self.db = sqlite3.connect(path, check_same_thread=False)
+        # RULE: a write from one thread never lands inside another
+        self.db = sqlite3.connect(path, check_same_thread=False, factory=OneWriterAtATime)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
         self._recover_interrupted()

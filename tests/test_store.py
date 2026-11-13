@@ -1,3 +1,5 @@
+import contextlib
+
 import pytest
 
 from claude_voice.store import SessionNotFound, Store
@@ -137,3 +139,33 @@ def test_recent_events_limit_keeps_the_newest(store):
         store.add_event(s["id"], "text", {"i": i})
 
     assert [e["payload"]["i"] for e in store.recent_events(since=0, limit=2)] == [3, 4]
+
+
+def test_a_write_from_one_thread_never_lands_inside_another(tmp_path):
+    # The bridge writes its one database from the event loop and from the watcher's thread.
+    # On one shared connection, a second write in the middle of a first joins its transaction:
+    # its commit commits the first one's half, and the first one's rollback is lost.
+    import threading
+
+    store = Store(tmp_path / "s.db")
+    inside, other_done = threading.Event(), threading.Event()
+
+    def first():
+        with contextlib.suppress(RuntimeError), store.db:
+            store.db.execute("INSERT INTO settings VALUES ('half', '1', 0)")
+            inside.set()
+            other_done.wait(0.5)  # the other write either lands now, or waits for this one
+            raise RuntimeError("the first write fails, so its half must not be kept")
+
+    def second():
+        inside.wait(5)
+        store.set_setting("whole", 2)
+        other_done.set()
+
+    threads = [threading.Thread(target=first), threading.Thread(target=second)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(10)
+    assert store.get_setting("half") is None
+    assert store.get_setting("whole") == 2
