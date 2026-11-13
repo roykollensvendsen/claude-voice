@@ -29,9 +29,11 @@ HOST = "http://127.0.0.1:8811"
 # -- the settings file -------------------------------------------------------------------
 
 
-def test_the_claude_app_gets_twenty_seconds_and_the_voice_app_two_minutes_by_default(tmp_path):
+def test_the_claude_app_gets_ten_seconds_and_the_voice_app_two_minutes_by_default(tmp_path):
+    # The app drops a call after about 30 seconds of its own clock, which may have run
+    # for a while already when it reconnects, so the bridge answers well inside that.
     budgets = config.load(tmp_path / "none.toml", env={"HOME": str(tmp_path)}).budgets
-    assert budgets.seconds("claude_app") == 20 and budgets.seconds("voice_app") == 120
+    assert budgets.seconds("claude_app") == 10 and budgets.seconds("voice_app") == 120
     assert budgets.seconds("local") == 60  # anything else
 
 
@@ -134,6 +136,18 @@ async def test_a_delivery_slower_than_the_clients_budget_is_answered_as_sending(
     assert done[0][1] == {"session": "s1", "id": out["id"], "delivered": True, "detail": ""}
     assert next(r for r in after if r["name"] == "billing-ab")["sending"] == []
     assert len(courier.calls) == 1  # sent once, not again
+
+
+async def test_a_message_still_sending_says_it_is_not_yet_confirmed_and_what_to_do_next(world):
+    courier = SlowCourier()
+    async with Client(bridge(world, courier)) as c:
+        out = (
+            await c.call_tool("message_active_session", {"session": "billing-ab", "message": "hi"})
+        ).structured_content
+        courier.release.set()
+    assert out["status"] == "sending"
+    assert "on its way" in out["say"] and "not yet confirmed" in out["say"]
+    assert "read_session_output" in out["say"]  # the step that shows whether it arrived
 
 
 async def test_a_delivery_that_fails_in_the_background_is_reported_as_not_delivered(world):
