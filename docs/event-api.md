@@ -403,8 +403,8 @@ Some prompts never reach the phone, and their box shows at once:
 - the permission Claude Code asks for the choice box itself, which would otherwise
   show as a second prompt beside the question.
 
-When the bridge no longer knows a prompt the hook waits on, after a restart for
-example, the box shows at once rather than after five minutes.
+When the bridge refuses a wait, or no longer knows the prompt after a restart, the
+box shows at once rather than after five minutes.
 
 | Call | Answer |
 | --- | --- |

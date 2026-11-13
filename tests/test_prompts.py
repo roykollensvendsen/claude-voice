@@ -294,6 +294,51 @@ def test_a_prompt_the_bridge_has_lost_goes_back_to_the_screen_at_once():
         server.shutdown()
 
 
+class RefusingBridge(http.server.BaseHTTPRequestHandler):
+    """A bridge that opens a prompt, then refuses every wait with one status."""
+
+    status = 500
+    waits = 0
+    closed: list[str] = []
+
+    def _reply(self, status, body):
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(body).encode())
+
+    def do_POST(self):  # noqa: N802 - the name http.server calls
+        sent = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        if self.path.endswith("/close"):
+            RefusingBridge.closed.append(sent["how"])
+            self._reply(200, {})
+        else:
+            self._reply(200, {"id": "p1", "wait": True})
+
+    def do_GET(self):  # noqa: N802 - the name http.server calls
+        RefusingBridge.waits += 1
+        self._reply(RefusingBridge.status, {"error": "refused"})
+
+    def log_message(self, *args):
+        pass
+
+
+@pytest.mark.parametrize("status", [401, 500])
+def test_a_wait_the_bridge_refuses_goes_back_to_the_screen_at_once(status):
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), RefusingBridge)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        RefusingBridge.status, RefusingBridge.waits, RefusingBridge.closed = status, 0, []
+        bridge = phone_hook.HttpBridge(f"http://127.0.0.1:{server.server_address[1]}", "t")
+        question = {"questions": [{"question": "Which?", "options": [{"label": "A"}]}]}
+        hook_input = {"hook_event_name": "PreToolUse", "tool_name": "AskUserQuestion", "tool_input": question}
+        assert phone_hook.handle(hook_input, bridge) == {}
+        assert RefusingBridge.waits == 1
+        assert RefusingBridge.closed == ["screen"]
+    finally:
+        server.shutdown()
+
+
 def test_the_hook_is_given_to_claude_code_only_for_questions_and_permission_prompts():
     entries = phone_hook.settings_entries("/usr/bin/python3")
     assert set(entries) == {"PreToolUse", "PermissionRequest"}

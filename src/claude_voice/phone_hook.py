@@ -157,6 +157,9 @@ class HttpBridge:
             # RULE: a prompt the bridge has lost goes back to the screen at once
             if status in (404, 410):
                 raise LookupError(f"the bridge no longer knows prompt {prompt_id}")
+            # RULE: a wait the bridge refuses goes back to the screen at once
+            if status not in (200, 204):
+                raise OSError(f"the bridge refused the wait for prompt {prompt_id} with {status}")
             if status == 200 and body:
                 return body
             remaining -= chunk
