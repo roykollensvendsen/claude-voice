@@ -882,6 +882,30 @@ find = 'bridge.close\(prompt_id, "screen"\)$'
 replace = 'pass'
 
 [[rule]]
+name = "a question never opens a second prompt as an approval"
+file = "src/claude_voice/phone_hook.py"
+find = 'if event == "PermissionRequest" and tool != "AskUserQuestion":'
+replace = 'if event == "PermissionRequest":'
+
+[[rule]]
+name = "a call with several questions goes to the screen"
+file = "src/claude_voice/phone_hook.py"
+find = 'if len\(tool_input.get\("questions"\) or \[\]\) > 1:'
+replace = 'if False:'
+
+[[rule]]
+name = "the hook leaves alone the session the voice is talking to"
+file = "src/claude_voice/phone_hook.py"
+find = 'if spoken_to and session == spoken_to:'
+replace = 'if False:'
+
+[[rule]]
+name = "a prompt the bridge has lost goes back to the screen at once"
+file = "src/claude_voice/phone_hook.py"
+find = 'if status in \(404, 410\):'
+replace = 'if False:'
+
+[[rule]]
 name = "a prompt with no hook waiting on it closes"
 file = "src/claude_voice/prompts.py"
 find = 'if how:'

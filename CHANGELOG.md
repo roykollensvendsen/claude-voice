@@ -29,6 +29,13 @@ versions follow [semantic versioning](https://semver.org/spec/v2.0.0.html).
   `answer_question` answers one, and `whats_new` reports a new one as `needs_answer`.
   `send_task` and `message_active_session` say, in `waiting_on`, what box a session waits on.
 
+### Fixed
+
+- A choice box no longer shows on the phone twice, as the question and as a
+  permission for the question. One that asks several questions, or that comes from
+  the session the voice is talking to, goes straight to the screen. A prompt the
+  bridge has lost shows on the screen at once.
+
 ### Security
 
 - A plugin's approval now covers every word the voice reads from it: each tool's

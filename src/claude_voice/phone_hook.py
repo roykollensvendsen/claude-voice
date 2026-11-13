@@ -8,6 +8,10 @@ to Claude Code, so the box never shows. When the app is not open, when no answer
 comes in time, or when anything goes wrong, the hook steps aside and the box
 shows in the terminal exactly as before. It never stops a session.
 
+It also steps aside, without asking the bridge, for a call with several
+questions (the phone shows one), and for the session the voice is talking to,
+where another hook refuses the box at once and must not be kept waiting.
+
 Installed in the owner's own Claude Code settings; run as
 ``python -m claude_voice.phone_hook`` with Claude Code's hook input on stdin.
 """
@@ -33,9 +37,11 @@ class Bridge(Protocol):
     def close(self, prompt_id: str, how: str) -> None: ...
 
 
-def handle(hook_input: dict[str, Any], bridge: Bridge, timeout: float = TIMEOUT) -> dict[str, Any]:
-    """Claude Code's hook answer: the phone's answer, or nothing so the box shows."""
-    body = _prompt(hook_input)
+def handle(hook_input: dict[str, Any], bridge: Bridge, timeout: float = TIMEOUT, spoken_to: str = "") -> dict[str, Any]:
+    """Claude Code's hook answer: the phone's answer, or nothing so the box shows.
+
+    ``spoken_to`` is the session the voice is talking to, if any (see ``spoken_to()``)."""
+    body = _prompt(hook_input, spoken_to)
     if body is None:
         return {}
     answer = _ask_phone(body, bridge, timeout)
@@ -46,17 +52,29 @@ def handle(hook_input: dict[str, Any], bridge: Bridge, timeout: float = TIMEOUT)
     return _approval_answer(answer)
 
 
-def _prompt(hook_input: dict[str, Any]) -> dict[str, Any] | None:
+def _prompt(hook_input: dict[str, Any], spoken_to: str) -> dict[str, Any] | None:
     """What to show on the phone, or None for a hook event the phone does not answer."""
     event = hook_input.get("hook_event_name")
     tool = str(hook_input.get("tool_name") or "")
     tool_input = hook_input.get("tool_input") or {}
     session = str(hook_input.get("session_id") or "")
     if event == "PreToolUse" and tool == "AskUserQuestion":
-        return {"session_id": session, "kind": "question", "question": tool_input}
-    if event == "PermissionRequest":
+        return _question(session, tool_input, spoken_to)
+    # RULE: a question never opens a second prompt as an approval
+    if event == "PermissionRequest" and tool != "AskUserQuestion":
         return {"session_id": session, "kind": "approval", "tool": tool, "input": tool_input}
     return None
+
+
+def _question(session: str, tool_input: dict[str, Any], spoken_to: str) -> dict[str, Any] | None:
+    """A question to show on the phone, or None when it belongs on the screen."""
+    # RULE: a call with several questions goes to the screen
+    if len(tool_input.get("questions") or []) > 1:
+        return None
+    # RULE: the hook leaves alone the session the voice is talking to
+    if spoken_to and session == spoken_to:
+        return None
+    return {"session_id": session, "kind": "question", "question": tool_input}
 
 
 def _ask_phone(body: dict[str, Any], bridge: Bridge, timeout: float) -> dict[str, Any] | None:
@@ -110,6 +128,7 @@ class HttpBridge:
         self.base, self.token = base.rstrip("/"), token
 
     def _call(self, method: str, path: str, body: dict[str, Any] | None, timeout: float) -> tuple[int, Any]:
+        """The status and body of one request; a refusal is a status, a broken connection raises."""
         data = json.dumps(body).encode() if body is not None else None
         request = urllib.request.Request(  # noqa: S310 - always this computer's bridge
             self.base + path,
@@ -117,18 +136,27 @@ class HttpBridge:
             method=method,
             headers={"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
-            raw = response.read()
-            return response.status, json.loads(raw) if raw else None
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+                raw = response.read()
+                return response.status, json.loads(raw) if raw else None
+        except urllib.error.HTTPError as refused:
+            return refused.code, None
 
     def open(self, body: dict[str, Any]) -> dict[str, Any]:
-        return self._call("POST", "/api/v1/prompts", body, 5)[1]
+        status, opened = self._call("POST", "/api/v1/prompts", body, 5)
+        if status != 200 or not isinstance(opened, dict):
+            raise OSError(f"the bridge refused the prompt with {status}")
+        return opened
 
     def wait_for(self, prompt_id: str, seconds: float) -> dict[str, Any] | None:
         remaining = seconds
         while remaining > 0:
             chunk = min(remaining, 50)
             status, body = self._call("GET", f"/api/v1/prompts/{prompt_id}/wait?seconds={chunk}", None, chunk + 10)
+            # RULE: a prompt the bridge has lost goes back to the screen at once
+            if status in (404, 410):
+                raise LookupError(f"the bridge no longer knows prompt {prompt_id}")
             if status == 200 and body:
                 return body
             remaining -= chunk
@@ -139,6 +167,18 @@ class HttpBridge:
             self._call("POST", f"/api/v1/prompts/{prompt_id}/close", {"how": how}, 5)
         except (OSError, urllib.error.URLError):
             pass
+
+
+def spoken_to() -> str:
+    """The session the voice is talking to, or nothing: the file the box-refusing hook reads too."""
+    base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
+    try:
+        chosen = json.loads((Path(base) / "voice-bridge" / "target.json").read_text())
+    except (OSError, ValueError):
+        return ""
+    if not isinstance(chosen, dict) or chosen.get("kind") != "session":
+        return ""
+    return str(chosen.get("claude_session_id") or "")
 
 
 def _token() -> str:
@@ -196,7 +236,7 @@ def main() -> int:
     if not token:
         return 0
     port = os.environ.get("CLAUDE_VOICE_PORT", "8811")
-    out = handle(hook_input, HttpBridge(f"http://127.0.0.1:{port}", token))
+    out = handle(hook_input, HttpBridge(f"http://127.0.0.1:{port}", token), spoken_to=spoken_to())
     if out:
         sys.stdout.write(json.dumps(out))
     return 0

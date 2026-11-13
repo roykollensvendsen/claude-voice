@@ -395,6 +395,17 @@ settings hands each one to the bridge and waits for the phone; when no stream is
 open it steps aside at once and the box shows in the terminal as before, and if
 no answer comes within five minutes the box shows there too.
 
+Some prompts never reach the phone, and their box shows at once:
+
+- a choice box that asks several questions at once, because the phone shows one and
+  Claude Code drops any question left without an answer;
+- a choice box in the session the voice is talking to, which another hook refuses;
+- the permission Claude Code asks for the choice box itself, which would otherwise
+  show as a second prompt beside the question.
+
+When the bridge no longer knows a prompt the hook waits on, after a restart for
+example, the box shows at once rather than after five minutes.
+
 | Call | Answer |
 | --- | --- |
 | `GET /api/v1/prompts` | the open ones: `{"prompts": [{"id", "session", "kind": "question"|"approval", "question": {"text", "header", "options": [{"label", "description"}], "multi"}, "tool", "input", "cut", "asked_at"}]}`. `input` is what an approval would run: the command, the file, or short JSON, at most 300 characters |
