@@ -110,6 +110,14 @@ DEFAULT_RULES: dict[str, str] = {
         "session that can, with send_task or message_active_session, and say briefly "
         "that it was sent."
     ),
+    "answer_questions": (
+        "When whats_new reports needs_answer, call list_pending_approvals and read out the "
+        "session's name, its question and the options with their numbers. Call "
+        "answer_question only when the user clearly picks one, or several when it takes several, "
+        "or says their own answer; never guess. Never send an empty choice. When it refuses a "
+        "choice and gives the options, read them out again and ask once more. If it says the "
+        "question is on the screen, tell the user so."
+    ),
 }
 
 
