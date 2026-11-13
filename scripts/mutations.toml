@@ -868,3 +868,9 @@ name = "a permission prompt is not hidden by an old question"
 file = "src/claude_voice/server.py"
 find = 'if waiting_for in transcripts.PERMISSION_WAITS:'
 replace = 'if False:'
+
+[[rule]]
+name = "every secret file is refused to the Read tool"
+file = "src/claude_voice/permissions.py"
+find = 'deny \+= \[f"Read\(//\{path\}\)" for path in secrets\["read by the Read tool, anywhere"\]\]'
+replace = 'deny += [f"Read({path})" for path in secrets["read by the Read tool, anywhere"]]'
