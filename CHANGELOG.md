@@ -24,6 +24,9 @@ versions follow [semantic versioning](https://semver.org/spec/v2.0.0.html).
 - `wait_for_session` waits, sending nothing, until a running session's turn ends
   or it needs its user, so a voice assistant can wait for a reply instead of polling.
 - `claude-voice check` and `claude-voice serve`, and a user service installer.
+- A session's choice box can be answered by voice while the phone hook waits on it.
+  `list_pending_approvals` also lists these questions with numbered options,
+  `answer_question` answers one, and `whats_new` reports a new one as `needs_answer`.
 
 ### Security
 
