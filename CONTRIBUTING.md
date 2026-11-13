@@ -137,6 +137,19 @@ cannot be tidied at the end by squashing it, which is why `committed.toml`
 refuses a fixup and a work-in-progress commit rather than trusting you to clean
 up later.
 
+A fixup is still the way to correct an earlier commit on your own branch, as
+long as it is folded in before you push:
+
+<!-- not run: it needs a branch with a commit to correct, and it rewrites that branch -->
+```
+git commit --fixup <the commit it corrects>
+git rebase --autosquash origin/main
+git push --force-with-lease origin <your branch>
+```
+
+The commit-msg hook lets a `fixup!`, `amend!` or `squash!` commit through for
+this, and continuous integration still refuses one that reaches a pull request.
+
 ## More rules for every change
 
 - **A tool's first line says what it is for.** The Claude app shows an
