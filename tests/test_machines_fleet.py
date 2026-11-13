@@ -136,3 +136,15 @@ async def test_a_session_number_from_another_machine_is_never_passed_on(tmp_path
     assert listed["sessions"] and tree["nodes"] and recap["sessions"]
     # The laptop numbers its sessions from its own pool, so its "1" may be the hub's own #1.
     assert _numbers_in([listed, tree, recap, page]) == []
+
+
+async def test_a_session_on_another_machine_is_made_the_active_one_by_its_number(tmp_path):
+    laptop, _ = await hub_with_laptop(tmp_path)
+    async with laptop:
+        await approve(laptop, tmp_path / "hub")
+        hub = the_hub(tmp_path, laptop)
+        listed = (await call(hub, "list_active_sessions")).structured_content["sessions"]
+        there = next(s for s in listed if s["name"] == "lukas-laptop/mod")
+        made = await call(hub, "set_active_session", session=f"nummer {there['number']}")
+    assert not made.is_error, made.content
+    assert made.structured_content["name"] == "lukas-laptop/mod"
