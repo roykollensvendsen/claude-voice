@@ -940,3 +940,9 @@ name = "a message counts as delivered only when Claude Code reports it sent"
 file = "src/claude_voice/transcripts.py"
 find = 'if answer is not None and answer\[0\]:'
 replace = 'if True:'
+
+[[rule]]
+name = "a write from one thread never lands inside another"
+file = "src/claude_voice/store.py"
+find = 'self\.db = sqlite3\.connect\(path, check_same_thread=False, factory=OneWriterAtATime\)'
+replace = 'self.db = sqlite3.connect(path, check_same_thread=False)'
