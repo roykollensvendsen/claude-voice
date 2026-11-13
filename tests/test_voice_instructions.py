@@ -92,9 +92,18 @@ def test_the_general_rules_read_out_a_next_step_and_leave_typed_commands_to_the_
     assert "plain terminal; never run it for them" in said
 
 
+def test_the_general_rules_read_a_question_out_and_answer_only_a_clear_choice():
+    """A session's choice box, waiting for the owner: read out with numbers, answered on his word."""
+    said = " ".join(INSTRUCTIONS.split())
+    assert "needs_answer" in said and "list_pending_approvals" in said
+    assert "options with their numbers" in said
+    assert "answer_question only when the user clearly picks one" in said
+    assert "never guess" in said and "on the screen" in said
+
+
 def test_the_default_rules_are_named_and_each_reaches_the_voice_on_a_line_of_its_own():
     """A later setting switches each one by name, so the names are part of the design."""
-    assert set(DEFAULT_RULES) == {"read_next_step", "plain_terminal", "delegate_unable"}
+    assert set(DEFAULT_RULES) == {"read_next_step", "plain_terminal", "delegate_unable", "answer_questions"}
     assert INSTRUCTIONS.startswith(BASE_INSTRUCTIONS)
     lines = INSTRUCTIONS[len(BASE_INSTRUCTIONS) :].splitlines()
     assert lines == list(DEFAULT_RULES.values())
