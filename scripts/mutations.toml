@@ -976,3 +976,9 @@ name = "a write from one thread never lands inside another"
 file = "src/claude_voice/store.py"
 find = 'self\.db = sqlite3\.connect\(path, check_same_thread=False, factory=OneWriterAtATime\)'
 replace = 'self.db = sqlite3.connect(path, check_same_thread=False)'
+
+[[rule]]
+name = "an opened prompt is logged with its kind and tool, never its input"
+file = "src/claude_voice/api.py"
+find = 'log.info\("prompt %s opened for %s: %s, wait=%s", .*\)'
+replace = 'pass'
