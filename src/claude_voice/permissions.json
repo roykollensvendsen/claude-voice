@@ -320,7 +320,7 @@
       ".config/gh/hosts.yml*",
       ".claude/.credentials.json*"
     ],
-    "read by the Read tool, in the repository": [
+    "read by the Read tool, anywhere": [
       "**/*secrets.yaml*"
     ]
   }

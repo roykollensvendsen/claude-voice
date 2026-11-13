@@ -264,14 +264,24 @@ SECRET_EXAMPLES = {
     "*.config/mister-mcp*": "~/.config/mister-mcp/config.toml",
     "*.config/garage-door*": "~/.config/garage-door/key",
     "*.config/personal-terms*": "~/.config/personal-terms",
-    "*secrets.yaml*": "firmware/secrets.yaml",
+    # In another repository than the one the session works in, as the garage door's firmware is.
+    "*secrets.yaml*": "/elsewhere/garage-door/firmware/secrets.yaml",
     "*.config/gh/hosts.yml*": "~/.config/gh/hosts.yml",
     "*.claude/.credentials.json*": "~/.claude/.credentials.json",
 }
 
 
 def _read_rule_covers(rule, path):
-    """Whether a Read rule's path pattern, in Claude Code's gitignore form, takes in this path."""
+    """Whether a Read rule's path pattern, in Claude Code's gitignore form, takes in this path.
+
+    `//` starts at the root and `~/` at the home folder. Any other pattern counts from the
+    session's own folder, so it never takes in a path outside it: proven with `claude -p`
+    on dummy files, where `**/x` was read from a sibling folder and `//**/x` was refused.
+    """
+    if rule.startswith("//"):
+        rule = rule[1:]
+    elif not rule.startswith("~/"):
+        rule = f"<the session's folder>/{rule}"
     pattern = re.escape(rule).replace(r"/\*\*/", "/(.*/)?").replace(r"/\*\*", "/.*")
     pattern = pattern.replace(r"\*\*/", "(.*/)?").replace(r"\*", "[^/]*")
     return re.fullmatch(pattern, path) is not None

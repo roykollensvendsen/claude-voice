@@ -982,3 +982,9 @@ name = "a write from one thread never lands inside another"
 file = "src/claude_voice/store.py"
 find = 'self\.db = sqlite3\.connect\(path, check_same_thread=False, factory=OneWriterAtATime\)'
 replace = 'self.db = sqlite3.connect(path, check_same_thread=False)'
+
+[[rule]]
+name = "every secret file is refused to the Read tool"
+file = "src/claude_voice/permissions.py"
+find = 'deny \+= \[f"Read\(//\{path\}\)" for path in secrets\["read by the Read tool, anywhere"\]\]'
+replace = 'deny += [f"Read({path})" for path in secrets["read by the Read tool, anywhere"]]'

@@ -82,7 +82,7 @@ def load(table: Path = TABLE) -> Rules:
     deny += [f"Bash({reader} {path})" for path in secrets["files"] for reader in secrets["readers"]]
     # RULE: every secret file is refused to the Read tool
     deny += [f"Read(~/{path})" for path in secrets["read by the Read tool, in the home folder"]]
-    deny += [f"Read({path})" for path in secrets["read by the Read tool, in the repository"]]
+    deny += [f"Read(//{path})" for path in secrets["read by the Read tool, anywhere"]]
     devices = raw.get("device tools", {"servers": [], "tools": []})
     # RULE: a tool that moves something in the house asks first, by every name it is seen under
     ask += [f"mcp__{server}__{tool}" for server in devices["servers"] for tool in devices["tools"]]
