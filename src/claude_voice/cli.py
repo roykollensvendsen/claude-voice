@@ -212,13 +212,18 @@ def _list_plugins(specs: list[PluginSpec]) -> int:
     return 0
 
 
-def _show_approved(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> None:
-    """What the owner just approved: each tool's inputs and every word the voice reads."""
+def _show_tools(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> None:
+    """What the owner is asked to approve: each tool's inputs, whether the plugin says it only
+    reads, and every word the voice reads."""
     from . import plugins
 
     for tool in spec.tools:
         found = listing.get(tool)
-        sys.stdout.write(f"  {tool} takes: {plugins.takes(found['schema'])}\n" if found else f"  {tool}: not in it\n")
+        if found is None:
+            sys.stdout.write(f"  {tool}: not in it\n")
+            continue
+        mark = ", only reads" if found.get("read_only") else ""
+        sys.stdout.write(f"  {tool} takes: {plugins.takes(found['schema'])}{mark}\n")
         if found and found.get("description"):
             sys.stdout.write(f"    the voice reads: {found['description']}\n")
     rules = plugins.instructions(listing)
@@ -247,6 +252,12 @@ def plugins_command(action: str, name: str | None, env: Mapping[str, str]) -> in
         f"Plugin {spec.name}\n  runs: {' '.join([spec.command, *spec.args])}\n  in:   {spec.cwd}\n"
         f"  the voice may call: {', '.join(spec.tools)}\n"
     )
+    listing = plugins.Plugin(spec, plugins.CLIENT).listing()
+    if not listing:
+        sys.stdout.write(f"{spec.name} did not start, so nothing was approved. Check its command and folder.\n")
+        return 1
+    # RULE: the owner sees which tools only read before approving a plugin
+    _show_tools(spec, listing)
     try:
         typed = input(f"Type {spec.name} to approve it, anything else to stop: ")
     except EOFError:  # run with nothing to read from, such as from inside another program
@@ -256,12 +267,7 @@ def plugins_command(action: str, name: str | None, env: Mapping[str, str]) -> in
     if typed.strip() != spec.name:
         sys.stdout.write("Not approved.\n")
         return 1
-    listing = plugins.Plugin(spec, plugins.CLIENT).listing()
-    if not listing:
-        sys.stdout.write(f"{spec.name} did not start, so nothing was approved. Check its command and folder.\n")
-        return 1
     plugins.approve(spec, listing)
-    _show_approved(spec, listing)
     sys.stdout.write(f"Approved. A running bridge offers {spec.name}'s tools within a few seconds.\n")
     return 0
 

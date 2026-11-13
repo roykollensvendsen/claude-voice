@@ -125,10 +125,45 @@ def test_the_owner_approves_a_plugin_by_typing_its_name(tmp_path, monkeypatch, c
     assert plugins.inputs_approved(spec, plugins.Plugin(spec, plugins.CLIENT).listing(), approvals)
 
 
+def test_the_owner_sees_which_tools_only_read_before_approving_a_plugin(tmp_path, monkeypatch, capsys):
+    # A plugin's own "only reads" mark lets a client call the tool unasked, so the owner sees it first.
+    f = tmp_path / "c.toml"
+    f.write_text(
+        '[plugins.garage]\ncommand = "garage-door-mcp"\ncwd = "/g"\ntools = ["garage_status", "garage_request"]\n'
+    )
+    fake = MCPServer("garage")
+
+    @fake.tool(annotations=ToolAnnotations(read_only_hint=True))
+    async def garage_status() -> dict:
+        """Where the door is."""
+        return {"door": "closed"}
+
+    @fake.tool(annotations=ToolAnnotations(read_only_hint=False))
+    async def garage_request(action: str) -> dict:
+        """Ask to open or close the door."""
+        return {"token": "t1"}
+
+    monkeypatch.setattr(plugins, "APPROVALS", tmp_path / "approved.json")
+    monkeypatch.setattr(plugins, "CLIENT", lambda params: Client(fake))
+    seen = []
+
+    def owner(prompt=""):
+        seen.append(capsys.readouterr().out)  # what was on the screen when the name was asked for
+        return "garage"
+
+    monkeypatch.setattr("builtins.input", owner)
+    env = {"HOME": str(tmp_path), "CLAUDE_VOICE_CONFIG": str(f)}
+    assert cli.main(["plugins", "approve", "garage"], env=env) == 0
+    before = seen[0].splitlines()
+    assert any("garage_status" in line and "only reads" in line for line in before), seen[0]
+    assert not any("garage_request" in line and "only reads" in line for line in before), seen[0]
+
+
 def test_approving_with_nothing_typed_approves_nothing(tmp_path, monkeypatch, capsys):
     f = tmp_path / "c.toml"
     f.write_text('[plugins.garage]\ncommand = "garage-door-mcp"\ncwd = "/g"\ntools = ["garage_status"]\n')
     monkeypatch.setattr(plugins, "APPROVALS", tmp_path / "approved.json")
+    monkeypatch.setattr(plugins, "CLIENT", lambda params: Client(stand_in()[0]))
 
     def no_terminal(prompt=""):
         raise EOFError

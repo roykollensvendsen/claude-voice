@@ -868,3 +868,9 @@ name = "a plugin tool that only reads is shown as read-only"
 file = "src/claude_voice/plugins.py"
 find = 'marks = ToolAnnotations\(read_only_hint=known\["read_only"\]\) if known\.get\("read_only"\) is not None else None'
 replace = 'marks = None'
+
+[[rule]]
+name = "the owner sees which tools only read before approving a plugin"
+file = "src/claude_voice/cli.py"
+find = '_show_tools\(spec, listing\)'
+replace = 'pass'
