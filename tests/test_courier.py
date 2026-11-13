@@ -309,3 +309,19 @@ async def test_the_couriers_own_words_never_reach_the_caller():
     failed = await courier.deliver("billing", "hello")
     assert failed["delivered"] is False and "Hermes" not in failed["detail"] and "Sure" not in failed["detail"]
     await courier.close()
+
+
+async def test_a_failed_first_try_of_the_courier_is_logged_with_its_reason(caplog):
+    import logging
+
+    factory = Factory([RuntimeError("cli died")], [ok("hi"), [done("pong")]], [ok("hi")])
+    courier = Courier(client_factory=factory)
+    with caplog.at_level(logging.INFO, logger="claude_voice"):
+        await courier.deliver("billing", "hi")  # the courier broke
+        await courier.deliver("billing", "hi")  # the courier answered without sending
+    lines = [r.getMessage() for r in caplog.records if r.name == "claude_voice"]
+    retries = [line for line in lines if "first try failed" in line]
+    assert len(retries) == 2
+    assert "RuntimeError: cli died" in retries[0] and "starting a fresh courier" in retries[0]
+    assert "the courier did not send it" in retries[1]
+    await courier.close()
