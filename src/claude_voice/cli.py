@@ -252,6 +252,8 @@ def plugins_command(action: str, name: str | None, env: Mapping[str, str]) -> in
         f"Plugin {spec.name}\n  runs: {' '.join([spec.command, *spec.args])}\n  in:   {spec.cwd}\n"
         f"  the voice may call: {', '.join(spec.tools)}\n"
     )
+    # RULE: the owner is told the plugin starts before it does
+    sys.stdout.write("Starting it to read its tools...\n")
     listing = plugins.Plugin(spec, plugins.CLIENT).listing()
     if not listing:
         sys.stdout.write(f"{spec.name} did not start, so nothing was approved. Check its command and folder.\n")

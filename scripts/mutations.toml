@@ -874,3 +874,9 @@ name = "the owner sees which tools only read before approving a plugin"
 file = "src/claude_voice/cli.py"
 find = '_show_tools\(spec, listing\)'
 replace = 'pass'
+
+[[rule]]
+name = "the owner is told the plugin starts before it does"
+file = "src/claude_voice/cli.py"
+find = 'sys\.stdout\.write\("Starting it to read its tools\.\.\.\\n"\)'
+replace = 'pass'
