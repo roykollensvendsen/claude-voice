@@ -505,6 +505,11 @@ def build_server(
             return transcripts.read_raw_transcript(sid, directory or "", projects_dir)
 
     watcher = events.LiveWatcher(manager.store, live_dir, manager.root, clock=manager.clock)
+    # An answer sent back to the courier would otherwise reach nobody; it is news to read out.
+    # RULE: a reply to the courier is news the voice reads
+    transcripts.hear_replies(
+        lambda sender, body: watcher.record(sender, "reply", f"Reply from {sender}: {transcripts.clip(body, 600)}")
+    )
     tmux = tmux or renames.Tmux()
 
     def renamed(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1866,7 +1871,8 @@ def build_server(
     @tool(annotations=READ_ONLY)
     def whats_new(cursor: str | None = None) -> dict[str, Any]:
         """Has anything happened since I last asked? Returns only new events.
-        An event is a session that finished, failed, needs approval or input, started or ended.
+        An event is a session that finished, failed, needs approval or input, started, ended,
+        or replied to a message (kind "reply"; read its text aloud).
         Each answer carries a cursor to pass next time; call without one first. Cheap enough to poll."""
         check()
         b, f = _parse_cursor(cursor)

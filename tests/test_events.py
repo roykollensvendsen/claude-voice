@@ -183,3 +183,16 @@ def test_spoken_texts_never_carry_an_approval_number(store, live, root):
     texts = [e["text"] for e in bridge_events(store, 0)]
     assert texts == ["build wants to run Bash: ls. Yes or no?", "An approval for build expired and was refused."]
     assert not any("7" in text for text in texts)
+
+
+async def test_a_reply_to_the_courier_is_news_the_voice_reads(store, live, root, monkeypatch):
+    from claude_voice import transcripts
+
+    monkeypatch.setattr(transcripts._courier, "on_reply", None)
+    _, _, srv = server(store, live, root)
+    async with Client(srv) as c:
+        first = await call(c, "whats_new")
+        transcripts._courier.on_reply("billing", "Pong. The build is green.")
+        out = await call(c, "whats_new", cursor=first["cursor"])
+    assert kinds(out["events"]) == [("billing", "reply")]
+    assert out["events"][0]["text"] == "Reply from billing: Pong. The build is green."
