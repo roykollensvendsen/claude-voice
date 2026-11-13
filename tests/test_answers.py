@@ -6,6 +6,7 @@ import os
 
 import httpx
 import pytest
+from claude_agent_sdk import project_key_for_directory
 from fakes import FakeClaude
 from mcp.client import Client
 
@@ -42,13 +43,29 @@ def server(tmp_path):
     (tmp_path / "home").mkdir()
     live = tmp_path / "live"
     live.mkdir()
-    (live / "1.json").write_text(
-        json.dumps({"pid": os.getpid(), "sessionId": "c-1", "name": "painter", "status": "waiting"})
-    )
+    row = {
+        "pid": os.getpid(),
+        "sessionId": "c-1",
+        "name": "painter",
+        "status": "waiting",
+        "cwd": str(tmp_path / "home"),
+    }
+    (live / "1.json").write_text(json.dumps({**row, "waitingFor": "input needed"}))
     store = Store(tmp_path / "b.db")
     oauth = OAuthProvider(store, SECRET, HOST, static_token=SECRET)
     m = SessionManager(store, project_root=tmp_path / "home", client_factory=FakeClaude())
-    return build_server(m, oauth=oauth, conversations=lambda **k: [], live_dir=live)
+
+    async def deliver(name, text):
+        return {"delivered": True, "detail": "queued"}
+
+    return build_server(
+        m,
+        oauth=oauth,
+        conversations=lambda **k: [],
+        live_dir=live,
+        deliver=deliver,
+        projects_dir=tmp_path / "projects",
+    )
 
 
 def http(server):
@@ -225,6 +242,54 @@ def test_a_choice_named_twice_counts_once():
     with book.waiting(prompt):
         status, said = answers.answer(book, "q1", ["1", "red", "Blue", "2"], None)
     assert status == 200 and said["answer"] == ["Red", "Blue"]
+
+
+async def test_a_message_to_a_session_waiting_on_a_box_says_what_it_waits_on(server):
+    async with http(server) as h, Client(server) as c:
+        pid, wait = await opened_and_waiting(h, question())
+        told = await call(c, "message_active_session", session="painter", message="also blue")
+        adopted = await call(c, "attach_conversation", claude_session_id="c-1")
+        sent = await call(c, "send_task", session_id=adopted["id"], prompt="go on")
+        await call(c, "answer_question", question_id=pid, choice="1")
+        await wait
+    options = [
+        {"number": 1, "label": "Red", "description": "warm"},
+        {"number": 2, "label": "Blue", "description": "cool"},
+    ]
+    for out in (told, sent):
+        assert out["waiting_on"] == {
+            "kind": "question",
+            "question": "Which colour?",
+            "options": options,
+            "prompt_id": pid,
+        }
+        assert out["say"] == answers.QUEUED
+    assert told["delivered"] is True
+
+
+def test_a_box_no_hook_holds_is_read_from_the_transcript_and_a_busy_session_waits_on_nothing(tmp_path):
+    book = prompts.Book()
+    row = {"sessionId": "q", "cwd": "/w", "status": "waiting", "waitingFor": "input needed"}
+    tool = {
+        "type": "tool_use",
+        "id": "t1",
+        "name": "AskUserQuestion",
+        "input": {"questions": [{"question": "Ship it?", "options": [{"label": "Yes"}, {"label": "No"}]}]},
+    }
+    path = tmp_path / project_key_for_directory("/w") / "q.jsonl"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"type": "assistant", "message": {"content": [tool]}}) + "\n")
+    scanned = answers.waiting_on(row, book, tmp_path)
+    approval = answers.waiting_on({**row, "waitingFor": "permission prompt"}, book, tmp_path)
+    busy = answers.waiting_on({**row, "status": "busy"}, book, tmp_path)
+    assert scanned == {
+        "kind": "question",
+        "question": "Ship it?",
+        "options": [{"number": 1, "label": "Yes"}, {"number": 2, "label": "No"}],
+        "prompt_id": None,
+    }
+    assert approval == {"kind": "approval", "question": None, "options": [], "prompt_id": None}
+    assert busy is None
 
 
 def test_a_wait_goes_on_and_is_counted_off_when_its_news_fails():

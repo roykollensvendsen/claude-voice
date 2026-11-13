@@ -745,10 +745,14 @@ def build_server(
     )
     async def send_task(session_id: str, prompt: str) -> dict[str, Any]:
         """Give Claude a task or follow-up; returns at once.
-        Poll session_recap for progress."""
+        Poll session_recap for progress. When the session waits on a box, the task is queued,
+        waiting_on says what the box asks, and 'say' is read aloud."""
         session_id = known(session_id)
         try:
-            return await manager.send(session_id, prompt)
+            sent = await manager.send(session_id, prompt)
+            claude_id = store.get_session(session_id).get("claude_session_id")
+            row = next((d for d in events.read_live(live_dir) if claude_id and d.get("sessionId") == claude_id), None)
+            return {**sent, **answers.queued_behind(row, prompt_book, projects_dir)}
         except (SessionBusy, SessionClosed, ValueError) as exc:
             msg = str(exc) if not isinstance(exc, SessionClosed) else "That session is closed."
             raise ToolError(msg) from None
@@ -1546,22 +1550,24 @@ def build_server(
     async def message_active_session(session: str, message: str) -> dict[str, Any]:
         """Send a message into a running Claude Code session.
         `session` is a name or id from list_active_sessions; read its answer later with
-        read_session_output."""
+        read_session_output. When the session waits on a box, the message is queued,
+        waiting_on says what the box asks, and 'say' is read aloud."""
         target = find_live(session)
         moved = moved_to(target)
         if moved:
             return {"session": target["name"], "delivered": False, "status": "moved", "moved_to": moved}
         sid = str(target["sessionId"])
         budget = repos.budgets.seconds(transcripts.current_client.get())
+        behind = answers.queued_behind(target, prompt_book, projects_dir)  # a box it waits on, if any
         delivery = asyncio.ensure_future(deliver(address(target), message))
         try:
             out = await asyncio.wait_for(asyncio.shield(delivery), budget)
         except TimeoutError:
             # RULE: a delivery slower than the clients budget is answered as sending
-            return sending_on(sid, str(target["name"]), message, delivery)
+            return sending_on(sid, str(target["name"]), message, delivery) | behind
         if not out.get("delivered"):
             raise ToolError(f"Could not deliver: {out.get('detail') or 'unknown reason'}")
-        return {"session": target["name"], "status": "delivered", "delivered": True}
+        return {"session": target["name"], "status": "delivered", "delivered": True, **behind}
 
     def sending_on(sid: str, name: str, message: str, delivery: asyncio.Future[Any]) -> dict[str, Any]:
         """Leave a slow delivery running; it shows on the session's card until Claude Code has sent

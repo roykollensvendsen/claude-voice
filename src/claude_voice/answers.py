@@ -11,15 +11,19 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 from typing import Any
 
-from . import prompts
+from . import prompts, transcripts
 
 log = logging.getLogger("claude_voice.answers")
 
 ON_THE_SCREEN = (
     "That question is not waiting for the voice any more. If it is still open, answer it on the computer's screen."
 )
+BOXES = frozenset({"input needed", "permission prompt"})  # what Claude Code's live record says a box is
+QUEUED = "It's waiting on a question; your message is queued. Shall I read it out?"
+QUEUED_APPROVAL = "It's waiting on an approval; your message is queued. Shall I read it out?"
 NOTHING_PICKED = "nothing was picked: give an option's number or label, or the owner's own words"
 
 
@@ -133,3 +137,36 @@ def news(prompt: dict[str, Any], live: list[dict[str, Any]]) -> tuple[str, str, 
     name = next((str(r["name"]) for r in live if str(r.get("sessionId")) == prompt["session"] and r.get("name")), "")
     who = name or "A session"
     return who, "needs_answer", f"{who} asks: {prompt['question']['text']}"
+
+
+def waiting_on(row: dict[str, Any], book: prompts.Book, projects_dir: Path) -> dict[str, Any] | None:
+    """The box a running session waits on, from its live record: a question or an approval, or None.
+
+    A message sent to it is queued and gets in once the box is answered, so the voice is told
+    what holds it up. A question a hook holds comes from the book; otherwise from the transcript.
+    """
+    waiting_for = row.get("waitingFor")
+    # RULE: a message to a session waiting on a box says what it waits on
+    if row.get("status") != "waiting" or waiting_for not in BOXES:
+        return None
+    sid = str(row.get("sessionId"))
+    kind = "approval" if waiting_for in transcripts.PERMISSION_WAITS else "question"
+    held = [p for p in book.items.values() if p["session"] == sid and p["kind"] == kind and p["answer"] is None]
+    prompt = next((p for p in held if book.hook_waits(p)), None)
+    prompt_id = prompt["id"] if prompt else None
+    if kind == "approval":
+        return {"kind": kind, "question": None, "options": [], "prompt_id": prompt_id}
+    if prompt is not None:
+        asked = prompt["question"]
+    else:
+        scanned = transcripts.open_question(sid, str(row.get("cwd")), projects_dir, waiting_for) or {}
+        asked = {"text": scanned.get("text"), "options": [{"label": label} for label in scanned.get("options", [])]}
+    return {"kind": kind, "question": asked["text"], "options": numbered(asked), "prompt_id": prompt_id}
+
+
+def queued_behind(row: dict[str, Any] | None, book: prompts.Book, projects_dir: Path) -> dict[str, Any]:
+    """What to add to a sent message's answer when its session waits on a box; else nothing."""
+    box = waiting_on(row, book, projects_dir) if row else None
+    if box is None:
+        return {}
+    return {"waiting_on": box, "say": QUEUED if box["kind"] == "question" else QUEUED_APPROVAL}
