@@ -980,17 +980,59 @@ replace = 'self.db = sqlite3.connect(path, check_same_thread=False)'
 [[rule]]
 name = "the owner counts as away for ten minutes after the voice called"
 file = "src/claude_voice/presence.py"
-find = 'if self.voice_at is not None and self.clock\(\) - self.voice_at < VOICE_WINDOW:'
+find = 'if since < VOICE_WINDOW:'
 replace = 'if False:'
 
 [[rule]]
 name = "the owner is away while the screen is locked"
 file = "src/claude_voice/presence.py"
-find = 'return desk.locked or desk.idle_seconds > IDLE_LIMIT'
-replace = 'return desk.idle_seconds > IDLE_LIMIT'
+find = 'if desk.locked:'
+replace = 'if False:'
 
 [[rule]]
 name = "a question waits for the phone only while the owner is away from the laptop"
 file = "src/claude_voice/api.py"
-find = 'return JSONResponse\(\{"id": prompt\["id"\], "wait": self.away\(HUB.listening\(\)\)\}\)'
+find = 'return JSONResponse\(\{"id": prompt\["id"\], "wait": await self._away\(\)\}\)'
 replace = 'return JSONResponse({"id": prompt["id"], "wait": HUB.listening()})'
+
+[[rule]]
+name = "the owner is away after five minutes without keyboard or mouse"
+file = "src/claude_voice/presence.py"
+find = 'if idle is not None and idle > IDLE_LIMIT:'
+replace = 'if False:'
+
+[[rule]]
+name = "keyboard or mouse used since the voice called counts as at the laptop"
+file = "src/claude_voice/presence.py"
+find = 'return not \(idle is not None and idle < since\)'
+replace = 'return True'
+
+[[rule]]
+name = "a desktop source that cannot be read leaves the other one counted"
+file = "src/claude_voice/presence.py"
+find = 'idle = _source\("how long nobody touched it", lambda: _idle\(run\)\)'
+replace = 'idle = _idle(run)'
+
+[[rule]]
+name = "an unreadable desktop source is logged once"
+file = "src/claude_voice/presence.py"
+find = 'if name not in _REPORTED:'
+replace = 'if True:'
+
+[[rule]]
+name = "the desktop is read at most once every few seconds"
+file = "src/claude_voice/presence.py"
+find = 'if self._desk is not None and now - self._desk\[0\] < self.cache:'
+replace = 'if False:'
+
+[[rule]]
+name = "reading the desktop never holds up the bridge"
+file = "src/claude_voice/api.py"
+find = 'return await asyncio.to_thread\(self.away, HUB.listening\(\)\)'
+replace = 'return self.away(HUB.listening())'
+
+[[rule]]
+name = "a waiting prompt goes back to the screen once the owner is back"
+file = "src/claude_voice/api.py"
+find = 'if step == RECHECK and not await self._away\(\):'
+replace = 'if False:'
