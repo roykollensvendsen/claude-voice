@@ -24,12 +24,14 @@ class Book:
         self,
         publish: Callable[[str, dict[str, Any]], None] = lambda kind, data: None,
         clock: Callable[[], float] = time.monotonic,
+        waited_on: Callable[[dict[str, Any]], None] = lambda prompt: None,
     ) -> None:
         self.items: dict[str, dict[str, Any]] = {}  # open prompts by id, answered ones until collected
         self.publish, self.clock = publish, clock
+        self.waited_on = waited_on  # told once per prompt, when a hook first waits on it
 
     def add(self, prompt: dict[str, Any]) -> None:
-        prompt["hook"] = {"waiting": 0, "last": self.clock()}
+        prompt["hook"] = {"waiting": 0, "last": self.clock(), "told": False}
         self.items[prompt["id"]] = prompt
 
     @contextlib.contextmanager
@@ -37,6 +39,10 @@ class Book:
         """Held while the hook's wait call is under way, so the prompt is kept."""
         hook = prompt["hook"]
         hook["waiting"] += 1
+        # RULE: a question is news once a hook waits on it
+        if not hook["told"]:
+            hook["told"] = True
+            self.waited_on(prompt)
         try:
             yield
         finally:
