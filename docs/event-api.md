@@ -397,8 +397,23 @@ no answer comes within five minutes the box shows there too.
 | `POST /api/v1/prompts/{id}` | for a question `{"answer": "<label>"}`, `{"answer": ["<label>", …]}` when `multi`, or `{"answer": {"text": "…"}}`; for an approval `{"decision": "allow"|"deny", "reason"?}`. `200`, `409` when it does not fit the prompt, `404` when it is gone. A change: with the cookie it needs an allowed `Origin` |
 
 Read `GET /api/v1/prompts` on every connect; the stream only carries changes:
-`prompt` (one opened) and `prompt_closed` (`{"id", "how": "phone"|"timeout"|"screen"}`).
+`prompt` (one opened) and `prompt_closed` (`{"id", "how"}`).
 Every answer is logged with its session, the answer and who gave it.
+
+A prompt is listed only while the hook still waits on it, because an answer reaches
+the session through that wait and no other way. It closes, with `how` saying why, when:
+
+| `how` | What happened |
+| --- | --- |
+| `phone` | it was answered here |
+| `timeout` | no answer came in time, and the box showed in the terminal |
+| `screen` | nobody had the app open, so the hook stepped aside at once and the box showed in the terminal |
+| `ended` | the hook stopped waiting and the session is no longer running |
+| `moved_on` | the hook stopped waiting and the session is no longer waiting on anyone |
+| `hook_gone` | the hook stopped waiting without saying so, for example when it was killed |
+
+The bridge looks every five seconds. It closes a prompt once no hook has waited on it
+for thirty seconds, so a killed hook's prompt is gone within about a minute and a half.
 
 ## Roles
 
