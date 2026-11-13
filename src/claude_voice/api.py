@@ -265,6 +265,7 @@ class EventApi:
         org: Callable[[str | None], dict[str, Any] | None] | None = None,
         clock: Callable[[], float] = time.monotonic,
         book: prompts.Book | None = None,
+        away: Callable[[bool], bool] | None = None,
     ) -> None:
         self.store = store
         self.login_secret = login_secret
@@ -287,6 +288,7 @@ class EventApi:
         # Open questions and approvals; the bridge sweeps out the ones no hook waits on.
         self.book = book or prompts.Book(HUB.publish)
         self.prompts = self.book.items  # by id
+        self.away = away or (lambda app_open: app_open)  # whether a question waits for the phone
         # Questions on other machines, and how to answer one (fleet.Fleet); none without machines.
         self.remote_prompts = remote_prompts or (lambda: [])
         self.answer_remote = answer_remote
@@ -640,8 +642,8 @@ class EventApi:
             return JSONResponse({"error": "kind is question or approval"}, 400)
         self.book.add(prompt)
         HUB.publish("prompt", self._public(prompt))
-        # Wait for the phone only while someone has the app open; else the box shows at once.
-        return JSONResponse({"id": prompt["id"], "wait": HUB.listening()})
+        # RULE: a question waits for the phone only while the owner is away from the laptop
+        return JSONResponse({"id": prompt["id"], "wait": self.away(HUB.listening())})
 
     _fits = staticmethod(answers.fits)  # the same check a spoken answer gets
 

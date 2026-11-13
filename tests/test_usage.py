@@ -170,3 +170,15 @@ async def test_a_session_in_the_list_carries_its_context(tmp_path):
     async with Client(server) as c:
         rows = (await c.call_tool("fleet_recap", {})).structured_content["sessions"]
     assert next(r for r in rows if r["name"] == "app-1")["context"]["used_percentage"] == 55
+
+
+def test_a_call_from_the_voice_app_counts_the_owner_as_away(bridge):
+    from types import SimpleNamespace
+
+    from claude_voice import server as bridge_module
+
+    request = SimpleNamespace(scope={"client": ("127.0.0.1", 4321), "headers": []}, headers={})
+    seen = bridge_module.PRESENCE[0]
+    assert seen.voice_at is None
+    bridge_module.note_voice_call(SimpleNamespace(request=request), "whats_new", "ab12cd34ef56", None)
+    assert seen.voice_at is not None
