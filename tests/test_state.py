@@ -55,6 +55,15 @@ async def test_every_running_session_is_in_one_named_state(world, status, entrie
     assert row["status"] == status  # the raw status stays as it was
 
 
+async def test_a_permission_prompt_is_not_hidden_by_an_old_question(world):  # noqa: F811
+    running(world, "billing-ab", "billing", "s1", status="waiting", waiting_for="permission prompt")
+    transcript(world, "billing", "s1", [asks("Asked long ago?", "Ja", "Nei")])
+    _, server = bridge(world, Clock())
+    row = (await states(server))["billing-ab"]
+    assert row["state"] == "approval" and row["waiting_kind"] == "approval"
+    assert "question" not in row
+
+
 @pytest.mark.parametrize(("stored", "state"), [("running", "working"), ("idle", "idle"), ("error", "stopped")])
 async def test_a_bridge_session_is_named_in_the_same_states(world, stored, state):  # noqa: F811
     clock = Clock()

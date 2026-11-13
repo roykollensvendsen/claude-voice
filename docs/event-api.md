@@ -91,7 +91,11 @@ ran in the last day, with the session the owner talks to:
   or `moved` (its conversation continues in `moved_to`).
 - `doing`: one line on what it is doing, fit to show or say. It starts
   `waiting on a choice:` when it waits on a question.
-- `question` and `waiting_for` appear only while it waits.
+- `question` and `waiting_for` appear only while it waits. `question` is the one the
+  session asked last and is waiting on now. A question it went past (it used another
+  tool, was interrupted, or was told something new) is not shown, nor is one asked
+  inside a subagent. While Claude Code says it waits on a permission prompt, the
+  state is `approval` and there is no `question`.
 - `sending`: messages still being handed to the session, `[{"id", "text" (at most 80
   characters), "at"}]`, empty when none. A message lands here when Claude Code takes
   longer to deliver it than the sender's time budget (see `message_sent` below).

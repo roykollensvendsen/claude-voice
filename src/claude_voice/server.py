@@ -738,9 +738,12 @@ def build_server(
 
     state_seen: dict[str, tuple[str, str]] = {}  # session id -> (state, since)
 
-    def live_state(status: str, sid: str, cwd: str) -> tuple[str, str | None]:
+    def live_state(status: str, sid: str, cwd: str, waiting_for: str | None = None) -> tuple[str, str | None]:
         """Claude Code's status, named as one of the fixed states, with what a wait is for."""
         if status == "waiting":
+            # RULE: a permission prompt is not hidden by an old question
+            if waiting_for in transcripts.PERMISSION_WAITS:
+                return "approval", "approval"
             if transcripts.open_question(sid, cwd, projects_dir):
                 return "answer", "question"
             if transcripts.pending_tool(sid, cwd, projects_dir):
@@ -895,7 +898,9 @@ def build_server(
                 doing = f"flyttet til {where}"
             else:
                 doing = transcripts.doing_line(str(row["claude_session_id"]), str(d.get("cwd")), projects_dir)
-            state, waiting_kind = live_state(str(row["status"]), str(row["claude_session_id"]), str(d.get("cwd")))
+            state, waiting_kind = live_state(
+                str(row["status"]), str(row["claude_session_id"]), str(d.get("cwd")), d.get("waitingFor")
+            )
             item = {
                 "id": row["claude_session_id"],
                 "number": numbers.get(str(row["claude_session_id"])),
@@ -1352,7 +1357,9 @@ def build_server(
                 row["status"], row["moved_to"] = "moved", moved
             elif d.get("status") == "waiting":
                 row["waiting_for"] = d.get("waitingFor")
-                question = transcripts.open_question(str(d.get("sessionId")), str(d.get("cwd")), projects_dir)
+                question = transcripts.open_question(
+                    str(d.get("sessionId")), str(d.get("cwd")), projects_dir, d.get("waitingFor")
+                )
                 if question:
                     row["question"] = question
             sessions.append(row)
@@ -1558,7 +1565,9 @@ def build_server(
         """Why a session can take nothing in right now: an open question, or other input."""
         if d.get("status") != "waiting":
             return None
-        question = transcripts.open_question(str(d.get("sessionId")), str(d.get("cwd")), projects_dir)
+        question = transcripts.open_question(
+            str(d.get("sessionId")), str(d.get("cwd")), projects_dir, d.get("waitingFor")
+        )
         return {"status": "needs_choice", "question": question} if question else {"status": "needs_input"}
 
     def deadline_after(started: float, wait_seconds: float) -> float:
@@ -2107,7 +2116,9 @@ def build_server(
         assert live is not None
         waiting = live.get("status") == "waiting"
         question = (
-            transcripts.open_question(str(live.get("sessionId")), str(live.get("cwd")), projects_dir)
+            transcripts.open_question(
+                str(live.get("sessionId")), str(live.get("cwd")), projects_dir, live.get("waitingFor")
+            )
             if waiting
             else None
         )
