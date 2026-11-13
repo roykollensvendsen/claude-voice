@@ -880,3 +880,9 @@ name = "a failed first try of the courier is logged with its reason"
 file = "src/claude_voice/transcripts.py"
 find = 'log\.info\("courier %s: first try failed, %s; starting a fresh courier", name, why\)'
 replace = 'pass'
+
+[[rule]]
+name = "a message counts as delivered only when Claude Code reports it sent"
+file = "src/claude_voice/transcripts.py"
+find = 'if answer is not None and answer\[0\]:'
+replace = 'if True:'
