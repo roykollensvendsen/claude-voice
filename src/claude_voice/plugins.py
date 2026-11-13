@@ -376,6 +376,10 @@ class Plugin:
     def status(self) -> dict[str, Any]:
         return {"name": self.spec.name, "state": self.state, "tools": list(self.spec.tools)}
 
+    def shown(self, answer: Any) -> Any:
+        """The answer as the voice is given it; a plugin's is passed on as it came."""
+        return answer
+
 
 def _as_object(text: str) -> dict[str, Any]:
     """A plugin's text answer as an object: its JSON when it is an object, else the text."""
@@ -401,6 +405,7 @@ def offer(server: Any, plugin: Plugin, listing: dict[str, dict[str, Any]]) -> li
             if answer.is_error:
                 raise ToolError(text or f"{plugin.spec.name} refused")
             result = answer.structured_content if answer.structured_content is not None else _as_object(text)
+            result = plugin.shown(result)
             return self.fn_metadata.convert_result(result) if convert_result else result
 
     async def placeholder() -> dict[str, Any]:  # never called: PluginTool.run answers instead
