@@ -1,0 +1,5 @@
+[[rule]]
+name = "a session number from another machine is never passed on"
+file = "src/claude_voice/machines.py"
+find = 'return \{k: without_numbers\(v\) for k, v in body.items\(\) if k != "number"\}'
+replace = 'return {k: without_numbers(v) for k, v in body.items()}'

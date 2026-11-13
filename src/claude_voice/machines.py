@@ -181,12 +181,27 @@ class Machine(plugins.Plugin):
                 raise Refused(f"{name} now offers other tools than you approved")
             yield client
 
+    def shown(self, answer: Any) -> Any:
+        """The machine's answer without its own session numbers, which only it knows."""
+        return without_numbers(answer)
+
     def trouble(self, exc: Exception) -> str:
         name = self.machine.name
         refused = _refusal(exc)
         if refused is not None:
             return f"{refused}; to approve it again, run on the hub: claude-voice machines approve {name}"
         return f"{name} did not answer; it may be asleep, offline, or not running `claude-voice agent`"
+
+
+def without_numbers(body: Any) -> Any:
+    """`body` with every `number` taken out. Another machine numbers its sessions from a
+    pool of its own, so its 1 may be the hub's own 1; only the hub's numbers are spoken."""
+    if isinstance(body, dict):
+        # RULE: a session number from another machine is never passed on
+        return {k: without_numbers(v) for k, v in body.items() if k != "number"}
+    if isinstance(body, list):
+        return [without_numbers(v) for v in body]
+    return body
 
 
 class Refused(ConnectionError):
