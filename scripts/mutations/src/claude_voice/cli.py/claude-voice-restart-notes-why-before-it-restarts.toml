@@ -1,0 +1,5 @@
+[[rule]]
+name = "claude voice restart notes why before it restarts"
+file = "src/claude_voice/cli.py"
+find = 'restarts.note\(STATE_DIR'
+replace = 'pass'

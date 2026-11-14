@@ -32,7 +32,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import procs
+from . import procs, restarts
+from .config import STATE_DIR
 
 LOG = Path("~/.local/state/claude-voice/update.json")
 SERVICE = "claude-voice"
@@ -98,7 +99,9 @@ def run(
     tests: Callable[[Path], tuple[bool, str]],
     restart: Callable[[], None],
     healthy: Callable[[], bool],
+    note: Callable[[str, str, str], object] = lambda reason, frm, to: None,
 ) -> dict[str, Any]:
+    """Update the clone, and say why before each restart through `note(reason, from, to)`."""
     log = Log(log_path)
     # RULE: local changes stop the update before anything is touched
     ok, changed = _git(repo, "status", "--porcelain", "--untracked-files=no")
@@ -131,6 +134,8 @@ def run(
         ok, out = _git(repo, "reset", "--hard", before)
         install(repo)
         if restarted:
+            # RULE: a rollback notes why before it restarts the bridge
+            note("rollback", after, before)
             restart()
             back = healthy()
             log.step("rollback", ok and back, f"back on {before[:7]}; {'healthy' if back else 'NOT healthy'}")
@@ -146,6 +151,8 @@ def run(
             return roll_back(f"The new version failed to {step}; the old one is kept.", restarted=False)
 
     log.step("restart", True, "the voice drops for a few seconds")
+    # RULE: an update notes why before it restarts the bridge
+    note("update", before, after)
     restart()
     if not healthy():
         log.step("verify", False, "the bridge did not answer after the restart")
@@ -217,6 +224,7 @@ def main() -> int:
         tests=lambda repo: _uv(repo, "run", "pytest", "-q", "-p", "no:cacheprovider"),
         restart=_restart,
         healthy=_healthy(args.port),
+        note=lambda reason, frm, to: restarts.note(STATE_DIR, reason, "update_bridge", frm=frm, to=to),
     )
     return 0 if outcome["result"] in ("updated", "up_to_date") else 1
 

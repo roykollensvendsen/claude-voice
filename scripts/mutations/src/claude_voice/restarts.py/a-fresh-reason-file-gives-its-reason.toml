@@ -1,0 +1,5 @@
+[[rule]]
+name = "a fresh reason file gives its reason"
+file = "src/claude_voice/restarts.py"
+find = 'if fresh\(planned, now\):'
+replace = 'if False:'

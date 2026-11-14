@@ -1,0 +1,5 @@
+[[rule]]
+name = "changes counts the commits since the last start"
+file = "src/claude_voice/restarts.py"
+find = 'out = git\("rev-list"'
+replace = 'out = None'

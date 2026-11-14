@@ -1,0 +1,5 @@
+[[rule]]
+name = "any other start is unplanned"
+file = "src/claude_voice/restarts.py"
+find = 'return "unplanned"'
+replace = 'return "planned"'

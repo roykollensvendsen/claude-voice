@@ -1,0 +1,5 @@
+[[rule]]
+name = "the reason file is read once"
+file = "src/claude_voice/restarts.py"
+find = 'path.unlink\(missing_ok=True\)'
+replace = 'pass'

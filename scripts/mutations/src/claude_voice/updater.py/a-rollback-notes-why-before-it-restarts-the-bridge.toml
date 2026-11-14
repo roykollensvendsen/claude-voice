@@ -1,0 +1,5 @@
+[[rule]]
+name = "a rollback notes why before it restarts the bridge"
+file = "src/claude_voice/updater.py"
+find = 'note\("rollback", after, before\)'
+replace = 'pass'

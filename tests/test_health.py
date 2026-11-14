@@ -17,14 +17,15 @@ def server(tmp_path, **extra):
 
 async def test_health_reports_the_bridges_state_and_its_calls(tmp_path):
     METRICS.reset()
-    srv = server(tmp_path, restart={"at": "2026-10-08T10:00:00+00:00", "reason": "auto-restart", "total": 2})
+    restart = {"at": "2026-10-08T10:00:00+00:00", "reason": "update", "by": "update_bridge", "changes": 4}
+    srv = server(tmp_path, restart={**restart, "from": "aaaaaaa", "to": "bbbbbbb", "total": 2})
     async with Client(srv) as c:
         await c.call_tool("whats_new", {})
         await c.call_tool("session_recap", {"session_id": "nope"}, meta={"trace_id": "t9"})
         h = (await c.call_tool("health", {})).structured_content
     now = h["now"]
     assert now["up_since"] and now["version"] and now["memory_rss_mb"] > 0
-    assert now["last_restart"] == {"at": "2026-10-08T10:00:00+00:00", "reason": "auto-restart"}
+    assert now["last_restart"] == {**restart, "from": "aaaaaaa", "to": "bbbbbbb", "note": None}
     assert now["restarts_total"] == 2
     tools = {t["name"]: t for t in h["tools"]}
     assert tools["whats_new"]["calls"] == 1

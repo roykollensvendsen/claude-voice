@@ -1,0 +1,5 @@
+[[rule]]
+name = "a restart by systemd with no reason file is a crash"
+file = "src/claude_voice/restarts.py"
+find = 'if restarted:'
+replace = 'if False:'
