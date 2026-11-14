@@ -16,8 +16,10 @@ import json
 import os
 import subprocess
 import time
+import unicodedata
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
+from logging import getLogger
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +29,17 @@ COUNT_FILE = "restarts"  # systemd's NRestarts as last seen
 COMMIT_FILE = "last-start-commit"  # the commit the bridge last started on
 FRESH_FOR = 10 * 60  # seconds a reason file counts; an older one was left by a run that died
 BOOTED_WITHIN = 5 * 60  # seconds of machine uptime that make a start a boot
+NOTE_CHARS = 120  # the longest note health quotes; any local program can write one, and the voice reads it
+
+log = getLogger(__name__)
+
+
+def one_line(text: str) -> str:
+    """A note as health may quote it: one line, no control characters, at most NOTE_CHARS."""
+    kept = "".join(" " if c.isspace() else c for c in text if c.isspace() or unicodedata.category(c)[0] != "C")
+    flat = " ".join(kept.split())
+    # RULE: a note is one short line
+    return flat if len(flat) <= NOTE_CHARS else flat[: NOTE_CHARS - 1].rstrip() + "…"
 
 
 def note(
@@ -34,7 +47,7 @@ def note(
 ) -> Path:
     """Write why the bridge is about to restart, for its next start to read."""
     body: dict[str, Any] = {"reason": reason, "by": by, "at": datetime.now(UTC).isoformat(timespec="seconds")}
-    body.update({k: v for k, v in (("note", text), ("from", frm), ("to", to)) if v})
+    body.update({k: v for k, v in (("note", one_line(text or "")), ("from", frm), ("to", to)) if v})
     path = state_dir.expanduser() / REASON_FILE
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
@@ -69,7 +82,7 @@ def decide(planned: dict[str, Any] | None, now: float, restarted: bool, uptime: 
     """Why this start happened, by the rules in the order they are tried."""
     # RULE: a fresh reason file gives its reason
     if fresh(planned, now):
-        return str((planned or {}).get("reason") or "planned")
+        return one_line(str((planned or {}).get("reason") or "planned"))
     # RULE: a restart by systemd with no reason file is a crash
     if restarted:
         return "crash"
@@ -127,11 +140,18 @@ def restart_info(
     planned = take(state)
     reason = decide(planned, now(), restarted, (uptime or _uptime)())
     told: dict[str, Any] = planned if planned and fresh(planned, now()) else {}
+    if planned and not told:
+        log.info(
+            "ignored a restart note from %s (%s): written over ten minutes before this start",
+            planned.get("at"),
+            one_line(str(planned.get("reason"))),
+        )
     frm, to = (told["from"], told["to"]) if told.get("from") and told.get("to") else (last, head)
-    record.update(reason=reason, by=told.get("by"), changes=changes(git, frm, to), total=total)
+    by = one_line(str(told["by"])) if told.get("by") else None
+    record.update(reason=reason, by=by, changes=changes(git, frm, to), total=total)
     record.update({"from": _short(frm), "to": _short(to)})
     if told.get("note"):
-        record["note"] = told["note"]
+        record["note"] = one_line(str(told["note"]))
     return record
 
 

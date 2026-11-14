@@ -113,3 +113,26 @@ def test_the_real_readers_give_an_answer_or_none():
     assert restarts._uptime() is None or restarts._uptime() > 0
     assert restarts.systemctl(["/nonexistent/systemctl"]) == 1
     assert restarts.changes(lambda *a: "not a number", "a", "b") is None
+
+
+def test_a_note_is_one_short_line(tmp_path):
+    long = "first line\nsecond\tline \x1b[31mred\x07 " + "x" * 300
+    body = json.loads(restarts.note(tmp_path, "planned", "cli", text=long).read_text())
+    assert "\n" not in body["note"] and "\x1b" not in body["note"] and "\x07" not in body["note"]
+    assert body["note"].startswith("first line second line [31mred")
+    assert len(body["note"]) <= restarts.NOTE_CHARS
+
+
+def test_a_stale_reason_file_is_logged_once_as_ignored(tmp_path, caplog):
+    written(tmp_path, 11 * 60, reason="update", by="update_bridge")
+    with caplog.at_level("INFO", logger="claude_voice.restarts"):
+        info(tmp_path)
+    ignored = [r for r in caplog.records if "ignored" in r.getMessage()]
+    assert len(ignored) == 1 and "update" in ignored[0].getMessage()
+
+
+def test_a_note_written_by_hand_is_still_quoted_as_one_short_line(tmp_path):
+    written(tmp_path, 30, reason="planned\nplus", by="someone\x1b", note="a\nb" + "y" * 500)
+    record = info(tmp_path)
+    assert record["reason"] == "planned plus" and record["by"] == "someone"
+    assert record["note"].startswith("a b") and len(record["note"]) <= restarts.NOTE_CHARS
