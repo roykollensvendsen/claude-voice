@@ -3,8 +3,9 @@
 
 Green on a first run proves nothing: a test that has never been red tests
 nothing. Where a rule is written before its test, the test is run red first.
-Where a rule already exists, this is the substitute. Every rule lives in
-scripts/mutations.toml, one row each. Run it from the repository root:
+Where a rule already exists, this is the substitute. Every rule has one row,
+in a file of its own under scripts/mutations/, or in the older shared
+scripts/mutations.toml until its rows move. Run it from the repository root:
 
     uv run python scripts/mutate.py [--write evidence/tests/rule-mutations.md]
 
@@ -30,6 +31,10 @@ import tomllib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 TABLE = ROOT / "scripts/mutations.toml"
+#: One row per file: scripts/mutations/<module>/<the rule's words>.toml. Every pull
+#: request that added a row at the end of the one shared table collided with every
+#: other; a file per row only meets another pull request adding the same rule.
+ROWS = ROOT / "scripts/mutations"
 #: Where the one mutated file is recorded while it is mutated. A `finally` does
 #: not run when the process is killed, so without this a hard stop leaves a
 #: source file switched off and the next person wondering why the suite is red.
@@ -45,6 +50,52 @@ def test_name_for(rule: str) -> str:
     """
     words = re.sub(r"[^a-z0-9]+", "_", rule.lower())
     return "test_" + re.sub(r"_+", "_", words).strip("_")
+
+
+def row_path(rule: dict) -> pathlib.PurePosixPath:
+    """Where a rule's row belongs, under ``ROWS``: its module's folder, its own words.
+
+    ``src/claude_voice/store.py`` gives the folder ``store``; a rule named
+    "a write is kept" gives the file ``a-write-is-kept.toml``.
+    """
+    source = pathlib.PurePosixPath(rule["file"])
+    module = source.parts[2:] if source.parts[0] == "src" else source.parts
+    words = re.sub(r"[^a-z0-9]+", "-", str(rule["name"]).lower()).strip("-")
+    return pathlib.PurePosixPath(*module).with_suffix("") / f"{words}.toml"
+
+
+def _rows_in(path: pathlib.Path) -> list[dict]:
+    return tomllib.loads(path.read_text(encoding="utf-8")).get("rule", [])
+
+
+def all_rows(table: pathlib.Path = TABLE, folder: pathlib.Path = ROWS) -> list[dict]:
+    """Every row: the shared table first, then one file per row, in path order."""
+    rows = _rows_in(table) if table.exists() else []
+    for path in sorted(folder.rglob("*.toml")) if folder.is_dir() else []:
+        rows += _rows_in(path)
+    seen: set[str] = set()
+    for rule in rows:
+        if rule["name"] in seen:
+            msg = (
+                f"the rule {rule['name']!r} has two rows; delete the one in {table.name}"
+                f" and keep {folder.name}/{row_path(rule)}"
+            )
+            raise SystemExit(msg)
+        seen.add(rule["name"])
+    return rows
+
+
+def misfiled(folder: pathlib.Path = ROWS) -> list[str]:
+    """Row files that hold other than one row, or sit where their rule does not put them."""
+    found = []
+    for path in sorted(folder.rglob("*.toml")) if folder.is_dir() else []:
+        here = pathlib.PurePosixPath(path.relative_to(folder).as_posix())
+        rows = _rows_in(path)
+        if len(rows) != 1:
+            found.append(f"{here} holds {len(rows)} rows; give each rule a file of its own")
+        elif here != (belongs := row_path(rows[0])):
+            found.append(f"{here} should be {belongs}; move it there")
+    return found
 
 
 def line_of(text: str, pattern: str, occurrence: int) -> int:
@@ -162,9 +213,9 @@ def main() -> int:
     repair()
     # RULE: an empty rule table is not a crash
     # A scaffolded repository starts with a table of comments and no rows.
-    rules = tomllib.loads(TABLE.read_text(encoding="utf-8")).get("rule", [])
+    rules = all_rows()
     if not rules:
-        print(f"no rules in {TABLE.relative_to(ROOT)} yet; add one per rule the code enforces")  # noqa: T201
+        print(f"no rules in {ROWS.relative_to(ROOT)} yet; add one file per rule the code enforces")  # noqa: T201
         return 0
     results = []
     lost: list[str] = []
@@ -261,8 +312,8 @@ it names. It proves each rule is load-bearing: switch it off and a named test
 says so. The last column is why that is worth more than a count: a mutation can
 break a test for an incidental reason, and a `NO` there fails this script even
 though something went red. A new rule follows the order in `CONTRIBUTING.md`
-instead, a failing test first, and is added to `scripts/mutations.toml`, which
-`tests/test_rules_have_evidence.py` requires.
+instead, a failing test first, and gets a row of its own under `scripts/mutations/`,
+which `tests/test_rules_have_evidence.py` requires.
 """
 
 

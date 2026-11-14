@@ -1,5 +1,9 @@
 # Every rule this project enforces, and the one line that carries it.
 #
+# Add no rows here. A new row goes in a file of its own:
+# scripts/mutations/<module>/<the rule's words>.toml (CONTRIBUTING, "How a change
+# is made"). The rows below move there in a pull request of their own.
+#
 # A rule nothing catches is a rule nothing protects. `scripts/mutate.py` turns
 # each of these off in turn and runs the suite; a rule whose removal breaks no
 # test has no test. Add a test of your own that counts the rules in the source
