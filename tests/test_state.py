@@ -158,6 +158,50 @@ async def test_a_new_turn_is_announced_so_a_detail_view_need_not_poll(world, mon
                     + "\n"
                 )
             name, data = await asyncio.wait_for(events.get(), 5)
-            while name != "output":
+            # The first look announces the turn already there; the one written now is the news.
+            while name != "output" or data["index"] != 1:
                 name, data = await asyncio.wait_for(events.get(), 5)
     assert data["session"] == "s1" and data["role"] == "assistant" and data["index"] == 1
+
+
+async def test_a_turn_written_during_the_first_look_is_still_announced(world, monkeypatch):  # noqa: F811
+    """After a restart the page reads the open session again as soon as the stream is back,
+    but the bridge's first look takes seconds on a busy machine. A turn written in between
+    must still reach the page, not wait for the session's next turn."""
+    import asyncio
+    import json as _json
+    import threading
+    import time
+
+    from claude_agent_sdk import project_key_for_directory
+
+    from claude_voice.tree import SessionTree
+
+    build = SessionTree.build
+    first_look = threading.Event()
+
+    def slow(self):
+        first_look.set()
+        time.sleep(0.5)
+        return build(self)
+
+    monkeypatch.setattr(SessionTree, "build", slow)
+    running(world, "billing-ab", "billing", "s1", status="busy")
+    transcript(world, "billing", "s1", [says("on it")])
+    m = SessionManager(Store(world / "b.db"), project_root=world / "home", client_factory=FakeClaude())
+    server = build_server(
+        m, conversations=lambda **k: [], live_dir=world / "live", projects_dir=world / "projects", watch_interval=0.05
+    )
+    path = world / "projects" / project_key_for_directory(world / "home" / "billing") / "s1.jsonl"
+    with api.HUB.subscribe() as events:
+        async with Client(server):
+            assert await asyncio.to_thread(first_look.wait, 30), "the watcher never looked"
+            with path.open("a") as f:  # while the first look is still under way
+                f.write(
+                    _json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "done"}]}})
+                    + "\n"
+                )
+            name, data = await asyncio.wait_for(events.get(), 10)
+            while name != "output":
+                name, data = await asyncio.wait_for(events.get(), 10)
+    assert data["session"] == "s1" and data["index"] == 1

@@ -1178,7 +1178,11 @@ def build_server(
                 continue
             seen = transcript_sizes.get(sid)
             transcript_sizes[sid] = size
-            if seen is None or size <= seen:
+            # A session seen for the first time is announced too: after a restart the page reads
+            # the open session as soon as the stream is back, while this first look takes seconds,
+            # and a turn written in between would otherwise wait for the session's next one.
+            # RULE: a turn written during the first look is still announced
+            if seen is not None and size <= seen:
                 continue
             turns = numbered_turns(d)
             if turns:
