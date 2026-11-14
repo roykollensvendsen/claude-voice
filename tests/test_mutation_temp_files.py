@@ -10,6 +10,9 @@ whatever a killed run left is swept away at the next start.
 import importlib.util
 import os
 import pathlib
+import sys
+
+import pytest
 
 ROOT = pathlib.Path(__file__).parent.parent
 
@@ -45,6 +48,7 @@ def test_a_suite_run_leaves_no_temporary_files_behind(tmp_path, monkeypatch):
     assert list(mutate.MUTATE_TMP.iterdir()) == []
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows needs extra rights to make a link, and has no 0755")
 def test_removing_a_run_s_files_never_changes_a_folder_it_links_to(tmp_path, monkeypatch):
     mutate = _mutate(tmp_path, monkeypatch)
     outside = tmp_path / "outside"
