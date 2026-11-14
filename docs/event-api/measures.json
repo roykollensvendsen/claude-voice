@@ -1,0 +1,42 @@
+[
+  {
+    "id": "coverage",
+    "unit": "%"
+  },
+  {
+    "id": "mutation",
+    "unit": "%"
+  },
+  {
+    "id": "tests",
+    "unit": ""
+  },
+  {
+    "id": "problems",
+    "unit": ""
+  },
+  {
+    "id": "cycles",
+    "unit": ""
+  },
+  {
+    "id": "layers",
+    "unit": ""
+  },
+  {
+    "id": "duplication",
+    "unit": "%"
+  },
+  {
+    "id": "complexity",
+    "unit": ""
+  },
+  {
+    "id": "test_time",
+    "unit": "s"
+  },
+  {
+    "id": "ci",
+    "unit": ""
+  }
+]

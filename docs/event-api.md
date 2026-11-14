@@ -285,7 +285,9 @@ run of the checks on main; kept for ten minutes. The measures, by `id`:
 (lint and type errors), `cycles`, `layers` (imports that break the layer order),
 `duplication` (the share of lines in repeated blocks), `complexity` (the most tangled function),
 `test_time` (against its budget) and `ci` (the checks on main, with the run as
-`url`). The trend is each measured version, oldest first, so it moves change by
+`url`). The same ids, in the order sent and with their units, are in
+[`event-api/measures.json`](event-api/measures.json), for a program that has to
+know every one; a test keeps that file the same as what the bridge sends. The trend is each measured version, oldest first, so it moves change by
 change. A repository with nothing measured has every measure `unknown` rather
 than a guess.
 
