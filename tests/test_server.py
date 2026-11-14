@@ -338,6 +338,26 @@ async def test_attach_refuses_conversations_outside_the_root(tmp_path, root):
     assert missing.is_error and "no claude code conversation" in missing.content[0].text.lower()
 
 
+async def test_an_attached_conversation_is_named_by_its_title_then_its_summary_unless_one_is_given(tmp_path, root):
+    import dataclasses
+
+    titled = dataclasses.replace(conversation("t-1", str(root / "app"), "Fix login"), custom_title="Login work")
+    convs = FakeConversations([titled, conversation("t-2", str(root / "lib"), "Refactor")])
+    m = SessionManager(Store(tmp_path / "b.db"), project_root=root, client_factory=FakeClaude())
+    async with Client(build_server(m, conversations=convs)) as client:
+        by_title = await call(client, "attach_conversation", claude_session_id="t-1")
+        by_summary = await call(client, "attach_conversation", claude_session_id="t-2")
+        given = await call(client, "attach_conversation", claude_session_id="t-2", label="mine")
+    assert (by_title["label"], by_summary["label"], given["label"]) == ("Login work", "Refactor", "mine")
+
+
+async def test_attach_with_a_project_named_does_not_look_the_conversation_up(tmp_path, root):
+    m = SessionManager(Store(tmp_path / "b.db"), project_root=root, client_factory=FakeClaude())
+    async with Client(build_server(m, conversations=FakeConversations([]))) as client:
+        s = await call(client, "attach_conversation", claude_session_id="t-9", project="lib")
+    assert (s["project_path"], s["label"]) == (str(root / "lib"), None)
+
+
 def live_entry(directory, pid, sid, cwd, name, status="busy", minutes_ago=2):
     import json
     import time
