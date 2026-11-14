@@ -72,7 +72,7 @@ class _Transcript:
     def __init__(self, path: Path) -> None:
         self.path = path
         self.offset = 0
-        self.rest = b""
+        self.rest = bytearray()  # an unfinished last line; grown in place, so a long one costs its length once
         self.seen: list[tuple[float | None, str, str, str]] = []
         self.moved_to: str | None = None  # set by a continued-in line, cleared by later talk
 
@@ -82,20 +82,22 @@ class _Transcript:
         try:
             with self.path.open("rb") as f:
                 f.seek(self.offset)
+                # RULE: a large transcript is read a bounded chunk at a time
                 while chunk := f.read(CHUNK):
                     self.offset += len(chunk)
                     done, newline, unfinished = chunk.rpartition(b"\n")
-                    if not newline:  # still inside one long line
+                    if not newline:  # still inside one long line, grown in place
                         self.rest += unfinished
                         continue
-                    lines = (self.rest + done).split(b"\n")
-                    self.rest = unfinished
+                    self.rest += done
+                    lines = self.rest.split(b"\n")
+                    self.rest = bytearray(unfinished)
                     for line in lines:
                         self._read(line)
         except OSError:
             return
 
-    def _read(self, line: bytes) -> None:
+    def _read(self, line: bytes | bytearray) -> None:
         try:
             entry = json.loads(line)
         except ValueError:
