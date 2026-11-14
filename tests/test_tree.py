@@ -356,7 +356,7 @@ class RecordedReads:
 
 
 def test_a_large_transcript_is_read_a_bounded_chunk_at_a_time(tmp_path, monkeypatch):
-    monkeypatch.setattr(tree_module, "CHUNK", 256, raising=False)
+    monkeypatch.setattr(tree_module, "CHUNK", 256)
     path = tmp_path / "t.jsonl"
     path.write_text("".join(json.dumps(send(f"peer-{i}")) + "\n" for i in range(20)))
     recorded = RecordedReads(path)
@@ -368,7 +368,7 @@ def test_a_large_transcript_is_read_a_bounded_chunk_at_a_time(tmp_path, monkeypa
 
 
 def test_chunked_reading_keeps_every_message_and_the_unfinished_last_line(tmp_path, monkeypatch):
-    monkeypatch.setattr(tree_module, "CHUNK", 64, raising=False)  # lines straddle chunk boundaries
+    monkeypatch.setattr(tree_module, "CHUNK", 64)  # lines straddle chunk boundaries
     entries = [
         json.dumps(send("beta")),
         json.dumps({"type": "user", "timestamp": stamp(), "message": {"content": "x" * 500}}),  # spans many chunks

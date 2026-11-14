@@ -1,0 +1,5 @@
+[[rule]]
+name = "a large transcript is read a bounded chunk at a time"
+file = "src/claude_voice/tree.py"
+find = 'while chunk := f.read\(CHUNK\):'
+replace = 'while chunk := f.read():'
