@@ -1,0 +1,5 @@
+[[rule]]
+name = "a write from one thread never lands inside another"
+file = "src/claude_voice/store.py"
+find = 'self\.db = sqlite3\.connect\(path, check_same_thread=False, factory=OneWriterAtATime\)'
+replace = 'self.db = sqlite3.connect(path, check_same_thread=False)'

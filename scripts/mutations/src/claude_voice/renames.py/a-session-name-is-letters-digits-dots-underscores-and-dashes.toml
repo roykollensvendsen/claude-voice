@@ -1,0 +1,5 @@
+[[rule]]
+name = "a session name is letters, digits, dots, underscores and dashes"
+file = "src/claude_voice/renames.py"
+find = 'return NAME.fullmatch\(name\) is not None'
+replace = 'return True'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a sign-in is refused while twenty are open"
+file = "src/claude_voice/oauth.py"
+find = 'if len\(self\._consents\) >= MAX_OPEN_SIGN_INS:'
+replace = 'if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a tool that moves something in the house asks first, by every name it is seen under"
+file = "src/claude_voice/permissions.py"
+find = 'ask \+= \[f"mcp__\{server\}__\{tool\}" for server in devices\["servers"\] for tool in devices\["tools"\]\]'
+replace = 'ask += []'

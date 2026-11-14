@@ -1,0 +1,5 @@
+[[rule]]
+name = "a first listing waits as long as the plugins own time limit"
+file = "src/claude_voice/plugins.py"
+find = 'return max\(LIST_SECONDS, self\.spec\.timeout\)'
+replace = 'return LIST_SECONDS'

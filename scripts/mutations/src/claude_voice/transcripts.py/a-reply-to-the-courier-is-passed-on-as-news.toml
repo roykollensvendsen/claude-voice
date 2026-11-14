@@ -1,0 +1,5 @@
+[[rule]]
+name = "a reply to the courier is passed on as news"
+file = "src/claude_voice/transcripts.py"
+find = 'if self\.on_reply is not None:'
+replace = 'if False:'

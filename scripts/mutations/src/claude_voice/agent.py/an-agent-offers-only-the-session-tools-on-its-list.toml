@@ -1,0 +1,5 @@
+[[rule]]
+name = "an agent offers only the session tools on its list"
+file = "src/claude_voice/agent.py"
+find = 'if name not in SESSION_TOOLS and "plugin" not in \(tools\[name\].meta or \{\}\):'
+replace = 'if False:'

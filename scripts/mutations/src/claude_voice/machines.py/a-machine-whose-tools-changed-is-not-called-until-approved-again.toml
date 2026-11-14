@@ -1,0 +1,5 @@
+[[rule]]
+name = "a machine whose tools changed is not called until approved again"
+file = "src/claude_voice/machines.py"
+find = 'if tools_fingerprint\(await _listing\(client\)\) != tools_fingerprint\(self.approval\["listing"\]\):'
+replace = 'if False:'

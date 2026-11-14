@@ -1,0 +1,5 @@
+[[rule]]
+name = "a restart lets a call already running finish first"
+file = "src/claude_voice/plugins.py"
+find = 'held = await asyncio\.wait_for\(self\._lock\.acquire\(\), self\.spec\.timeout\)'
+replace = 'held = False'

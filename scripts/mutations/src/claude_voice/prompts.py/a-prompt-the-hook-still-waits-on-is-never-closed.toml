@@ -1,0 +1,5 @@
+[[rule]]
+name = "a prompt the hook still waits on is never closed"
+file = "src/claude_voice/prompts.py"
+find = 'if hook\["waiting"\] or self.clock\(\) - hook\["last"\] < GRACE:'
+replace = 'if False:'

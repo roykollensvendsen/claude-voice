@@ -3,8 +3,8 @@
 A rule here is one line of source marked ``# RULE: what it says``. Three things
 have to be true of each, and none of them is true by writing the rule:
 
-* it has a row, in ``scripts/mutations.toml`` or in a file of its own under
-  ``scripts/mutations/``, so something switches it off;
+* it has a row, in a file of its own under ``scripts/mutations/``, so
+  something switches it off;
 * a test carries the rule's own words as its name;
 * switching it off turns *that* test red, which ``scripts/mutate.py`` checks.
 

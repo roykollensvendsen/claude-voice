@@ -1,0 +1,5 @@
+[[rule]]
+name = "a moved main starts a new build"
+file = "src/claude_voice/software.py"
+find = 'if self\._due\(\) or self\._moved\(heads\):'
+replace = 'if self._due():'

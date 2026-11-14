@@ -1,0 +1,5 @@
+[[rule]]
+name = "the old file is kept outside the repository before every change"
+file = "src/claude_voice/permissions.py"
+find = 'backup = _backup\(file, folder, backup_root, clock\(\)\) if file.exists\(\) else None'
+replace = 'backup = _backup(file, folder, folder / ".claude", clock()) if file.exists() else None'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "no lockout lasts longer than a day"
+file = "src/claude_voice/oauth.py"
+find = 'self\._lockout = min\(lockout, MAX_LOCKOUT\)'
+replace = 'self._lockout = lockout'

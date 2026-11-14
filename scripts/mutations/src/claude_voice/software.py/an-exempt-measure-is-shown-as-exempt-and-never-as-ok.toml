@@ -1,0 +1,5 @@
+[[rule]]
+name = "an exempt measure is shown as exempt and never as ok"
+file = "src/claude_voice/software.py"
+find = 'return \{\*\*row, "status": "exempt", "text": f"\{row\[.text.\]\}; exempt: \{reason\}"\}'
+replace = '''return {**row, "status": "ok", "text": f"{row['text']}; exempt: {reason}"}'''

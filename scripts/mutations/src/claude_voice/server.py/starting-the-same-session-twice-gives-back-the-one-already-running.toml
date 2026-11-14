@@ -1,0 +1,5 @@
+[[rule]]
+name = "starting the same session twice gives back the one already running"
+file = "src/claude_voice/server.py"
+find = 'if same is not None:  # a retry after an answer lost on the way must not open a second window'
+replace = 'if False:'

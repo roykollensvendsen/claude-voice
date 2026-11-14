@@ -1,0 +1,5 @@
+[[rule]]
+name = "an org file that cannot be reached is a problem not a crash"
+file = "src/claude_voice/org.py"
+find = 'except PermissionError:'
+replace = 'except ZeroDivisionError:'

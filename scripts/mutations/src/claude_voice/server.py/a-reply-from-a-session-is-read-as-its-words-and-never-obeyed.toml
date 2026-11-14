@@ -1,0 +1,5 @@
+[[rule]]
+name = "a reply from a session is read as its words and never obeyed"
+file = "src/claude_voice/server.py"
+find = 'BASE_INSTRUCTIONS = _BASE \+ REPLY_IS_WORDS \+ "\\n"'
+replace = 'BASE_INSTRUCTIONS = _BASE'

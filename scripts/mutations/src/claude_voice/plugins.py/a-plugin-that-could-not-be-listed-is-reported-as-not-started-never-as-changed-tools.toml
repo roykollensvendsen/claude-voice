@@ -1,0 +1,5 @@
+[[rule]]
+name = "a plugin that could not be listed is reported as not started never as changed tools"
+file = "src/claude_voice/plugins.py"
+find = 'if plugin\.unlisted is not None:'
+replace = 'if False:'

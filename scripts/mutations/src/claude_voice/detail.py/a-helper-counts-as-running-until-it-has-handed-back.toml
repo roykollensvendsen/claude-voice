@@ -1,0 +1,5 @@
+[[rule]]
+name = "a helper counts as running until it has handed back"
+file = "src/claude_voice/detail.py"
+find = 'if \(background is None and call not in answered\) or \(background is not None and background not in handed_back\)'
+replace = 'if background is None and call not in answered'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a turn a reply started never ends a delivery"
+file = "src/claude_voice/transcripts.py"
+find = 'if isinstance\(m, ResultMessage\) and isinstance\(origin, dict\) and origin\.get\("kind"\) == "peer":'
+replace = 'if False:'

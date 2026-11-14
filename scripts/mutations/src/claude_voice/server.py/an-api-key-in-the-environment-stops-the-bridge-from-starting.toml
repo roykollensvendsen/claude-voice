@@ -1,0 +1,5 @@
+[[rule]]
+name = "an api key in the environment stops the bridge from starting"
+file = "src/claude_voice/server.py"
+find = 'if env.get\("ANTHROPIC_API_KEY"\) and env.get\("CLAUDE_VOICE_ALLOW_API_KEY"\) != "1":'
+replace = 'if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "an owners rules file that cannot be read is logged and the bridge runs on"
+file = "src/claude_voice/server.py"
+find = 'except OSError as exc:'
+replace = 'except ZeroDivisionError as exc:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a question token works once and only for two minutes"
+file = "src/claude_voice/devmode.py"
+find = 'if found\[1\] <= self\.clock\(\):'
+replace = 'if False:'

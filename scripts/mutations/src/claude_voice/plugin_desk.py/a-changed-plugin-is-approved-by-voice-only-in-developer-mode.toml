@@ -1,0 +1,5 @@
+[[rule]]
+name = "a changed plugin is approved by voice only in developer mode"
+file = "src/claude_voice/plugin_desk.py"
+find = 'if not self\.mode\.state\(\)\["on"\]:'
+replace = 'if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "five wrong pairing codes end the pairing"
+file = "src/claude_voice/agent.py"
+find = 'self._write\("pairing.json", None if tries >= CODE_TRIES else \{\*\*open_, "tries": tries\}\)'
+replace = 'self._write("pairing.json", {**open_, "tries": tries})'

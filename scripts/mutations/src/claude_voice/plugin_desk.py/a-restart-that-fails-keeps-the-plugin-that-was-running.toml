@@ -1,0 +1,5 @@
+[[rule]]
+name = "a restart that fails keeps the plugin that was running"
+file = "src/claude_voice/plugin_desk.py"
+find = 'if why == "not started":'
+replace = 'if False:'

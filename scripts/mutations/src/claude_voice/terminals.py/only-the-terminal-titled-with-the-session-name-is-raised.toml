@@ -1,0 +1,5 @@
+[[rule]]
+name = "only the terminal titled with the session name is raised"
+file = "src/claude_voice/terminals.py"
+find = 'found = \[w for w in titled if title_name\(str\(w.get\("title"\) or ""\)\) in names\]'
+replace = 'found = titled[:1]'

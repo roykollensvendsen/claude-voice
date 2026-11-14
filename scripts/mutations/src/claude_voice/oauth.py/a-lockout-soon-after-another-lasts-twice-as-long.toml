@@ -1,0 +1,5 @@
+[[rule]]
+name = "a lockout soon after another lasts twice as long"
+file = "src/claude_voice/oauth.py"
+find = 'lockout = max\(lockout, 2 \* self\._lockout\)'
+replace = 'pass'

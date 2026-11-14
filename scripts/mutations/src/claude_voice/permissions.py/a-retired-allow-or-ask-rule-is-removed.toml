@@ -1,0 +1,5 @@
+[[rule]]
+name = "a retired allow or ask rule is removed"
+file = "src/claude_voice/permissions.py"
+find = 'kept = \[rule for rule in kept if rule not in rules\.retired_from\(key\)\]'
+replace = 'kept = kept'

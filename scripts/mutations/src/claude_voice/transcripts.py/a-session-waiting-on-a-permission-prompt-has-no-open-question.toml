@@ -1,0 +1,5 @@
+[[rule]]
+name = "a session waiting on a permission prompt has no open question"
+file = "src/claude_voice/transcripts.py"
+find = 'if waiting_for in PERMISSION_WAITS:'
+replace = 'if False:'

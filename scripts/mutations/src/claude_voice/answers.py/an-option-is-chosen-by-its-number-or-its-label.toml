@@ -1,0 +1,5 @@
+[[rule]]
+name = "an option is chosen by its number or its label"
+file = "src/claude_voice/answers.py"
+find = 'if text.isdigit\(\) and 1 <= int\(text\) <= len\(options\):'
+replace = 'if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "the owner approves a plugin by typing its name"
+file = "src/claude_voice/cli.py"
+find = 'if typed\.strip\(\) != spec\.name:'
+replace = 'if False:'

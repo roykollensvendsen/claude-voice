@@ -1,0 +1,5 @@
+[[rule]]
+name = "a plugins own instructions reach the voice"
+file = "src/claude_voice/plugins.py"
+find = 'if rules and rules not in'
+replace = 'if False:'

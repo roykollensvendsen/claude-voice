@@ -1,0 +1,5 @@
+[[rule]]
+name = "a question about news does not wait for a look already under way"
+file = "src/claude_voice/server.py"
+find = 'if not looking\.acquire\(blocking=False\):'
+replace = 'if not looking.acquire():'

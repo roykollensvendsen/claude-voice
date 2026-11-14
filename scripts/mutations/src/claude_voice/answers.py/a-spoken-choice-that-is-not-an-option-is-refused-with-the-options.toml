@@ -1,0 +1,5 @@
+[[rule]]
+name = "a spoken choice that is not an option is refused with the options"
+file = "src/claude_voice/answers.py"
+find = 'reason = body.get\("error"\) or fits\(prompt, body\)'
+replace = 'reason = body.get("error")'

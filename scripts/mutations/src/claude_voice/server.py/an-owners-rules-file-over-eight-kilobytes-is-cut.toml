@@ -1,0 +1,5 @@
+[[rule]]
+name = "an owners rules file over eight kilobytes is cut"
+file = "src/claude_voice/server.py"
+find = 'if len\(raw\) > OWN_RULES_BYTES:'
+replace = 'if False:'

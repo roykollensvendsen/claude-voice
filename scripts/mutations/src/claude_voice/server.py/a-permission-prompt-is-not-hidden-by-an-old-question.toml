@@ -1,0 +1,5 @@
+[[rule]]
+name = "a permission prompt is not hidden by an old question"
+file = "src/claude_voice/server.py"
+find = 'if waiting_for in transcripts.PERMISSION_WAITS:'
+replace = 'if False:'

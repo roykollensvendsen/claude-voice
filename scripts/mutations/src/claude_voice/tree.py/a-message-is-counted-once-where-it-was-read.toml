@@ -1,0 +1,5 @@
+[[rule]]
+name = "a message is counted once, where it was read"
+file = "src/claude_voice/tree.py"
+find = 'if kind != "received":'
+replace = 'if False:'

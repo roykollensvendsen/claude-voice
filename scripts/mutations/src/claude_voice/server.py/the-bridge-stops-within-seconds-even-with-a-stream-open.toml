@@ -1,0 +1,5 @@
+[[rule]]
+name = "the bridge stops within seconds even with a stream open"
+file = "src/claude_voice/server.py"
+find = 'timeout_graceful_shutdown=SHUTDOWN_SECONDS,'
+replace = 'timeout_graceful_shutdown=None,'

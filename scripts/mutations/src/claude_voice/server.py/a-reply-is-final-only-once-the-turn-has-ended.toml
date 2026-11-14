@@ -1,0 +1,5 @@
+[[rule]]
+name = "a reply is final only once the turn has ended"
+file = "src/claude_voice/server.py"
+find = 'return bool\(new\) and status in'
+replace = 'return True'

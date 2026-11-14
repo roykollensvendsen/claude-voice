@@ -1,0 +1,5 @@
+[[rule]]
+name = "a setting that does not exist or does not fit is refused"
+file = "src/claude_voice/api.py"
+find = 'now = self\.settings\.change\(body\)'
+replace = 'now = self.settings.get()'

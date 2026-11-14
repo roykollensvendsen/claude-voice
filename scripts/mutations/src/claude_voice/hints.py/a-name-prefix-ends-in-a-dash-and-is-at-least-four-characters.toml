@@ -1,0 +1,5 @@
+[[rule]]
+name = "a name prefix ends in a dash and is at least four characters"
+file = "src/claude_voice/hints.py"
+find = 'return \[text\[: i \+ 1\] for i in range'
+replace = 'return [text[: i + 1] for i in range(len(text) - 1, -1, -1) if text[i] == "-"]'

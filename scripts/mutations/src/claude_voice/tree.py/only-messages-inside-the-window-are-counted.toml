@@ -1,0 +1,6 @@
+[[rule]]
+name = "only messages inside the window are counted"
+file = "src/claude_voice/tree.py"
+find = 'if when is not None and when < cutoff:'
+occurrence = 2
+replace = 'if False:'

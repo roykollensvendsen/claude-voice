@@ -1,0 +1,5 @@
+[[rule]]
+name = "only sessions in no programme are hinted"
+file = "src/claude_voice/hints.py"
+find = 'left = \{str\(r\["id"\]\): r for r in rows if r.get\("programme"\) is None\}'
+replace = 'left = {str(r["id"]): r for r in rows}'

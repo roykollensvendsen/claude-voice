@@ -4,8 +4,9 @@
 Green on a first run proves nothing: a test that has never been red tests
 nothing. Where a rule is written before its test, the test is run red first.
 Where a rule already exists, this is the substitute. Every rule has one row,
-in a file of its own under scripts/mutations/, or in the older shared
-scripts/mutations.toml until its rows move. Run it from the repository root:
+in a file of its own under scripts/mutations/. A repository still moving its
+rows out of one shared scripts/mutations.toml is read too. Run it from the
+repository root:
 
     uv run python scripts/mutate.py [--write evidence/tests/rule-mutations.md]
 
