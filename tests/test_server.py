@@ -507,7 +507,8 @@ class HeldLook:
     `began` is set when a look starts and `ended` when one finishes, so a test proves an answer
     came first by the order of events, never by a clock: a slow runner cannot fail it. A look
     still held after `HOLD` seconds goes on, so a bridge that waits on its look ends the test
-    with a wrong order, not a hang.
+    with a wrong order, not a hang. HOLD is that hang breaker, not a timing check: lowering it
+    only brings the old flake back.
     """
 
     HOLD = 15
