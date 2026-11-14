@@ -951,73 +951,77 @@ def build_server(
         ids = live_ids + [s["id"] for s in own_recent()]
         return store.number_sessions(ids, scope=lambda sid: "/" not in sid)
 
+    def recap_of_running(row: dict[str, Any], d: dict[str, Any], numbers: dict[str, int]) -> dict[str, Any]:
+        """One running Claude Code session as fleet_recap gives it; `d` is its live entry."""
+        if row["status"] == "moved":
+            where = row["moved_to"]["name"] or "another session"
+            doing = f"flyttet til {where}"
+        else:
+            doing = transcripts.doing_line(str(row["claude_session_id"]), str(d.get("cwd")), projects_dir)
+        state, waiting_kind = live_state(
+            str(row["status"]), str(row["claude_session_id"]), str(d.get("cwd")), d.get("waitingFor")
+        )
+        item = {
+            "id": row["claude_session_id"],
+            "number": numbers.get(str(row["claude_session_id"])),
+            "name": row["name"],
+            "kind": "terminal" if row["kind"] == "interactive" else "background",
+            "project": row["project"],
+            "status": row["status"],
+            "state": state,
+            "state_since": observe(str(row["claude_session_id"]), str(row["name"]), state, doing),
+            "waiting_kind": waiting_kind,
+            "git": git_of(str(row["claude_session_id"]), str(d.get("cwd"))) if d.get("cwd") else None,
+            "context": usage.context(statusline_dir, str(row["claude_session_id"])),
+            "app_url": app_url(d.get("bridgeSessionId")),
+            "doing": doing,
+            "minutes_since_update": row["minutes_since_update"],
+            "sending": list(sending.get(str(row["claude_session_id"]), [])),
+        }
+        for key in ("waiting_for", "question", "moved_to"):
+            if key in row:
+                item[key] = row[key]
+        return item
+
+    def recap_of_own(s: dict[str, Any], numbers: dict[str, int]) -> dict[str, Any]:
+        """One of the bridge's own sessions as fleet_recap gives it."""
+        recap = manager.recap(s["id"])
+        words = recap["latest_text"] or recap["last_result"] or recap["last_error"] or ""
+        name = s["label"] or Path(s["project_path"]).name
+        state = bridge_state(str(s["status"]))
+        line = transcripts.first_sentence(words) if words else ""
+        return {
+            "id": s["id"],
+            "number": numbers.get(s["id"]),
+            "name": name,
+            "kind": "bridge-session",
+            "project": under_root(s["project_path"]),
+            "status": s["status"],
+            "state": state,
+            "state_since": observe(s["id"], name, state, line),
+            "waiting_kind": None,
+            "git": git_of(s["id"], s["project_path"]),
+            "context": None,
+            "app_url": None,
+            "doing": transcripts.first_sentence(words) if words else "",
+            "minutes_since_update": round((manager.clock() - s["updated_at"]) / 60),
+            "sending": [],
+        }
+
     @tool(annotations=READ_ONLY)
     def fleet_recap() -> dict[str, Any]:
         """Every session in one call, with its status and what it is doing.
         It covers running Claude Code sessions and the bridge's own (active in the last day);
         `doing` is one line each. Answers "what are my sessions up to?" without
         reading each one."""
-        sessions = []
         live_by_id = {str(d.get("sessionId")): d for d in live_sessions()}
         live_rows = running()
         own_rows = own_recent()
         numbers = local_numbers([str(r["claude_session_id"]) for r in live_rows])
-        for row in live_rows:
-            d = live_by_id.get(str(row["claude_session_id"]), {})
-            if row["status"] == "moved":
-                where = row["moved_to"]["name"] or "another session"
-                doing = f"flyttet til {where}"
-            else:
-                doing = transcripts.doing_line(str(row["claude_session_id"]), str(d.get("cwd")), projects_dir)
-            state, waiting_kind = live_state(
-                str(row["status"]), str(row["claude_session_id"]), str(d.get("cwd")), d.get("waitingFor")
-            )
-            item = {
-                "id": row["claude_session_id"],
-                "number": numbers.get(str(row["claude_session_id"])),
-                "name": row["name"],
-                "kind": "terminal" if row["kind"] == "interactive" else "background",
-                "project": row["project"],
-                "status": row["status"],
-                "state": state,
-                "state_since": observe(str(row["claude_session_id"]), str(row["name"]), state, doing),
-                "waiting_kind": waiting_kind,
-                "git": git_of(str(row["claude_session_id"]), str(d.get("cwd"))) if d.get("cwd") else None,
-                "context": usage.context(statusline_dir, str(row["claude_session_id"])),
-                "app_url": app_url(d.get("bridgeSessionId")),
-                "doing": doing,
-                "minutes_since_update": row["minutes_since_update"],
-                "sending": list(sending.get(str(row["claude_session_id"]), [])),
-            }
-            for key in ("waiting_for", "question", "moved_to"):
-                if key in row:
-                    item[key] = row[key]
-            sessions.append(item)
-        for s in own_rows:
-            recap = manager.recap(s["id"])
-            words = recap["latest_text"] or recap["last_result"] or recap["last_error"] or ""
-            name = s["label"] or Path(s["project_path"]).name
-            state = bridge_state(str(s["status"]))
-            line = transcripts.first_sentence(words) if words else ""
-            sessions.append(
-                {
-                    "id": s["id"],
-                    "number": numbers.get(s["id"]),
-                    "name": name,
-                    "kind": "bridge-session",
-                    "project": under_root(s["project_path"]),
-                    "status": s["status"],
-                    "state": state,
-                    "state_since": observe(s["id"], name, state, line),
-                    "waiting_kind": None,
-                    "git": git_of(s["id"], s["project_path"]),
-                    "context": None,
-                    "app_url": None,
-                    "doing": transcripts.first_sentence(words) if words else "",
-                    "minutes_since_update": round((manager.clock() - s["updated_at"]) / 60),
-                    "sending": [],
-                }
-            )
+        sessions = [
+            recap_of_running(row, live_by_id.get(str(row["claude_session_id"]), {}), numbers) for row in live_rows
+        ]
+        sessions += [recap_of_own(s, numbers) for s in own_rows]
         return {"sessions": sessions}
 
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))

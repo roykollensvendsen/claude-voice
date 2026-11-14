@@ -217,6 +217,19 @@ async def test_a_session_continued_elsewhere_is_shown_as_moved_and_not_asked(tmp
     assert sent["status"] == "moved" and sent["delivered"] is False
 
 
+async def test_the_recap_says_where_a_session_continued_elsewhere_went(tmp_path, root, live):
+    target = Target(live, str(root / "billing"))  # sid-1
+    continued(tmp_path, str(root / "billing"), "sid-1", "sid-2")
+
+    async def deliver(name, text):
+        raise AssertionError("a recap messages no session")
+
+    async with Client(bridge(tmp_path, root, live, target, deliver)) as c:
+        recap = await call(c, "fleet_recap")
+    moved = next(s for s in recap["sessions"] if s["id"] == "sid-1")
+    assert (moved["doing"], moved["moved_to"]["id"]) == ("flyttet til another session", "sid-2")
+
+
 async def test_the_reply_is_only_what_follows_our_message_and_only_its_last_words(tmp_path, root, live):
     target = Target(live, str(root / "billing"))
 
