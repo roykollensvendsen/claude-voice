@@ -3,7 +3,8 @@
 A rule here is one line of source marked ``# RULE: what it says``. Three things
 have to be true of each, and none of them is true by writing the rule:
 
-* it has a row in ``scripts/mutations.toml``, so something switches it off;
+* it has a row, in ``scripts/mutations.toml`` or in a file of its own under
+  ``scripts/mutations/``, so something switches it off;
 * a test carries the rule's own words as its name;
 * switching it off turns *that* test red, which ``scripts/mutate.py`` checks.
 
@@ -16,7 +17,6 @@ leave a rule looking guarded while nothing guards it.
 import importlib.util
 import pathlib
 import re
-import tomllib
 
 ROOT = pathlib.Path(__file__).parent.parent
 MARKER = re.compile(r"^[ \t]*#\s*RULE:\s*(.+?)\s*$")
@@ -42,9 +42,8 @@ def marked_rules() -> set[str]:
 
 
 def rowed_rules() -> set[str]:
-    """Every rule the mutation table claims to switch off."""
-    table = tomllib.loads((ROOT / "scripts/mutations.toml").read_text(encoding="utf-8"))
-    return {str(rule["name"]) for rule in table.get("rule", [])}
+    """Every rule the mutation rows claim to switch off."""
+    return {str(rule["name"]) for rule in _mutate().all_rows()}
 
 
 def defined_test_names() -> set[str]:
@@ -85,9 +84,8 @@ def test_every_row_in_the_mutation_table_leaves_code_that_compiles():
     row. Checked here, the slip shows on any run of the suite.
     """
     mutate = _mutate()
-    table = tomllib.loads((ROOT / "scripts/mutations.toml").read_text(encoding="utf-8"))
     broken = []
-    for rule in table.get("rule", []):
+    for rule in mutate.all_rows():
         text = (ROOT / rule["file"]).read_text(encoding="utf-8")
         why = mutate.broken(rule["file"], mutate.switched_off(text, rule))
         if why:
@@ -104,9 +102,8 @@ def test_every_row_switches_off_the_line_beside_its_own_marker():
     be the nearest to the rule's marker.
     """
     mutate = _mutate()
-    table = tomllib.loads((ROOT / "scripts/mutations.toml").read_text(encoding="utf-8"))
     astray = []
-    for rule in table.get("rule", []):
+    for rule in mutate.all_rows():
         lines = (ROOT / rule["file"]).read_text(encoding="utf-8").splitlines()
         hits = [i for i, line in enumerate(lines) if re.search(str(rule["find"]), line)]
         chosen = mutate.line_of("\n".join(lines), str(rule["find"]), int(rule.get("occurrence", 1)))
@@ -114,3 +111,57 @@ def test_every_row_switches_off_the_line_beside_its_own_marker():
         if marks and min(hits, key=lambda i: abs(i - marks[0])) != chosen:
             astray.append(f"{rule['name']} (line {chosen + 1}; give it an occurrence)")
     assert not astray, "rows that switch off a line away from their marker: " + "; ".join(astray)
+
+
+def _row(name, file="src/claude_voice/store.py"):
+    return f"[[rule]]\nname = \"{name}\"\nfile = \"{file}\"\nfind = 'x'\nreplace = 'y'\n"
+
+
+def test_a_row_in_a_file_of_its_own_is_read_with_the_table(tmp_path):
+    """Two pull requests that each add a row at the end of one file collide; a file
+    per row cannot. Until the old rows move, both places are read."""
+    table, folder = tmp_path / "mutations.toml", tmp_path / "mutations"
+    table.write_text(_row("one in the table"), encoding="utf-8")
+    (folder / "store").mkdir(parents=True)
+    (folder / "store" / "one-in-a-file.toml").write_text(_row("one in a file"), encoding="utf-8")
+    names = [rule["name"] for rule in _mutate().all_rows(table, folder)]
+    assert names == ["one in the table", "one in a file"]
+
+
+def test_the_same_rule_with_two_rows_is_refused(tmp_path):
+    """Moving a row and forgetting to delete the old one would switch the rule off twice
+    and count it twice."""
+    table, folder = tmp_path / "mutations.toml", tmp_path / "mutations"
+    table.write_text(_row("twice"), encoding="utf-8")
+    (folder / "store").mkdir(parents=True)
+    (folder / "store" / "twice.toml").write_text(_row("twice"), encoding="utf-8")
+    try:
+        _mutate().all_rows(table, folder)
+    except SystemExit as refused:
+        assert "twice" in str(refused)
+        assert "delete" in str(refused)
+    else:
+        raise AssertionError("a rule with two rows was read")
+
+
+def test_a_row_file_sits_in_its_module_s_folder_under_its_own_name(tmp_path):
+    """One row per file, the file named after the rule, in the folder named after the
+    module it switches off: then where a row lives is never a choice, and two pull
+    requests only meet when they add the same rule."""
+    folder = tmp_path / "mutations"
+    (folder / "store").mkdir(parents=True)
+    (folder / "api").mkdir()
+    (folder / "store" / "in-place.toml").write_text(_row("in place"), encoding="utf-8")
+    (folder / "api" / "wrong-folder.toml").write_text(_row("wrong folder"), encoding="utf-8")
+    (folder / "store" / "a-wrong-name.toml").write_text(_row("named otherwise"), encoding="utf-8")
+    (folder / "store" / "two-rows.toml").write_text(_row("two rows") + _row("in one file"), encoding="utf-8")
+    found = " ".join(_mutate().misfiled(folder))
+    assert "api/wrong-folder.toml should be store/wrong-folder.toml" in found
+    assert "store/a-wrong-name.toml should be store/named-otherwise.toml" in found
+    assert "store/two-rows.toml holds 2 rows" in found
+    assert "in-place" not in found
+
+
+def test_every_row_file_in_the_repository_is_where_its_rule_says():
+    misfiled = _mutate().misfiled()
+    assert not misfiled, "row files out of place: " + "; ".join(misfiled)
