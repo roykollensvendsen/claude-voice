@@ -1487,6 +1487,16 @@ def build_server(
                 break
         return {"conversations": listed}
 
+    def where_and_name(claude_session_id: str) -> tuple[str, str | None]:
+        """A conversation's folder and name: a terminal's own, else from its record on disk."""
+        live = next((d for d in live_sessions() if d.get("sessionId") == claude_session_id), None)
+        if live is not None:
+            return live.get("cwd") or "", live.get("name")
+        match = next((c for c in conversations(limit=1000) if c.session_id == claude_session_id), None)
+        if match is None:
+            raise ToolError(f"No Claude Code conversation with id {claude_session_id}")
+        return match.cwd or "", match.custom_title or match.summary
+
     @tool(
         annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False),
     )
@@ -1496,17 +1506,8 @@ def build_server(
         """Continue a Claude Code conversation from list_claude_conversations.
         If it is still open in a terminal, both copies will carry on separately."""
         if project is None:
-            live = next((d for d in live_sessions() if d.get("sessionId") == claude_session_id), None)
-            match = None
-            if live is None:
-                match = next(
-                    (c for c in conversations(limit=1000) if c.session_id == claude_session_id),
-                    None,
-                )
-                if match is None:
-                    raise ToolError(f"No Claude Code conversation with id {claude_session_id}")
-            project = (live or {}).get("cwd") or (match.cwd if match else "") or ""
-            label = label or (live or {}).get("name") or (match.custom_title or match.summary if match else None)
+            project, found = where_and_name(claude_session_id)
+            label = label or found
         try:
             path = str(manager.resolve_project(project))
         except ValueError as exc:

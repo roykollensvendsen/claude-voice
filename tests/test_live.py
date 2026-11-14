@@ -147,6 +147,13 @@ async def test_attaching_backfills_recent_history(tmp_path, root, live):
     assert "history" in {e["kind"] for e in m.store.events(s["id"])}
 
 
+async def test_an_attached_terminal_session_takes_its_folder_and_its_name(tmp_path, root, live):
+    _, srv = server_for(tmp_path, root, live)
+    async with Client(srv) as c:
+        s = await call(c, "attach_conversation", claude_session_id="current-id")
+    assert (s["project_path"], s["label"]) == (str(root / "billing"), "billing-ab")
+
+
 async def test_a_turn_that_does_nothing_is_an_error(tmp_path, root, live):
     claude = FakeClaude([result("", "c-1", num_turns=0)])
     m, srv = server_for(tmp_path, root, live, claude=claude)
