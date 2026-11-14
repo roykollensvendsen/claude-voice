@@ -455,6 +455,51 @@ async def test_a_cancelled_tool_call_is_logged_as_cancelled(caplog):
     assert METRICS.snapshot()["errors"][0]["kind"] == "cancelled"
 
 
+@pytest.mark.parametrize("method", ["tools/call", "resources/read"])
+async def test_a_call_that_raises_is_logged_with_its_error_and_only_a_tool_call_is_counted(caplog, method):
+    import logging
+    from types import SimpleNamespace
+
+    from claude_voice.metrics import METRICS
+    from claude_voice.server import log_requests
+
+    METRICS.reset()
+    ctx = SimpleNamespace(method=method, params={"name": "list_projects"}, request_id=8)
+
+    async def breaks(_ctx):
+        raise RuntimeError("disk full")
+
+    with caplog.at_level(logging.INFO, logger="claude_voice"), pytest.raises(RuntimeError):
+        await log_requests(ctx, breaks)
+    lines = [r.getMessage() for r in caplog.records if r.name == "claude_voice"]
+    assert any(line.startswith(f"mcp {method} list_projects -> RuntimeError ") for line in lines)
+    errors = METRICS.snapshot()["errors"]
+    if method == "tools/call":
+        assert (errors[0]["kind"], errors[0]["error"]) == ("exception", "RuntimeError: disk full")
+    else:
+        assert errors == []
+
+
+async def test_a_cancelled_call_that_is_not_a_tool_call_is_logged_but_not_counted(caplog):
+    import logging
+    from types import SimpleNamespace
+
+    from claude_voice.metrics import METRICS
+    from claude_voice.server import log_requests
+
+    METRICS.reset()
+    ctx = SimpleNamespace(method="resources/read", params={}, request_id=9)
+
+    async def gives_up(_ctx):
+        raise asyncio.CancelledError
+
+    with caplog.at_level(logging.INFO, logger="claude_voice"), pytest.raises(asyncio.CancelledError):
+        await log_requests(ctx, gives_up)
+    lines = [r.getMessage() for r in caplog.records if r.name == "claude_voice"]
+    assert any(line.startswith("mcp resources/read -> cancelled ") for line in lines)
+    assert METRICS.snapshot()["errors"] == []
+
+
 async def test_a_trace_id_sent_with_a_call_is_logged_with_it_and_its_time(tmp_path, root, caplog):
     import logging
     import re
