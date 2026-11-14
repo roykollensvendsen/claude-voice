@@ -1,10 +1,10 @@
 """Whether the owner is away from the laptop, so a session's question should wait for the phone.
 
-Waiting for the phone while he sits at the laptop delays the box he would answer at once,
-and not waiting while he is away sends him walking back (ADR-CV-008). He counts as away
-while the companion app is open, while the screen is locked, after five minutes without
+Waiting for the phone while they sit at the laptop delays the box they would answer at once,
+and not waiting while they are away sends them walking back (ADR-CV-008). They count as
+away while the companion app is open, while the screen is locked, after five minutes without
 keyboard or mouse, and for ten minutes after a voice call, from the voice app or the Claude
-app, unless he has used the keyboard or mouse since.
+app, unless they have used the keyboard or mouse since.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 log = logging.getLogger(__name__)
 
-VOICE_WINDOW = 600.0  # seconds after a voice call that he still counts as away
+VOICE_WINDOW = 600.0  # seconds after a voice call that they still count as away
 IDLE_LIMIT = 300.0  # seconds without keyboard or mouse that count as away
 DESK_CACHE = 3.0  # seconds one reading of the desktop is trusted for
 IDLE_MONITOR = [
