@@ -1,0 +1,5 @@
+[[rule]]
+name = "a reason file older than ten minutes is ignored"
+file = "src/claude_voice/restarts.py"
+find = 'return 0 <= now - written < FRESH_FOR'
+replace = 'return 0 <= now - written'

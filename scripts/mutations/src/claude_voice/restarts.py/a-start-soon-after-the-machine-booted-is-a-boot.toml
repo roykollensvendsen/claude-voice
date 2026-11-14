@@ -1,0 +1,5 @@
+[[rule]]
+name = "a start soon after the machine booted is a boot"
+file = "src/claude_voice/restarts.py"
+find = 'if uptime is not None and uptime < BOOTED_WITHIN:'
+replace = 'if False:'

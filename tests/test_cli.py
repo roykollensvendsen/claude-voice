@@ -1,3 +1,6 @@
+import json
+
+from claude_voice import cli, restarts
 from claude_voice.cli import COMMANDS, main
 
 
@@ -13,8 +16,52 @@ def env(tmp_path, **extra):
     return {"CLAUDE_VOICE_ROOT": str(tmp_path), **extra}
 
 
-def test_the_command_has_serve_check_plugins_agent_machines_permissions_and_org():
-    assert COMMANDS == ("serve", "check", "plugins", "agent", "machines", "permissions", "org")
+def test_the_command_has_serve_check_plugins_agent_machines_permissions_org_and_restart():
+    assert COMMANDS == ("serve", "check", "plugins", "agent", "machines", "permissions", "org", "restart")
+
+
+class Systemctl:
+    """Stands in for systemctl, and looks for the reason file when it is asked to restart."""
+
+    def __init__(self, state, code=0):
+        self.state, self.code, self.calls = state, code, []
+
+    def __call__(self, command):
+        reason = self.state / restarts.REASON_FILE
+        self.calls.append((command, json.loads(reason.read_text()) if reason.exists() else None))
+        return self.code
+
+
+def test_claude_voice_restart_notes_why_before_it_restarts(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "STATE_DIR", tmp_path)
+    systemctl = Systemctl(tmp_path)
+    assert main(["restart", "--why", "a new plugin"], env=env(tmp_path), systemctl=systemctl) == 0
+    [(command, noted)] = systemctl.calls
+    assert command == ["systemctl", "--user", "restart", "claude-voice"]
+    assert (noted["reason"], noted["by"], noted["note"]) == ("planned", "cli", "a new plugin")
+
+
+def test_a_restart_systemctl_refuses_says_where_to_look(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "STATE_DIR", tmp_path)
+    assert main(["restart"], env=env(tmp_path), systemctl=Systemctl(tmp_path, code=5)) == 5
+    assert "systemctl --user status claude-voice" in capsys.readouterr().err
+
+
+def test_a_restart_that_cannot_note_why_still_restarts(tmp_path, monkeypatch, capsys):
+    blocked = tmp_path / "a-file"
+    blocked.write_text("")
+    monkeypatch.setattr(cli, "STATE_DIR", blocked)
+    systemctl = Systemctl(tmp_path)
+    assert main(["restart"], env=env(tmp_path), systemctl=systemctl) == 0
+    assert len(systemctl.calls) == 1 and "health will say unplanned" in capsys.readouterr().err
+
+
+def test_a_dry_run_restart_touches_nothing(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "STATE_DIR", tmp_path)
+    systemctl = Systemctl(tmp_path)
+    assert main(["restart", "--dry-run"], env=env(tmp_path), systemctl=systemctl) == 0
+    assert systemctl.calls == [] and not (tmp_path / restarts.REASON_FILE).exists()
+    assert "would note a planned restart" in capsys.readouterr().out
 
 
 def org_file(tmp_path, text):
