@@ -195,6 +195,14 @@ def test_root_must_exist(tmp_path):
         load_config({"CLAUDE_VOICE_ROOT": str(tmp_path / "nope")}, transport="stdio")
 
 
+def test_a_ui_folder_is_used_when_it_exists_and_stops_the_bridge_when_it_does_not(tmp_path):
+    env = {"CLAUDE_VOICE_ROOT": str(tmp_path)}
+    (tmp_path / "ui").mkdir()
+    assert load_config({**env, "CLAUDE_VOICE_UI_DIR": f" {tmp_path / 'ui'} "}, "stdio").ui_dir == tmp_path / "ui"
+    with pytest.raises(ConfigError, match="CLAUDE_VOICE_UI_DIR is not a directory"):
+        load_config({**env, "CLAUDE_VOICE_UI_DIR": str(tmp_path / "nope")}, "stdio")
+
+
 async def test_approvals_can_be_answered_through_tools(tmp_path, root):
     from claude_agent_sdk import PermissionResultAllow, ToolPermissionContext
     from fakes import Call
