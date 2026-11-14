@@ -1,5 +1,5 @@
 [[rule]]
 name = "the owner is away while the screen is locked"
 file = "src/claude_voice/presence.py"
-find = 'return desk.locked or desk.idle_seconds > IDLE_LIMIT'
-replace = 'return desk.idle_seconds > IDLE_LIMIT'
+find = 'if desk.locked:'
+replace = 'if False:'

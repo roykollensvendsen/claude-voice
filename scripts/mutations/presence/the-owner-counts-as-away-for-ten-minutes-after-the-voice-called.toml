@@ -1,5 +1,5 @@
 [[rule]]
 name = "the owner counts as away for ten minutes after the voice called"
 file = "src/claude_voice/presence.py"
-find = 'if self.voice_at is not None and self.clock\(\) - self.voice_at < VOICE_WINDOW:'
+find = 'if since < VOICE_WINDOW:'
 replace = 'if False:'

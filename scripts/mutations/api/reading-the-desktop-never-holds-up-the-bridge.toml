@@ -1,0 +1,5 @@
+[[rule]]
+name = "reading the desktop never holds up the bridge"
+file = "src/claude_voice/api.py"
+find = 'return await asyncio.to_thread\(self.away, HUB.listening\(\)\)'
+replace = 'return self.away(HUB.listening())'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a desktop source that cannot be read leaves the other one counted"
+file = "src/claude_voice/presence.py"
+find = 'idle = _source\("how long nobody touched it", lambda: _idle\(run\)\)'
+replace = 'idle = _idle(run)'
