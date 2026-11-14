@@ -72,6 +72,16 @@ def _run_ids(listed: str | None) -> list[int]:
         return []
 
 
+def _finished_runs(repo: str, branch: str, limit: int, run: Callable[[list[str]], str | None]) -> list[int]:
+    """The followed branch's latest finished runs of the checks after a push, newest first."""
+    return _run_ids(
+        run(
+            ["run", "list", "--repo", repo, "--branch", branch, "--event", "push", "--workflow", "checks"]
+            + ["--status", "completed", "--limit", str(limit), "--json", "databaseId"]
+        )
+    )
+
+
 def _download(
     repo: str,
     run_id: int,
@@ -110,12 +120,8 @@ def kept_levels(
     are downloaded first, so a page shows today's numbers before it fills in their history.
     """
     folder = (cache or _cache()) / repo.replace("/", "__")
-    listed = run(
-        ["run", "list", "--repo", repo, "--branch", branch, "--event", "push", "--workflow", "checks"]
-        + ["--status", "completed", "--limit", str(limit), "--json", "databaseId"]
-    )
     out, fetched = [], 0
-    for run_id in _run_ids(listed):  # newest first
+    for run_id in _finished_runs(repo, branch, limit, run):  # newest first
         saved = folder / f"{run_id}.json"
         if not saved.exists() and fetched < NEW_PER_LOOK:
             fetched += 1
@@ -150,12 +156,8 @@ def kept_mutations(
     levels get.
     """
     folder = (cache or _cache()) / repo.replace("/", "__")
-    listed = run(
-        ["run", "list", "--repo", repo, "--branch", branch, "--event", "push", "--workflow", "checks"]
-        + ["--status", "completed", "--limit", str(limit), "--json", "databaseId"]
-    )
     fetched = 0
-    for run_id in _run_ids(listed):  # newest first
+    for run_id in _finished_runs(repo, branch, limit, run):  # newest first
         # RULE: mutation reports are cached apart from the levels
         saved = folder / f"{run_id}.mutations.json"
         if not saved.exists():
