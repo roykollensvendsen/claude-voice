@@ -222,3 +222,12 @@ def test_the_summary_is_also_written_for_the_checks_page(tmp_path, monkeypatch):
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(page))
     red_first.publish(["nothing to prove: no new or changed tests"])
     assert "nothing to prove" in page.read_text()
+
+
+def test_a_tree_s_tests_cannot_import_the_branch_s_scripts_through_the_plugin(tmp_path):
+    """The plugin is loaded from outside the tree. Were its folder the branch's scripts/,
+    the old code's tests could import the branch's own scripts, and pass where they must fail."""
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests/test_uses_it.py").write_text("import red_first\n\n\ndef test_uses_it():\n    pass\n")
+    got = red_first.outcomes(["tests/test_uses_it.py::test_uses_it"], tmp_path, python=[sys.executable])
+    assert got == {"tests/test_uses_it.py::test_uses_it": "failed"}

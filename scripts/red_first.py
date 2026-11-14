@@ -31,6 +31,7 @@ import json
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -44,6 +45,8 @@ Run = Callable[[list[str]], tuple[dict[str, Outcome], dict[str, Outcome]]]
 MARKER = re.compile(r"^[ \t]*Red-first:[ \t]*existing behaviou?r[ \t]*[-–—][ \t]*([^\s,]+)", re.MULTILINE)
 #: The environment variables the pytest plugin below reads, set only for the runs this script starts.
 WANTED, REPORT = "RED_FIRST_IDS", "RED_FIRST_REPORT"
+#: The name the plugin's copy is loaded under in each tree.
+PLUGIN = "red_first_outcomes_plugin"
 
 
 def _git(*args: str, cwd: pathlib.Path | str | None = None, stdin: str | None = None) -> str:
@@ -213,8 +216,11 @@ def outcomes(ids: list[str], tree: pathlib.Path, python: list[str]) -> dict[str,
         wanted.write_text(json.dumps(ids), encoding="utf-8")
         env = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"}
         env |= {WANTED: str(wanted), REPORT: str(report), "PYTHONDONTWRITEBYTECODE": "1"}
-        env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(pathlib.Path(__file__).parent), env.get("PYTHONPATH")]))
-        cmd = [*python, "-m", "pytest", "-q", "--tb=short", "-p", "no:cacheprovider", "-p", "red_first"]
+        # A copy, alone in the scratch folder and under a name no test imports: on the path as
+        # scripts/, the old code's tests could import the branch's own scripts and pass.
+        shutil.copyfile(__file__, pathlib.Path(scratch, f"{PLUGIN}.py"))
+        env["PYTHONPATH"] = os.pathsep.join(filter(None, [scratch, env.get("PYTHONPATH")]))
+        cmd = [*python, "-m", "pytest", "-q", "--tb=short", "-p", "no:cacheprovider", "-p", PLUGIN]
         subprocess.run([*cmd, "--continue-on-collection-errors", *files], cwd=tree, env=env, check=False)  # noqa: S603
         seen = json.loads(report.read_text(encoding="utf-8")) if report.exists() else {}
     broken_files = set(seen.get("uncollectable", []))
@@ -247,7 +253,7 @@ def run_both(base: str, head: str) -> Run:
     return run
 
 
-# --- The pytest plugin, loaded in each tree with -p red_first ----------------
+# --- The pytest plugin, loaded in each tree from a copy (see outcomes) -------
 
 _seen: dict[str, Outcome] = {}
 _uncollectable: list[str] = []
