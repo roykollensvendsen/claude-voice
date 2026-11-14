@@ -204,19 +204,63 @@ MAKE_TOKEN = (
 )
 
 
-def load_config(env: Mapping[str, str], transport: str) -> Config:
+def _refuse_an_api_key(env: Mapping[str, str]) -> None:
+    """Stop the bridge where Claude would bill the API instead of the owner's subscription."""
     # RULE: an api key in the environment stops the bridge from starting
     if env.get("ANTHROPIC_API_KEY") and env.get("CLAUDE_VOICE_ALLOW_API_KEY") != "1":
         raise ConfigError(
             "ANTHROPIC_API_KEY is set, so Claude would bill the API instead of your "
             "subscription. Unset it, or set CLAUDE_VOICE_ALLOW_API_KEY=1 if that is intended."
         )
+
+
+def _projects_root(env: Mapping[str, str]) -> Path:
+    """The folder that holds the owner's projects, which must exist."""
     root = Path(env.get("CLAUDE_VOICE_ROOT", "~/src")).expanduser()
     if not root.is_dir():
         raise ConfigError(
             f"CLAUDE_VOICE_ROOT is not a directory: {root}. Make it with `mkdir -p {root}`, or set "
             "CLAUDE_VOICE_ROOT to the folder that holds your projects."
         )
+    return root
+
+
+def _ui_folder(env: Mapping[str, str]) -> Path | None:
+    """The folder the companion page is served from, when one is set; it must exist."""
+    ui_dir = env.get("CLAUDE_VOICE_UI_DIR", "").strip()
+    if not ui_dir:
+        return None
+    folder = Path(ui_dir).expanduser()
+    if not folder.is_dir():
+        raise ConfigError(f"CLAUDE_VOICE_UI_DIR is not a directory: {folder}. Build the UI there, or unset it.")
+    return folder
+
+
+def _access_seconds(env: Mapping[str, str]) -> int | None:
+    """How long an access token lasts, when the owner set it: whole seconds, at least a minute."""
+    ttl = env.get("CLAUDE_VOICE_ACCESS_TOKEN_SECONDS", "").strip()
+    if not ttl:
+        return None
+    # RULE: an access-token lifetime that is not a whole number of at least a minute stops the bridge
+    if not ttl.isdigit() or int(ttl) < MIN_ACCESS_TTL:
+        raise ConfigError(
+            f"CLAUDE_VOICE_ACCESS_TOKEN_SECONDS is {ttl!r}; use a whole number of seconds, "
+            f"at least {MIN_ACCESS_TTL} (an hour is 3600, a week 604800)."
+        )
+    return int(ttl)
+
+
+def _check_the_token(token: str | None) -> None:
+    """Serving over HTTP needs a token, and a long one."""
+    if not token:
+        raise ConfigError(f"CLAUDE_VOICE_TOKEN must be set to serve over HTTP. {MAKE_TOKEN}")
+    if len(token) < MIN_TOKEN_CHARS:
+        raise ConfigError(f"CLAUDE_VOICE_TOKEN must be at least {MIN_TOKEN_CHARS} characters. {MAKE_TOKEN}")
+
+
+def load_config(env: Mapping[str, str], transport: str) -> Config:
+    _refuse_an_api_key(env)
+    root = _projects_root(env)
     cfg = Config(
         root=root,
         db=Path(env.get("CLAUDE_VOICE_DB", "~/.local/state/claude-voice/bridge.db")).expanduser(),
@@ -228,28 +272,17 @@ def load_config(env: Mapping[str, str], transport: str) -> Config:
     )
     cfg.courier_name = env.get("CLAUDE_VOICE_COURIER_NAME", "").strip() or transcripts.COURIER_NAME
     cfg.ui_origins = [o.strip().rstrip("/") for o in env.get("CLAUDE_VOICE_UI_ORIGINS", "").split(",") if o.strip()]
-    ui_dir = env.get("CLAUDE_VOICE_UI_DIR", "").strip()
-    if ui_dir:
-        cfg.ui_dir = Path(ui_dir).expanduser()
-        if not cfg.ui_dir.is_dir():
-            raise ConfigError(f"CLAUDE_VOICE_UI_DIR is not a directory: {cfg.ui_dir}. Build the UI there, or unset it.")
-    ttl = env.get("CLAUDE_VOICE_ACCESS_TOKEN_SECONDS", "").strip()
-    if ttl:
-        # RULE: an access-token lifetime that is not a whole number of at least a minute stops the bridge
-        if not ttl.isdigit() or int(ttl) < MIN_ACCESS_TTL:
-            raise ConfigError(
-                f"CLAUDE_VOICE_ACCESS_TOKEN_SECONDS is {ttl!r}; use a whole number of seconds, "
-                f"at least {MIN_ACCESS_TTL} (an hour is 3600, a week 604800)."
-            )
-        cfg.access_ttl = int(ttl)
+    ui_folder = _ui_folder(env)
+    if ui_folder is not None:
+        cfg.ui_dir = ui_folder
+    seconds = _access_seconds(env)
+    if seconds is not None:
+        cfg.access_ttl = seconds
     cfg.public_url = env.get("CLAUDE_VOICE_PUBLIC_URL", "").rstrip("/") or (
         f"https://{cfg.public_hosts[0]}" if cfg.public_hosts else f"http://127.0.0.1:{cfg.port}"
     )
     if transport == "http":
-        if not cfg.token:
-            raise ConfigError(f"CLAUDE_VOICE_TOKEN must be set to serve over HTTP. {MAKE_TOKEN}")
-        if len(cfg.token) < MIN_TOKEN_CHARS:
-            raise ConfigError(f"CLAUDE_VOICE_TOKEN must be at least {MIN_TOKEN_CHARS} characters. {MAKE_TOKEN}")
+        _check_the_token(cfg.token)
     return cfg
 
 
