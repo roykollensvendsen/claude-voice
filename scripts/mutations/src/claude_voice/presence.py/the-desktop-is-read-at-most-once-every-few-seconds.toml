@@ -1,0 +1,5 @@
+[[rule]]
+name = "the desktop is read at most once every few seconds"
+file = "src/claude_voice/presence.py"
+find = 'if self._desk is not None and now - self._desk\[0\] < self.cache:'
+replace = 'if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "an unreadable desktop source is logged once"
+file = "src/claude_voice/presence.py"
+find = 'if name not in _REPORTED:'
+replace = 'if True:'

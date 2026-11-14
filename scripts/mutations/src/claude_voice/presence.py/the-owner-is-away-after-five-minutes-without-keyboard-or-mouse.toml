@@ -1,0 +1,5 @@
+[[rule]]
+name = "the owner is away after five minutes without keyboard or mouse"
+file = "src/claude_voice/presence.py"
+find = 'if idle is not None and idle > IDLE_LIMIT:'
+replace = 'if False:'

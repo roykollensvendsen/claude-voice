@@ -1,0 +1,5 @@
+[[rule]]
+name = "keyboard or mouse used since the voice called counts as at the laptop"
+file = "src/claude_voice/presence.py"
+find = 'return not \(idle is not None and idle < since\)'
+replace = 'return True'
