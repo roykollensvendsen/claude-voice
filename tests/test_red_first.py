@@ -65,6 +65,16 @@ def test_the_red_first_marker_never_excuses_a_test_that_fails_on_the_branch():
     assert "tests/test_x.py::test_b fails on this branch" in "\n".join(said)
 
 
+def test_a_test_red_before_and_skipped_on_the_branch_is_not_proved():
+    """It never ran on the branch, so it shows nothing; the marker is the way through."""
+    ids = ["tests/test_x.py::test_windows_only"]
+    ok, said = red_first.prove(ids, runs("failed", "skipped"), body="")
+    assert not ok
+    assert "tests/test_x.py::test_windows_only" in "\n".join(said)
+    ok, _ = red_first.prove(ids, runs("failed", "skipped"), body="Red-first: existing behaviour - test_windows_only")
+    assert ok
+
+
 def test_a_test_red_before_and_on_the_branch_is_broken_not_proved():
     ok, said = red_first.prove(["tests/test_x.py::test_b"], runs("failed", "failed"), body="")
     assert not ok
