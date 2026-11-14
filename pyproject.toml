@@ -39,6 +39,10 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = ["e2e: needs a real logged-in Claude Code; never run in CI"]
 addopts = "-m 'not e2e'"
+# A passing test's temporary files are deleted at once, and only the latest run's
+# failures are kept to read: a day of runs otherwise filled the machine's /tmp.
+tmp_path_retention_count = 1
+tmp_path_retention_policy = "failed"
 
 [tool.ruff]
 line-length = 120
