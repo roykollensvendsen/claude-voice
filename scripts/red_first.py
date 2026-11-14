@@ -138,7 +138,7 @@ def verdict(before: Outcome, after: Outcome, excused: bool) -> str:
     # RULE: the red-first marker never excuses a test that fails on the branch
     if after not in ("passed", "skipped"):
         return "broken"
-    if before == "failed":
+    if before == "failed" and after == "passed":
         return "proved"
     # RULE: a new or changed test must fail before the change
     return "excused" if excused else "not proved"
@@ -162,7 +162,9 @@ def prove(counted: list[str], run: Run, body: str) -> tuple[bool, list[str]]:
     if excused := [t for t in counted if result[t] == "excused"]:
         said.append(f"excused by the pull request body, for the reviewer to weigh: {', '.join(excused)}")
     if weak := [t for t in counted if result[t] == "not proved"]:
-        listed = ", ".join(f"{t} (skipped)" if before.get(t, "skipped") == "skipped" else t for t in weak)
+        listed = ", ".join(
+            f"{t} (skipped)" if "skipped" in (before.get(t, "skipped"), after.get(t, "skipped")) else t for t in weak
+        )
         first = weak[0].rsplit("::", 1)[-1]
         said.append(
             f"{_plural(weak, 'test', 'tests')} passed before this change, or skipped, so"
