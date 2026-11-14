@@ -205,3 +205,42 @@ async def test_a_turn_written_during_the_first_look_is_still_announced(world, mo
             while name != "output":
                 name, data = await asyncio.wait_for(events.get(), 10)
     assert data["session"] == "s1" and data["index"] == 1
+
+
+async def test_a_quiet_session_costs_one_look_at_its_size_even_on_the_first_look(world, monkeypatch):  # noqa: F811
+    """A transcript last written before the bridge started holds nothing the page has not read,
+    so the first look after a restart does not read it, nor announce it."""
+    import asyncio
+    import os
+    import threading
+
+    from claude_agent_sdk import project_key_for_directory
+
+    from claude_voice.tree import SessionTree
+
+    build = SessionTree.build
+    looks: list[int] = []
+    second_look = threading.Event()
+
+    def counted(self):
+        looks.append(1)
+        if len(looks) >= 2:
+            second_look.set()
+        return build(self)
+
+    monkeypatch.setattr(SessionTree, "build", counted)
+    running(world, "billing-ab", "billing", "s1", status="busy")
+    transcript(world, "billing", "s1", [says("on it")])
+    path = world / "projects" / project_key_for_directory(world / "home" / "billing") / "s1.jsonl"
+    os.utime(path, (path.stat().st_atime, path.stat().st_mtime - 3600))  # an hour before the bridge
+    m = SessionManager(Store(world / "b.db"), project_root=world / "home", client_factory=FakeClaude())
+    server = build_server(
+        m, conversations=lambda **k: [], live_dir=world / "live", projects_dir=world / "projects", watch_interval=0.05
+    )
+    with api.HUB.subscribe() as events:
+        async with Client(server):
+            assert await asyncio.to_thread(second_look.wait, 30), "the watcher never looked twice"
+    heard = []
+    while not events.empty():
+        heard.append(events.get_nowait()[0])
+    assert "output" not in heard
