@@ -40,6 +40,9 @@ rearranged. It also leaves red commits on main for anyone running `git bisect`.
   request's checks.
 - Worse: a test made to fail in a way the check can't see, such as only on
   Windows, needs the marker.
+- Worse: only test functions are counted. A change to shared test setup, such
+  as a fixture in `conftest.py` or a helper, can change what existing tests
+  check, and the check does not see it. The reviewer has to.
 - Old red commits on main stay. History is not rewritten.
 
 ## Related
