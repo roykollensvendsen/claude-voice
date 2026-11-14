@@ -115,11 +115,30 @@ async def test_a_change_is_announced_while_someone_listens_even_if_nobody_asks(w
     assert data["state"] == "idle" and data["previous"] == "working"
 
 
-async def test_a_new_turn_is_announced_so_a_detail_view_need_not_poll(world):  # noqa: F811
+async def test_a_new_turn_is_announced_so_a_detail_view_need_not_poll(world, monkeypatch):  # noqa: F811
     import asyncio
     import json as _json
+    import threading
+    import time
 
     from claude_agent_sdk import project_key_for_directory
+
+    from claude_voice.tree import SessionTree
+
+    # The first look is slow on a busy runner (Windows in CI took longer than the 0.3 s this
+    # test used to wait). Make it slow here, so the test cannot pass by luck.
+    build = SessionTree.build
+    looks: list[float] = []
+    second_look = threading.Event()
+
+    def slow(self):
+        looks.append(time.monotonic())
+        if len(looks) >= 2:
+            second_look.set()
+        time.sleep(0.5)
+        return build(self)
+
+    monkeypatch.setattr(SessionTree, "build", slow)
 
     running(world, "billing-ab", "billing", "s1", status="busy")
     transcript(world, "billing", "s1", [says("on it")])
@@ -130,7 +149,9 @@ async def test_a_new_turn_is_announced_so_a_detail_view_need_not_poll(world):  #
     path = world / "projects" / project_key_for_directory(world / "home" / "billing") / "s1.jsonl"
     with api.HUB.subscribe() as events:
         async with Client(server):
-            await asyncio.sleep(0.3)
+            # A turn is only news once a look has seen the conversation's size before it.
+            # Each look builds the tree once, so a second build means the first look is done.
+            assert await asyncio.to_thread(second_look.wait, 30), "the watcher never looked twice"
             with path.open("a") as f:
                 f.write(
                     _json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "done"}]}})
