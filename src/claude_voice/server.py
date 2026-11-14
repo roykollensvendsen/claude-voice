@@ -1096,6 +1096,54 @@ def build_server(
             return {**out, "status": "interrupted", "how": "sdk"}
         return {**out, "status": "not_running"}
 
+    def checked_model_and_effort(model: str | None, effort: str | None) -> None:
+        """Refuse a model or an effort Claude Code should never be handed."""
+        # RULE: only a well-formed model name and a known effort reach Claude Code
+        if model is not None and not transcripts.MODEL_NAME.fullmatch(model):
+            raise ToolError(f"Not a model name: {model!r}. Use an alias such as opus, or a full model name.")
+        if effort is not None and effort not in transcripts.EFFORTS:
+            raise ToolError(f"Unknown effort {effort!r}; use one of: {', '.join(transcripts.EFFORTS)}.")
+
+    def made_folder(project: str) -> bool:
+        """Make a project's folder under the root when it does not exist; whether it was made."""
+        # RULE: a new folder must be a simple name under the root
+        if not SIMPLE_FOLDER.fullmatch(project):
+            raise ToolError(f"{project!r} is not a simple name; use letters, digits, '.', '_' or '-' only.")
+        new = manager.root / project
+        if new.exists():
+            return False
+        new.mkdir()  # never over something that exists
+        # RULE: only a folder the bridge just made is trusted for claude code
+        trust_folder(new)
+        return True
+
+    def running_already(name: str | None, path: Path) -> dict[str, Any] | None:
+        """The running session with this name in this folder, if there is one."""
+        return next(
+            (d for d in live_sessions() if name and d.get("name") == name.strip() and d.get("cwd") == str(path)), None
+        )
+
+    async def start_claude_code(
+        path: Path,
+        wanted: str,
+        model: str | None,
+        effort: str | None,
+        start_in: str | None,
+        remote_control: bool | None,
+    ) -> tuple[str, str | None]:
+        """Have Claude Code start the session; where it started, and a note on that if any."""
+        if start_in is not None and start_in not in config.LAUNCHES:
+            raise ToolError(f"start_in is one of: {', '.join(config.LAUNCHES)}")
+        how, started_in, where_note = how_to_start(str(path), wanted, start_in, remote_control)
+        try:
+            if model or effort:
+                await start_background(str(path), wanted, model=model, effort=effort, **how)
+            else:
+                await start_background(str(path), wanted, **how)
+        except Exception as exc:
+            raise ToolError(f"Claude Code could not start a session: {exc}") from None
+        return started_in, where_note
+
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
     async def start_active_session(
         project: str,
@@ -1114,30 +1162,14 @@ def build_server(
         only for a plain name (letters, digits, '.', '_', '-'), never by default.
         Optional: `model` (an alias such as opus or sonnet, or a full name) and `effort` (low, medium,
         high, xhigh or max); left out, Claude Code's defaults apply."""
-        # RULE: only a well-formed model name and a known effort reach Claude Code
-        if model is not None and not transcripts.MODEL_NAME.fullmatch(model):
-            raise ToolError(f"Not a model name: {model!r}. Use an alias such as opus, or a full model name.")
-        if effort is not None and effort not in transcripts.EFFORTS:
-            raise ToolError(f"Unknown effort {effort!r}; use one of: {', '.join(transcripts.EFFORTS)}.")
-        folder_created = False
-        if create_folder:
-            # RULE: a new folder must be a simple name under the root
-            if not SIMPLE_FOLDER.fullmatch(project):
-                raise ToolError(f"{project!r} is not a simple name; use letters, digits, '.', '_' or '-' only.")
-            new = manager.root / project
-            if not new.exists():
-                new.mkdir()  # never over something that exists
-                folder_created = True
-                # RULE: only a folder the bridge just made is trusted for claude code
-                trust_folder(new)
+        checked_model_and_effort(model, effort)
+        folder_created = made_folder(project) if create_folder else False
         try:
             path = manager.resolve_project(project)
         except ValueError as exc:
             raise ToolError(str(exc)) from None
+        same = running_already(name, path)
         # RULE: starting the same session twice gives back the one already running
-        same = next(
-            (d for d in live_sessions() if name and d.get("name") == name.strip() and d.get("cwd") == str(path)), None
-        )
         if same is not None:  # a retry after an answer lost on the way must not open a second window
             return {
                 "name": same.get("name"),
@@ -1147,40 +1179,22 @@ def build_server(
                 "already_running": True,
                 "folder_created": folder_created,
             }
-        taken = renames.taken(live_sessions())
-        wanted = (name or "").strip() or f"{path.name}-{secrets.token_hex(2)}"
-        while wanted in taken:
-            wanted = f"{wanted}-{secrets.token_hex(2)}"
-        if start_in is not None and start_in not in config.LAUNCHES:
-            raise ToolError(f"start_in is one of: {', '.join(config.LAUNCHES)}")
-        how, started_in, where_note = how_to_start(str(path), wanted, start_in, remote_control)
-        try:
-            if model or effort:
-                await start_background(str(path), wanted, model=model, effort=effort, **how)
-            else:
-                await start_background(str(path), wanted, **how)
-        except Exception as exc:
-            raise ToolError(f"Claude Code could not start a session: {exc}") from None
-        deadline = time.monotonic() + start_seconds
-        while time.monotonic() < deadline:
-            found = next((d for d in live_sessions() if d.get("name") == wanted and d.get("cwd") == str(path)), None)
-            if found:
-                store.record_started(str(found.get("sessionId")), wanted, str(path))
-                # Claude Code accepts any model name at start and refuses an unknown one only
-                # in its first reply, so a start alone does not prove the model works.
-                model_note = "Claude Code checks the model only at the first reply; rely on the session after it."
-                notes = [n for n in (where_note, model_note if model else None) if n]
-                return {
-                    "name": wanted,
-                    "claude_session_id": found.get("sessionId"),
-                    "project": under_root(str(path)),
-                    "status": found.get("status") or "idle",
-                    "started_in": started_in,
-                    "folder_created": folder_created,
-                    **({"note": " ".join(notes)} if notes else {}),
-                }
-            await asyncio.sleep(0.2)
-        raise ToolError(f"{wanted} was started but did not appear among the running sessions")
+        wanted = unused_name((name or "").strip() or f"{path.name}-{secrets.token_hex(2)}")
+        started_in, where_note = await start_claude_code(path, wanted, model, effort, start_in, remote_control)
+        found = await appeared(wanted, path)
+        # Claude Code accepts any model name at start and refuses an unknown one only
+        # in its first reply, so a start alone does not prove the model works.
+        model_note = "Claude Code checks the model only at the first reply; rely on the session after it."
+        notes = [n for n in (where_note, model_note if model else None) if n]
+        return {
+            "name": wanted,
+            "claude_session_id": found.get("sessionId"),
+            "project": under_root(str(path)),
+            "status": found.get("status") or "idle",
+            "started_in": started_in,
+            "folder_created": folder_created,
+            **({"note": " ".join(notes)} if notes else {}),
+        }
 
     def unused_name(wanted: str) -> str:
         taken = renames.taken(live_sessions())
