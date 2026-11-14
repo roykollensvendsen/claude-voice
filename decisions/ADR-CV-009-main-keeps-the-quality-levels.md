@@ -46,7 +46,10 @@ What holds:
 ## Decision
 
 - **After every push to main**, continuous integration measures the levels, as
-  it already does, and keeps them with that run as `quality-levels`.
+  it already does, and keeps them with that run as `quality-levels`. The
+  same run keeps its mutation report, rule by rule, as `quality-mutations`
+  (added 2026-11-14), for the code-health page to show which rules a test
+  proves; no check compares it.
 - **A pull request's check** takes the levels main measured for the commit it
   is merged onto, and fails only when a level is worse, unless a
   `Ratchet-Exception:` line in the pull request says why, as before.

@@ -135,13 +135,23 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
           LEVELS: ${{ runner.temp }}/base/levels.json
           OUT: ${{ runner.temp }}/levels.json
-        run: uv run python scripts/ratchet.py check --base "$BASE" --levels "$LEVELS" --out "$OUT"
+          MUTATIONS: ${{ runner.temp }}/mutations.json
+        run: uv run python scripts/ratchet.py check --base "$BASE" --levels "$LEVELS" --out "$OUT" --mutations "$MUTATIONS"
       - name: Keep main's levels with this run
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: quality-levels
           path: ${{ runner.temp }}/levels.json
+          if-no-files-found: ignore
+      # The same run's mutation report, rule by rule, for the code-health page. A run that
+      # measured no mutations (a red suite stops the ratchet first) keeps none.
+      - name: Keep main's mutation report with this run
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: quality-mutations
+          path: ${{ runner.temp }}/mutations.json
           if-no-files-found: ignore
 
   checks:
