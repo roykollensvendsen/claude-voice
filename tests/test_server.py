@@ -500,29 +500,45 @@ def test_the_log_is_kept_in_a_file_next_to_the_database(tmp_path):
     assert "claude_voice.oauth: oauth refresh ok for client abcdef12" in text
 
 
-def slow_first_look(monkeypatch, seconds=2.5):
-    """Make every tree build take `seconds`, as the first one does on a busy machine, where it
-    reads each running session's whole conversation. Returns an event set once one has begun."""
-    import threading
-    import time
+class HeldLook:
+    """Every tree build waits until the test lets it go, as the first one does on a busy machine,
+    where it reads each running session's whole conversation.
 
-    from claude_voice import transcripts
-    from claude_voice.tree import SessionTree
+    `began` is set when a look starts and `ended` when one finishes, so a test proves an answer
+    came first by the order of events, never by a clock: a slow runner cannot fail it. A look
+    still held after `HOLD` seconds goes on, so a bridge that waits on its look ends the test
+    with a wrong order, not a hang.
+    """
 
-    began = threading.Event()
-    build = SessionTree.build
+    HOLD = 15
 
-    def slow(self):
-        began.set()
-        time.sleep(seconds)
-        return build(self)
+    def __init__(self, monkeypatch):
+        import threading
 
-    async def warm():
-        return None
+        from claude_voice import transcripts
+        from claude_voice.tree import SessionTree
 
-    monkeypatch.setattr(SessionTree, "build", slow)
-    monkeypatch.setattr(transcripts.shared_reader(), "warm", warm)
-    return began
+        self.began = threading.Event()
+        self.ended = threading.Event()
+        self._go = threading.Event()
+        build = SessionTree.build
+
+        def held(tree):
+            self.began.set()
+            self._go.wait(self.HOLD)
+            try:
+                return build(tree)
+            finally:
+                self.ended.set()
+
+        async def warm():
+            return None
+
+        monkeypatch.setattr(SessionTree, "build", held)
+        monkeypatch.setattr(transcripts.shared_reader(), "warm", warm)
+
+    def let_go(self):
+        self._go.set()
 
 
 def watched(tmp_path, root):
@@ -533,30 +549,30 @@ def watched(tmp_path, root):
 async def test_the_bridge_answers_as_soon_as_it_has_started_while_its_first_look_runs_behind(
     tmp_path, root, monkeypatch
 ):
-    import time
-
-    slow_first_look(monkeypatch)
-    started = time.monotonic()
+    look = HeldLook(monkeypatch)
     async with Client(watched(tmp_path, root)) as client:
-        await call(client, "list_pending_approvals")
-        answered = time.monotonic() - started
+        try:
+            await call(client, "list_pending_approvals")
+            answered_during_the_look = not look.ended.is_set()
+        finally:
+            look.let_go()
         for _ in range(100):  # the first look still happens, behind
             looked = (await call(client, "health"))["watcher"]["last_check_at"]
             if looked:
                 break
             await asyncio.sleep(0.05)
-    assert answered < 1.5  # well under the 2.5 s look, with room for a slow Windows runner
+    assert answered_during_the_look
     assert looked
 
 
 async def test_a_question_about_news_does_not_wait_for_a_look_already_under_way(tmp_path, root, monkeypatch):
-    import time
-
-    began = slow_first_look(monkeypatch)
+    look = HeldLook(monkeypatch)
     async with Client(watched(tmp_path, root)) as client:
-        await asyncio.to_thread(began.wait, 5)
-        asked = time.monotonic()
-        news = await call(client, "whats_new")
-        answered = time.monotonic() - asked
+        try:
+            assert await asyncio.to_thread(look.began.wait, HeldLook.HOLD)
+            news = await call(client, "whats_new")
+            answered_during_the_look = not look.ended.is_set()
+        finally:
+            look.let_go()
     assert news["cursor"]
-    assert answered < 1.5  # well under the 2.5 s look, with room for a slow Windows runner
+    assert answered_during_the_look
