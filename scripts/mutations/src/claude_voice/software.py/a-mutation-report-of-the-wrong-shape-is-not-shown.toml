@@ -1,0 +1,5 @@
+[[rule]]
+name = "a mutation report of the wrong shape is not shown"
+file = "src/claude_voice/software.py"
+find = 'if report is not None and _a_mutation_report\(report\):'
+replace = 'if report is not None:'

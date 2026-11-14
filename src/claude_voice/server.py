@@ -502,6 +502,7 @@ def build_server(
     desktop_env: Mapping[str, str] | None = None,
     ci_status: Callable[..., dict[str, Any] | None] = software.latest_run,
     kept_levels: Callable[..., list[dict[str, Any]]] = software.kept_levels,
+    kept_mutations: Callable[..., dict[str, Any] | None] = software.kept_mutations,
     main_head: Callable[..., str | None] = software.head,
     work_board: work.Board | None = None,
     tmux: Any = None,
@@ -1296,6 +1297,7 @@ def build_server(
                     ci_status(repo, branch=branch),
                     kept_levels(repo, branch=branch),
                     branch=branch,
+                    mutations=kept_mutations(repo, branch=branch),
                 )
                 for name, repo, folder, branch in software_listed()
             ],

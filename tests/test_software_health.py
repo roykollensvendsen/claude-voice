@@ -106,11 +106,13 @@ async def test_the_app_reads_both_repositories_on_one_page(tmp_path):
         repo_config=repos,
         ci_status=lambda repo, **_: {"conclusion": "success", "status": "completed", "url": f"https://ci/{repo}"},
         kept_levels=lambda repo, **_: [],
+        kept_mutations=lambda repo, **_: {**REPORT, "run": 7, "url": "u"} if repo.endswith("/claude-voice") else None,
         main_head=lambda repo, **_: "aaa",
     )
     await asyncio.to_thread(server.software_report.refresh)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=build_app(server)), base_url=HOST) as c:
         page = (await c.get("/api/v1/health/software", headers=BEARER)).json()
+    assert [r["mutations"] and r["mutations"]["run"] for r in page["repos"]] == [7, None]
     names = [r["name"] for r in page["repos"]]
     assert names == ["claude-voice", "claude-voice-ui"] and page["as_of"]
     assert by_id(page["repos"][1])["coverage"]["status"] == "bad"
@@ -411,3 +413,82 @@ def test_the_published_list_of_measures_matches_what_the_bridge_sends():
     wanted = json.dumps(sent, indent=2) + "\n"
     kept = published.read_text(encoding="utf-8") if published.exists() else ""
     assert kept == wanted, f"docs/event-api/measures.json is out of date; write this to it:\n{wanted}"
+
+
+REPORT = {
+    "killed": 2,
+    "total": 3,
+    "rules": [
+        {"name": "a rule", "file": "src/r/a.py", "tests_red": 4, "own_test_red": True},
+        {"name": "a weak rule", "file": "src/r/b.py", "tests_red": 1, "own_test_red": False},
+        {"name": "an unguarded rule", "file": "src/r/b.py", "tests_red": 0, "own_test_red": False},
+    ],
+}
+
+
+def fake_reports(reports_by_run, calls):
+    """GitHub's command line as far as kept_mutations uses it: main's runs, and one's mutation report."""
+
+    def run(args):
+        calls.append(args[:2])
+        if args[:2] == ["run", "list"]:
+            assert args[args.index("--status") + 1] == "completed"
+            return json.dumps([{"databaseId": i} for i in sorted(reports_by_run, reverse=True)])
+        if args[:2] == ["run", "download"]:
+            assert args[args.index("--name") + 1] == "quality-mutations"
+            report = reports_by_run[int(args[2])]
+            if report is None:
+                return None
+            folder = pathlib.Path(args[args.index("--dir") + 1])
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / "mutations.json").write_text(json.dumps(report))
+            return ""
+        raise AssertionError(args)
+
+    return run
+
+
+def test_the_newest_mutation_report_main_kept_is_shown_with_its_run(tmp_path):
+    runs = {101: {**REPORT, "killed": 1}, 102: REPORT, 103: None}
+    got = software.kept_mutations("o/r", tmp_path / "cache", run=fake_reports(runs, []))
+    assert got == {**REPORT, "run": 102, "url": "https://github.com/o/r/actions/runs/102"}
+
+
+def test_a_mutation_report_is_downloaded_once_and_then_read_from_disk(tmp_path):
+    runs = {101: REPORT, 102: None}
+    calls = []
+    first = software.kept_mutations("o/r", tmp_path / "cache", run=fake_reports(runs, calls))
+    calls.clear()
+    again = software.kept_mutations("o/r", tmp_path / "cache", run=fake_reports(runs, calls))
+    assert again == first and calls == [["run", "list"]]
+
+
+def test_a_repository_that_keeps_no_mutation_report_shows_none(tmp_path):
+    assert software.kept_mutations("o/r", tmp_path / "cache", run=fake_reports({101: None}, [])) is None
+    assert software.kept_mutations("o/r", tmp_path / "cache", run=lambda args: None) is None
+
+
+def test_mutation_reports_are_cached_apart_from_the_levels(tmp_path):
+    # One run keeps both; the levels saved for it must not read as its mutation report.
+    software.kept_levels("o/r", tmp_path / "cache", run=fake_gh({101: QUALITY}, []))
+    got = software.kept_mutations("o/r", tmp_path / "cache", run=fake_reports({101: REPORT}, []))
+    assert got["rules"] == REPORT["rules"]
+
+
+def test_a_mutation_report_of_the_wrong_shape_is_not_shown(tmp_path):
+    runs = {101: REPORT, 102: {"killed": 3}}  # an older tool's report, without its rules
+    got = software.kept_mutations("o/r", tmp_path / "cache", run=fake_reports(runs, []))
+    assert got["run"] == 101
+
+
+def test_the_software_report_carries_each_repositorys_mutation_report(tmp_path):
+    report = software.repo_report("r", "https://github.com/o/r", None, mutations={**REPORT, "run": 1, "url": "u"})
+    assert report["mutations"]["rules"][1]["name"] == "a weak rule"
+    assert software.repo_report("r", "https://github.com/o/r", None)["mutations"] is None
+
+
+def test_a_look_out_of_downloads_still_shows_the_report_it_has(tmp_path):
+    software.kept_mutations("o/r", tmp_path / "cache", run=fake_reports({1: REPORT}, []))
+    newer = {1: REPORT} | {i: None for i in range(2, 2 + software.NEW_PER_LOOK + 1)}
+    got = software.kept_mutations("o/r", tmp_path / "cache", run=fake_reports(newer, []))
+    assert got["run"] == 1

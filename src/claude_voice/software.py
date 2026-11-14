@@ -28,6 +28,7 @@ TREND = 30  # points of history per measure
 FILE = "quality.json"
 EXEMPTIONS = "quality.toml"  # the measures the owner agreed to leave outside their limits
 ARTIFACT = "quality-levels"  # the name main's checks keep their measured levels under
+MUTATIONS = "quality-mutations"  # and their mutation report, rule by rule, under
 NEW_PER_LOOK = 5  # downloads of main's levels per look; the rest wait for the next one
 EVERY = 600.0  # seconds between two builds of the report when no main has moved
 LOOK = 60.0  # seconds between two looks at whether a build is due or a main has moved
@@ -71,11 +72,18 @@ def _run_ids(listed: str | None) -> list[int]:
         return []
 
 
-def _download(repo: str, run_id: int, saved: Path, run: Callable[[list[str]], str | None]) -> None:
-    """Keep one run's levels on disk, or `null` for a run that kept none."""
+def _download(
+    repo: str,
+    run_id: int,
+    saved: Path,
+    run: Callable[[list[str]], str | None],
+    artifact: str = ARTIFACT,
+    name: str = "levels.json",
+) -> None:
+    """Keep one run's levels (or another report it kept) on disk, or `null` for a run that kept none."""
     with tempfile.TemporaryDirectory() as tmp:
-        got = run(["run", "download", str(run_id), "--repo", repo, "--name", ARTIFACT, "--dir", tmp])
-        levels = Path(tmp) / "levels.json"
+        got = run(["run", "download", str(run_id), "--repo", repo, "--name", artifact, "--dir", tmp])
+        levels = Path(tmp) / name
         saved.parent.mkdir(parents=True, exist_ok=True)
         saved.write_text(levels.read_text() if got is not None and levels.exists() else "null")
 
@@ -116,6 +124,50 @@ def kept_levels(
         if levels is not None:
             out.append(levels)
     return out[::-1]
+
+
+def _a_mutation_report(report: dict[str, Any]) -> bool:
+    """Whether a kept report has the shape every repository writes: {killed, total, rules}."""
+    return (
+        isinstance(report.get("killed"), int)
+        and isinstance(report.get("total"), int)
+        and isinstance(report.get("rules"), list)
+    )
+
+
+def kept_mutations(
+    repo: str,
+    cache: Path | None = None,
+    limit: int = TREND,
+    run: Callable[[list[str]], str | None] = _gh,
+    branch: str = "main",
+) -> dict[str, Any] | None:
+    """The newest mutation report the followed branch kept, rule by rule, with the run it came
+    from; None when no recent run kept one.
+
+    Read like the levels: only finished runs, each downloaded once and then read from disk,
+    a run that kept none remembered as having none, and no more downloads per look than the
+    levels get.
+    """
+    folder = (cache or _cache()) / repo.replace("/", "__")
+    listed = run(
+        ["run", "list", "--repo", repo, "--branch", branch, "--event", "push", "--workflow", "checks"]
+        + ["--status", "completed", "--limit", str(limit), "--json", "databaseId"]
+    )
+    fetched = 0
+    for run_id in _run_ids(listed):  # newest first
+        # RULE: mutation reports are cached apart from the levels
+        saved = folder / f"{run_id}.mutations.json"
+        if not saved.exists():
+            if fetched >= NEW_PER_LOOK:
+                continue  # the next look downloads it; an older report already here still shows
+            fetched += 1
+            _download(repo, run_id, saved, run, MUTATIONS, "mutations.json")
+        report = _read_saved(saved)
+        # RULE: a mutation report of the wrong shape is not shown
+        if report is not None and _a_mutation_report(report):
+            return {**report, "run": run_id, "url": f"https://github.com/{repo}/actions/runs/{run_id}"}
+    return None
 
 
 def history(repo: Path, limit: int = TREND) -> list[dict[str, Any]]:
@@ -329,14 +381,16 @@ def repo_report(
     ci: dict[str, Any] | None = None,
     kept: list[dict[str, Any]] | None = None,
     branch: str = "main",
+    mutations: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """One repository's measures, each with its value, status and trend."""
+    """One repository's measures, each with its value, status and trend, and its latest
+    mutation report rule by rule (None when it keeps none)."""
     past = _measured(folder, kept)
     link = f"{url}/actions/workflows/checks.yml?query=branch%3A{branch}" if kept else f"{url}/blob/{branch}/{FILE}"
     exempt = exemptions(folder)
     metrics = [_exempt(_metric(measure, past, link), exempt.get(measure[0])) for measure in MEASURES]
     metrics.append(ci_metric(ci))
-    return {"name": name, "url": url, "metrics": metrics, "as_of": _now()}
+    return {"name": name, "url": url, "metrics": metrics, "mutations": mutations, "as_of": _now()}
 
 
 def latest_run(repo: str, branch: str = "main") -> dict[str, Any] | None:
