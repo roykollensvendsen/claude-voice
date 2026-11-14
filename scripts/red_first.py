@@ -325,7 +325,9 @@ def pytest_runtest_logreport(report):  # type: ignore[no-untyped-def]
     if WANTED not in os.environ:
         return
     test = report.nodeid.split("[", 1)[0]
-    now = "failed" if report.failed else "passed" if report.when == "call" and report.passed else "skipped"
+    # An expected failure that passed is marked as not meant to, so it is no pass here.
+    passed = report.when == "call" and report.passed and not hasattr(report, "wasxfail")
+    now = "failed" if report.failed else "passed" if passed else "skipped"
     if _RANK[now] > _RANK[_seen.get(test, "skipped")] or test not in _seen:
         _seen[test] = now
 

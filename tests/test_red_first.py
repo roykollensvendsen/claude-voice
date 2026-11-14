@@ -264,6 +264,16 @@ def test_a_new_script_and_its_test_are_red_before_the_change_and_green_on_the_br
     assert after == {ids[0]: "passed"}
 
 
+def test_a_test_marked_to_fail_that_passes_does_not_count_as_passed(tmp_path):
+    """pytest calls an expected failure that passes a pass. Its mark says it is not meant to."""
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests/test_x.py").write_text(
+        "import pytest\n\n\n@pytest.mark.xfail(reason='not yet')\ndef test_x():\n    pass\n"
+    )
+    got = red_first.outcomes(["tests/test_x.py::test_x"], tmp_path, python=[sys.executable])
+    assert got == {"tests/test_x.py::test_x": "skipped"}
+
+
 def fake_pull_request(tmp_path, base_files, head_files):
     """A repository with a base commit and a head commit; gives the folder and both hashes."""
     repo = tmp_path / "repo"
