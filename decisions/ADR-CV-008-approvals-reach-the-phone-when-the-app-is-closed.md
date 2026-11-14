@@ -58,6 +58,11 @@ otherwise behaves as today:
 - the voice called the bridge in the last ten minutes;
 - the laptop has been idle for more than five minutes.
 
+Keyboard or mouse used since the voice last called counts as at the laptop. The
+lock and the idle time are read apart, so a desktop that tells only one still
+counts it. While a prompt waits, the bridge asks again every few seconds, so
+coming back to the laptop brings the box back to the screen.
+
 **When he is away, the hook waits, and the bridge sends a Web Push notification**
 to each phone that has subscribed:
 
