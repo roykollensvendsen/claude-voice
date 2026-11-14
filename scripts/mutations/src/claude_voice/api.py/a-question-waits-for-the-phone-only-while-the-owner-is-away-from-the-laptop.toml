@@ -1,0 +1,5 @@
+[[rule]]
+name = "a question waits for the phone only while the owner is away from the laptop"
+file = "src/claude_voice/api.py"
+find = 'return JSONResponse\(\{"id": prompt\["id"\], "wait": self.away\(HUB.listening\(\)\)\}\)'
+replace = 'return JSONResponse({"id": prompt["id"], "wait": HUB.listening()})'
