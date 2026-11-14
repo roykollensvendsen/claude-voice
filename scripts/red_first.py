@@ -210,6 +210,15 @@ def before_tree(base: str, head: str, dest: pathlib.Path, cwd: pathlib.Path | st
         raise SystemExit(msg) from e
 
 
+class Unreported(Exception):
+    """pytest stopped before it reported any test: a conftest that cannot import, a plugin that
+    fails to load, or a crash. Reading that as every test skipped would hide it."""
+
+    def __init__(self, code: int) -> None:
+        super().__init__(f"pytest stopped before it reported any test (exit code {code})")
+        self.code = code
+
+
 def outcomes(ids: list[str], tree: pathlib.Path, python: list[str]) -> dict[str, Outcome]:
     """Run only these tests in one tree, and give each one's outcome."""
     files = sorted({i.split("::", 1)[0] for i in ids})
@@ -223,8 +232,12 @@ def outcomes(ids: list[str], tree: pathlib.Path, python: list[str]) -> dict[str,
         shutil.copyfile(__file__, pathlib.Path(scratch, f"{PLUGIN}.py"))
         env["PYTHONPATH"] = os.pathsep.join(filter(None, [scratch, env.get("PYTHONPATH")]))
         cmd = [*python, "-m", "pytest", "-q", "--tb=short", "-p", "no:cacheprovider", "-p", PLUGIN]
-        subprocess.run([*cmd, "--continue-on-collection-errors", *files], cwd=tree, env=env, check=False)  # noqa: S603
-        seen = json.loads(report.read_text(encoding="utf-8")) if report.exists() else {}
+        args = [*cmd, "--continue-on-collection-errors", *files]
+        code = subprocess.run(args, cwd=tree, env=env, check=False).returncode  # noqa: S603
+        # Exit codes 3 and 4 are pytest's own internal and usage errors.
+        if not report.exists() or code in (3, 4):
+            raise Unreported(code)
+        seen = json.loads(report.read_text(encoding="utf-8"))
     broken_files = set(seen.get("uncollectable", []))
     tests = seen.get("tests", {})
     return {i: "failed" if i.split("::", 1)[0] in broken_files else tests.get(i, "skipped") for i in ids}
@@ -235,6 +248,28 @@ def _synced(tree: pathlib.Path) -> list[str]:
     env = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"}
     subprocess.run(["uv", "sync", "--locked", "--all-extras", "--quiet"], cwd=tree, env=env, check=True)  # noqa: S607
     return ["uv", "run", "--no-sync", "python"]
+
+
+def _before(ids: list[str], tree: pathlib.Path, python: list[str]) -> dict[str, Outcome]:
+    """The outcomes on the old code, where a run that cannot even start is every test failing."""
+    try:
+        return outcomes(ids, tree, python)
+    except Unreported as stopped:
+        print(f"On the code before the change, {stopped}; so every counted test counts as failed there.")  # noqa: T201
+        return dict.fromkeys(ids, "failed")
+
+
+def _branch(ids: list[str], tree: pathlib.Path, python: list[str]) -> dict[str, Outcome]:
+    """The outcomes on the branch, where a run that cannot even start fails the check."""
+    try:
+        return outcomes(ids, tree, python)
+    except Unreported as stopped:
+        files = " ".join(sorted({i.split("::", 1)[0] for i in ids}))
+        msg = (
+            f"On the branch, {stopped}: a conftest that cannot import, a plugin that fails to load, or a crash."
+            f" Run `uv run pytest {files}` on the branch to see why, fix it, and push again."
+        )
+        raise SystemExit(msg) from stopped
 
 
 def run_both(
@@ -254,7 +289,7 @@ def run_both(
         try:
             before_tree(base, head, trees[0], cwd=cwd)
             _git("worktree", "add", "--detach", "--quiet", str(trees[1]), head, cwd=cwd)
-            return outcomes(ids, trees[0], setup(trees[0])), outcomes(ids, trees[1], setup(trees[1]))
+            return _before(ids, trees[0], setup(trees[0])), _branch(ids, trees[1], setup(trees[1]))
         finally:
             for tree in trees:
                 with contextlib.suppress(subprocess.CalledProcessError):
