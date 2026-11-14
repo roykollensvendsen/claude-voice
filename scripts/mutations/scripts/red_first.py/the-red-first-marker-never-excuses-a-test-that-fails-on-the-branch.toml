@@ -1,0 +1,5 @@
+[[rule]]
+name = "the red-first marker never excuses a test that fails on the branch"
+file = "scripts/red_first.py"
+find = '^\s*if after not in \("passed", "skipped"\):'
+replace = 'if False:'

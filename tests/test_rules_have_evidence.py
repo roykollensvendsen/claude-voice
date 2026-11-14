@@ -20,6 +20,9 @@ import re
 
 ROOT = pathlib.Path(__file__).parent.parent
 MARKER = re.compile(r"^[ \t]*#\s*RULE:\s*(.+?)\s*$")
+#: The scripts whose rules are held to the same evidence as the source's. The older
+#: scripts mark rules with no rows yet; each joins this list when its rows are written.
+SCRIPTS_WITH_ROWS = ("scripts/red_first.py",)
 
 
 def _mutate():
@@ -33,7 +36,7 @@ def _mutate():
 def marked_rules() -> set[str]:
     """Every rule the source marks, by the words the marker gives it."""
     found = set()
-    for source in sorted((ROOT / "src").rglob("*.py")):
+    for source in [*sorted((ROOT / "src").rglob("*.py")), *(ROOT / s for s in SCRIPTS_WITH_ROWS)]:
         for line in source.read_text(encoding="utf-8").splitlines():
             match = MARKER.search(line)
             if match:

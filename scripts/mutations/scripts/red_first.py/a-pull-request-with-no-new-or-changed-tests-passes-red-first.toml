@@ -1,0 +1,5 @@
+[[rule]]
+name = "a pull request with no new or changed tests passes red-first"
+file = "scripts/red_first.py"
+find = '^\s*if not counted:'
+replace = 'if False:'
