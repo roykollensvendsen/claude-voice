@@ -1,0 +1,5 @@
+[[rule]]
+name = "a read that leaves turns for later still shows the newest reply"
+file = "src/claude_voice/server.py"
+find = 'if left and newest is not None:'
+replace = 'if False:'

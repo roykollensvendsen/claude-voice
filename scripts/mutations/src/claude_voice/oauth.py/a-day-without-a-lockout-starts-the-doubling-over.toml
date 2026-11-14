@@ -1,0 +1,5 @@
+[[rule]]
+name = "a day without a lockout starts the doubling over"
+file = "src/claude_voice/oauth.py"
+find = 'if now - self\._locked_until < MAX_LOCKOUT:'
+replace = 'if True:'

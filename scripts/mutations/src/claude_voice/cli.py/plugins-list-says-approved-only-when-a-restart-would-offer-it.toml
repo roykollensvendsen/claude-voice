@@ -1,0 +1,5 @@
+[[rule]]
+name = "plugins list says approved only when a restart would offer it"
+file = "src/claude_voice/cli.py"
+find = 'if why == "started":'
+replace = 'if True:'

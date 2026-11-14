@@ -1,0 +1,5 @@
+[[rule]]
+name = "the updater reaches github over https not the owners ssh key"
+file = "src/claude_voice/updater.py"
+find = 'command = \[git, \*OVER_HTTPS, "-C", str\(repo\), \*args\]'
+replace = 'command = [git, "-C", str(repo), *args]'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a question never opens a second prompt as an approval"
+file = "src/claude_voice/phone_hook.py"
+find = 'if event == "PermissionRequest" and tool != "AskUserQuestion":'
+replace = 'if event == "PermissionRequest":'

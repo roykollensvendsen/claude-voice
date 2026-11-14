@@ -1,0 +1,5 @@
+[[rule]]
+name = "a change sent from another site is refused"
+file = "src/claude_voice/api.py"
+find = 'if not self\._same_site\(request\):  # a page elsewhere'
+replace = 'if False:'

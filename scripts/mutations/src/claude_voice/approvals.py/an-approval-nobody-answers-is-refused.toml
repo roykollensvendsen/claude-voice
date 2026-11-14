@@ -1,0 +1,5 @@
+[[rule]]
+name = "an approval nobody answers is refused"
+file = "src/claude_voice/approvals.py"
+find = 'return PermissionResultDeny\(message="Not approved in time; the user did not answer."\)'
+replace = 'return PermissionResultAllow()'

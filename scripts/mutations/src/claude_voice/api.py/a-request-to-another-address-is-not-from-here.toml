@@ -1,0 +1,5 @@
+[[rule]]
+name = "a request to another address is not from here"
+file = "src/claude_voice/api.py"
+find = 'if _header\(headers, b"host"\) not in _own\(port\):'
+replace = 'if False:'

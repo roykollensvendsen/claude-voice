@@ -1,0 +1,5 @@
+[[rule]]
+name = "the strongest reason places a session first"
+file = "src/claude_voice/hints.py"
+find = 'reasons: tuple\[Reason, \.\.\.\] = \(_by_messages, _by_folder, _by_prefix\)'
+replace = 'reasons: tuple[Reason, ...] = (_by_prefix, _by_folder, _by_messages)'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "an unquoted value with a shell character is flagged"
+file = "src/claude_voice/envfile.py"
+find = 'if _SPECIAL\.search\(value\):'
+replace = 'if False:'

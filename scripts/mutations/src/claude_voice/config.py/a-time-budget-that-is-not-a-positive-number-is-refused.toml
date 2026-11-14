@@ -1,0 +1,5 @@
+[[rule]]
+name = "a time budget that is not a positive number is refused"
+file = "src/claude_voice/config.py"
+find = 'if isinstance\(value, bool\) or not isinstance\(value, \(int, float\)\) or value <= 0:'
+replace = 'if False:'

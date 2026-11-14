@@ -1,0 +1,5 @@
+[[rule]]
+name = "a carried message says the voice reads the reply"
+file = "src/claude_voice/transcripts.py"
+find = 'return await _courier\.deliver\(name, f"\{text\}\\n\\n\{READ_BY_VOICE\}"\)'
+replace = 'return await _courier.deliver(name, text)'

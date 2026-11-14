@@ -1,0 +1,5 @@
+[[rule]]
+name = "a message to a session waiting on a box says what it waits on"
+file = "src/claude_voice/answers.py"
+find = 'if row.get\("status"\) != "waiting" or waiting_for not in BOXES:'
+replace = 'if True:'

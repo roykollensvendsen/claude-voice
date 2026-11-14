@@ -1,0 +1,5 @@
+[[rule]]
+name = "a machine that does not answer in two seconds is reported, not waited for"
+file = "src/claude_voice/machines.py"
+find = 'start_seconds = CONNECT_SECONDS'
+replace = 'start_seconds = 30.0'

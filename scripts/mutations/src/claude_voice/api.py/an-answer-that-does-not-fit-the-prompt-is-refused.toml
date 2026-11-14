@@ -1,0 +1,5 @@
+[[rule]]
+name = "an answer that does not fit the prompt is refused"
+file = "src/claude_voice/api.py"
+find = 'reason = self\._fits\(prompt, body\)'
+replace = 'reason = None'

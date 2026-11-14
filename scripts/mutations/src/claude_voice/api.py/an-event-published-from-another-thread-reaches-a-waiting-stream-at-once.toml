@@ -1,0 +1,5 @@
+[[rule]]
+name = "an event published from another thread reaches a waiting stream at once"
+file = "src/claude_voice/api.py"
+find = 'loop\.call_soon_threadsafe\(self\._put, q, \(event, data\)\)'
+replace = 'self._put(q, (event, data))'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a plugin tool whose inputs changed is not offered until approved again"
+file = "src/claude_voice/plugins.py"
+find = 'if found\.get\("inputs"\) != input_fingerprint\(spec, listing\):'
+replace = 'if False:'

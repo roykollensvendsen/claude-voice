@@ -1,0 +1,5 @@
+[[rule]]
+name = "a transcript keeps only what a person reads not tool output"
+file = "src/claude_voice/transcripts.py"
+find = 'if isinstance\(content, list\):'
+replace = 'if False:'

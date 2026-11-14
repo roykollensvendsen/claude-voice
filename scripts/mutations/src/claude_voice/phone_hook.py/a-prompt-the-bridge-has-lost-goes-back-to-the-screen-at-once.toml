@@ -1,0 +1,5 @@
+[[rule]]
+name = "a prompt the bridge has lost goes back to the screen at once"
+file = "src/claude_voice/phone_hook.py"
+find = 'if status in \(404, 410\):'
+replace = 'if False:'

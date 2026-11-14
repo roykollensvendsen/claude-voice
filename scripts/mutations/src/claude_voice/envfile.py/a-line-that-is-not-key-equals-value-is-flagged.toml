@@ -1,0 +1,5 @@
+[[rule]]
+name = "a line that is not key equals value is flagged"
+file = "src/claude_voice/envfile.py"
+find = 'if match is None:'
+replace = 'if False:'

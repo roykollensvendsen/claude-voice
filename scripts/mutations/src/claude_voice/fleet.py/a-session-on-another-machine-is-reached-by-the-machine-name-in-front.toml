@@ -1,0 +1,5 @@
+[[rule]]
+name = "a session on another machine is reached by the machine name in front"
+file = "src/claude_voice/fleet.py"
+find = 'target = fleet.split\(arguments.get\(key\)\) if key else None'
+replace = 'target = None'

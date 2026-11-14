@@ -1,0 +1,5 @@
+[[rule]]
+name = "a terminal already attached to a tmux session is raised, not opened again"
+file = "src/claude_voice/terminals.py"
+find = 'if self._attached\(tmux_session\):'
+replace = 'if False:'

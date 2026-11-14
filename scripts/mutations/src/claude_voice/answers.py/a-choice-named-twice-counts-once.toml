@@ -1,0 +1,5 @@
+[[rule]]
+name = "a choice named twice counts once"
+file = "src/claude_voice/answers.py"
+find = 'picked = list\(dict.fromkeys\(_label\(question, c\) for c in said\)\)'
+replace = 'picked = [_label(question, c) for c in said]'

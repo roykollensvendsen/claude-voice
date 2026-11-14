@@ -1,0 +1,5 @@
+[[rule]]
+name = "a delivery slower than the clients budget is answered as sending"
+file = "src/claude_voice/server.py"
+find = 'return sending_on\(sid, str\(target\["name"\]\), message, delivery\)'
+replace = 'return await delivery'

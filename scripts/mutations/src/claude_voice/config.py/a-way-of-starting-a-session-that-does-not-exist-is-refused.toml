@@ -1,0 +1,5 @@
+[[rule]]
+name = "a way of starting a session that does not exist is refused"
+file = "src/claude_voice/config.py"
+find = 'if launch not in LAUNCHES:'
+replace = 'if False:'

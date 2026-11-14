@@ -1,0 +1,5 @@
+[[rule]]
+name = "a window runs Claude Code through the owners login shell"
+file = "src/claude_voice/transcripts.py"
+find = 'through = \[shell, "-lic", .exec "\$@"., "claude-voice"\] if terminal and shell else \[\]'
+replace = 'through = []'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a plugin without a command or any allowed tool is refused"
+file = "src/claude_voice/config.py"
+find = 'if not PLUGIN_NAME\.fullmatch\(str\(name\)\) or not body\.get\("command"\) or not body\.get\("cwd"\) or not tools:'
+replace = 'if False:'

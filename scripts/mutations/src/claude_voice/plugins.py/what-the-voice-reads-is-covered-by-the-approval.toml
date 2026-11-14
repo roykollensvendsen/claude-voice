@@ -1,0 +1,5 @@
+[[rule]]
+name = "what the voice reads is covered by the approval"
+file = "src/claude_voice/plugins.py"
+find = 'if found\.get\("reads"\) != reads_fingerprint\(spec, listing\):'
+replace = 'if False:'

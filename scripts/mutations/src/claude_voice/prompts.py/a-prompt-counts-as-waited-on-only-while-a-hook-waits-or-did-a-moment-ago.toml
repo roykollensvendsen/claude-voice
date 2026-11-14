@@ -1,0 +1,5 @@
+[[rule]]
+name = "a prompt counts as waited on only while a hook waits or did a moment ago"
+file = "src/claude_voice/prompts.py"
+find = 'return bool\(hook\["waiting"\]\) or \(ended is not None'
+replace = 'return True'

@@ -1,0 +1,6 @@
+[[rule]]
+name = "a failed refresh keeps the report it had"
+file = "src/claude_voice/software.py"
+find = 'report = self\._report$'
+occurrence = 2
+replace = 'report = {"repos": []}'

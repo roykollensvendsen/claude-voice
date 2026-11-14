@@ -1,0 +1,5 @@
+[[rule]]
+name = "a busy session is never typed into"
+file = "src/claude_voice/server.py"
+find = 'if d.get\("status"\) != "idle":'
+replace = 'if False:'

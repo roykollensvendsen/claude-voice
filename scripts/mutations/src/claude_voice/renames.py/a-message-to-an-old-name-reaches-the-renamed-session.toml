@@ -1,0 +1,5 @@
+[[rule]]
+name = "a message to an old name reaches the renamed session"
+file = "src/claude_voice/renames.py"
+find = 'return old_names and \(session in d.get\("aliases", \[\]\) or session == d.get\("deliver_to"\)\)'
+replace = 'return False'

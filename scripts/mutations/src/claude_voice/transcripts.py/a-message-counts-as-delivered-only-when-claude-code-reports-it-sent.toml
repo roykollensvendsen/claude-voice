@@ -1,0 +1,5 @@
+[[rule]]
+name = "a message counts as delivered only when Claude Code reports it sent"
+file = "src/claude_voice/transcripts.py"
+find = 'if answer is not None and answer\[0\]:'
+replace = 'if True:'

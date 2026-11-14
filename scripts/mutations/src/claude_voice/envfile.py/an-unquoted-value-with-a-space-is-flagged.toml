@@ -1,0 +1,5 @@
+[[rule]]
+name = "an unquoted value with a space is flagged"
+file = "src/claude_voice/envfile.py"
+find = 'if any\(c\.isspace\(\) for c in value\):'
+replace = 'if False:'

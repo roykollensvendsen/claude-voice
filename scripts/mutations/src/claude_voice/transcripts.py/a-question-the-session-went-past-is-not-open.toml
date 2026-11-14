@@ -1,0 +1,5 @@
+[[rule]]
+name = "a question the session went past is not open"
+file = "src/claude_voice/transcripts.py"
+find = 'return \(str\(block.get\("id"\)\), block.get\("input"\) or \{\}\) if mine else None'
+replace = 'return (str(block.get("id")), block.get("input") or {}) if mine else asked'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a prompt with no hook waiting on it closes"
+file = "src/claude_voice/prompts.py"
+find = 'if how:'
+replace = 'if False:'

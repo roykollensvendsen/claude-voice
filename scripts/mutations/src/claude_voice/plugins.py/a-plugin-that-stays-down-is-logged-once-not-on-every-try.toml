@@ -1,0 +1,5 @@
+[[rule]]
+name = "a plugin that stays down is logged once not on every try"
+file = "src/claude_voice/plugins.py"
+find = 'if not self\._down:'
+replace = 'if True:'

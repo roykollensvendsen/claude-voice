@@ -1,0 +1,5 @@
+[[rule]]
+name = "an app that never signs in is forgotten after an hour"
+file = "src/claude_voice/oauth.py"
+find = 'self\.db\.execute\(FORGET_UNUSED, '
+replace = 'pass'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "only a clean checkout level with its followed branch is approved by voice"
+file = "src/claude_voice/plugins.py"
+find = 'if status\.get\("dirty"\):'
+replace = 'if False:'

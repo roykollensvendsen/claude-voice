@@ -1,0 +1,5 @@
+[[rule]]
+name = "a wait goes on and is counted off when its news fails"
+file = "src/claude_voice/prompts.py"
+find = 'except Exception:'
+replace = 'except KeyError:'

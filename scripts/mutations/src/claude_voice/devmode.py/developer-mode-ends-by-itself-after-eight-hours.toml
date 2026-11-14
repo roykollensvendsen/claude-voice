@@ -1,0 +1,5 @@
+[[rule]]
+name = "developer mode ends by itself after eight hours"
+file = "src/claude_voice/devmode.py"
+find = 'if until is not None and until <= self\.clock\(\):'
+replace = 'if False:'

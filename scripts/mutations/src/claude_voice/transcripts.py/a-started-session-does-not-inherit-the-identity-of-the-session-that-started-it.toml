@@ -1,0 +1,5 @@
+[[rule]]
+name = "a started session does not inherit the identity of the session that started it"
+file = "src/claude_voice/transcripts.py"
+find = 'return \{k: v for k, v in env\.items\(\) if k not in INHERITED\}'
+replace = 'return dict(env)'

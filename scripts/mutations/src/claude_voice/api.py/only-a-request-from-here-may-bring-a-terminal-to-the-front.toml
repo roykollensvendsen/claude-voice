@@ -1,0 +1,5 @@
+[[rule]]
+name = "only a request from here may bring a terminal to the front"
+file = "src/claude_voice/api.py"
+find = 'if not from_here\(request.scope\):'
+replace = 'if False:'

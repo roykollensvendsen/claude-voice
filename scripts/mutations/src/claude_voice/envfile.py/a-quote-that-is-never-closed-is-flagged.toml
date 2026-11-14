@@ -1,0 +1,5 @@
+[[rule]]
+name = "a quote that is never closed is flagged"
+file = "src/claude_voice/envfile.py"
+find = 'if end < 0:'
+replace = 'if False:'
