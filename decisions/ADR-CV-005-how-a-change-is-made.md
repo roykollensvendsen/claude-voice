@@ -4,6 +4,10 @@
 
 Accepted by Roy Kollen Svendsen, 2026-10-05.
 
+Partly superseded by [ADR-CV-015](ADR-CV-015-the-red-run-is-proved-by-ci.md)
+(2026-11-14): the red run is proved by CI, not by a red commit. Its other two
+points stand.
+
 ## Context
 
 Most changes here were asked for by voice, often while driving, and carried out
