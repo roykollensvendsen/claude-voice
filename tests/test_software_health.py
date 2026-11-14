@@ -400,3 +400,14 @@ async def test_the_bridge_starts_listening_while_the_software_report_is_built(tm
             await asyncio.sleep(0.05)
     assert answered < 1.5
     assert server.software_report.answer()["repos"][0]["name"] == "claude-voice"
+
+
+def test_the_published_list_of_measures_matches_what_the_bridge_sends():
+    """Other programs, the companion page first, read this list to know every measure a
+    repository's report carries; a measure added here and not there goes unnamed on the
+    page. The list is built from the report itself, so it cannot be left behind."""
+    sent = [{"id": m["id"], "unit": m["unit"]} for m in software.repo_report("x", "u", None)["metrics"]]
+    published = pathlib.Path(__file__).parent.parent / "docs" / "event-api" / "measures.json"
+    wanted = json.dumps(sent, indent=2) + "\n"
+    kept = published.read_text(encoding="utf-8") if published.exists() else ""
+    assert kept == wanted, f"docs/event-api/measures.json is out of date; write this to it:\n{wanted}"
