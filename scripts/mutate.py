@@ -153,11 +153,22 @@ def broken(file: str, mutated: str) -> str | None:
     return None
 
 
+def _open_up(place: pathlib.Path) -> None:
+    """Give the owner back every right on one folder or file, adding to the rights it has.
+
+    A link is left alone: changing its rights would change whatever it points to,
+    which may be outside the run's folder.
+    """
+    if place.is_symlink():
+        return
+    with contextlib.suppress(OSError):
+        place.chmod(place.stat().st_mode | stat.S_IRWXU)
+
+
 def _writable_again(func: Callable[[str], object], path: str, _exc: object) -> None:
-    """Let a refused delete through: give the owner back every right on the path and its folder."""
+    """Let a refused delete through: open up the path and its folder, then try again."""
     for place in (pathlib.Path(path).parent, pathlib.Path(path)):
-        with contextlib.suppress(OSError):
-            place.chmod(place.stat().st_mode | stat.S_IRWXU)
+        _open_up(place)
     func(path)
 
 
@@ -169,8 +180,7 @@ def _remove(folder: pathlib.Path) -> None:
     # the handler then covers anything that still refuses.
     for place, folders, _ in os.walk(folder):
         for name in folders:
-            with contextlib.suppress(OSError):
-                (pathlib.Path(place) / name).chmod(stat.S_IRWXU)
+            _open_up(pathlib.Path(place) / name)
     shutil.rmtree(folder, onexc=_writable_again)
 
 

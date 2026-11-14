@@ -45,6 +45,20 @@ def test_a_suite_run_leaves_no_temporary_files_behind(tmp_path, monkeypatch):
     assert list(mutate.MUTATE_TMP.iterdir()) == []
 
 
+def test_removing_a_run_s_files_never_changes_a_folder_it_links_to(tmp_path, monkeypatch):
+    mutate = _mutate(tmp_path, monkeypatch)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside.chmod(0o755)
+    (outside / "kept.txt").write_text("x")
+    (mutate.ROOT / "tests" / "test_links_out.py").write_text(
+        f"def test_it_links_out(tmp_path):\n    (tmp_path / 'link').symlink_to({str(outside)!r})\n"
+    )
+    failed, _ = mutate.run_suite()
+    assert failed == 0
+    assert (outside.stat().st_mode & 0o777, (outside / "kept.txt").exists()) == (0o755, True)
+
+
 def test_a_killed_run_s_temporary_files_are_swept_at_the_next_start(tmp_path, monkeypatch):
     mutate = _mutate(tmp_path, monkeypatch)
     left = mutate.MUTATE_TMP / "run-left-by-a-killed-run"
