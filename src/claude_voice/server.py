@@ -1744,6 +1744,64 @@ def build_server(
                 return target, "still_working", None
             await asyncio.sleep(poll_seconds)
 
+    def turns_past(d: dict[str, Any], role: str, start: int) -> list[dict[str, Any]]:
+        """The session's turns in this role after `start`."""
+        return [t for t in numbered_turns(d) if t["role"] == role and t["index"] > start]
+
+    async def watch_turn(
+        target: dict[str, Any], start: int, after: int | None, wait_seconds: float
+    ) -> tuple[dict[str, Any] | None, dict[str, Any], dict[str, Any] | None, bool]:
+        """Look at a session until its turn ends, it needs its user, it ends, or the wait runs out.
+
+        Gives back its last live entry (None once it ended), the newest entry seen, what it is
+        blocked on, and whether its turn is over."""
+        pid, blocked, done, taken = target.get("pid"), None, False, False
+        deadline = deadline_after(asyncio.get_running_loop().time(), wait_seconds)
+        while (now := live_by_pid(pid)) is not None:
+            target, blocked = now, waiting(now)
+            idle = now.get("status") == "idle"
+            # A message is in the transcript and the session idle on two looks running, or after
+            # it was seen busy: its turn has ended, even if it wrote nothing.
+            ended_silent = idle and taken and bool(turns_past(now, "user", start))
+            taken = not idle or bool(turns_past(now, "user", start))
+            done = blocked is not None or (
+                idle and (after is None or bool(turns_past(now, "assistant", start)) or ended_silent)
+            )
+            if done or asyncio.get_running_loop().time() >= deadline:
+                break
+            await asyncio.sleep(poll_seconds)
+        return now, target, blocked, done
+
+    def waited(
+        status: str,
+        target: dict[str, Any],
+        start: int,
+        max_chars: int,
+        blocked: dict[str, Any] | None,
+        *,
+        ended: bool,
+    ) -> dict[str, Any]:
+        """What wait_for_session hands back: the replies written after `start`, at most 30."""
+        # A session that ended keeps its transcript, so what it wrote before it went is still read.
+        written = turns_past(target, "assistant", start)
+        size = max(max_chars, 20)
+        shown = written[:30]
+        new = [{**t, "text": transcripts.clip(t["text"], size)} for t in shown]
+        left = len(written) - len(shown)
+        last = transcripts.clip(written[-1]["text"], size) if written else ""
+        return {
+            "status": status,
+            "session": target["name"],
+            "reply": last,
+            "reply_final": reply_is_final(status, new),
+            "session_ended": ended,
+            "turns": new,
+            "turns_left": left,
+            **({"latest": {"index": written[-1]["index"], "role": "assistant", "text": last}} if left else {}),
+            "next_after": new[-1]["index"] if new else start,
+            **({"question": blocked["question"]} if status == "needs_choice" and blocked else {}),
+        }
+
     @tool(annotations=READ_ONLY)
     async def wait_for_session(
         session: str, wait_seconds: WaitSeconds = 60, after: int | None = None, max_chars: int = 600
@@ -1763,47 +1821,12 @@ def build_server(
         # Without `after`, the wait starts where the transcript ends now: an answer from before
         # it is never handed back as the reply.
         start = after if after is not None else len(numbered_turns(target)) - 1
-
-        def past(d: dict[str, Any], role: str) -> list[dict[str, Any]]:
-            """The session's turns in this role after `start`."""
-            return [t for t in numbered_turns(d) if t["role"] == role and t["index"] > start]
-
-        pid, blocked, done, taken = target.get("pid"), None, False, False
-        deadline = deadline_after(asyncio.get_running_loop().time(), wait_seconds)
-        while (now := live_by_pid(pid)) is not None:
-            target, blocked = now, waiting(now)
-            idle = now.get("status") == "idle"
-            # A message is in the transcript and the session idle on two looks running, or after
-            # it was seen busy: its turn has ended, even if it wrote nothing.
-            ended_silent = idle and taken and bool(past(now, "user"))
-            taken = not idle or bool(past(now, "user"))
-            done = blocked is not None or (idle and (after is None or bool(past(now, "assistant")) or ended_silent))
-            if done or asyncio.get_running_loop().time() >= deadline:
-                break
-            await asyncio.sleep(poll_seconds)
+        now, target, blocked, done = await watch_turn(target, start, after, wait_seconds)
         if now is None:
             status = "session_ended"
         else:
             status = blocked["status"] if blocked else ("idle" if done else "still_working")
-        # A session that ended keeps its transcript, so what it wrote before it went is still read.
-        written = past(target, "assistant")
-        size = max(max_chars, 20)
-        shown = written[:30]
-        new = [{**t, "text": transcripts.clip(t["text"], size)} for t in shown]
-        left = len(written) - len(shown)
-        last = transcripts.clip(written[-1]["text"], size) if written else ""
-        return {
-            "status": status,
-            "session": target["name"],
-            "reply": last,
-            "reply_final": reply_is_final(status, new),
-            "session_ended": now is None,
-            "turns": new,
-            "turns_left": left,
-            **({"latest": {"index": written[-1]["index"], "role": "assistant", "text": last}} if left else {}),
-            "next_after": new[-1]["index"] if new else start,
-            **({"question": blocked["question"]} if status == "needs_choice" and blocked else {}),
-        }
+        return waited(status, target, start, max_chars, blocked, ended=now is None)
 
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
     async def ask_active_session(
