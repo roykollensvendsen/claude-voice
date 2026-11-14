@@ -11,7 +11,8 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from . import envfile, procs
+from . import envfile, procs, restarts
+from .config import STATE_DIR
 from .server import Config, ConfigError, load_config, serve_forever
 
 if TYPE_CHECKING:
@@ -19,7 +20,16 @@ if TYPE_CHECKING:
 
 #: Every verb this command has. The documentation test requires each one to
 #: appear in a worked example, so a verb cannot be added without one.
-COMMANDS: tuple[str, ...] = ("serve", "check", "plugins", "agent", "machines", "permissions", "org")
+COMMANDS: tuple[str, ...] = (
+    "serve",
+    "check",
+    "plugins",
+    "agent",
+    "machines",
+    "permissions",
+    "org",
+    "restart",
+)
 
 SIGN_IN = (
     "Run `claude`, type /login and sign in with your Claude account, then check again. If `claude` "
@@ -106,6 +116,7 @@ def main(
     env: Mapping[str, str] = os.environ,
     serve: Callable[[Config], None] = serve_forever,
     login: Callable[[], tuple[bool, str]] = claude_code_login,
+    systemctl: Callable[[list[str]], int] = restarts.systemctl,
 ) -> int:
     """Parse arguments and dispatch. Returns a process exit code."""
     args = list(sys.argv[1:] if argv is None else argv)
@@ -142,25 +153,22 @@ def main(
     permission_cmd.add_argument("--dry-run", action="store_true", help="say what would be added, and write nothing")
     org_cmd = sub.add_parser("org", help="print the org chart, or check its files")
     org_cmd.add_argument("action", nargs="?", choices=["show", "check"], default="show")
+    restart_cmd = sub.add_parser("restart", help="restart the bridge's service, noting why for its health answer")
+    restart_cmd.add_argument("--why", default="", help="what the restart is for, shown in health")
+    restart_cmd.add_argument("--dry-run", action="store_true", help="say what it would do, and do nothing")
     parsed = parser.parse_args(args)
 
-    if parsed.command == "permissions":
-        return permissions_command(parsed.folders, parsed.dry_run, env)
-
-    if parsed.command == "org":
-        return org_command(parsed.action, env)
-
-    if parsed.command == "machines":
-        return machines_command(parsed.action, parsed.name, env)
-
-    if parsed.command == "agent":
-        return agent_command(parsed.action, env, parsed.sessions)
-
-    if parsed.command == "plugins":
-        return plugins_command(parsed.action, parsed.name, env)
-
-    if parsed.command == "check":
-        return check_command(env, parsed.transport, parsed.json, login)
+    verbs: dict[str, Callable[[], int]] = {
+        "restart": lambda: restart_command(parsed.why, parsed.dry_run, systemctl),
+        "permissions": lambda: permissions_command(parsed.folders, parsed.dry_run, env),
+        "org": lambda: org_command(parsed.action, env),
+        "machines": lambda: machines_command(parsed.action, parsed.name, env),
+        "agent": lambda: agent_command(parsed.action, env, parsed.sessions),
+        "plugins": lambda: plugins_command(parsed.action, parsed.name, env),
+        "check": lambda: check_command(env, parsed.transport, parsed.json, login),
+    }
+    if parsed.command in verbs:
+        return verbs[parsed.command]()
 
     try:
         cfg = load_config(env, parsed.transport)
@@ -169,6 +177,25 @@ def main(
         return 1
     serve(cfg)
     return 0
+
+
+def restart_command(why: str, dry_run: bool, systemctl: Callable[[list[str]], int]) -> int:
+    """Note why the bridge is restarted, then restart its service."""
+    command = " ".join(restarts.RESTART)
+    said = f' "{why}"' if why else ""
+    if dry_run:
+        sys.stdout.write(f"claude-voice: would note a planned restart{said}, then run: {command}\n")
+        return 0
+    # RULE: claude voice restart notes why before it restarts
+    try:
+        restarts.note(STATE_DIR, "planned", "cli", text=why or None)
+    except OSError as exc:
+        sys.stderr.write(f"claude-voice: could not note why ({exc}); restarting anyway, so health will say unplanned\n")
+    code = systemctl(restarts.RESTART)
+    if code:
+        status = f"systemctl --user status {restarts.UNIT}"
+        sys.stderr.write(f"claude-voice: `{command}` failed. Run `{status}` to see why.\n")
+    return code
 
 
 def check_command(env: Mapping[str, str], transport: str, as_json: bool, login: Callable[[], tuple[bool, str]]) -> int:

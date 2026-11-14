@@ -1,0 +1,5 @@
+[[rule]]
+name = "an update notes why before it restarts the bridge"
+file = "src/claude_voice/updater.py"
+find = 'note\("update", before, after\)'
+replace = 'pass'

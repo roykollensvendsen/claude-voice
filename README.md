@@ -312,6 +312,24 @@ set the tools to *always allow*, so the app does not ask before each one.
 ChatGPT on a Plus plan could not connect to a custom MCP server from Android at
 the time of writing.
 
+To restart the service on purpose, say why, so `health` can tell the voice:
+
+```console
+$ claude-voice restart --why "a new plugin" --dry-run
+claude-voice: would note a planned restart "a new plugin", then run: systemctl --user restart claude-voice
+```
+
+Without `--dry-run` it writes the reason to `~/.local/state/claude-voice/restart-reason.json`
+and restarts. `update_bridge` writes one too, with the commits it moved between.
+The next start reads the file and deletes it. `health` then gives `last_restart`
+as `at`, `reason`, `by`, `changes` (commits since the start before), `from`, `to` and
+`note`. The reason is one of these:
+
+- `planned`, `update` or `rollback`, from a reason file under ten minutes old;
+- `crash`, when systemd started it again by itself;
+- `boot`, when the computer has been up under five minutes;
+- `unplanned`, for anything else, such as a plain `systemctl --user restart`.
+
 ## Answer questions and approvals from the phone
 
 With the companion app open, a session's choice box or permission prompt can be

@@ -56,6 +56,7 @@ from . import (
     procs,
     prompts,
     renames,
+    restarts,
     roles,
     software,
     tailnet,
@@ -1957,7 +1958,7 @@ def build_server(
     @tool(annotations=READ_ONLY)
     def health() -> dict[str, Any]:
         """The bridge's own state: version, memory, calls and errors per tool.
-        Also since when it runs, its last restart, the latency per tool since start, the latest
+        Also since when it runs, its last restart and why, the latency per tool since start, the latest
         errors, and the state of the courier and the watcher."""
         snap = METRICS.snapshot()
         courier = transcripts.shared_courier()
@@ -1969,7 +1970,7 @@ def build_server(
                 "up_since": started_at,
                 "version": running_version,
                 "memory_rss_mb": metrics.memory_rss_mb(),
-                "last_restart": {"at": restart["at"], "reason": restart["reason"]},
+                "last_restart": {k: restart.get(k) for k in RESTART_FIELDS},
                 "restarts_total": restart["total"],
             },
             "tools": snap["tools"],
@@ -2370,7 +2371,7 @@ def serve_forever(cfg: Config) -> None:
     oauth = OAuthProvider(
         store, login_secret=token, public_url=cfg.public_url, static_token=token, access_ttl=cfg.access_ttl
     )
-    restart = metrics.restart_info("~/.local/state/claude-voice/restarts")
+    restart = restarts.restart_info(config.STATE_DIR)
     server = build_server(
         manager, oauth=oauth, watch_interval=5.0, restart=restart, ui_origins=cfg.ui_origins, bridge_port=cfg.port
     )
@@ -2380,6 +2381,8 @@ def serve_forever(cfg: Config) -> None:
     web_server(app, cfg.host, cfg.port).run()
 
 
+#: What health says about the last restart: when, why, who asked, and the commits it brought.
+RESTART_FIELDS = ("at", "reason", "by", "changes", "from", "to", "note")
 SHUTDOWN_SECONDS = 5  # how long a stop waits for open requests; event streams never end
 
 
