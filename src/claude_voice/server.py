@@ -310,7 +310,8 @@ def note_voice_call(ctx: Any, tool: str, trace: str | None, result: Any) -> None
     client = usage.client_of(api.caller_address(scope), trace)
     if client is None:
         return
-    if client == "voice_app" and PRESENCE:
+    # RULE: a call from the Claude app or the voice app starts the voice window
+    if client in ("voice_app", "claude_app") and PRESENCE:
         PRESENCE[0].heard_voice()  # a session's question now waits for the phone for a while
     connection = trace if client == "voice_app" else request.headers.get("mcp-session-id") or api.caller_address(scope)
     with contextlib.suppress(Exception):
