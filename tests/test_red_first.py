@@ -224,6 +224,36 @@ def test_the_summary_is_also_written_for_the_checks_page(tmp_path, monkeypatch):
     assert "nothing to prove" in page.read_text()
 
 
+def test_a_new_script_and_its_test_are_red_before_the_change_and_green_on_the_branch(tmp_path):
+    """Red-first once failed this way on its own pull request. The plugin was loaded from the
+    branch's scripts folder, under this script's own name, so the old code's tests imported it.
+    The fake pull request adds a script under that same name, which then could not be told apart."""
+    repo = tmp_path / "repo"
+    (repo / "tests").mkdir(parents=True)
+    (repo / "scripts").mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "config", "user.email", "a@b.c")
+    git(repo, "config", "user.name", "A")
+    (repo / "scripts/old.py").write_text("OLD = 1\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-q", "-m", "base")
+    base = git(repo, "rev-parse", "HEAD").strip()
+    (repo / "scripts/red_first.py").write_text("ANSWER = 42\n")
+    (repo / "tests/test_new_script.py").write_text(
+        "import pathlib\nimport sys\n\n"
+        "sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / 'scripts'))\n\n"
+        "import red_first\n\n\ndef test_it_answers():\n    assert red_first.ANSWER == 42\n"
+    )
+    git(repo, "add", ".")
+    git(repo, "commit", "-q", "-m", "head")
+    head = git(repo, "rev-parse", "HEAD").strip()
+
+    ids = ["tests/test_new_script.py::test_it_answers"]
+    before, after = red_first.run_both(base, head, cwd=repo, setup=lambda tree: [sys.executable])(ids)
+    assert before == {ids[0]: "failed"}
+    assert after == {ids[0]: "passed"}
+
+
 def test_a_tree_s_tests_cannot_import_the_branch_s_scripts_through_the_plugin(tmp_path):
     """The plugin is loaded from outside the tree. Were its folder the branch's scripts/,
     the old code's tests could import the branch's own scripts, and pass where they must fail."""

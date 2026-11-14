@@ -235,20 +235,28 @@ def _synced(tree: pathlib.Path) -> list[str]:
     return ["uv", "run", "--no-sync", "python"]
 
 
-def run_both(base: str, head: str) -> Run:
-    """A run of the counted tests on the before-tree and on the head, each in a checkout of its own."""
+def run_both(
+    base: str,
+    head: str,
+    cwd: pathlib.Path | str | None = None,
+    setup: Callable[[pathlib.Path], list[str]] = _synced,
+) -> Run:
+    """A run of the counted tests on the before-tree and on the head, each in a checkout of its own.
+
+    `setup` prepares one tree and gives the command that runs its Python; a test passes its own.
+    """
 
     def run(ids: list[str]) -> tuple[dict[str, Outcome], dict[str, Outcome]]:
         place = pathlib.Path(tempfile.mkdtemp(prefix="red-first-", dir=os.environ.get("RUNNER_TEMP")))
         trees = [place / "before", place / "head"]
         try:
-            before_tree(base, head, trees[0])
-            _git("worktree", "add", "--detach", "--quiet", str(trees[1]), head)
-            return outcomes(ids, trees[0], _synced(trees[0])), outcomes(ids, trees[1], _synced(trees[1]))
+            before_tree(base, head, trees[0], cwd=cwd)
+            _git("worktree", "add", "--detach", "--quiet", str(trees[1]), head, cwd=cwd)
+            return outcomes(ids, trees[0], setup(trees[0])), outcomes(ids, trees[1], setup(trees[1]))
         finally:
             for tree in trees:
                 with contextlib.suppress(subprocess.CalledProcessError):
-                    _git("worktree", "remove", "--force", str(tree))
+                    _git("worktree", "remove", "--force", str(tree), cwd=cwd)
 
     return run
 
