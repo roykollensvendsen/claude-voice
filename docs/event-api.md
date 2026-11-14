@@ -274,7 +274,7 @@ not on every refresh.
 
 | Call | Answer |
 | --- | --- |
-| `GET /api/v1/health/software` | `{"as_of", "repos": [{"name", "url", "as_of", "metrics": [{"id", "label", "value", "unit", "text", "status": "ok"\|"warn"\|"bad"\|"exempt"\|"unknown", "url", "trend": [≤30 values, oldest first]}]}]}` |
+| `GET /api/v1/health/software` | `{"as_of", "repos": [{"name", "url", "as_of", "metrics": [{"id", "label", "value", "unit", "text", "status": "ok"\|"warn"\|"bad"\|"exempt"\|"unknown", "url", "trend": [≤30 values, oldest first]}], "mutations": {"killed", "total", "rules": [{"name", "file", "tests_red", "own_test_red"}], "run", "url"}\|null}]}` |
 
 One entry for claude-voice, one for claude-voice-ui and one for each plugin's
 own repository (the one its checked-out branch pushes to), read from the levels
@@ -302,6 +302,14 @@ measure = "complexity"
 reason = "the tool table is one long match on the tool's name"
 approved = "Roy, 2026-11-11, in pull request #212"
 ```
+
+`mutations` is the newest mutation report the followed branch kept with a
+finished run of its checks, as `quality-mutations`, rule by rule: how many
+tests went red with the rule switched off (`tests_red`), and whether the test
+named after the rule was one of them (`own_test_red`). `killed` counts the
+rules whose own test went red; `run` and `url` name the run it came from. It is
+`null` for a repository whose checks keep no such report yet, and a report
+without its rules (an older tool's) is skipped rather than shown half.
 
 An exempt measure's `text` ends with the reason. A measure inside its limit
 stays `ok` whatever the file says, and an entry missing its reason or its

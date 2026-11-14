@@ -1,0 +1,5 @@
+[[rule]]
+name = "mutation reports are cached apart from the levels"
+file = "src/claude_voice/software.py"
+find = 'saved = folder / f"\{run_id\}\.mutations\.json"'
+replace = 'saved = folder / f"{run_id}.json"'
