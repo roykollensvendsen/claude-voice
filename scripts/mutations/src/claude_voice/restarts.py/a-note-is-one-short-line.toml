@@ -1,0 +1,5 @@
+[[rule]]
+name = "a note is one short line"
+file = "src/claude_voice/restarts.py"
+find = 'return flat if len\(flat\) <= NOTE_CHARS else'
+replace = 'return text'

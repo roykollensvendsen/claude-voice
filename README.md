@@ -323,7 +323,8 @@ Without `--dry-run` it writes the reason to `~/.local/state/claude-voice/restart
 and restarts. `update_bridge` writes one too, with the commits it moved between.
 The next start reads the file and deletes it. `health` then gives `last_restart`
 as `at`, `reason`, `by`, `changes` (commits since the start before), `from`, `to` and
-`note`. The reason is one of these:
+`note`. The note is the `--why` text, cut to one line of at most 120 characters.
+A note over ten minutes old is ignored, and the log says so. The reason is one of these:
 
 - `planned`, `update` or `rollback`, from a reason file under ten minutes old;
 - `crash`, when systemd started it again by itself;
