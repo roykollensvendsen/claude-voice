@@ -264,6 +264,69 @@ def test_a_new_script_and_its_test_are_red_before_the_change_and_green_on_the_br
     assert after == {ids[0]: "passed"}
 
 
+def fake_pull_request(tmp_path, base_files, head_files):
+    """A repository with a base commit and a head commit; gives the folder and both hashes."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "config", "user.email", "a@b.c")
+    git(repo, "config", "user.name", "A")
+    hashes = []
+    for files in (base_files, head_files):
+        for name, text in files.items():
+            (repo / name).parent.mkdir(parents=True, exist_ok=True)
+            (repo / name).write_text(text)
+        git(repo, "add", ".")
+        git(repo, "commit", "-q", "-m", "a commit")
+        hashes.append(git(repo, "rev-parse", "HEAD").strip())
+    return repo, *hashes
+
+
+CONFTEST_NEEDING_HELPER = (
+    "import pathlib\nimport sys\n\n"
+    "sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / 'scripts'))\n\n"
+    "import helper  # noqa: F401\n"
+)
+
+
+def test_a_run_that_never_reports_is_said_with_pytest_s_exit_code(tmp_path):
+    """A conftest that cannot import stops pytest before any test runs; that is not 'skipped'."""
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests/conftest.py").write_text("import nowhere  # noqa: F401\n")
+    (tmp_path / "tests/test_a.py").write_text("def test_a():\n    pass\n")
+    with pytest.raises(red_first.Unreported) as stopped:
+        red_first.outcomes(["tests/test_a.py::test_a"], tmp_path, python=[sys.executable])
+    assert stopped.value.code not in (0, 1)
+
+
+def test_a_branch_run_that_never_reports_fails_the_check_and_says_what_to_do(tmp_path):
+    test = "def test_a():\n    pass\n"
+    repo, base, head = fake_pull_request(
+        tmp_path,
+        {"tests/test_old.py": test, "scripts/helper.py": "HELP = 1\n"},
+        {"tests/test_a.py": test, "tests/conftest.py": "import nowhere  # noqa: F401\n"},
+    )
+    run = red_first.run_both(base, head, cwd=repo, setup=lambda tree: [sys.executable])
+    with pytest.raises(SystemExit) as stopped:
+        run(["tests/test_a.py::test_a"])
+    said = str(stopped.value)
+    assert "on the branch" in said and "exit code" in said and "push again" in said
+
+
+def test_a_before_tree_whose_conftest_cannot_import_counts_every_test_as_failed(tmp_path, capsys):
+    test = "def test_a():\n    pass\n"
+    repo, base, head = fake_pull_request(
+        tmp_path,
+        {"tests/test_old.py": test, "scripts/other.py": "OTHER = 1\n"},
+        {"tests/test_a.py": test, "tests/conftest.py": CONFTEST_NEEDING_HELPER, "scripts/helper.py": "HELP = 1\n"},
+    )
+    ids = ["tests/test_a.py::test_a"]
+    before, after = red_first.run_both(base, head, cwd=repo, setup=lambda tree: [sys.executable])(ids)
+    assert before == {ids[0]: "failed"}
+    assert after == {ids[0]: "passed"}
+    assert "counts as failed" in capsys.readouterr().out
+
+
 def test_a_tree_s_tests_cannot_import_the_branch_s_scripts_through_the_plugin(tmp_path):
     """The plugin is loaded from outside the tree. Were its folder the branch's scripts/,
     the old code's tests could import the branch's own scripts, and pass where they must fail."""
