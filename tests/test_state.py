@@ -95,9 +95,34 @@ async def test_the_time_in_a_state_counts_from_its_last_change_and_each_change_i
     assert status[-1]["state"] == "idle" and status[-1]["previous"] == "working" and status[-1]["name"] == "billing-ab"
 
 
-async def test_a_change_is_announced_while_someone_listens_even_if_nobody_asks(world):  # noqa: F811
+def slow_looks(monkeypatch, seconds=0.5):
+    """Make each of the watcher's looks take `seconds`, as the first one can on a busy runner,
+    so a test cannot pass by luck. Returns an event set once the second look begins, which
+    means the first has finished: each look builds the session tree once."""
+    import threading
+    import time
+
+    from claude_voice.tree import SessionTree
+
+    build = SessionTree.build
+    looks: list[float] = []
+    second_look = threading.Event()
+
+    def slow(self):
+        looks.append(time.monotonic())
+        if len(looks) >= 2:
+            second_look.set()
+        time.sleep(seconds)
+        return build(self)
+
+    monkeypatch.setattr(SessionTree, "build", slow)
+    return second_look
+
+
+async def test_a_change_is_announced_while_someone_listens_even_if_nobody_asks(world, monkeypatch):  # noqa: F811
     import asyncio
 
+    second_look = slow_looks(monkeypatch)
     running(world, "billing-ab", "billing", "s1", status="busy")
     transcript(world, "billing", "s1", [says("on it")])
     store = Store(world / "b.db")
@@ -107,7 +132,8 @@ async def test_a_change_is_announced_while_someone_listens_even_if_nobody_asks(w
     )
     with api.HUB.subscribe() as events:
         async with Client(server):  # the watcher runs while the server does
-            await asyncio.sleep(0.3)
+            # A change is only news once a look has noted the state before it.
+            assert await asyncio.to_thread(second_look.wait, 30), "the watcher never looked twice"
             running(world, "billing-ab", "billing", "s1", status="idle")
             name, data = await asyncio.wait_for(events.get(), 5)
             while name != "status":
@@ -118,27 +144,10 @@ async def test_a_change_is_announced_while_someone_listens_even_if_nobody_asks(w
 async def test_a_new_turn_is_announced_so_a_detail_view_need_not_poll(world, monkeypatch):  # noqa: F811
     import asyncio
     import json as _json
-    import threading
-    import time
 
     from claude_agent_sdk import project_key_for_directory
 
-    from claude_voice.tree import SessionTree
-
-    # The first look is slow on a busy runner (Windows in CI took longer than the 0.3 s this
-    # test used to wait). Make it slow here, so the test cannot pass by luck.
-    build = SessionTree.build
-    looks: list[float] = []
-    second_look = threading.Event()
-
-    def slow(self):
-        looks.append(time.monotonic())
-        if len(looks) >= 2:
-            second_look.set()
-        time.sleep(0.5)
-        return build(self)
-
-    monkeypatch.setattr(SessionTree, "build", slow)
+    second_look = slow_looks(monkeypatch)
 
     running(world, "billing-ab", "billing", "s1", status="busy")
     transcript(world, "billing", "s1", [says("on it")])
