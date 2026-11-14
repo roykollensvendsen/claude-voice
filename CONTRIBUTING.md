@@ -100,9 +100,16 @@ and it changes only by hand.
 2. **Say it before you build it.** A rule, a flag or a field is written down
    before it is code. If the documentation does not say it, it is not decided.
 3. **Write a test and watch it fail.** A test that passes on its first run
-   proves nothing. Where the rule already exists and no test can precede it,
-   turn the rule off with `uv run python scripts/mutate.py`, watch a named test
-   go red, and keep the row.
+   proves nothing. Commit it together with the code that turns it green: every
+   commit on `main` is green. On the pull request, the `red-first` check runs
+   your new and changed tests against the code before your change, and each must
+   fail there. A test that pins behaviour that already exists (a refactor's
+   pinning test, say) passes there. Excuse it with a line of its own in the pull
+   request body: `Red-first: existing behaviour - <test name>`
+   ([ADR-CV-015](decisions/ADR-CV-015-the-red-run-is-proved-by-ci.md)).
+   Where the rule already exists and no test can precede it, turn the rule off
+   with `uv run python scripts/mutate.py`, watch a named test go red, and keep
+   the row.
 
    A rule is a line marked `# RULE: what it says` in the source. Every one needs
    a row and a test whose name is the rule's own

@@ -23,9 +23,10 @@
       enforces it, or says plainly that it is not enforced yet and when it will be.
 - [ ] The specification changed before the code, or this change only implements
       a line that was already there.
-- [ ] Every new test was seen red before the code that turns it green, or the
-      rule it guards was turned off and the test was seen red that way, with the
-      run recorded under `evidence/tests/`.
+- [ ] Every new test was seen red before the code that turns it green, and is
+      committed with that code. The `red-first` check shows it, or a
+      `Red-first: existing behaviour - <test name>` line above says why not, or
+      the rule it guards was turned off and the test was seen red that way.
 - [ ] A decision that costs more to reverse than to take is a record under
       `decisions/`, linked here.
 - [ ] Nothing here copies text that lives somewhere else; it links to it instead.
