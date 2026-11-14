@@ -351,6 +351,41 @@ def note_voice_call(ctx: Any, tool: str, trace: str | None, result: Any) -> None
         usage.record(VOICE_STORE[0], client, str(connection), tool, _result_chars(result))
 
 
+def _trace_of(params: dict[str, Any]) -> str | None:
+    """The trace id a voice client sent with a call, as params._meta.trace_id."""
+    meta = params.get("_meta")
+    if not isinstance(meta, dict):
+        return None
+    return str(meta.get("trace_id") or "") or None
+
+
+def _error_text(result: Any) -> str:
+    """The first text of a failed tool result, which says what went wrong."""
+    content = getattr(result, "content", None) or (result.get("content") if isinstance(result, dict) else None)
+    first = content[0] if content else None
+    return str(getattr(first, "text", None) or (first.get("text") if isinstance(first, dict) else first) or "")
+
+
+def _log_finished_tool_call(
+    ctx, tool: str, params: dict[str, Any], what: str, trace: str | None, ms: float, result: Any
+) -> None:
+    """Log, show and count a tool call that came back, failed or not."""
+    api.publish_focus(tool, params.get("arguments"), caller_kind(ctx, trace))
+    note_voice_call(ctx, tool, trace, result)
+    failed = getattr(result, "is_error", None) or (isinstance(result, dict) and result.get("isError"))
+    target = api.session_of(tool, params.get("arguments"))
+    log.info(
+        "mcp %s -> %s %dms trace=%s%s from=%s",
+        what,
+        "error" if failed else "ok",
+        ms,
+        trace or "-",
+        f" session={target}" if target else "",
+        caller_kind(ctx, trace),
+    )
+    METRICS.record(tool, ms, error=_error_text(result) if failed else None, trace_id=trace)
+
+
 async def log_requests(ctx, call_next):
     """Log and count each MCP call: method, tool, outcome, time and the caller's trace id.
 
@@ -360,8 +395,7 @@ async def log_requests(ctx, call_next):
     params = ctx.params if isinstance(ctx.params, dict) else {}
     tool = str(params.get("name", ""))
     what = f"{ctx.method} {tool}".rstrip()
-    meta = params.get("_meta") if isinstance(params.get("_meta"), dict) else {}
-    trace = str(meta.get("trace_id") or "") or None
+    trace = _trace_of(params)
     with contextlib.suppress(TypeError):
         if (session := getattr(ctx, "session", None)) is not None:
             LISTENERS.add(session)
@@ -389,25 +423,7 @@ async def log_requests(ctx, call_next):
         transcripts.current_client.reset(client_token)
     ms = (time.monotonic() - started) * 1000
     if ctx.method == "tools/call":
-        api.publish_focus(tool, params.get("arguments"), caller_kind(ctx, trace))
-        note_voice_call(ctx, tool, trace, result)
-        failed = getattr(result, "is_error", None) or (isinstance(result, dict) and result.get("isError"))
-        target = api.session_of(tool, params.get("arguments"))
-        log.info(
-            "mcp %s -> %s %dms trace=%s%s from=%s",
-            what,
-            "error" if failed else "ok",
-            ms,
-            trace or "-",
-            f" session={target}" if target else "",
-            caller_kind(ctx, trace),
-        )
-        error = None
-        if failed:
-            content = getattr(result, "content", None) or (result.get("content") if isinstance(result, dict) else None)
-            first = content[0] if content else None
-            error = str(getattr(first, "text", None) or (first.get("text") if isinstance(first, dict) else first) or "")
-        METRICS.record(tool, ms, error=error, trace_id=trace)
+        _log_finished_tool_call(ctx, tool, params, what, trace, ms, result)
     elif ctx.request_id is not None:
         log.info("mcp %s", what)
     return result
