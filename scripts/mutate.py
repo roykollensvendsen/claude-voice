@@ -8,7 +8,11 @@ in a file of its own under scripts/mutations/. A repository still moving its
 rows out of one shared scripts/mutations.toml is read too. Run it from the
 repository root:
 
-    uv run python scripts/mutate.py [--write evidence/tests/rule-mutations.md]
+    uv run python scripts/mutate.py [--write evidence/tests/rule-mutations.md] [--json mutations.json]
+
+`--json` writes the run's figures, rule by rule, for the checks to keep with
+main's run; in a check, the readable table also goes to the run's summary page.
+Neither is ever committed.
 
 A kill is not enough on its own. A mutation breaks whatever it breaks, and it
 can break a test for an incidental reason — a documented example whose output
@@ -35,6 +39,7 @@ import sys
 import tempfile
 import tomllib
 from collections.abc import Callable
+from typing import Any
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 TABLE = ROOT / "scripts/mutations.toml"
@@ -280,6 +285,7 @@ def main() -> int:
     """Mutate every rule in turn, restore the tree, and report."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--write", type=pathlib.Path, help="write the evidence table here")
+    parser.add_argument("--json", type=pathlib.Path, help="write the run's figures here, for the checks to keep")
     args = parser.parse_args()
 
     repair()
@@ -322,7 +328,7 @@ def main() -> int:
             # A kill by some other test is not evidence about this rule.
             own = test_name_for(rule["name"])
             by_its_own = own in failed
-            results.append((rule["name"], count, own, by_its_own))
+            results.append((rule["name"], rule["file"], count, own, by_its_own))
             verdict = "KILLED  " if by_its_own else ("BY LUCK " if count else "SURVIVED")
             print(f"{verdict} {rule['name']}: {count}")  # noqa: T201
     finally:
@@ -330,8 +336,7 @@ def main() -> int:
             restore(*standing)
         RECOVERY.unlink(missing_ok=True)
 
-    survived = [name for name, count, _, _ in results if count == 0]
-    lucky = [name for name, count, _, own in results if count and not own]
+    survived, lucky = _weak(results)
     proven = len(results) - len(survived) - len(lucky)
     print(f"\n{proven}/{len(results)} rules turned off the test that names them")  # noqa: T201
     if survived:
@@ -345,13 +350,45 @@ def main() -> int:
         print("Edit the tree while this runs and the result is not about your code.")  # noqa: T201
     if args.write:
         args.write.write_text(report(results, survived, lucky), encoding="utf-8")
+    publish(args.json, results)
     return 1 if survived or lucky or lost or bad_rows else 0
 
 
-def report(results: list[tuple[str, int, str, bool]], survived: list[str], lucky: list[str]) -> str:
+#: One rule's run: its name, its file, the tests gone red, its own test's name, and whether that one went red.
+Result = tuple[str, str, int, str, bool]
+
+
+def _weak(results: list[Result]) -> tuple[list[str], list[str]]:
+    """The rules nothing noticed, and those only another test noticed."""
+    survived = [name for name, _, count, _, _ in results if count == 0]
+    lucky = [name for name, _, count, _, own in results if count and not own]
+    return survived, lucky
+
+
+def figures(results: list[Result]) -> dict[str, Any]:
+    """The run as numbers, in the shape every voice repository writes."""
+    rules = [
+        {"name": name, "file": file, "tests_red": count, "own_test_red": by_own}
+        for name, file, count, _, by_own in results
+    ]
+    # RULE: the mutation report counts only rules whose own test went red
+    return {"killed": sum(rule["own_test_red"] for rule in rules), "total": len(rules), "rules": rules}
+
+
+def publish(to: pathlib.Path | None, results: list[Result]) -> None:
+    """Give the run to the checks: its figures to `to`, its table to the run's summary page."""
+    if to:
+        to.write_text(json.dumps(figures(results), indent=2) + "\n", encoding="utf-8")
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with pathlib.Path(summary).open("a", encoding="utf-8") as page:
+            page.write(report(results, *_weak(results)))
+
+
+def report(results: list[Result], survived: list[str], lucky: list[str]) -> str:
     """Render the run as the evidence page."""
     rows = "\n".join(
-        f"| {name} | {count} | `{own}` | {'yes' if by_own else 'NO'} |" for name, count, own, by_own in results
+        f"| {name} | {count} | `{own}` | {'yes' if by_own else 'NO'} |" for name, _, count, own, by_own in results
     )
     proven = len(results) - len(survived) - len(lucky)
     verdict = (

@@ -213,7 +213,14 @@ def _run(*command: str, cwd: Path = ROOT, env: dict[str, str] | None = None) -> 
     return subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True, check=False)
 
 
-def measure(skip_mutation: bool = False, recorded: dict[str, Any] | None = None) -> dict[str, Any]:
+def mutation_command(report: Path | None) -> list[str]:
+    """The mutation run, asked to write its report rule by rule where the checks keep it."""
+    return ["uv", "run", "python", "scripts/mutate.py", *(["--json", str(report)] if report else [])]
+
+
+def measure(
+    skip_mutation: bool = False, recorded: dict[str, Any] | None = None, mutations: Path | None = None
+) -> dict[str, Any]:
     """Every measure, from the tree as it is."""
     with tempfile.TemporaryDirectory() as tmp:
         report = Path(tmp) / "coverage.json"
@@ -230,7 +237,7 @@ def measure(skip_mutation: bool = False, recorded: dict[str, Any] | None = None)
     if skip_mutation and recorded:
         mutation = recorded["mutation"]
     else:
-        mutate = _run("uv", "run", "python", "scripts/mutate.py")
+        mutate = _run(*mutation_command(mutations))
         tally = re.search(r"(\d+)/(\d+) rules turned off", mutate.stdout)
         killed, total = (int(tally[1]), int(tally[2])) if tally else (0, 1)
         mutation = {"killed": killed if mutate.returncode == 0 else min(killed, total - 1), "total": total}
@@ -357,6 +364,7 @@ def main() -> int:
     parser.add_argument("--levels", type=Path, help="main's kept levels for the base, if there are any")
     parser.add_argument("--out", type=Path, help="where to write the levels measured now")
     parser.add_argument("--skip-mutation", action="store_true")
+    parser.add_argument("--mutations", type=Path, help="where the mutation run writes its report, rule by rule")
     args = parser.parse_args()
     if args.action == "measure":
         now = measure()
@@ -368,7 +376,7 @@ def main() -> int:
         print("check needs --base, the ref to compare with (usually origin/main).", file=sys.stderr)
         return 1
     base = base_levels(args.levels, lambda: measure_at(args.base))
-    now = measure(args.skip_mutation, base)
+    now = measure(args.skip_mutation, base, args.mutations)
     if args.out:
         write_levels(args.out, now)
     found = compare(base, now, exceptions(os.environ.get("RATCHET_EXCEPTIONS", "")), budget(FILE))
