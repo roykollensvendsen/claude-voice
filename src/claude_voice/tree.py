@@ -31,6 +31,7 @@ BRIDGE_NODE = "claude-voice"
 COURIER_PREFIX = "claude-voice-msg-"
 WINDOW_SECONDS = 24 * 3600
 SUBAGENT_SECONDS = 3600
+CHUNK = 1 << 20  # bytes of a transcript read at a time
 MESSAGE = re.compile(r'<cross-session-message from="(?P<address>[^"]*)" from-name="(?P<name>[^"]*)"')
 SOCKET_PID = re.compile(r"/(\d+)\.sock$")
 
@@ -76,25 +77,35 @@ class _Transcript:
         self.moved_to: str | None = None  # set by a continued-in line, cleared by later talk
 
     def update(self) -> None:
+        # A transcript can pass a gigabyte, so it is read a chunk at a time: reading it whole
+        # once needed twice its size, and the allocator kept most of that after.
         try:
             with self.path.open("rb") as f:
                 f.seek(self.offset)
-                data = f.read()
+                while chunk := f.read(CHUNK):
+                    self.offset += len(chunk)
+                    done, newline, unfinished = chunk.rpartition(b"\n")
+                    if not newline:  # still inside one long line
+                        self.rest += unfinished
+                        continue
+                    lines = (self.rest + done).split(b"\n")
+                    self.rest = unfinished
+                    for line in lines:
+                        self._read(line)
         except OSError:
             return
-        self.offset += len(data)
-        *lines, self.rest = (self.rest + data).split(b"\n")
-        for line in lines:
-            try:
-                entry = json.loads(line)
-            except ValueError:
-                continue
-            if entry.get("type") == "continued-in":
-                self.moved_to = str(entry.get("continuedInSessionId") or "") or None
-            elif entry.get("type") in ("user", "assistant"):
-                self.moved_to = None
-            when = _timestamp(entry)
-            self.seen.extend((when, kind, who, address) for kind, who, address in _messages(entry))
+
+    def _read(self, line: bytes) -> None:
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            return
+        if entry.get("type") == "continued-in":
+            self.moved_to = str(entry.get("continuedInSessionId") or "") or None
+        elif entry.get("type") in ("user", "assistant"):
+            self.moved_to = None
+        when = _timestamp(entry)
+        self.seen.extend((when, kind, who, address) for kind, who, address in _messages(entry))
 
 
 class SessionTree:

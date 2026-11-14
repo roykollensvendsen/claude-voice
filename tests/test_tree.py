@@ -7,8 +7,9 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from claude_agent_sdk import project_key_for_directory
 
+from claude_voice import tree as tree_module
 from claude_voice.store import Store
-from claude_voice.tree import BRIDGE_NODE, SessionTree
+from claude_voice.tree import BRIDGE_NODE, SessionTree, _Transcript
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
 PID = os.getpid()
@@ -324,3 +325,70 @@ def test_messages_from_the_bridge_are_not_counted_between_sessions(world):
     b, b_cwd = world.session("beta")
     world.transcript(b, b_cwd, [peer_message("claude-voice-msg-ab-cd", "uds:/run/user/1000/cc-socks/1.sock")])
     assert world.tree().message_counts(7 * 24 * 3600) == {}
+
+
+class RecordedReads:
+    """A transcript path whose open file records the size asked of every read."""
+
+    def __init__(self, path):
+        self.path = path
+        self.sizes = []
+
+    def open(self, mode):
+        real = self.path.open(mode)
+        sizes = self.sizes
+
+        class File:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                real.close()
+
+            def seek(self, offset):
+                return real.seek(offset)
+
+            def read(self, size=-1):
+                sizes.append(size)
+                return real.read(size)
+
+        return File()
+
+
+def test_a_large_transcript_is_read_a_bounded_chunk_at_a_time(tmp_path, monkeypatch):
+    monkeypatch.setattr(tree_module, "CHUNK", 256, raising=False)
+    path = tmp_path / "t.jsonl"
+    path.write_text("".join(json.dumps(send(f"peer-{i}")) + "\n" for i in range(20)))
+    recorded = RecordedReads(path)
+    transcript = _Transcript(recorded)
+    transcript.update()
+    assert len(transcript.seen) == 20
+    assert recorded.sizes
+    assert all(0 < size <= 256 for size in recorded.sizes)
+
+
+def test_chunked_reading_keeps_every_message_and_the_unfinished_last_line(tmp_path, monkeypatch):
+    monkeypatch.setattr(tree_module, "CHUNK", 64, raising=False)  # lines straddle chunk boundaries
+    entries = [
+        json.dumps(send("beta")),
+        json.dumps({"type": "user", "timestamp": stamp(), "message": {"content": "x" * 500}}),  # spans many chunks
+        "not json",
+        json.dumps(peer_message("gamma", "uds:/g.sock")),
+        json.dumps({"type": "continued-in", "continuedInSessionId": "sid-next"}),
+    ]
+    unfinished = json.dumps(send("delta"))
+    path = tmp_path / "t.jsonl"
+    path.write_bytes(("\n".join(entries) + "\n" + unfinished[:30]).encode())
+    transcript = _Transcript(path)
+    transcript.update()
+    when = (NOW - timedelta(minutes=1)).timestamp()
+    assert transcript.seen == [(when, "sent", "beta", ""), (when, "received", "gamma", "uds:/g.sock")]
+    assert transcript.moved_to == "sid-next"
+    assert transcript.rest == unfinished[:30].encode()
+    assert transcript.offset == path.stat().st_size
+    with path.open("ab") as f:
+        f.write((unfinished[30:] + "\n").encode())
+    transcript.update()
+    assert transcript.seen[-1] == (when, "sent", "delta", "")
+    assert transcript.rest == b""
+    assert transcript.moved_to is None
