@@ -1165,19 +1165,25 @@ def build_server(
             raise ToolError(str(exc)) from None
 
     transcript_sizes: dict[str, int] = {}
+    built_at = time.time()
 
     def announce_new_turns() -> None:
         """Tell open streams which running session wrote something new. A transcript is only
-        read once it has grown, so a quiet session costs one look at its size."""
+        read once it has grown, or on first sight when it was written since the bridge started,
+        so a quiet session costs one look at its size."""
         for d in live_sessions():
             sid, cwd = str(d.get("sessionId")), str(d.get("cwd"))
             path = projects_dir / project_key_for_directory(cwd) / f"{sid}.jsonl"
             try:
-                size = path.stat().st_size
+                stat = path.stat()
             except OSError:
                 continue
+            size = stat.st_size
             seen = transcript_sizes.get(sid)
             transcript_sizes[sid] = size
+            # RULE: a quiet session costs one look at its size even on the first look
+            if seen is None and stat.st_mtime < built_at:
+                continue  # last written before the bridge started; the page has read it all
             # A session seen for the first time is announced too: after a restart the page reads
             # the open session as soon as the stream is back, while this first look takes seconds,
             # and a turn written in between would otherwise wait for the session's next one.
