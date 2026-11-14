@@ -40,4 +40,4 @@ the session that held it.
 
 CONTRIBUTING.md, `scripts/mutations/` (one row per rule, in a file of its own
 since 2026-11-14, so pull requests adding rows no longer collide; the older
-`scripts/mutations.toml` empties into it), `tests/test_rules.py`.
+shared `scripts/mutations.toml` was emptied into it and removed), `tests/test_rules.py`.

@@ -1,0 +1,5 @@
+[[rule]]
+name = "rules already in the settings are kept"
+file = "src/claude_voice/permissions.py"
+find = 'kept = list\(have.get\(key\) or \[\]\)'
+replace = 'kept = []'

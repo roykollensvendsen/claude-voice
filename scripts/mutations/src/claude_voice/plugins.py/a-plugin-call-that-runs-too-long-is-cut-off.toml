@@ -1,0 +1,5 @@
+[[rule]]
+name = "a plugin call that runs too long is cut off"
+file = "src/claude_voice/plugins.py"
+find = 'return await asyncio\.wait_for\(client\.call_tool\(tool, arguments\), self\.spec\.timeout\)'
+replace = 'return await client.call_tool(tool, arguments)'

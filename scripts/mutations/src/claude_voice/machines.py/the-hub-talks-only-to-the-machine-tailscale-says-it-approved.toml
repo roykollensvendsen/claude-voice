@@ -1,0 +1,5 @@
+[[rule]]
+name = "the hub talks only to the machine Tailscale says it approved"
+file = "src/claude_voice/machines.py"
+find = 'if node is None or node\[0\] != self.approval\["node"\]:'
+replace = 'if False:'

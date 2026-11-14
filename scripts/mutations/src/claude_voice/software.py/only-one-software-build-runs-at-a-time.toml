@@ -1,0 +1,5 @@
+[[rule]]
+name = "only one software build runs at a time"
+file = "src/claude_voice/software.py"
+find = 'if not self\._building\.acquire\(blocking=False\):'
+replace = 'if False:'

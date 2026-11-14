@@ -1,0 +1,5 @@
+[[rule]]
+name = "a call needs the key and the tailnet identity of the paired hub"
+file = "src/claude_voice/agent.py"
+find = 'right_key = hmac.compare_digest\(_hash\(key\), str\(found\["key"\]\)\)'
+replace = 'right_key = True'

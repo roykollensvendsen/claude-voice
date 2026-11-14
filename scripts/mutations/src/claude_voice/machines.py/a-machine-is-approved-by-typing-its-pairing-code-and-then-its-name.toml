@@ -1,0 +1,5 @@
+[[rule]]
+name = "a machine is approved by typing its pairing code and then its name"
+file = "src/claude_voice/machines.py"
+find = 'if ask\(f"Type \{spec.name\} to approve it, anything else to stop: "\).strip\(\) != spec.name:'
+replace = 'if False:'

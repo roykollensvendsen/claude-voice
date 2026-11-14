@@ -1,0 +1,5 @@
+[[rule]]
+name = "only a well-formed model name and a known effort reach Claude Code"
+file = "src/claude_voice/server.py"
+find = 'if model is not None and not transcripts\.MODEL_NAME\.fullmatch\(model\):'
+replace = 'if False:'

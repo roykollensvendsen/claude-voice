@@ -1,0 +1,5 @@
+[[rule]]
+name = "a reply to the courier is news the voice reads"
+file = "src/claude_voice/server.py"
+find = 'transcripts\.hear_replies\('
+replace = '(lambda listen: None)('

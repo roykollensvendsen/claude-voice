@@ -1,0 +1,5 @@
+[[rule]]
+name = "a refresh token stays usable for a minute after it is spent"
+file = "src/claude_voice/oauth.py"
+find = '\(self\.clock\(\) \+ REUSE_GRACE, _hash\(refresh_token\.token\)\),'
+replace = '(self.clock(), _hash(refresh_token.token)),'

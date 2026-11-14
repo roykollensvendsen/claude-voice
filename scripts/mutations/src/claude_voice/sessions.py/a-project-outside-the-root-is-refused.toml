@@ -1,0 +1,5 @@
+[[rule]]
+name = "a project outside the root is refused"
+file = "src/claude_voice/sessions.py"
+find = 'if path != self.root and self.root not in path.parents:'
+replace = 'if False:'

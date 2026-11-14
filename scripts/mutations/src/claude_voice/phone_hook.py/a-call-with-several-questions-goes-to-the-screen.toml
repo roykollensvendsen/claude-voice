@@ -1,0 +1,5 @@
+[[rule]]
+name = "a call with several questions goes to the screen"
+file = "src/claude_voice/phone_hook.py"
+find = 'if len\(tool_input.get\("questions"\) or \[\]\) > 1:'
+replace = 'if False:'

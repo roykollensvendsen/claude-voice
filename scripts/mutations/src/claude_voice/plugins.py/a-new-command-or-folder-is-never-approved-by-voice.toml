@@ -1,0 +1,5 @@
+[[rule]]
+name = "a new command or folder is never approved by voice"
+file = "src/claude_voice/plugins.py"
+find = 'return found\.get\("place"\) == place_fingerprint\(spec\) or'
+replace = 'return True'

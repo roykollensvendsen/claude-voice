@@ -1,0 +1,5 @@
+[[rule]]
+name = "a role naming a session that is not running is warned about"
+file = "src/claude_voice/org.py"
+find = 'if name not in running:'
+replace = 'if False:'

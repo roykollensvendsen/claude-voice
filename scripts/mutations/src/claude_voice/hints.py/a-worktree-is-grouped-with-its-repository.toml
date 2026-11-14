@@ -1,0 +1,5 @@
+[[rule]]
+name = "a worktree is grouped with its repository"
+file = "src/claude_voice/hints.py"
+find = 'path = PurePath\(\*parts\[:i\]\)'
+replace = 'pass'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a question asked inside a subagent is not open"
+file = "src/claude_voice/transcripts.py"
+find = 'if isinstance\(entry, dict\) and not entry.get\("isSidechain"\):'
+replace = 'if isinstance(entry, dict):'

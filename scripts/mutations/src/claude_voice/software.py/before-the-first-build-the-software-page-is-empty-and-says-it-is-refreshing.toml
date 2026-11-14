@@ -1,0 +1,5 @@
+[[rule]]
+name = "before the first build the software page is empty and says it is refreshing"
+file = "src/claude_voice/software.py"
+find = 'self\._refreshing = True$'
+replace = 'self._refreshing = False'

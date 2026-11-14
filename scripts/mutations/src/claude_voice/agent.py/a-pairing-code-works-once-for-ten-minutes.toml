@@ -1,0 +1,5 @@
+[[rule]]
+name = "a pairing code works once, for ten minutes"
+file = "src/claude_voice/agent.py"
+find = 'if not open_ or self.clock\(\) > float\(open_.get\("until", 0\)\):'
+replace = 'if not open_:'

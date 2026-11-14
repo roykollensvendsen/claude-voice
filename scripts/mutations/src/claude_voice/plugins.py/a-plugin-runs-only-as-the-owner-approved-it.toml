@@ -1,0 +1,5 @@
+[[rule]]
+name = "a plugin runs only as the owner approved it"
+file = "src/claude_voice/plugins.py"
+find = 'return _approval\(spec, path\)\.get\("runs"\) == fingerprint\(spec\)'
+replace = 'return True'

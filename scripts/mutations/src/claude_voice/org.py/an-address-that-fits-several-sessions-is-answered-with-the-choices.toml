@@ -1,0 +1,5 @@
+[[rule]]
+name = "an address that fits several sessions is answered with the choices"
+file = "src/claude_voice/org.py"
+find = 'if len\(hits\) > 1:'
+replace = 'if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a question no hook waits on is refused as on the screen"
+file = "src/claude_voice/answers.py"
+find = 'if prompt is None or prompt\["answer"\] is not None:'
+replace = 'if prompt is None:'

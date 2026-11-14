@@ -1,0 +1,5 @@
+[[rule]]
+name = "only talking to a session puts it in focus and a look at it does not"
+file = "src/claude_voice/api.py"
+find = 'event = "focus" if tool in TALK_TOOLS else "peek"'
+replace = 'event = "focus"'

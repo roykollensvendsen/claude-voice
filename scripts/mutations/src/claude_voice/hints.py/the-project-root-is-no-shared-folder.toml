@@ -1,0 +1,5 @@
+[[rule]]
+name = "the project root is no shared folder"
+file = "src/claude_voice/hints.py"
+find = 'if path == top:'
+replace = 'if False:'

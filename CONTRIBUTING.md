@@ -119,8 +119,7 @@ and it changes only by hand.
    `scripts/mutations/src/claude_voice/store.py/a-write-is-kept.toml`. Every
    voice repository uses this same layout. One shared file collided
    with every other pull request that added a row; a file per row never does.
-   The older rows still in `scripts/mutations.toml` move there in a pull
-   request of their own; add none there.
+   `scripts/mutations/README.md` shows a row and what each field means.
 
    Do not edit the tree while it runs. It refuses to restore a file that
    changed underneath it and says so, but the run it was in the middle of is

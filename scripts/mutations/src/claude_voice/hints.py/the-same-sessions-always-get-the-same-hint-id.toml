@@ -1,0 +1,5 @@
+[[rule]]
+name = "the same sessions always get the same hint id"
+file = "src/claude_voice/hints.py"
+find = 'joined = ",".join\(sorted\(sessions\)\)'
+replace = 'joined = ",".join(sessions)'

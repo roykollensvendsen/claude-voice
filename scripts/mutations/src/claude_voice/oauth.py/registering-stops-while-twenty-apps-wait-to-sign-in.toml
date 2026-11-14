@@ -1,0 +1,5 @@
+[[rule]]
+name = "registering stops while twenty apps wait to sign in"
+file = "src/claude_voice/oauth.py"
+find = 'if waiting >= MAX_UNUSED_CLIENTS:'
+replace = 'if False:'

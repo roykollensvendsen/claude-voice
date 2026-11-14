@@ -1,0 +1,5 @@
+[[rule]]
+name = "the software page answers at once from the report it keeps"
+file = "src/claude_voice/software.py"
+find = 'report = self\._report$'
+replace = 'report = self._build()'

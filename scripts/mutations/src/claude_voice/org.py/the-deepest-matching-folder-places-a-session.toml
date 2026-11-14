@@ -1,0 +1,5 @@
+[[rule]]
+name = "the deepest matching folder places a session"
+file = "src/claude_voice/org.py"
+find = 'if _under\(folder, cwd\) and \(best is None or len\(folder.parts\) > best\[0\]\):'
+replace = 'if _under(folder, cwd) and best is None:'

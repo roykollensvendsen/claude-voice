@@ -1,0 +1,5 @@
+[[rule]]
+name = "only an origin named in the settings may call across sites"
+file = "src/claude_voice/server.py"
+find = 'allow_origins=list\(ui_origins\),'
+replace = 'allow_origins=["*"],'

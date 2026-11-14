@@ -1,0 +1,5 @@
+[[rule]]
+name = "a misread env file line is a warning and never stops the check"
+file = "src/claude_voice/cli.py"
+find = 'add\("env_file", False, problem\.detail, problem\.fix, required=False\)'
+replace = 'add("env_file", False, problem.detail, problem.fix, required=True)'

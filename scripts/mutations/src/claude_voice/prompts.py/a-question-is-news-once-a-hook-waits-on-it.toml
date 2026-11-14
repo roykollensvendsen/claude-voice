@@ -1,0 +1,5 @@
+[[rule]]
+name = "a question is news once a hook waits on it"
+file = "src/claude_voice/prompts.py"
+find = 'if not hook\["told"\]:'
+replace = 'if True:'

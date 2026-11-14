@@ -1,0 +1,5 @@
+[[rule]]
+name = "the hook leaves alone the session the voice is talking to"
+file = "src/claude_voice/phone_hook.py"
+find = 'if spoken_to and session == spoken_to:'
+replace = 'if False:'

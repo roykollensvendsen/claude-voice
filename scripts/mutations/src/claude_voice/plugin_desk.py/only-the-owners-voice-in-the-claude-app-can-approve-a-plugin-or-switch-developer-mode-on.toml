@@ -1,0 +1,5 @@
+[[rule]]
+name = "only the owners voice in the claude app can approve a plugin or switch developer mode on"
+file = "src/claude_voice/plugin_desk.py"
+find = 'if caller != "claude_app":'
+replace = 'if False:'

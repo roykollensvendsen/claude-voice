@@ -1,0 +1,5 @@
+[[rule]]
+name = "the agent listens on its tailnet address only"
+file = "src/claude_voice/agent.py"
+find = 'if address is None or address not in tailnet.TAILNET:'
+replace = 'if address is None:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a failed summary says what to do next"
+file = "src/claude_voice/detail.py"
+find = 'self\.errors\[sid\] = f"\{reason\}\. \{RETRY\}"'
+replace = 'self.errors[sid] = reason'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "the hook closes a prompt it steps aside from"
+file = "src/claude_voice/phone_hook.py"
+find = 'bridge.close\(prompt_id, "screen"\)$'
+replace = 'pass'

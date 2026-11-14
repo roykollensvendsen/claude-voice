@@ -1,0 +1,5 @@
+[[rule]]
+name = "a rule the settings already have is not added again"
+file = "src/claude_voice/permissions.py"
+find = 'if rule not in kept:'
+replace = 'if True:'

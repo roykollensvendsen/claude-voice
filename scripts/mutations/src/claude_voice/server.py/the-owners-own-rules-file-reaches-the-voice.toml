@@ -1,0 +1,5 @@
+[[rule]]
+name = "the owners own rules file reaches the voice"
+file = "src/claude_voice/server.py"
+find = 'return f"\{INSTRUCTIONS\}\\n\{OWN_RULES_HEADING\}\\n\{own\}\\n"'
+replace = 'return INSTRUCTIONS'

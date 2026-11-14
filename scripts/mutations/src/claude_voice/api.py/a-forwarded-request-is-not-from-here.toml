@@ -1,0 +1,5 @@
+[[rule]]
+name = "a forwarded request is not from here"
+file = "src/claude_voice/api.py"
+find = 'if _forwarded\(headers\):'
+replace = 'if False:'

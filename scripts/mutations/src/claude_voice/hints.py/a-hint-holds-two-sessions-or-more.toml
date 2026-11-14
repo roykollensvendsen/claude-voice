@@ -1,0 +1,5 @@
+[[rule]]
+name = "a hint holds two sessions or more"
+file = "src/claude_voice/hints.py"
+find = 'return len\(sessions\) >= 2'
+replace = 'return len(sessions) >= 1'

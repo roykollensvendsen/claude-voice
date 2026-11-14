@@ -1,0 +1,5 @@
+[[rule]]
+name = "an older backup is never overwritten"
+file = "src/claude_voice/permissions.py"
+find = 'with backup.open\("xb"\) as out:'
+replace = 'with backup.open("wb") as out:'

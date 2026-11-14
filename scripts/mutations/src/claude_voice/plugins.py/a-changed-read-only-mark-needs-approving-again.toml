@@ -1,0 +1,5 @@
+[[rule]]
+name = "a changed read only mark needs approving again"
+file = "src/claude_voice/plugins.py"
+find = 'return found\.get\("marks"\) == mark_fingerprint\(spec, listing\)'
+replace = 'return True'

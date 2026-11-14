@@ -1,0 +1,5 @@
+[[rule]]
+name = "local changes stop the update before anything is touched"
+file = "src/claude_voice/updater.py"
+find = 'if not ok or changed:'
+replace = 'if not ok:'

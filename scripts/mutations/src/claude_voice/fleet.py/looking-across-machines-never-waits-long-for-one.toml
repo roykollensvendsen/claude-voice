@@ -1,0 +1,5 @@
+[[rule]]
+name = "looking across machines never waits long for one"
+file = "src/claude_voice/fleet.py"
+find = 'asyncio.gather\(machine.call\("fleet_recap", \{\}\), self._approvals\(machine\)\), ASK_SECONDS'
+replace = 'asyncio.gather(machine.call("fleet_recap", {}), self._approvals(machine)), None'

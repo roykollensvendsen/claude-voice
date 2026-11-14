@@ -1,0 +1,5 @@
+[[rule]]
+name = "any other push to main or master asks first"
+file = "src/claude_voice/permissions.py"
+find = 'ask \+= _for_each_branch\(protected\["branches"\], protected\.get\("other pushes", \[\]\)\)'
+replace = 'ask += []'

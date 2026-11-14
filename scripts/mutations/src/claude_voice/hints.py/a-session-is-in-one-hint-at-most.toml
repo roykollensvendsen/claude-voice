@@ -1,0 +1,5 @@
+[[rule]]
+name = "a session is in one hint at most"
+file = "src/claude_voice/hints.py"
+find = 'left\.pop\(sid\)'
+replace = 'left.get(sid)'

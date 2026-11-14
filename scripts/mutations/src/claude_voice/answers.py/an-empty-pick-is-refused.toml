@@ -1,0 +1,5 @@
+[[rule]]
+name = "an empty pick is refused"
+file = "src/claude_voice/answers.py"
+find = 'if not said:'
+replace = 'if False:'

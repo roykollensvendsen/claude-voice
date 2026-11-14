@@ -1,0 +1,5 @@
+[[rule]]
+name = "a repository that is not owner slash name is refused"
+file = "src/claude_voice/config.py"
+find = 'if not isinstance\(value, str\) or not REPO\.fullmatch\(value\) or "\.\." in value:'
+replace = 'if not isinstance(value, str):'

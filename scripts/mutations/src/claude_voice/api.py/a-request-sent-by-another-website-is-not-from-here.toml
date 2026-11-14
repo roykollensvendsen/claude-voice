@@ -1,0 +1,5 @@
+[[rule]]
+name = "a request sent by another website is not from here"
+file = "src/claude_voice/api.py"
+find = 'return origin is None or origin in _own\(port, "http://"\)'
+replace = 'return True'

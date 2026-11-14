@@ -1,0 +1,5 @@
+[[rule]]
+name = "a request from another computer is not from here"
+file = "src/claude_voice/api.py"
+find = 'if not _loopback\(peer\):'
+replace = 'if False:'

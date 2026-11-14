@@ -1,0 +1,5 @@
+[[rule]]
+name = "a second run writes nothing"
+file = "src/claude_voice/permissions.py"
+find = 'if after == before:'
+replace = 'if False:'
