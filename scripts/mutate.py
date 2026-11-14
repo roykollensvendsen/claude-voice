@@ -61,6 +61,9 @@ def row_path(rule: dict) -> pathlib.PurePosixPath:
     source = pathlib.PurePosixPath(rule["file"])
     module = source.parts[2:] if source.parts[0] == "src" else source.parts
     words = re.sub(r"[^a-z0-9]+", "-", str(rule["name"]).lower()).strip("-")
+    if not words:
+        msg = f"the rule {rule['name']!r} has no letter or digit to file its row under; reword it"
+        raise SystemExit(msg)
     return pathlib.PurePosixPath(*module).with_suffix("") / f"{words}.toml"
 
 
@@ -70,19 +73,19 @@ def _rows_in(path: pathlib.Path) -> list[dict]:
 
 def all_rows(table: pathlib.Path = TABLE, folder: pathlib.Path = ROWS) -> list[dict]:
     """Every row: the shared table first, then one file per row, in path order."""
-    rows = _rows_in(table) if table.exists() else []
+    found = [(table.name, rule) for rule in (_rows_in(table) if table.exists() else [])]
     for path in sorted(folder.rglob("*.toml")) if folder.is_dir() else []:
-        rows += _rows_in(path)
-    seen: set[str] = set()
-    for rule in rows:
-        if rule["name"] in seen:
+        found += [(f"{folder.name}/{path.relative_to(folder).as_posix()}", rule) for rule in _rows_in(path)]
+    where: dict[str, str] = {}
+    for place, rule in found:
+        if rule["name"] in where:
             msg = (
-                f"the rule {rule['name']!r} has two rows; delete the one in {table.name}"
-                f" and keep {folder.name}/{row_path(rule)}"
+                f"the rule {rule['name']!r} has two rows, in {where[rule['name']]} and in {place};"
+                f" delete one and keep {folder.name}/{row_path(rule)}"
             )
             raise SystemExit(msg)
-        seen.add(rule["name"])
-    return rows
+        where[rule["name"]] = place
+    return [rule for _, rule in found]
 
 
 def misfiled(folder: pathlib.Path = ROWS) -> list[str]:
