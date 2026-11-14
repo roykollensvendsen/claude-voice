@@ -113,10 +113,11 @@ and it changes only by hand.
    fails the run when something else broke instead. A kill by an unrelated test
    is not evidence about the rule.
 
-   A row has a file of its own, named after the rule, in the folder named
-   after the module it switches off: `# RULE: a write is kept` in
+   A row has a file of its own, named after the rule, in a folder that is the
+   whole path of the file it switches off: `# RULE: a write is kept` in
    `src/claude_voice/store.py` goes in
-   `scripts/mutations/store/a-write-is-kept.toml`. One shared file collided
+   `scripts/mutations/src/claude_voice/store.py/a-write-is-kept.toml`. Every
+   voice repository uses this same layout. One shared file collided
    with every other pull request that added a row; a file per row never does.
    The older rows still in `scripts/mutations.toml` move there in a pull
    request of their own; add none there.

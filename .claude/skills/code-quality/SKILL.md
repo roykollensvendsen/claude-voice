@@ -83,8 +83,8 @@ section 4 applies.
 
 **A rule nobody proves.** `mutate.py` names each rule whose removal no test
 noticed. A rule is a line marked `# RULE: what it says`; it needs a row of its
-own in `scripts/mutations/<module>/<the rule's words>.toml` and a test named in
-the rule's own words
+own in `scripts/mutations/<the source file's path>/<the rule's words>.toml` and
+a test named in the rule's own words
 (`# RULE: a spoken reply is capped` wants `test_a_spoken_reply_is_capped`).
 Write that test, run the mutation, see that very test go red, and keep the row.
 Never loosen a row or point it at something easier to make the count go up; if
