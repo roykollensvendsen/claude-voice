@@ -165,3 +165,34 @@ def test_a_row_file_sits_in_its_module_s_folder_under_its_own_name(tmp_path):
 def test_every_row_file_in_the_repository_is_where_its_rule_says():
     misfiled = _mutate().misfiled()
     assert not misfiled, "row files out of place: " + "; ".join(misfiled)
+
+
+def test_the_same_rule_in_two_row_files_names_both(tmp_path):
+    """Two copies can both sit in the folders, one moved and one misfiled; the refusal
+    must point at both, not at a shared table that holds neither."""
+    table, folder = tmp_path / "mutations.toml", tmp_path / "mutations"
+    (folder / "store").mkdir(parents=True)
+    (folder / "api").mkdir()
+    (folder / "store" / "twice.toml").write_text(_row("twice"), encoding="utf-8")
+    (folder / "api" / "twice.toml").write_text(_row("twice"), encoding="utf-8")
+    try:
+        _mutate().all_rows(table, folder)
+    except SystemExit as refused:
+        said = str(refused)
+        assert "api/twice.toml" in said
+        assert "store/twice.toml" in said
+        assert "mutations.toml" not in said
+    else:
+        raise AssertionError("a rule with two rows was read")
+
+
+def test_a_rule_whose_words_give_no_file_name_is_refused():
+    """A name with no letter or digit would be filed as ".toml", and the next such
+    name would land on top of it."""
+    try:
+        _mutate().row_path({"name": "?!", "file": "src/claude_voice/store.py"})
+    except SystemExit as refused:
+        assert "?!" in str(refused)
+        assert "letter" in str(refused)
+    else:
+        raise AssertionError("a name with nothing to file it under was given a path")
