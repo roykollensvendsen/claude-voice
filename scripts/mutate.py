@@ -31,7 +31,7 @@ import tomllib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 TABLE = ROOT / "scripts/mutations.toml"
-#: One row per file: scripts/mutations/<module>/<the rule's words>.toml. Every pull
+#: One row per file: scripts/mutations/<the row's file, whole>/<the rule's words>.toml. Every pull
 #: request that added a row at the end of the one shared table collided with every
 #: other; a file per row only meets another pull request adding the same rule.
 ROWS = ROOT / "scripts/mutations"
@@ -53,18 +53,19 @@ def test_name_for(rule: str) -> str:
 
 
 def row_path(rule: dict) -> pathlib.PurePosixPath:
-    """Where a rule's row belongs, under ``ROWS``: its module's folder, its own words.
+    """Where a rule's row belongs, under ``ROWS``: the whole path of the file it
+    switches off, then the rule's own words.
 
-    ``src/claude_voice/store.py`` gives the folder ``store``; a rule named
-    "a write is kept" gives the file ``a-write-is-kept.toml``.
+    A rule named "a write is kept" in ``src/claude_voice/store.py`` goes in
+    ``src/claude_voice/store.py/a-write-is-kept.toml``. The whole path, extension
+    included, is the same layout in every repository and every language, and no
+    two source files can share a folder.
     """
-    source = pathlib.PurePosixPath(rule["file"])
-    module = source.parts[2:] if source.parts[0] == "src" else source.parts
     words = re.sub(r"[^a-z0-9]+", "-", str(rule["name"]).lower()).strip("-")
     if not words:
         msg = f"the rule {rule['name']!r} has no letter or digit to file its row under; reword it"
         raise SystemExit(msg)
-    return pathlib.PurePosixPath(*module).with_suffix("") / f"{words}.toml"
+    return pathlib.PurePosixPath(rule["file"]) / f"{words}.toml"
 
 
 def _rows_in(path: pathlib.Path) -> list[dict]:

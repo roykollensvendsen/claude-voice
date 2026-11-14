@@ -122,8 +122,8 @@ def test_a_row_in_a_file_of_its_own_is_read_with_the_table(tmp_path):
     per row cannot. Until the old rows move, both places are read."""
     table, folder = tmp_path / "mutations.toml", tmp_path / "mutations"
     table.write_text(_row("one in the table"), encoding="utf-8")
-    (folder / "store").mkdir(parents=True)
-    (folder / "store" / "one-in-a-file.toml").write_text(_row("one in a file"), encoding="utf-8")
+    (folder / "src/claude_voice/store.py").mkdir(parents=True)
+    (folder / "src/claude_voice/store.py" / "one-in-a-file.toml").write_text(_row("one in a file"), encoding="utf-8")
     names = [rule["name"] for rule in _mutate().all_rows(table, folder)]
     assert names == ["one in the table", "one in a file"]
 
@@ -133,8 +133,8 @@ def test_the_same_rule_with_two_rows_is_refused(tmp_path):
     and count it twice."""
     table, folder = tmp_path / "mutations.toml", tmp_path / "mutations"
     table.write_text(_row("twice"), encoding="utf-8")
-    (folder / "store").mkdir(parents=True)
-    (folder / "store" / "twice.toml").write_text(_row("twice"), encoding="utf-8")
+    (folder / "src/claude_voice/store.py").mkdir(parents=True)
+    (folder / "src/claude_voice/store.py" / "twice.toml").write_text(_row("twice"), encoding="utf-8")
     try:
         _mutate().all_rows(table, folder)
     except SystemExit as refused:
@@ -144,21 +144,23 @@ def test_the_same_rule_with_two_rows_is_refused(tmp_path):
         raise AssertionError("a rule with two rows was read")
 
 
-def test_a_row_file_sits_in_its_module_s_folder_under_its_own_name(tmp_path):
-    """One row per file, the file named after the rule, in the folder named after the
-    module it switches off: then where a row lives is never a choice, and two pull
+def test_a_row_file_sits_in_its_source_s_folder_under_its_own_name(tmp_path):
+    """One row per file, the file named after the rule, in a folder that is the path
+    of the source it switches off: then where a row lives is never a choice, and two pull
     requests only meet when they add the same rule."""
     folder = tmp_path / "mutations"
-    (folder / "store").mkdir(parents=True)
-    (folder / "api").mkdir()
-    (folder / "store" / "in-place.toml").write_text(_row("in place"), encoding="utf-8")
-    (folder / "api" / "wrong-folder.toml").write_text(_row("wrong folder"), encoding="utf-8")
-    (folder / "store" / "a-wrong-name.toml").write_text(_row("named otherwise"), encoding="utf-8")
-    (folder / "store" / "two-rows.toml").write_text(_row("two rows") + _row("in one file"), encoding="utf-8")
+    store, api = folder / "src/claude_voice/store.py", folder / "src/claude_voice/api.py"
+    store.mkdir(parents=True)
+    api.mkdir(parents=True)
+    (store / "in-place.toml").write_text(_row("in place"), encoding="utf-8")
+    (api / "wrong-folder.toml").write_text(_row("wrong folder"), encoding="utf-8")
+    (store / "a-wrong-name.toml").write_text(_row("named otherwise"), encoding="utf-8")
+    (store / "two-rows.toml").write_text(_row("two rows") + _row("in one file"), encoding="utf-8")
     found = " ".join(_mutate().misfiled(folder))
-    assert "api/wrong-folder.toml should be store/wrong-folder.toml" in found
-    assert "store/a-wrong-name.toml should be store/named-otherwise.toml" in found
-    assert "store/two-rows.toml holds 2 rows" in found
+    there = "src/claude_voice/store.py"
+    assert f"src/claude_voice/api.py/wrong-folder.toml should be {there}/wrong-folder.toml" in found
+    assert f"{there}/a-wrong-name.toml should be {there}/named-otherwise.toml" in found
+    assert f"{there}/two-rows.toml holds 2 rows" in found
     assert "in-place" not in found
 
 
@@ -171,16 +173,16 @@ def test_the_same_rule_in_two_row_files_names_both(tmp_path):
     """Two copies can both sit in the folders, one moved and one misfiled; the refusal
     must point at both, not at a shared table that holds neither."""
     table, folder = tmp_path / "mutations.toml", tmp_path / "mutations"
-    (folder / "store").mkdir(parents=True)
-    (folder / "api").mkdir()
-    (folder / "store" / "twice.toml").write_text(_row("twice"), encoding="utf-8")
-    (folder / "api" / "twice.toml").write_text(_row("twice"), encoding="utf-8")
+    (folder / "src/claude_voice/store.py").mkdir(parents=True)
+    (folder / "src/claude_voice/api.py").mkdir(parents=True)
+    (folder / "src/claude_voice/store.py" / "twice.toml").write_text(_row("twice"), encoding="utf-8")
+    (folder / "src/claude_voice/api.py" / "twice.toml").write_text(_row("twice"), encoding="utf-8")
     try:
         _mutate().all_rows(table, folder)
     except SystemExit as refused:
         said = str(refused)
-        assert "api/twice.toml" in said
-        assert "store/twice.toml" in said
+        assert "src/claude_voice/api.py/twice.toml" in said
+        assert "src/claude_voice/store.py/twice.toml" in said
         assert "mutations.toml" not in said
     else:
         raise AssertionError("a rule with two rows was read")
@@ -196,3 +198,17 @@ def test_a_rule_whose_words_give_no_file_name_is_refused():
         assert "letter" in str(refused)
     else:
         raise AssertionError("a name with nothing to file it under was given a path")
+
+
+def test_a_row_s_folder_is_the_whole_path_of_the_file_it_switches_off():
+    """The same layout in every repository, whatever the language. A shorter folder
+    name would put src/app.ts and src/app/ together, src/app/home.ts and
+    src/view/home.ts together, and x.h and x.c together."""
+    row_path = _mutate().row_path
+    words = {"name": "a press needs a yes"}
+    assert str(row_path({**words, "file": "src/claude_voice/server.py"})) == (
+        "src/claude_voice/server.py/a-press-needs-a-yes.toml"
+    )
+    assert str(row_path({**words, "file": "src/app.ts"})) == "src/app.ts/a-press-needs-a-yes.toml"
+    assert row_path({**words, "file": "src/app/home.ts"}) != row_path({**words, "file": "src/view/home.ts"})
+    assert row_path({**words, "file": "firmware/door.h"}) != row_path({**words, "file": "firmware/door.c"})
