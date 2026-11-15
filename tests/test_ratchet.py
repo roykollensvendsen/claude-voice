@@ -259,18 +259,76 @@ def test_a_second_stop_cannot_cut_the_cleanup_short():
             signal.signal(s, handler)
 
 
-def test_a_stop_while_main_is_being_checked_out_still_removes_the_checkout(monkeypatch, tmp_path):
-    """The checkout is made inside the `try` that removes it, so a stop right after it can't
-    leave git's record of it behind."""
-    calls = []
+def test_a_stop_while_main_is_being_copied_still_removes_the_copy(monkeypatch, tmp_path):
+    """The copy is made inside the ratchet's own folder, which goes whatever stops the run."""
+    monkeypatch.setattr(ratchet.tempfile, "tempdir", str(tmp_path))
 
     def run(*args, **kwargs):
-        calls.append(args[:3])
-        if args[:3] == ("git", "worktree", "add"):
-            raise SystemExit(143)  # a stop the moment the checkout exists
-        return ratchet.subprocess.CompletedProcess(args, 0, "", "")
+        if args[:2] == ("git", "fetch"):
+            raise SystemExit(143)  # a stop the moment the copy has begun
+        return ratchet.subprocess.CompletedProcess(args, 0, "abc123\n", "")
 
     monkeypatch.setattr(ratchet, "_run", run)
     with pytest.raises(SystemExit):
         ratchet.measure_at("main")
-    assert ("git", "worktree", "remove") in calls
+    assert list(tmp_path.iterdir()) == []
+
+
+def _git(where, *args):
+    import subprocess
+
+    return subprocess.run(["git", *args], cwd=where, capture_output=True, text=True, check=True).stdout.strip()
+
+
+def test_the_base_is_measured_where_no_other_branch_can_be_seen(monkeypatch, tmp_path):
+    """A worktree shares every branch of the clone, and git keeps a record of it that a kill leaves."""
+    here = tmp_path / "clone"
+    here.mkdir()
+    _git(here, "init", "-q", "-b", "main")
+    _git(here, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "--allow-empty", "-m", "base")
+    _git(here, "branch", "under-review")
+    monkeypatch.setattr(ratchet, "ROOT", here)
+    copy = tmp_path / "copy"
+    ratchet.copy_of("main", copy)
+    assert _git(copy, "rev-parse", "HEAD") == _git(here, "rev-parse", "main")
+    assert _git(copy, "for-each-ref") == ""
+    assert _git(here, "worktree", "list").count("\n") == 0  # no record of the copy in the clone
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows has no flock; there the sweep does nothing")
+def test_a_killed_ratchet_s_copy_is_removed_at_the_next_start(tmp_path):
+    import os
+
+    left = ratchet.HeldFolder(dir=tmp_path)
+    os.close(left._lock)
+    left._lock = None
+    ratchet.sweep(tmp_path)
+    assert not left.path.exists()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows has no flock; there the sweep does nothing")
+def test_a_ratchet_copy_still_in_use_is_never_removed(tmp_path):
+    import os
+    import time
+
+    held = ratchet.HeldFolder(dir=tmp_path)
+    young, old = tmp_path / f"{ratchet.RUN_PREFIX}young", tmp_path / f"{ratchet.RUN_PREFIX}old"
+    young.mkdir()
+    old.mkdir()
+    an_hour_ago = time.time() - 2 * 60 * 60
+    os.utime(old, (an_hour_ago, an_hour_ago))
+    try:
+        ratchet.sweep(tmp_path)
+        assert (held.path.exists(), young.exists(), old.exists()) == (True, True, False)
+    finally:
+        held.remove()
+    assert not held.path.exists()
+
+
+def test_the_ratchet_sweeps_before_it_measures(monkeypatch):
+    seen = []
+    monkeypatch.setattr(ratchet, "stop_cleanly", lambda: seen.append("stop"))
+    monkeypatch.setattr(ratchet, "sweep", lambda: seen.append("sweep"))
+    monkeypatch.setattr(sys, "argv", ["ratchet.py", "check"])
+    assert ratchet.main() == 1
+    assert seen == ["stop", "sweep"]
