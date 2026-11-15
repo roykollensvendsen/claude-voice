@@ -1,0 +1,5 @@
+[[rule]]
+name = "anything a run leaves in its root fails the run"
+file = "scripts/temproot.py"
+find = '^\s*if entry\.name not in keep:$'
+replace = 'if False:'

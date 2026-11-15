@@ -37,10 +37,13 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import temproot
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -53,6 +56,8 @@ PACKAGE = SOURCE / "gizmo_mcp"
 COVERAGE_WOBBLE = 0.5  # percentage points: coverage differs slightly between machines and versions
 HIGHER = ("coverage", "mutation", "tests")
 LOWER = ("lint_errors", "type_errors", "cycles", "layer_violations", "duplication")
+#: Where each run keeps its folder, held by a lock and removed at its end (scripts/temproot.py).
+RATCHET_TMP = temproot.parent_for("ratchet", ROOT)
 DEFAULT_BUDGET = {"seconds": 60, "tolerance": 0.25}
 NEW_MODULE_CEILING = 15  # the most tangled function a new module may have
 BLOCK = 6  # lines in a row that count as a copied block
@@ -301,24 +306,25 @@ def _python(*args: str, cwd: Path = ROOT, env: dict[str, str] | None = None) -> 
 
 
 def measure(*, skip_mutation: bool = False, recorded: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Every measure, from the tree as it is."""
-    with tempfile.TemporaryDirectory() as tmp:
-        report = Path(tmp) / "coverage.json"
+    """Every measure, from the tree as it is; every tool it starts keeps its files in this run's folder."""
+    with temproot.run_folder(RATCHET_TMP) as tmp:
+        env = {**os.environ, "TMPDIR": str(tmp)}
+        report = tmp / "coverage.json"
         started = time.monotonic()
-        suite = _python("-m", "pytest", "-q", "-p", "no:cacheprovider", "--cov", f"--cov-report=json:{report}")
+        suite = _python("-m", "pytest", "-q", "-p", "no:cacheprovider", "--cov", f"--cov-report=json:{report}", env=env)
         seconds = round(time.monotonic() - started, 1)
         if suite.returncode:
             raise SystemExit("The suite fails; the ratchet measures a green tree.\n" + suite.stdout[-2000:])
         coverage = round(json.loads(report.read_text())["totals"]["percent_covered"], 2)
-    passed = re.search(r"(\d+) passed", suite.stdout)
-    lint = _python("-m", "ruff", "check", ".", "--output-format", "json")
-    types = _python("-m", "mypy", "src")
-    type_errors = re.search(r"Found (\d+) errors?", types.stdout)
-    if skip_mutation and recorded:
-        mutation = recorded["mutation"]
-    else:
-        mutate = _python("scripts/mutate.py")
-        mutation = mutation_tally(mutate.stdout, mutate.returncode)
+        passed = re.search(r"(\d+) passed", suite.stdout)
+        lint = _python("-m", "ruff", "check", ".", "--output-format", "json", env=env)
+        types = _python("-m", "mypy", "src", env=env)
+        type_errors = re.search(r"Found (\d+) errors?", types.stdout)
+        if skip_mutation and recorded:
+            mutation = recorded["mutation"]
+        else:
+            mutate = _python("scripts/mutate.py", env=env)
+            mutation = mutation_tally(mutate.stdout, mutate.returncode)
     return {
         "coverage": coverage,
         "mutation": mutation,
@@ -415,15 +421,18 @@ def base_levels(kept: Path | None, measure_base: Callable[[], dict[str, Any]]) -
     return measure_base()
 
 
-def measure_at(ref: str) -> dict[str, Any]:
+def measure_at(ref: str, repo: Path | None = None) -> dict[str, Any]:
     """Measure `ref` in a copy of it, with this ratchet, so both sides are measured alike.
 
     The copy keeps its own tests and scripts unchanged: this ratchet runs from where it is
-    and is pointed at the copy, so the base is measured exactly as it stands.
+    and is pointed at the copy, so the base is measured exactly as it stands. The copy is a
+    git worktree in this run's folder; it is removed, and dropped from git's list, however
+    the measuring ends.
     """
-    with tempfile.TemporaryDirectory() as tmp:
-        copy, out = Path(tmp) / "base", Path(tmp) / "levels.json"
-        added = _run("git", "worktree", "add", "--detach", str(copy), ref)
+    repo = ROOT if repo is None else repo
+    with temproot.run_folder(RATCHET_TMP) as tmp:
+        copy, out = tmp / "base", tmp / "levels.json"
+        added = _run("git", "worktree", "add", "--detach", str(copy), ref, cwd=repo)
         if added.returncode:
             msg = f"Cannot check out {ref} to measure it:\n{added.stderr}"
             raise SystemExit(msg)
@@ -432,7 +441,7 @@ def measure_at(ref: str) -> dict[str, Any]:
             if synced.returncode:
                 msg = f"Cannot install {ref} to measure it:\n{synced.stderr[-2000:]}"
                 raise SystemExit(msg)
-            env = {**os.environ, "RATCHET_ROOT": str(copy)}
+            env = {**os.environ, "RATCHET_ROOT": str(copy), "TMPDIR": str(tmp)}
             here = str(Path(__file__).resolve())
             measured = _run("uv", "run", "--no-sync", "python", here, "measure", "--out", str(out), cwd=copy, env=env)
             if measured.returncode:
@@ -440,7 +449,9 @@ def measure_at(ref: str) -> dict[str, Any]:
                 raise SystemExit(msg)
             return dict(json.loads(out.read_text()))
         finally:
-            _run("git", "worktree", "remove", "--force", str(copy))
+            # RULE: a measured base leaves no checkout behind
+            _run("git", "worktree", "remove", "--force", str(copy), cwd=repo)
+            _run("git", "worktree", "prune", cwd=repo)
 
 
 def main() -> int:
@@ -452,6 +463,9 @@ def main() -> int:
     parser.add_argument("--out", type=Path, help="where to write the levels measured now")
     parser.add_argument("--skip-mutation", action="store_true")
     args = parser.parse_args()
+    temproot.exit_on_signals()
+    # A base checkout a killed run left is dropped from git's list too, not only from the disk.
+    _run("git", "worktree", "prune")
     if args.action == "measure":
         now = measure()
         if args.out:

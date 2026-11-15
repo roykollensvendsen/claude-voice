@@ -4,9 +4,12 @@ It comes from claude-voice's. The layers among the modules are counted here too,
 that the code-health page can show them, and `tests/test_layers.py` refuses a breach outright.
 """
 
+import ast
 import importlib.util
 import json
+import os
 import pathlib
+import subprocess
 import textwrap
 
 import pytest
@@ -257,3 +260,36 @@ def test_the_mutation_tally_is_read_from_the_mutation_scripts_last_line():
     # A run that failed for any other reason is never a full score.
     assert ratchet.mutation_tally(full, returncode=1) == {"killed": 8, "total": 9}
     assert ratchet.mutation_tally("Traceback ...", returncode=1) == {"killed": 0, "total": 1}
+
+
+# -- what a run leaves behind ------------------------------------------------------------
+
+
+def _git(repo, *args):
+    env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid"}
+    env |= {"GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid"}
+    done = subprocess.run(["git", *args], cwd=repo, env={**os.environ, **env}, capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
+    return done.stdout
+
+
+def test_a_measured_base_leaves_no_checkout_behind(tmp_path, monkeypatch):
+    """However measuring the base ends, here by failing to install it, its checkout goes from disk and git."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "chore: Start")
+    monkeypatch.setattr(ratchet, "RATCHET_TMP", tmp_path / "ratchet-tmp")
+    with pytest.raises((SystemExit, OSError)):
+        ratchet.measure_at("HEAD", repo)
+    assert _git(repo, "worktree", "list", "--porcelain").count("worktree ") == 1
+    assert not (tmp_path / "ratchet-tmp").exists()
+
+
+def test_both_tools_turn_a_stop_signal_into_a_clean_exit():
+    """So CI's SIGTERM runs their clean-up; `tests/test_temproot.py` proves what the call does."""
+    for script in ("mutate.py", "ratchet.py"):
+        tree = ast.parse((ROOT / "scripts" / script).read_text(encoding="utf-8"))
+        main = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "main")
+        calls = [ast.unparse(c.func) for c in ast.walk(main) if isinstance(c, ast.Call)]
+        assert "temproot.exit_on_signals" in calls, script

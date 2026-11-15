@@ -20,11 +20,12 @@ ROOT = pathlib.Path(__file__).parent.parent
 
 
 @pytest.fixture
-def mutate():
-    """The runner, loaded by path: scripts/ is not a package."""
+def mutate(tmp_path):
+    """The runner, loaded by path: scripts/ is not a package. Its suites keep their files in tmp_path."""
     spec = importlib.util.spec_from_file_location("mutate_runner", ROOT / "scripts/mutate.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    module.MUTATE_TMP = tmp_path / "mutate-tmp"
     return module
 
 
@@ -82,8 +83,6 @@ def test_rules_marked_with_no_rows_fail_the_run(tmp_path, monkeypatch, mutate, c
     monkeypatch.setattr(mutate, "ROOT", root)
     monkeypatch.setattr(mutate, "ROWS", root / "scripts/mutations")
     monkeypatch.setattr(mutate, "RECOVERY", root / "scripts/.mutate-recovery.json")
-    # Its own temporary folder too: the real one holds a running mutation run's suite.
-    monkeypatch.setattr(mutate, "MUTATE_TMP", tmp_path / "mutate-tmp")
     assert mutate.main() == 1
     said = capsys.readouterr().out
     assert "src/pkg/core.py mark rules" in said
@@ -99,8 +98,6 @@ def test_a_repository_with_no_rules_marked_passes_with_no_rows(tmp_path, monkeyp
     monkeypatch.setattr(mutate, "ROOT", root)
     monkeypatch.setattr(mutate, "ROWS", root / "scripts/mutations")
     monkeypatch.setattr(mutate, "RECOVERY", root / "scripts/.mutate-recovery.json")
-    # Its own temporary folder too: the real one holds a running mutation run's suite.
-    monkeypatch.setattr(mutate, "MUTATE_TMP", tmp_path / "mutate-tmp")
     assert mutate.main() == 0
 
 

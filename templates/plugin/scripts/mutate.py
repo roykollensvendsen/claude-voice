@@ -23,23 +23,20 @@ what requires that test to exist in the first place.
 from __future__ import annotations
 
 import argparse
-import contextlib
 import datetime as dt
-import hashlib
+import itertools
 import json
 import os
 import pathlib
 import re
-import shutil
-import stat
 import subprocess
 import sys
-import tempfile
 import tomllib
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
+import temproot
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 #: One row per file: scripts/mutations/<the row's file, whole>/<the rule's words>.toml. Every pull
@@ -50,12 +47,11 @@ ROWS = ROOT / "scripts/mutations"
 #: not run when the process is killed, so without this a hard stop leaves a
 #: source file switched off and the next person wondering why the suite is red.
 RECOVERY = ROOT / "scripts/.mutate-recovery.json"
-#: Where each suite run keeps its temporary files, one folder per run, removed when it
-#: ends. Outside the checkout, where a test making a git repository of its own would
-#: find this one instead; named after the checkout, so two never sweep each other's.
-MUTATE_TMP = pathlib.Path(tempfile.gettempdir()) / (
-    "gizmo-mcp-mutate-" + hashlib.sha256(str(ROOT).encode()).hexdigest()[:8]
-)
+#: Where each mutation run keeps its folder, ``run-<n>``, held by a lock and removed when the run
+#: ends; a killed run's is swept at the next start (scripts/temproot.py). Outside the checkout,
+#: where a test making a git repository of its own would find this one instead, and named after
+#: the checkout, so two never sweep each other's.
+MUTATE_TMP = temproot.parent_for("mutate", ROOT)
 
 
 def test_name_for(rule: str) -> str:
@@ -175,44 +171,6 @@ def broken(file: str, mutated: str) -> str | None:
     return None
 
 
-def _open_up(place: pathlib.Path) -> None:
-    """Give the owner back every right on one folder or file, adding to the rights it has.
-
-    A link is left alone: changing its rights would change whatever it points to,
-    which may be outside the run's folder.
-    """
-    if place.is_symlink():
-        return
-    with contextlib.suppress(OSError):
-        place.chmod(place.stat().st_mode | stat.S_IRWXU)
-
-
-def _writable_again(func: Callable[[str], object], path: str, _exc: object) -> None:
-    """Let a refused delete through: open up the path and its folder, then try again."""
-    for place in (pathlib.Path(path).parent, pathlib.Path(path)):
-        _open_up(place)
-    func(path)
-
-
-def _remove(folder: pathlib.Path) -> None:
-    """Delete a run's folder, even where a test took away the rights to read or delete it."""
-    if not folder.exists():
-        return
-    # A folder a test shut (mode 0) cannot even be listed, so open every folder first;
-    # the handler then covers anything that still refuses.
-    for place, folders, _ in os.walk(folder):
-        for name in folders:
-            _open_up(pathlib.Path(place) / name)
-    shutil.rmtree(folder, onexc=_writable_again)
-
-
-def sweep() -> None:
-    """Remove what an earlier run, killed before it could clean up, left behind."""
-    # RULE: a killed run's temporary files are swept at the next start
-    for left in MUTATE_TMP.iterdir() if MUTATE_TMP.is_dir() else []:
-        _remove(left)
-
-
 def repair() -> None:
     """Put back a file an earlier run was killed in the middle of mutating."""
     if not RECOVERY.is_file():
@@ -238,6 +196,8 @@ def restore(path: pathlib.Path, original: str, mutated: str) -> bool:
     return True
 
 
+#: Numbers each suite run's folder within this run.
+_SUITES = itertools.count(1)
 #: Colour codes pytest writes around FAILED, which a line-anchored pattern
 #: would otherwise never match.
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
@@ -253,8 +213,12 @@ def files_naming(test: str) -> list[str]:
     ]
 
 
-def run_suite(targets: list[str] | None = None) -> tuple[int, list[str]]:
-    """Run the tests (only `targets` when given) and give back how many failed, and which ones."""
+def run_suite(targets: list[str] | None = None, place: pathlib.Path | None = None) -> tuple[int, list[str]]:
+    """Run the tests (only `targets` when given) and give back how many failed, and which ones.
+
+    The suite keeps its temporary files in a folder of its own inside `place`, this run's folder,
+    and so do the processes it starts: its TMPDIR points there too. The folder is removed after.
+    """
     # Two mutations that replace equal-length text leave files of identical
     # size, and CPython validates a cached .pyc from the source's modification
     # time and size -- both at one-second resolution. Inside the same second
@@ -262,8 +226,9 @@ def run_suite(targets: list[str] | None = None) -> tuple[int, list[str]]:
     # the wrong rule, so no bytecode is written at all.
     # RULE: two mutations never share a bytecode cache
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
-    MUTATE_TMP.mkdir(parents=True, exist_ok=True)
-    temporary = pathlib.Path(tempfile.mkdtemp(prefix="run-", dir=MUTATE_TMP))
+    temporary = (MUTATE_TMP if place is None else place) / f"suite-{next(_SUITES)}"
+    temporary.mkdir(parents=True)
+    env["TMPDIR"] = str(temporary)
     try:
         r = subprocess.run(
             [
@@ -286,7 +251,7 @@ def run_suite(targets: list[str] | None = None) -> tuple[int, list[str]]:
         )
     finally:
         # RULE: a suite run leaves no temporary files behind
-        _remove(temporary)
+        temproot.remove(temporary)
     # --color=no covers the usual run; stripping covers a configuration that
     # turns colour back on, which would otherwise make every kill unattributable.
     # RULE: a coloured failure line is still attributed
@@ -302,12 +267,17 @@ def main() -> int:
     parser.add_argument("--write", type=pathlib.Path, help="write the evidence table here")
     parser.add_argument("--json", type=pathlib.Path, help="write the run's figures here, for the checks to keep")
     args = parser.parse_args()
-
+    temproot.exit_on_signals()
     repair()
-    sweep()
     rules = all_rows()
     if not rules:
         return no_rows()
+    with temproot.run_folder(MUTATE_TMP) as here:
+        return mutate_all(rules, here, args)
+
+
+def mutate_all(rules: list[dict], here: pathlib.Path, args: argparse.Namespace) -> int:
+    """Switch each rule off in turn, keeping every suite's files in `here`; report, and restore."""
     results = []
     lost: list[str] = []
     bad_rows: list[str] = []
@@ -332,7 +302,7 @@ def main() -> int:
             standing = (path, text, mutated)
             # Only the files holding the rule's own test: the suite once per rule outgrew
             # the time the check has. A rule with no test of its own runs the whole suite.
-            count, failed = run_suite(files_naming(test_name_for(rule["name"])))
+            count, failed = run_suite(files_naming(test_name_for(rule["name"])), here)
             if not restore(path, text, mutated):
                 lost.append(rule["file"])
             standing = None

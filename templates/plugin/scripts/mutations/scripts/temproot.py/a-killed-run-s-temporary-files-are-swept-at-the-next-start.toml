@@ -1,0 +1,5 @@
+[[rule]]
+name = "a killed run's temporary files are swept at the next start"
+file = "scripts/temproot.py"
+find = '^\s*if stale\(folder\):$'
+replace = 'if False:'
