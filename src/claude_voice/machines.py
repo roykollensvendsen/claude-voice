@@ -21,7 +21,7 @@ from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Any
 
-from . import plugins, tailnet
+from . import invocation, plugins, tailnet
 from .config import MachineSpec, PluginSpec
 
 log = logging.getLogger("claude_voice")
@@ -148,9 +148,9 @@ def state(spec: MachineSpec, folder: Path = FOLDER) -> str:
     """Whether `spec` is approved, in a few words."""
     approval = _approvals(folder).get(spec.name)
     if not isinstance(approval, dict) or not _key_file(folder, spec.name).exists():
-        return f"not approved; run: claude-voice machines approve {spec.name}"
+        return f"not approved; run: {invocation.command()} machines approve {spec.name}"
     if approval.get("address") != spec.address:
-        return f"approved at another address; run: claude-voice machines approve {spec.name}"
+        return f"approved at another address; run: {invocation.command()} machines approve {spec.name}"
     tools = ", ".join(plugins.exposed_name(spec.name, t) for t in sorted(approval.get("listing", {})))
     return f"approved, as {approval.get('seen_as')}; tools {tools}"
 
@@ -189,7 +189,7 @@ class Machine(plugins.Plugin):
         name = self.machine.name
         refused = _refusal(exc)
         if refused is not None:
-            return f"{refused}; to approve it again, run on the hub: claude-voice machines approve {name}"
+            return f"{refused}; to approve it again, run on the hub: {invocation.command()} machines approve {name}"
         return f"{name} did not answer; it may be asleep, offline, or not running `claude-voice agent`"
 
 
@@ -237,7 +237,8 @@ def start_approved(
         except OSError:
             key = ""
         if not isinstance(approval, dict) or not key or approval.get("address") != spec.address:
-            log.info("machine %s is not approved; run: claude-voice machines approve %s", spec.name, spec.name)
+            run = invocation.command()
+            log.info("machine %s is not approved; run: %s machines approve %s", spec.name, run, spec.name)
             continue
         machine = Machine(spec, approval, key, http, whois)
         machine.offered = plugins.offer(server, machine, approval["listing"])

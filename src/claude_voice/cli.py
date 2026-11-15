@@ -11,7 +11,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from . import envfile, procs, restarts
+from . import envfile, invocation, procs, restarts
 from .config import STATE_DIR
 from .server import Config, ConfigError, load_config, serve_forever
 
@@ -90,7 +90,8 @@ def checks(
         add("project_root", root.is_dir(), f"projects under {root}", f"Make it with `mkdir -p {root}`.")
     if transport == "http" and "secret" not in names:
         token = env.get("CLAUDE_VOICE_TOKEN", "")
-        add("secret", len(token) >= 32, "a login secret is set", "Set CLAUDE_VOICE_TOKEN; see `claude-voice check`.")
+        fix = f"Set CLAUDE_VOICE_TOKEN; see `{invocation.command()} check`."
+        add("secret", len(token) >= 32, "a login secret is set", fix)
     if env.get("ANTHROPIC_API_KEY") and env.get("CLAUDE_VOICE_ALLOW_API_KEY") == "1":
         add("signed_in", True, "Claude Code uses the API key")
     else:
@@ -227,7 +228,7 @@ def _plugin_state(spec: PluginSpec) -> str:
         return "approved"
     if why == "not started":
         return "approved, but it did not start; check its command and folder"
-    return f"{why}; to approve it, run: claude-voice plugins approve {spec.name}"
+    return f"{why}; to approve it, run: {invocation.command()} plugins approve {spec.name}"
 
 
 def _list_plugins(specs: list[PluginSpec]) -> int:
