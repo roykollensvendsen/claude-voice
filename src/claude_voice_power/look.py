@@ -48,7 +48,12 @@ def look(logind: Logind, machine: str, now_usec: int, check_inhibitors: bool = T
         # RULE: a shutdown not made by the helper is never cancelled or replaced
         found.refused = f"{machine} already has a {planned.kind} planned; I'll leave it."
     if check_inhibitors:
-        for inhibitor in logind.inhibitors():
-            found.notes.append(f"{inhibitor.who} holds it up: {inhibitor.why}")
-            found.blocked = found.blocked or inhibitor.blocks
+        _note_inhibitors(found, logind)
     return found
+
+
+def _note_inhibitors(found: Look, logind: Logind) -> None:
+    """Name each program that holds a shutdown up, and say whether one of them can stop it."""
+    for inhibitor in logind.inhibitors():
+        found.notes.append(f"{inhibitor.who} holds it up: {inhibitor.why}")
+        found.blocked = found.blocked or inhibitor.blocks
