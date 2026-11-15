@@ -672,6 +672,10 @@ def build_server(
 
     @contextlib.asynccontextmanager
     async def lifespan(_server):
+        # A restart kills the bridge, so its helpers' folders are cleared here, at the next start.
+        with contextlib.suppress(Exception):
+            if removed := transcripts.sweep_helper_folders():
+                log.info("removed %d helper folders a stopped bridge left behind", len(removed))
         # Watch running sessions between polls, so short-lived states are not missed.
         task = None
         if watch_interval:
