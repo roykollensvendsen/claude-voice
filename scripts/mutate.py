@@ -252,7 +252,9 @@ def run_suite(targets: list[str] | None = None) -> tuple[int, list[str]]:
     temporary = pathlib.Path(tempfile.mkdtemp(prefix="run-", dir=MUTATE_TMP))
     # A mutant that switches off a cleanup leaks into the suite's temporary folder. Pointing that
     # here keeps the leak in this run's folder, removed below, out of the machine's.
-    # RULE: a mutant's leaked temporary folder stays inside the run's own folder
+    # Not marked as a rule: none of this file's rules has a mutation row yet, so a marker would
+    # claim evidence nobody gathers. Its test is
+    # test_a_mutant_s_leaked_temporary_folder_stays_inside_the_run_s_own_folder.
     env["TMPDIR"] = str(temporary)
     try:
         # A plain run is enough here, unlike a ratchet step: nothing outside stops it on its own.
