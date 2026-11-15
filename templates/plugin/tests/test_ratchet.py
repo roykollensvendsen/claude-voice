@@ -276,16 +276,58 @@ def _git(repo, *args):
     return done.stdout
 
 
-def test_a_measured_base_leaves_no_checkout_behind(tmp_path, monkeypatch):
-    """However measuring the base ends, here by failing to install it, its checkout goes from disk and git."""
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _git(repo, "init", "-q", "-b", "main")
-    _git(repo, "commit", "-q", "--allow-empty", "-m", "chore: Start")
+def _clone(tmp_path):
+    here = tmp_path / "clone"
+    here.mkdir()
+    _git(here, "init", "-q", "-b", "main")
+    for message in ("chore: Start", "chore: Go on"):
+        _git(here, "commit", "-q", "--allow-empty", "-m", message)
+    _git(here, "branch", "under-review")
+    return here
+
+
+def test_the_base_is_measured_where_no_other_branch_can_be_seen(tmp_path):
+    """A worktree shares every branch of the clone, and git keeps a record of it that a kill leaves.
+
+    Clearing such records with `git worktree prune` would also drop other sessions' worktrees
+    this process cannot see, so the base is a repository of its own instead, holding one commit.
+    """
+    here = _clone(tmp_path)
+    copy = tmp_path / "copy"
+    ratchet.copy_of("main", copy, here)
+    assert _git(copy, "rev-parse", "HEAD") == _git(here, "rev-parse", "main")
+    assert _git(copy, "for-each-ref") == ""
+    assert _git(here, "worktree", "list", "--porcelain").count("worktree ") == 1
+
+
+def test_the_base_may_be_a_commit_no_branch_points_at(tmp_path, monkeypatch):
+    """CI's base is main's commit when the pull request began, which main may have moved past.
+
+    git's newer protocol fetches such a commit by its id; the older one refuses unless asked,
+    so the test sets the older one, as an old git or a person's own settings would.
+    """
+    settings = tmp_path / "gitconfig"
+    settings.write_text("[protocol]\n\tversion = 0\n")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(settings))
+    here = _clone(tmp_path)
+    behind = _git(here, "rev-parse", "main~1")
+    ratchet.copy_of(behind.strip(), tmp_path / "copy", here)
+    assert _git(tmp_path / "copy", "rev-parse", "HEAD") == behind
+
+
+def test_no_ratchet_run_drops_another_checkout_s_record():
+    """`git worktree prune` drops the record of every worktree whose folder this process cannot see."""
+    code = (ROOT / "scripts/ratchet.py").read_text(encoding="utf-8")
+    assert '"worktree"' not in code
+
+
+def test_a_measured_base_leaves_no_copy_behind(tmp_path, monkeypatch):
+    """However measuring the base ends, here by failing to install it, its copy goes."""
+    here = _clone(tmp_path)
+    monkeypatch.setattr(ratchet, "ROOT", here)
     monkeypatch.setattr(ratchet, "RATCHET_TMP", tmp_path / "ratchet-tmp")
     with pytest.raises((SystemExit, OSError)):
-        ratchet.measure_at("HEAD", repo)
-    assert _git(repo, "worktree", "list", "--porcelain").count("worktree ") == 1
+        ratchet.measure_at("main", here)
     assert not (tmp_path / "ratchet-tmp").exists()
 
 
@@ -302,29 +344,61 @@ finally:
     mark.write_text("put-back")
 """
 
-#: Stands in for the ratchet: the real stop handling, and the real way it runs its child.
+#: Stands in for uv between the ratchet and the mutation run: it waits for its child through
+#: any Ctrl-C and passes none on, so the child hears a stop only if its whole session is told.
+LAUNCHER = """
+import subprocess, sys
+child = subprocess.Popen([sys.executable, "-c", sys.argv[1], sys.argv[2]])
+while True:
+    try:
+        sys.exit(child.wait())
+    except KeyboardInterrupt:
+        pass
+"""
+
+#: Stands in for the ratchet: the real stop handling, and the real way it runs a step.
 STOPPED_RATCHET = """
 import importlib.util, sys
 spec = importlib.util.spec_from_file_location("ratchet", sys.argv[1])
 ratchet = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ratchet)
 ratchet.temproot.exit_on_signals()
-ratchet.stoppable([sys.executable, "-c", sys.argv[2], sys.argv[3]])
+ratchet._run(sys.executable, "-c", sys.argv[2], sys.argv[3], sys.argv[4])
 """
 
 
 def test_a_stopped_ratchet_lets_its_mutation_run_put_the_line_back(tmp_path):
-    """Its child gets Ctrl-C and as long as it needs: killed, it would leave a rule switched off."""
+    """The step's whole session gets Ctrl-C, and as long as it needs: killed, a rule stays switched off.
+
+    The mutation run sits below a launcher, as below uv, so it hears the stop only when the
+    whole session is told. The ratchet names the command that ends a step that hangs even so.
+    """
     mark = tmp_path / "mark"
     ratchet_run = subprocess.Popen(
-        [sys.executable, "-c", STOPPED_RATCHET, str(ROOT / "scripts/ratchet.py"), MUTATION_RUN, str(mark)]
+        [sys.executable, "-c", STOPPED_RATCHET, str(ROOT / "scripts/ratchet.py"), LAUNCHER, MUTATION_RUN, str(mark)],
+        stderr=subprocess.PIPE,
+        text=True,
     )
     deadline = time.monotonic() + 30
     while not mark.exists() and time.monotonic() < deadline:
         time.sleep(0.02)
     ratchet_run.send_signal(signal.SIGTERM)
-    assert ratchet_run.wait(timeout=30) == 143
+    _, said = ratchet_run.communicate(timeout=30)
+    assert ratchet_run.returncode == 143
     assert mark.read_text() == "put-back"
+    assert "kill -9 -- -" in said
+
+
+def test_a_quality_step_hears_terminal_stops_only_through_the_ratchet():
+    """A Ctrl-C in the terminal reaches the whole foreground group; a step there would hear it twice."""
+    done = ratchet._run(sys.executable, "-c", "import os; print(os.getsid(0))")
+    assert int(done.stdout) != os.getsid(0)
+
+
+def test_a_step_with_a_lot_to_say_never_blocks():
+    """Its output goes to files, not pipes, and all of it comes back."""
+    done = ratchet._run(sys.executable, "-c", "import sys; sys.stdout.write('x' * 1_000_000)")
+    assert len(done.stdout) == 1_000_000
 
 
 def test_both_tools_turn_a_stop_signal_into_a_clean_exit():

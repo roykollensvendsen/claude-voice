@@ -32,12 +32,14 @@ from __future__ import annotations
 
 import argparse
 import ast
+import contextlib
 import json
 import os
 import re
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -293,31 +295,39 @@ def mutation_tally(output: str, returncode: int) -> dict[str, int]:
     return {"killed": killed if returncode == 0 else min(killed, total - 1), "total": total}
 
 
-def _run(
-    *command: str,
-    cwd: Path = ROOT,
-    env: dict[str, str] | None = None,
-) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True, check=False)
+def _run(*command: str, cwd: Path = ROOT, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    """Run one step, and stop it as Ctrl-C would if the ratchet is stopped while it runs.
 
-
-def stoppable(
-    command: list[str], cwd: Path = ROOT, env: dict[str, str] | None = None
-) -> subprocess.CompletedProcess[str]:
-    """Run `command`; if this run is stopped meanwhile, let it stop as Ctrl-C stops it, however long that takes.
-
-    The mutation run has a rule switched off while its suite runs. Killed, it would leave the line
-    switched off in the tree; given SIGINT and waited for, its own `finally` puts it back.
+    The step gets a session of its own, so a Ctrl-C in the terminal reaches it only through the
+    ratchet, once. On a stop the step's whole session gets SIGINT, uv's children included, and
+    is waited for with no time limit: a mutation run puts its line back before it ends, however
+    long that takes. A step that hangs even so is ended by hand with `kill -9 -- -<its pid>`,
+    which the ratchet prints. Its output goes to temporary files, so a step with a lot to say
+    never blocks on a full pipe, and one that outlives the ratchet never dies of a closed one.
     """
-    child = subprocess.Popen(command, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    try:
-        out, err = child.communicate()
-    except BaseException:
-        # RULE: a stopped ratchet lets its mutation run put the line back
-        child.send_signal(signal.SIGINT)
-        child.wait()
-        raise
-    return subprocess.CompletedProcess(command, child.returncode, out, err)
+    with tempfile.TemporaryFile("w+") as out, tempfile.TemporaryFile("w+") as err:
+        step = subprocess.Popen(
+            command,
+            cwd=cwd,
+            env=env,
+            stdout=out,
+            stderr=err,
+            text=True,
+            # RULE: a quality step hears terminal stops only through the ratchet
+            start_new_session=True,
+        )
+        try:
+            step.wait()
+        except BaseException:
+            sys.stderr.write(f"stopping {command[0]}; if it hangs, end it with: kill -9 -- -{step.pid}\n")
+            with contextlib.suppress(ProcessLookupError):
+                # RULE: a stopped ratchet lets its mutation run put the line back
+                os.killpg(step.pid, signal.SIGINT)
+            step.wait()
+            raise
+        out.seek(0)
+        err.seek(0)
+        return subprocess.CompletedProcess(command, step.returncode, out.read(), err.read())
 
 
 def _python(*args: str, cwd: Path = ROOT, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -343,7 +353,7 @@ def measure(*, skip_mutation: bool = False, recorded: dict[str, Any] | None = No
         if skip_mutation and recorded:
             mutation = recorded["mutation"]
         else:
-            mutate = stoppable([sys.executable, "scripts/mutate.py"], env=env)
+            mutate = _python("scripts/mutate.py", env=env)
             mutation = mutation_tally(mutate.stdout, mutate.returncode)
     return {
         "coverage": coverage,
@@ -441,37 +451,65 @@ def base_levels(kept: Path | None, measure_base: Callable[[], dict[str, Any]]) -
     return measure_base()
 
 
+#: git, set to fetch a commit by its id whether or not a branch points at it. The newer protocol
+#: does by default; the older one, still chosen by an old git or a person's own settings,
+#: refuses unless the serving side allows it.
+ANY_COMMIT = ("git", "-c", "protocol.version=2", "-c", "uploadpack.allowAnySHA1InWant=true")
+
+
+def copy_of(ref: str, copy: Path, repo: Path | None = None) -> None:
+    """Check `ref` out into `copy`, a repository of its own holding that one commit and no ref.
+
+    A worktree would share every branch of this clone, and git keeps a record of it that a
+    killed run leaves behind; clearing such records with a prune would drop other sessions'
+    worktrees too. `ref` may be any commit this clone has, a branch tip or not.
+    """
+    repo = ROOT if repo is None else repo
+    sha = _run("git", "rev-parse", "--verify", f"{ref}^{{commit}}", cwd=repo)
+    if sha.returncode:
+        msg = f"Cannot find {ref} to measure it:\n{sha.stderr}"
+        raise SystemExit(msg)
+    copy.mkdir(parents=True)
+    # RULE: the base is measured where no other branch can be seen
+    steps = (
+        ("git", "init", "-q"),
+        # RULE: the base may be a commit no branch points at
+        (*ANY_COMMIT, "fetch", "-q", "--depth", "1", str(repo), sha.stdout.strip()),
+        ("git", "checkout", "-q", "--detach", "FETCH_HEAD"),
+    )
+    for step in steps:
+        done = _run(*step, cwd=copy)
+        if done.returncode:
+            msg = f"Cannot check out {ref} to measure it:\n{done.stderr}"
+            raise SystemExit(msg)
+
+
+#: What would point uv at another checkout's environment instead of the copy's own.
+OTHER_ENVIRONMENT = ("VIRTUAL_ENV", "UV_PROJECT_ENVIRONMENT")
+
+
 def measure_at(ref: str, repo: Path | None = None) -> dict[str, Any]:
     """Measure `ref` in a copy of it, with this ratchet, so both sides are measured alike.
 
     The copy keeps its own tests and scripts unchanged: this ratchet runs from where it is
-    and is pointed at the copy, so the base is measured exactly as it stands. The copy is a
-    git worktree in this run's folder; it is removed, and dropped from git's list, however
-    the measuring ends.
+    and is pointed at the copy, so the base is measured exactly as it stands. The copy lies in
+    this run's folder, with an environment of its own, and goes with it however the run ends.
     """
-    repo = ROOT if repo is None else repo
     with temproot.run_folder(RATCHET_TMP) as tmp:
         copy, out = tmp / "base", tmp / "levels.json"
-        added = _run("git", "worktree", "add", "--detach", str(copy), ref, cwd=repo)
-        if added.returncode:
-            msg = f"Cannot check out {ref} to measure it:\n{added.stderr}"
+        copy_of(ref, copy, repo)
+        env = {k: v for k, v in os.environ.items() if k not in OTHER_ENVIRONMENT}
+        env |= {"RATCHET_ROOT": str(copy), "TMPDIR": str(tmp)}
+        synced = _run("uv", "sync", "--locked", "--all-extras", cwd=copy, env=env)
+        if synced.returncode:
+            msg = f"Cannot install {ref} to measure it:\n{synced.stderr[-2000:]}"
             raise SystemExit(msg)
-        try:
-            synced = _run("uv", "sync", "--locked", "--all-extras", cwd=copy)
-            if synced.returncode:
-                msg = f"Cannot install {ref} to measure it:\n{synced.stderr[-2000:]}"
-                raise SystemExit(msg)
-            env = {**os.environ, "RATCHET_ROOT": str(copy), "TMPDIR": str(tmp)}
-            here = str(Path(__file__).resolve())
-            measured = _run("uv", "run", "--no-sync", "python", here, "measure", "--out", str(out), cwd=copy, env=env)
-            if measured.returncode:
-                msg = f"Measuring {ref} failed:\n{measured.stdout[-2000:]}{measured.stderr[-2000:]}"
-                raise SystemExit(msg)
-            return dict(json.loads(out.read_text()))
-        finally:
-            # RULE: a measured base leaves no checkout behind
-            _run("git", "worktree", "remove", "--force", str(copy), cwd=repo)
-            _run("git", "worktree", "prune", cwd=repo)
+        here = str(Path(__file__).resolve())
+        measured = _run("uv", "run", "--no-sync", "python", here, "measure", "--out", str(out), cwd=copy, env=env)
+        if measured.returncode:
+            msg = f"Measuring {ref} failed:\n{measured.stdout[-2000:]}{measured.stderr[-2000:]}"
+            raise SystemExit(msg)
+        return dict(json.loads(out.read_text()))
 
 
 def main() -> int:
@@ -484,8 +522,6 @@ def main() -> int:
     parser.add_argument("--skip-mutation", action="store_true")
     args = parser.parse_args()
     temproot.exit_on_signals()
-    # A base checkout a killed run left is dropped from git's list too, not only from the disk.
-    _run("git", "worktree", "prune")
     if args.action == "measure":
         now = measure()
         if args.out:
