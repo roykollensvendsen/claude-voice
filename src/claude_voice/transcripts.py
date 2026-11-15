@@ -15,9 +15,7 @@ import json
 import logging
 import os
 import re
-import shutil
 import signal
-import stat
 import sys
 import tempfile
 import time
@@ -39,7 +37,7 @@ from claude_agent_sdk import (
     project_key_for_directory,
 )
 
-from . import procs
+from . import held_folder, procs
 
 MESSAGING_TOOLS = frozenset({"ListAgents", "SendMessage", "ToolSearch"})
 
@@ -466,98 +464,25 @@ async def _read_sends(turn: AsyncIterator[Any], job: dict[str, Any]) -> tuple[bo
 HELPERS_IN: Path | None = None
 #: Every helper folder's name starts so. The session tree and the peer hook hide a helper by it.
 HELPER_PREFIX = "claude-voice-msg-"
-#: The lock a helper folder holds while it is in use.
-HELPER_LOCK = ".in-use"
-#: How old a folder with no lock must be before it counts as left by a killed bridge.
-HELPER_GRACE_SECONDS = 60 * 60
 
 
-class HelperFolder:
+class HelperFolder(held_folder.HeldFolder):
     """A folder for one helper session to work in, locked while it is in use.
 
     It is removed when the helper closes. A restart kills the bridge, which runs no cleanup,
-    so the next start removes every helper folder whose lock nobody holds.
+    so the next start sweeps away every helper folder whose lock nobody holds.
     """
 
     def __init__(self, prefix: str, dir: Path | None = None) -> None:
-        self.name = tempfile.mkdtemp(prefix=prefix, dir=dir if dir is not None else HELPERS_IN)
-        self._lock: int | None = None
-        if sys.platform != "win32":  # Windows has no flock, so nothing is swept there
-            import fcntl
-
-            # Locked under another name, then renamed, so the lock's name never stands unlocked.
-            starting = os.path.join(self.name, HELPER_LOCK + "-starting")
-            self._lock = os.open(starting, os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o600)
-            fcntl.flock(self._lock, fcntl.LOCK_EX)
-            os.rename(starting, os.path.join(self.name, HELPER_LOCK))
+        super().__init__(prefix, dir if dir is not None else HELPERS_IN)
 
     def cleanup(self) -> None:
-        if self._lock is not None:
-            os.close(self._lock)
-            self._lock = None
-        _remove(Path(self.name))
-
-    def __enter__(self) -> str:
-        return self.name
-
-    def __exit__(self, *_exc: object) -> None:
-        self.cleanup()
-
-
-def _left_behind(path: Path) -> bool:
-    """Whether `path` is a helper folder of this user's that no running bridge holds."""
-    if sys.platform == "win32":
-        return False
-    import fcntl
-
-    try:
-        found = path.lstat()
-    except FileNotFoundError:
-        return False
-    if not stat.S_ISDIR(found.st_mode) or found.st_uid != os.getuid():
-        return False  # a link is never followed, and another user's folder never touched
-    try:
-        lock = os.open(path / HELPER_LOCK, os.O_RDONLY | os.O_NOFOLLOW)
-    except FileNotFoundError:
-        # From a bridge before the lock, or one killed between making the folder and locking it.
-        return time.time() - found.st_mtime > HELPER_GRACE_SECONDS
-    except OSError:
-        return False
-    try:
-        # RULE: a helper folder still in use is never removed
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        return False
-    finally:
-        os.close(lock)
-    return True
+        self.remove()
 
 
 def sweep_helper_folders(temp: Path | None = None) -> list[str]:
     """Remove the helper folders a killed bridge left behind, and name each one removed."""
-    if sys.platform == "win32":
-        return []
-    place = Path(temp or HELPERS_IN or tempfile.gettempdir())
-    removed = []
-    for path in sorted(place.glob(HELPER_PREFIX + "*")):
-        # RULE: a helper folder a killed bridge left is removed at the next start
-        if _left_behind(path):
-            _remove(path)
-            removed.append(path.name)
-    return removed
-
-
-def _remove(folder: Path) -> None:
-    """Delete a helper folder, giving back the rights to any part a helper shut, and say what stays."""
-    for place, folders, _ in os.walk(folder):
-        for name in folders:
-            inner = Path(place) / name
-            if not inner.is_symlink():
-                with contextlib.suppress(OSError):
-                    inner.chmod(inner.stat().st_mode | stat.S_IRWXU)
-    shutil.rmtree(folder, ignore_errors=True)
-    if folder.exists():
-        log.warning("could not remove all of the helper folder %s; remove it by hand", folder)
+    return held_folder.sweep(Path(temp or HELPERS_IN or tempfile.gettempdir()), HELPER_PREFIX)
 
 
 class Courier:

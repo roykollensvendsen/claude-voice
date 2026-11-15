@@ -1,5 +1,0 @@
-[[rule]]
-name = "a helper folder a killed bridge left is removed at the next start"
-file = "src/claude_voice/transcripts.py"
-find = 'if _left_behind\(path\):'
-replace = 'if False:'
