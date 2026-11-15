@@ -1,0 +1,5 @@
+[[rule]]
+name = "a step only a person can take is theirs to run"
+file = "src/claude_voice/setup.py"
+find = 'return Step\(name, DONE, detail\) if done else Step\(name, MANUAL, detail, fix\)'
+replace = 'return Step(name, DONE, detail) if done else Step(name, MISSING, detail, fix)'

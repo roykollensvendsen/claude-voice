@@ -70,6 +70,11 @@ That is the whole bridge, used locally. The next two steps let you reach it from
 a phone: [run it as a service](#run-it-as-a-service-and-reach-it-from-the-phone),
 then give it a public address.
 
+To see every setup step at once, run `claude-voice setup --check`. It says what
+is done, what is missing and what only you can do, and changes nothing. It also
+covers the repositories and plugins your profile names
+([docs/setup.md](docs/setup.md)).
+
 ## What it depends on
 
 Only a signed-in Claude Code is required. Each of the rest adds something, and

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a later profile layer replaces an entry by name"
+file = "src/claude_voice/profiles.py"
+find = 'repos\[entry\.name\] = entry'
+replace = 'repos.setdefault(entry.name, entry)'

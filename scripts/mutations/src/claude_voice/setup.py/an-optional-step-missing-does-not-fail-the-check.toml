@@ -1,0 +1,5 @@
+[[rule]]
+name = "an optional step missing does not fail the check"
+file = "src/claude_voice/setup.py"
+find = 'return \[s for s in found if s\.status == MISSING and not s\.optional\]'
+replace = 'return [s for s in found if s.status == MISSING]'

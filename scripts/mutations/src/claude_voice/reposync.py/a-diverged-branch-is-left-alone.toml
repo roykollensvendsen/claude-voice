@@ -1,0 +1,5 @@
+[[rule]]
+name = "a diverged branch is left alone"
+file = "src/claude_voice/reposync.py"
+find = 'if self\.ahead and self\.behind:'
+replace = 'if False:'

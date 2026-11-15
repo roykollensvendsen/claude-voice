@@ -1,0 +1,5 @@
+[[rule]]
+name = "a folder with uncommitted or untracked files is left alone"
+file = "src/claude_voice/reposync.py"
+find = 'if self\.dirty:'
+replace = 'if False:'

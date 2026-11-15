@@ -97,11 +97,15 @@ LAYERS = {
             "prompts",
             "manifest",
             "home",
+            "reposync",
+            "profiles",
         ),
         1,
     ),  # parts, each about one thing
     # parts built from parts
-    **dict.fromkeys(("events", "tree", "approvals", "machines", "plugin_desk", "org", "answers", "install"), 2),
+    **dict.fromkeys(
+        ("events", "tree", "approvals", "machines", "plugin_desk", "org", "answers", "install", "setup"), 2
+    ),
     **dict.fromkeys(("api", "phone_hook", "agent", "fleet"), 3),  # the doors in from outside
     "server": 4,  # where it is all put together
     "cli": 5,  # the command line that starts it

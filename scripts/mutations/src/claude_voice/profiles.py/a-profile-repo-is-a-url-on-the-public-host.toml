@@ -1,0 +1,5 @@
+[[rule]]
+name = "a profile repo is a url on the public host"
+file = "src/claude_voice/profiles.py"
+find = 'match = PUBLIC_REPO\.fullmatch\(url\)'
+replace = 'match = re.fullmatch(r".*/([^/]+)", url)'

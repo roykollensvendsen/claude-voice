@@ -1,0 +1,5 @@
+[[rule]]
+name = "only the default branch is fast forwarded"
+file = "src/claude_voice/reposync.py"
+find = 'if self\.branch != self\.default:'
+replace = 'if False:'

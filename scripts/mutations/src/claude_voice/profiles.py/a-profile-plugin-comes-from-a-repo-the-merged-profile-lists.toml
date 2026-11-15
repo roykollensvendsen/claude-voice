@@ -1,0 +1,5 @@
+[[rule]]
+name = "a profile plugin comes from a repo the merged profile lists"
+file = "src/claude_voice/profiles.py"
+find = 'return \[p for p in profile\.plugins\.values\(\) if p\.repo not in profile\.repos\]'
+replace = 'return []'

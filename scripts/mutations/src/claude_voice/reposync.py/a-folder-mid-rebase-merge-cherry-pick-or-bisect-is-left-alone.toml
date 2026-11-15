@@ -1,0 +1,5 @@
+[[rule]]
+name = "a folder mid rebase merge cherry pick or bisect is left alone"
+file = "src/claude_voice/reposync.py"
+find = 'if self\.operation:'
+replace = 'if False:'

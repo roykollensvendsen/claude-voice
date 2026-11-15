@@ -1,0 +1,5 @@
+[[rule]]
+name = "every word in a profile is a placeholder or a safe word"
+file = "src/claude_voice/profiles.py"
+find = 'if bad:'
+replace = 'if False:'

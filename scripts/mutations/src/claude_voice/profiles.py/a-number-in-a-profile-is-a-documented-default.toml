@@ -1,0 +1,5 @@
+[[rule]]
+name = "a number in a profile is a documented default"
+file = "src/claude_voice/profiles.py"
+find = 'known = isinstance\(value, int\) and value in NUMBERS'
+replace = 'known = True'

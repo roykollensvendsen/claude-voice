@@ -1,0 +1,5 @@
+[[rule]]
+name = "a folder that is not a clone is never cloned over"
+file = "src/claude_voice/reposync.py"
+find = 'if top is None or Path\(top\)\.resolve\(\) != path\.resolve\(\):'
+replace = 'if False:'
