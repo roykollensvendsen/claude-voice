@@ -34,6 +34,15 @@ def no_real_side_reader(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def helpers_in_a_folder_of_their_own(tmp_path_factory, monkeypatch):
+    """The bridge's message helpers make their folders here, and its start sweeps only here,
+    so the suite never touches what a real bridge keeps in the machine's temporary folder."""
+    from claude_voice import transcripts
+
+    monkeypatch.setattr(transcripts, "HELPERS_IN", tmp_path_factory.mktemp("helpers"))
+
+
+@pytest.fixture(autouse=True)
 def no_github(monkeypatch):
     """A watched server asks GitHub for the open pull requests, and waits for the answer before
     its next look at the sessions. The suite answers as if GitHub's command line were missing."""

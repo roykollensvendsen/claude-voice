@@ -650,3 +650,23 @@ async def test_a_question_about_news_does_not_wait_for_a_look_already_under_way(
             look.let_go()
     assert news["cursor"]
     assert answered_during_the_look
+
+
+async def test_the_bridge_removes_the_helper_folders_a_killed_bridge_left_when_it_starts(tmp_path, root, monkeypatch):
+    import os
+    import sys
+    import time
+
+    from claude_voice import transcripts
+
+    if sys.platform == "win32":
+        pytest.skip("Windows has no flock; there the sweep does nothing")
+    look = HeldLook(monkeypatch)
+    left = transcripts.HELPERS_IN / "claude-voice-msg-left"
+    left.mkdir()
+    an_hour_ago = time.time() - 2 * 60 * 60
+    os.utime(left, (an_hour_ago, an_hour_ago))
+    async with Client(watched(tmp_path, root)) as client:
+        look.let_go()
+        await call(client, "health")
+    assert not left.exists()
