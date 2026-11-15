@@ -19,6 +19,7 @@ own `RECOVERY` would overwrite or remove it, so the run fails when that file cha
 
 import os
 import pathlib
+import signal
 import sys
 import tempfile
 
@@ -105,6 +106,20 @@ def pytest_unconfigure(config: pytest.Config) -> None:  # noqa: ARG001 - pytest'
     else:
         for path in temproot.leftovers(root, KEEP):
             temproot.remove(path)
+
+
+@pytest.fixture(autouse=True)
+def stop_handlers_put_back():
+    """Put SIGINT, SIGTERM and SIGHUP back after each test, as a test calling a main() changes them.
+
+    Left in place, they would make a later test fail for a reason not its own
+    (`tests/test_stop_handlers.py`).
+    """
+    stops = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+    before = {each: signal.getsignal(each) for each in stops}
+    yield
+    for each, handler in before.items():
+        signal.signal(each, handler)
 
 
 @pytest.fixture(autouse=True)
