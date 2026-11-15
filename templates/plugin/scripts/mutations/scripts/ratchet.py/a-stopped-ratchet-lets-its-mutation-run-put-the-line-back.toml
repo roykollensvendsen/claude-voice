@@ -1,0 +1,5 @@
+[[rule]]
+name = "a stopped ratchet lets its mutation run put the line back"
+file = "scripts/ratchet.py"
+find = '^\s*child\.send_signal\(signal\.SIGINT\)$'
+replace = 'child.kill()'

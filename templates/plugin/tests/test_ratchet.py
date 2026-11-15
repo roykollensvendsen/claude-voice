@@ -9,8 +9,11 @@ import importlib.util
 import json
 import os
 import pathlib
+import signal
 import subprocess
+import sys
 import textwrap
+import time
 
 import pytest
 
@@ -284,6 +287,44 @@ def test_a_measured_base_leaves_no_checkout_behind(tmp_path, monkeypatch):
         ratchet.measure_at("HEAD", repo)
     assert _git(repo, "worktree", "list", "--porcelain").count("worktree ") == 1
     assert not (tmp_path / "ratchet-tmp").exists()
+
+
+#: Stands in for the mutation run: marks that it started, and on Ctrl-C takes a second to
+#: put its switched-off line back, then marks that.
+MUTATION_RUN = """
+import pathlib, sys, time
+mark = pathlib.Path(sys.argv[1])
+mark.write_text("started")
+try:
+    time.sleep(60)
+finally:
+    time.sleep(1)
+    mark.write_text("put-back")
+"""
+
+#: Stands in for the ratchet: the real stop handling, and the real way it runs its child.
+STOPPED_RATCHET = """
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("ratchet", sys.argv[1])
+ratchet = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(ratchet)
+ratchet.temproot.exit_on_signals()
+ratchet.stoppable([sys.executable, "-c", sys.argv[2], sys.argv[3]])
+"""
+
+
+def test_a_stopped_ratchet_lets_its_mutation_run_put_the_line_back(tmp_path):
+    """Its child gets Ctrl-C and as long as it needs: killed, it would leave a rule switched off."""
+    mark = tmp_path / "mark"
+    ratchet_run = subprocess.Popen(
+        [sys.executable, "-c", STOPPED_RATCHET, str(ROOT / "scripts/ratchet.py"), MUTATION_RUN, str(mark)]
+    )
+    deadline = time.monotonic() + 30
+    while not mark.exists() and time.monotonic() < deadline:
+        time.sleep(0.02)
+    ratchet_run.send_signal(signal.SIGTERM)
+    assert ratchet_run.wait(timeout=30) == 143
+    assert mark.read_text() == "put-back"
 
 
 def test_both_tools_turn_a_stop_signal_into_a_clean_exit():

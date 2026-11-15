@@ -48,7 +48,7 @@ STARTING = re.compile(r"starting-\w+")
 #: it is left alone until it is this many seconds old.
 GRACE = 600.0
 #: The exit status a shell gives a process ended by each signal.
-SIGNALS = {signal.SIGTERM: 143, signal.SIGHUP: 129}
+SIGNALS = {signal.SIGINT: 130, signal.SIGTERM: 143, signal.SIGHUP: 129}
 #: The lock files held by this process, kept open until it ends.
 _held: list[int] = []
 
@@ -60,12 +60,19 @@ def parent_for(kind: str, checkout: pathlib.Path, base: pathlib.Path | None = No
 
 
 def exit_on_signals() -> None:
-    """Turn SIGTERM and SIGHUP into SystemExit, so every `finally` and `with` still runs.
+    """Turn a stop from outside into the exit Ctrl-C gives, so every `finally` and `with` still runs.
 
-    CI cancels a job with SIGTERM, which by default ends the process without running a `finally`.
+    SIGINT raises KeyboardInterrupt; SIGTERM and SIGHUP, which by default end the process without
+    running a `finally`, raise SystemExit. GitHub cancels a job with SIGINT and then SIGTERM, so the
+    first stop makes the process deaf to all three before its clean-up starts.
     """
 
     def stop(signum: int, _frame: object) -> None:
+        # RULE: a second stop does not cut the cleanup short
+        for each in SIGNALS:
+            signal.signal(each, signal.SIG_IGN)
+        if signum == signal.SIGINT:
+            raise KeyboardInterrupt
         # RULE: a terminated run removes its temporary files
         raise SystemExit(SIGNALS[signal.Signals(signum)])
 

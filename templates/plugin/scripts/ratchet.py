@@ -35,6 +35,7 @@ import ast
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -300,6 +301,25 @@ def _run(
     return subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True, check=False)
 
 
+def stoppable(
+    command: list[str], cwd: Path = ROOT, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    """Run `command`; if this run is stopped meanwhile, let it stop as Ctrl-C stops it, however long that takes.
+
+    The mutation run has a rule switched off while its suite runs. Killed, it would leave the line
+    switched off in the tree; given SIGINT and waited for, its own `finally` puts it back.
+    """
+    child = subprocess.Popen(command, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        out, err = child.communicate()
+    except BaseException:
+        # RULE: a stopped ratchet lets its mutation run put the line back
+        child.send_signal(signal.SIGINT)
+        child.wait()
+        raise
+    return subprocess.CompletedProcess(command, child.returncode, out, err)
+
+
 def _python(*args: str, cwd: Path = ROOT, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     """Run this interpreter, so the tools measured are the ones installed beside it."""
     return _run(sys.executable, *args, cwd=cwd, env=env)
@@ -323,7 +343,7 @@ def measure(*, skip_mutation: bool = False, recorded: dict[str, Any] | None = No
         if skip_mutation and recorded:
             mutation = recorded["mutation"]
         else:
-            mutate = _python("scripts/mutate.py", env=env)
+            mutate = stoppable([sys.executable, "scripts/mutate.py"], env=env)
             mutation = mutation_tally(mutate.stdout, mutate.returncode)
     return {
         "coverage": coverage,
