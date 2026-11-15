@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/roykollensvendsen/claude-voice/blob/main/docs/plugin-manifest/v1.json",
+  "title": "Plugin manifest, version 1",
+  "description": "claude-voice-plugin.toml at a plugin repository's root, read as TOML. It tells `claude-voice plugins install` how to add the plugin: its entry in the bridge's settings, where its own config goes, and which values only the owner can give. It is data only and is never run. A plugin's own CI validates its manifest against this file. The examples are illustrative; each plugin lists the tools it serves.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["manifest", "name", "command", "tools"],
+  "properties": {
+    "manifest": {
+      "const": 1,
+      "description": "The format's version."
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,31}$",
+      "description": "The plugin's name: its [plugins.<name>] entry, and the prefix of every tool the voice sees."
+    },
+    "command": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The program that starts the plugin's MCP server, run in its checkout."
+    },
+    "args": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "The program's arguments."
+    },
+    "tools": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+      "description": "The tools the voice may call. Any other tool the plugin has stays out of reach."
+    },
+    "timeout": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Seconds a call may take; 30 when left out."
+    },
+    "branch": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The branch the checkout follows; main when left out. Install refuses a checkout on another branch."
+    },
+    "uses": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"enum": ["home"]},
+      "description": "Shared values the plugin reads. Only home exists: install writes home_file into the plugin's config, pointing at the one shared home position."
+    },
+    "secrets_step": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The plugin's own command for its key or password, which install names in its summary and never runs. No secret is ever a personal field."
+    },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["default", "dir"],
+      "description": "The plugin's own config, written once to ~/.config/<dir>/config.toml from the default it ships.",
+      "properties": {
+        "default": {
+          "type": "string",
+          "pattern": "^(?!\\.{1,2}(/|$))[A-Za-z0-9._-]+(/(?!\\.{1,2}(/|$))[A-Za-z0-9._-]+)*$",
+          "description": "The default config in the checkout, a relative path with made-up values only."
+        },
+        "dir": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,40}$",
+          "not": {
+            "enum": [
+              "claude-voice", "claude-voice-home", "claude", "systemd", "autostart", "environment.d",
+              "git", "gh", "ssh", "gnupg", "dconf", "pulse", "pipewire", "fontconfig", "containers",
+              "docker", "uv", "pip", "nvim", "fish", "kitty", "mimeapps", "user-dirs"
+            ]
+          },
+          "description": "One folder name under ~/.config: the plugin's name or its checkout folder's name, never one the system or the bridge uses."
+        },
+        "personal": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/personal"},
+          "description": "The values only the owner can give, asked in the terminal without showing them."
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"required": ["uses"], "properties": {"uses": {"contains": {"const": "home"}}}},
+      "then": {"required": ["config"]}
+    }
+  ],
+  "$defs": {
+    "personal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "type", "ask"],
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*$",
+          "not": {"type": "string", "pattern": "(?i)password|passwd|token|secret|api_?key|credential|^home_file$"},
+          "description": "Where the answer goes in the plugin's config, as a dotted key. Never a secret."
+        },
+        "type": {"enum": ["float", "int", "str", "choice"]},
+        "ask": {"type": "string", "minLength": 1, "description": "The question, as the owner reads it."},
+        "range": {
+          "type": "array",
+          "prefixItems": [{"type": "number"}, {"type": "number"}],
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "The lowest and highest answer allowed, for float and int."
+        },
+        "round": {"type": "integer", "minimum": 0, "maximum": 6, "description": "Decimals a float keeps."},
+        "max_len": {"type": "integer", "minimum": 1, "maximum": 1000, "description": "For str: its longest answer."},
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1},
+          "description": "For choice: the answers allowed."
+        }
+      },
+      "allOf": [
+        {"if": {"type": "object", "properties": {"type": {"const": "int"}}}, "then": {"not": {"anyOf": [{"required": ["round"]}, {"required": ["max_len"]}, {"required": ["values"]}]}}},
+        {"if": {"type": "object", "properties": {"type": {"const": "float"}}}, "then": {"not": {"anyOf": [{"required": ["max_len"]}, {"required": ["values"]}]}}},
+        {"if": {"type": "object", "properties": {"type": {"const": "str"}}}, "then": {"required": ["max_len"], "not": {"anyOf": [{"required": ["range"]}, {"required": ["round"]}, {"required": ["values"]}]}}},
+        {"if": {"type": "object", "properties": {"type": {"const": "choice"}}}, "then": {"required": ["values"], "not": {"anyOf": [{"required": ["range"]}, {"required": ["round"]}, {"required": ["max_len"]}]}}}
+      ]
+    }
+  },
+  "examples": [
+    {
+      "manifest": 1,
+      "name": "fuel",
+      "command": "uv",
+      "args": ["run", "fuel-mcp", "serve"],
+      "tools": ["fuel_price"],
+      "timeout": 30,
+      "branch": "main",
+      "uses": ["home"],
+      "config": {
+        "default": "config.default.toml",
+        "dir": "fuel-mcp",
+        "personal": [
+          {
+            "key": "sources.min_age_minutes",
+            "type": "int",
+            "range": [0, 1440],
+            "ask": "Ignore prices older than how many minutes?"
+          }
+        ]
+      }
+    },
+    {
+      "manifest": 1,
+      "name": "easee",
+      "command": "uv",
+      "args": ["run", "easee-mcp", "serve"],
+      "tools": ["easee_status"],
+      "secrets_step": "uv run easee-mcp login"
+    }
+  ]
+}

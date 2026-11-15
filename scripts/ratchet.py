@@ -68,6 +68,7 @@ LAYERS = {
             "presence",
             "restarts",
             "invocation",
+            "fields",
         ),
         0,
     ),
@@ -93,6 +94,7 @@ LAYERS = {
             "permissions",
             "hints",
             "prompts",
+            "manifest",
         ),
         1,
     ),  # parts, each about one thing

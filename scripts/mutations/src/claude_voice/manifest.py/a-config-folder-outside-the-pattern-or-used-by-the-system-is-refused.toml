@@ -1,0 +1,5 @@
+[[rule]]
+name = "a config folder outside the pattern or used by the system is refused"
+file = "src/claude_voice/manifest.py"
+find = 'if not isinstance\(folder, str\) or not DIR\.fullmatch\(folder\) or folder in RESERVED:'
+replace = 'if not isinstance(folder, str):'

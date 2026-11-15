@@ -1,0 +1,5 @@
+[[rule]]
+name = "a manifest without a tool is refused"
+file = "src/claude_voice/manifest.py"
+find = '^\s*if not tools:$'
+replace = 'if False:'
