@@ -190,6 +190,11 @@ def _mutation(q: dict[str, Any]) -> float:
     return round(100.0 * m["killed"] / max(m["total"], 1), 1)
 
 
+def _mutants(q: dict[str, Any]) -> float:
+    m = q["mutants"]
+    return round(100.0 * m["killed"] / max(m["total"], 1), 1)
+
+
 def _worst(q: dict[str, Any]) -> tuple[str, int]:
     module, score = max(q["complexity"].items(), key=lambda kv: kv[1], default=("", 0))
     return module, score
@@ -231,6 +236,16 @@ MEASURES: tuple[tuple[str, str, str, Callable[..., Any], Callable[..., str], Cal
         _mutation,
         lambda q, v: f"{q['mutation']['killed']} of {q['mutation']['total']} rules",
         lambda q, v: _status(v, 100, 90),
+    ),
+    (
+        # Mutation testing by a tool, such as Pitest in the phone app: every change it makes, not
+        # only the rules a test is named for.
+        "mutants",
+        "Code changes the tests catch",
+        "%",
+        _mutants,
+        lambda q, v: f"{q['mutants']['killed']} of {q['mutants']['total']} ({v:.0f} %)",
+        lambda q, v: _status(v, 90, 75),
     ),
     (
         "tests",
@@ -289,6 +304,15 @@ MEASURES: tuple[tuple[str, str, str, Callable[..., Any], Callable[..., str], Cal
         _time_status,
     ),
 )
+
+
+#: Measures only some repositories publish: shown where one does, and left out elsewhere.
+PUBLISHED_ONLY = frozenset({"mutants"})
+
+
+def every_measure() -> list[dict[str, str]]:
+    """Every measure a report may carry, by id and unit, in the order a report gives them."""
+    return [{"id": m[0], "unit": m[2]} for m in MEASURES] + [{"id": "ci", "unit": ci_metric(None)["unit"]}]
 
 
 def _read(q: dict[str, Any], read: Callable[..., Any]) -> Any:
@@ -390,7 +414,9 @@ def repo_report(
     past = _measured(folder, kept)
     link = f"{url}/actions/workflows/checks.yml?query=branch%3A{branch}" if kept else f"{url}/blob/{branch}/{FILE}"
     exempt = exemptions(folder)
-    metrics = [_exempt(_metric(measure, past, link), exempt.get(measure[0])) for measure in MEASURES]
+    # RULE: a measure only some repositories publish is left out where none is kept
+    shown = [m for m in MEASURES if m[0] not in PUBLISHED_ONLY or any(m[0] in q for q in past)]
+    metrics = [_exempt(_metric(measure, past, link), exempt.get(measure[0])) for measure in shown]
     metrics.append(ci_metric(ci))
     return {"name": name, "url": url, "metrics": metrics, "mutations": mutations, "as_of": _now()}
 
