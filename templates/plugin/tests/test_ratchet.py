@@ -402,10 +402,11 @@ class _StopError(Exception):
 class _UnreachableStep:
     """A step whose first wait is cut short by a stop, as Ctrl-C cuts it, and that has no group."""
 
-    pid = 2**22 + 1  # past any pid the kernel hands out, so no group has this number
-
     def __init__(self, *_args, ended=False, **_kwargs):
         self.waits, self.ended = 0, ended
+        # Past the highest pid this machine hands out, so no group has this number.
+        limit = pathlib.Path("/proc/sys/kernel/pid_max")
+        self.pid = int(limit.read_text()) + 1 if limit.exists() else 2**22 + 1
 
     def wait(self):
         self.waits += 1
