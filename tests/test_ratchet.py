@@ -299,7 +299,7 @@ def test_the_base_is_measured_where_no_other_branch_can_be_seen(monkeypatch, tmp
 def test_a_killed_ratchet_s_copy_is_removed_at_the_next_start(tmp_path):
     import os
 
-    left = ratchet.HeldFolder(dir=tmp_path)
+    left = ratchet.hold(dir=tmp_path)
     os.close(left._lock)
     left._lock = None
     ratchet.sweep(tmp_path)
@@ -311,7 +311,7 @@ def test_a_ratchet_copy_still_in_use_is_never_removed(tmp_path):
     import os
     import time
 
-    held = ratchet.HeldFolder(dir=tmp_path)
+    held = ratchet.hold(dir=tmp_path)
     young, old = tmp_path / f"{ratchet.RUN_PREFIX}young", tmp_path / f"{ratchet.RUN_PREFIX}old"
     young.mkdir()
     old.mkdir()
@@ -332,3 +332,19 @@ def test_the_ratchet_sweeps_before_it_measures(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["ratchet.py", "check"])
     assert ratchet.main() == 1
     assert seen == ["stop", "sweep"]
+
+
+def test_measuring_never_needs_the_held_folder_module():
+    """`measure` runs this script in a copy of main, whose package may not have it yet."""
+    import subprocess
+
+    probe = (
+        "import sys; sys.modules['claude_voice.held_folder'] = None\n"  # importing it now fails
+        f"sys.path.insert(0, {str(pathlib.Path(__file__).parent.parent / 'scripts')!r})\n"
+        "import ratchet\n"
+        "ratchet.measure = lambda *a, **k: {}\n"
+        "sys.argv = ['ratchet.py', 'measure']\n"
+        "sys.exit(ratchet.main())\n"
+    )
+    ran = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=False)
+    assert ran.returncode == 0, ran.stderr[-1500:]

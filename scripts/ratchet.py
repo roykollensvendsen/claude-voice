@@ -26,20 +26,20 @@ from __future__ import annotations
 
 import argparse
 import ast
-import contextlib
 import json
 import os
 import re
-import shutil
 import signal
-import stat
 import subprocess
 import sys
 import tempfile
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from claude_voice.held_folder import HeldFolder
 
 # The tree to measure: this one, or a copy of the base named by RATCHET_ROOT (see measure_at).
 ROOT = Path(os.environ.get("RATCHET_ROOT") or Path(__file__).resolve().parent.parent)
@@ -56,7 +56,20 @@ BLOCK = 6  # lines in a row that count as a copied block
 LAYERS = {
     # foundations
     **dict.fromkeys(
-        ("procs", "config", "store", "metrics", "titles", "tailnet", "envfile", "presence", "restarts", "invocation"), 0
+        (
+            "procs",
+            "held_folder",
+            "config",
+            "store",
+            "metrics",
+            "titles",
+            "tailnet",
+            "envfile",
+            "presence",
+            "restarts",
+            "invocation",
+        ),
+        0,
     ),
     **dict.fromkeys(
         (
@@ -339,86 +352,27 @@ def base_levels(kept: Path | None, measure_base: Callable[[], dict[str, Any]]) -
     return measure_base()
 
 
-#: Every folder the ratchet measures the base in starts so, and holds this lock while in use.
+#: Every folder the ratchet measures the base in starts so, and holds a lock while in use.
 RUN_PREFIX = "claude-voice-ratchet-"
-RUN_LOCK = ".in-use"
-#: How old a folder with no lock must be before it counts as left by a killed ratchet.
-GRACE_SECONDS = 60 * 60
 
 
-class HeldFolder:
+def hold(dir: Path | None = None) -> HeldFolder:
     """A folder of the ratchet's own in the temporary folder, locked while the ratchet runs.
 
-    A kill runs no cleanup, so the next ratchet removes every such folder whose lock is free.
+    A kill runs no cleanup, so the next ratchet sweeps away every such folder whose lock is free.
+    The module is imported here, never when this script loads: `measure` runs this script in a
+    copy of main, whose package may not have it.
     """
+    from claude_voice import held_folder
 
-    def __init__(self, dir: Path | None = None) -> None:
-        self.path = Path(tempfile.mkdtemp(prefix=RUN_PREFIX, dir=dir))
-        self._lock: int | None = None
-        if sys.platform != "win32":  # Windows has no flock, so nothing is swept there
-            import fcntl
-
-            # Locked under another name, then renamed, so the lock's name never stands unlocked.
-            starting = self.path / (RUN_LOCK + "-starting")
-            self._lock = os.open(starting, os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o600)
-            fcntl.flock(self._lock, fcntl.LOCK_EX)
-            starting.rename(self.path / RUN_LOCK)
-
-    def remove(self) -> None:
-        if self._lock is not None:
-            os.close(self._lock)
-            self._lock = None
-        _remove(self.path)
-
-
-def _remove(folder: Path) -> None:
-    """Delete a folder of the ratchet's, giving back the rights to any part a test shut."""
-    for place, folders, _ in os.walk(folder):
-        for name in folders:
-            inner = Path(place) / name
-            if not inner.is_symlink():
-                with contextlib.suppress(OSError):
-                    inner.chmod(inner.stat().st_mode | stat.S_IRWXU)
-    shutil.rmtree(folder, ignore_errors=True)
-    if folder.exists():
-        print(f"Could not remove all of {folder}; remove it by hand.", file=sys.stderr)
-
-
-def _left_behind(path: Path) -> bool:
-    """Whether `path` is a ratchet folder of this user's that no running ratchet holds."""
-    if sys.platform == "win32":
-        return False
-    import fcntl
-
-    try:
-        found = path.lstat()
-    except FileNotFoundError:
-        return False
-    if not stat.S_ISDIR(found.st_mode) or found.st_uid != os.getuid():
-        return False  # a link is never followed, and another user's folder never touched
-    try:
-        lock = os.open(path / RUN_LOCK, os.O_RDONLY | os.O_NOFOLLOW)
-    except FileNotFoundError:
-        # Killed between making the folder and locking it.
-        return time.time() - found.st_mtime > GRACE_SECONDS
-    except OSError:
-        return False
-    try:
-        # RULE: a ratchet copy still in use is never removed
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        return False
-    finally:
-        os.close(lock)
-    return True
+    return held_folder.HeldFolder(RUN_PREFIX, dir)
 
 
 def sweep(place: Path | None = None) -> None:
     """Remove the folders a ratchet killed before it could clean up left behind."""
-    for path in sorted(Path(place or tempfile.gettempdir()).glob(RUN_PREFIX + "*")):
-        # RULE: a killed ratchet's copy is removed at the next start
-        if _left_behind(path):
-            _remove(path)
+    from claude_voice import held_folder
+
+    held_folder.sweep(Path(place or tempfile.gettempdir()), RUN_PREFIX)
 
 
 def copy_of(ref: str, copy: Path) -> None:
@@ -449,7 +403,7 @@ def measure_at(ref: str) -> dict[str, Any]:
 
     The copy keeps its own tests and scripts unchanged: this ratchet runs from where it is
     and is pointed at the copy, so the base is measured exactly as it stands."""
-    held = HeldFolder()
+    held = hold()
     try:  # the copy is made inside the held folder, so a stop at any point removes it too
         copy, out = held.path / "base", held.path / "levels.json"
         copy_of(ref, copy)
@@ -496,13 +450,13 @@ def main() -> int:
     parser.add_argument("--mutations", type=Path, help="where the mutation run writes its report, rule by rule")
     args = parser.parse_args()
     stop_cleanly()
-    sweep()
     if args.action == "measure":
         now = measure()
         if args.out:
             write_levels(args.out, now)
         print(json.dumps(now, indent=2, sort_keys=True))
         return 0
+    sweep()  # only when checking: a measure run is inside a check that has swept
     if not args.base:
         print("check needs --base, the ref to compare with (usually origin/main).", file=sys.stderr)
         return 1

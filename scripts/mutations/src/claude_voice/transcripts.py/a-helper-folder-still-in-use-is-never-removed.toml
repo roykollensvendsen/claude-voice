@@ -1,5 +1,0 @@
-[[rule]]
-name = "a helper folder still in use is never removed"
-file = "src/claude_voice/transcripts.py"
-find = 'fcntl\.flock\(lock, fcntl\.LOCK_EX \| fcntl\.LOCK_NB\)'
-replace = 'pass'
