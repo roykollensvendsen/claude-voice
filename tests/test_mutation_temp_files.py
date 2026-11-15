@@ -11,6 +11,7 @@ import importlib.util
 import os
 import pathlib
 import sys
+import tempfile
 
 import pytest
 
@@ -46,6 +47,36 @@ def test_a_suite_run_leaves_no_temporary_files_behind(tmp_path, monkeypatch):
     failed, _ = mutate.run_suite()
     assert failed == 0
     assert list(mutate.MUTATE_TMP.iterdir()) == []
+
+
+#: A test run while red-first's cleanup is switched off: it makes its checkout folder the way
+#: red_first.py does and never removes it. Any mutant that stops a cleanup leaks the same way.
+LEAKS_A_FOLDER = """
+import os, tempfile
+
+def test_it_leaves_a_folder_in_the_temporary_folder():
+    tempfile.mkdtemp(prefix="red-first-", dir=os.environ.get("RUNNER_TEMP"))
+"""
+
+
+def test_a_mutant_s_leaked_temporary_folder_stays_inside_the_run_s_own_folder(tmp_path, monkeypatch):
+    """A mutant that stops a cleanup leaks into the suite's temporary folder, never the machine's.
+
+    With red-first's folder removal switched off, three of its tests left an empty red-first-*
+    folder in the machine's temporary folder on every mutation run.
+    """
+    outer = tmp_path / "outer"
+    outer.mkdir()
+    monkeypatch.setenv("TMPDIR", str(outer))
+    monkeypatch.delenv("RUNNER_TEMP", raising=False)
+    monkeypatch.setattr(tempfile, "tempdir", None)  # gettempdir() caches its first answer
+    mutate = _mutate(tmp_path, monkeypatch)
+    (mutate.ROOT / "tests" / "test_leaves_files.py").write_text(LEAKS_A_FOLDER)
+    monkeypatch.setattr(mutate, "MUTATE_TMP", outer / "mutate-tmp")
+    failed, _ = mutate.run_suite()
+    assert failed == 0
+    left = sorted(p.relative_to(outer).as_posix() for p in outer.rglob("*"))
+    assert left == ["mutate-tmp"]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows needs extra rights to make a link, and has no 0755")
