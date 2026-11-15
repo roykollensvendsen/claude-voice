@@ -294,6 +294,8 @@ def run_both(
             for tree in trees:
                 with contextlib.suppress(subprocess.CalledProcessError):
                     _git("worktree", "remove", "--force", str(tree), cwd=cwd)
+            # RULE: a run leaves no checkout folder behind
+            shutil.rmtree(place, ignore_errors=True)
 
     return run
 

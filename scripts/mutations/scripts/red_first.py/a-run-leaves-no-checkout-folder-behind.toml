@@ -1,0 +1,5 @@
+[[rule]]
+name = "a run leaves no checkout folder behind"
+file = "scripts/red_first.py"
+find = '^\s*shutil\.rmtree\(place, ignore_errors=True\)$'
+replace = 'pass'

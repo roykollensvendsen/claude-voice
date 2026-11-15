@@ -264,6 +264,36 @@ def test_a_new_script_and_its_test_are_red_before_the_change_and_green_on_the_br
     assert after == {ids[0]: "passed"}
 
 
+def test_a_run_leaves_no_checkout_folder_behind(tmp_path, monkeypatch):
+    """Each run checks out two trees in a folder of its own, and must take the folder away too.
+
+    It once removed the trees and kept their empty folder, so every run on this machine left a
+    red-first-* folder in the temporary folder, and they piled up by the hundred.
+    """
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    monkeypatch.setenv("RUNNER_TEMP", str(scratch))
+    repo, base, head = fake_pull_request(
+        tmp_path, {"tests/test_a.py": "def test_a():\n    pass\n"}, {"tests/test_a.py": "def test_a():\n    assert 1\n"}
+    )
+    red_first.run_both(base, head, cwd=repo, setup=lambda tree: [sys.executable])(["tests/test_a.py::test_a"])
+    assert list(scratch.iterdir()) == []
+
+
+def test_a_run_that_fails_also_leaves_no_checkout_folder_behind(tmp_path, monkeypatch):
+    """A before-tree that can't be built stops the run, and the folder still goes."""
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    monkeypatch.setenv("RUNNER_TEMP", str(scratch))
+    repo, base, head = fake_pull_request(
+        tmp_path, {"tests/test_a.py": "def test_a():\n    pass\n"}, {"tests/test_b.py": "def test_b():\n    pass\n"}
+    )
+    monkeypatch.setattr(red_first, "before_tree", lambda *a, **k: (_ for _ in ()).throw(SystemExit("no tree")))
+    with pytest.raises(SystemExit):
+        red_first.run_both(base, head, cwd=repo, setup=lambda tree: [sys.executable])(["tests/test_a.py::test_a"])
+    assert list(scratch.iterdir()) == []
+
+
 def test_a_test_marked_to_fail_that_passes_does_not_count_as_passed(tmp_path):
     """pytest calls an expected failure that passes a pass. Its mark says it is not meant to."""
     (tmp_path / "tests").mkdir()
