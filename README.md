@@ -538,6 +538,10 @@ Once a plugin is approved, three things can happen to it
   files out of the plugin's folder or list them in its `.git/info/exclude`.
 - **A new plugin, or a new command or folder.** Always typed, as above.
 
+To take an approval back, run `claude-voice plugins revoke garage`. A running bridge
+stops offering the plugin's tools within a few seconds, and it waits for a typed
+approval again.
+
 An approval written by an older version of the bridge did not cover the words the
 voice reads. So after upgrading, every plugin waits for one more approval, typed as
 above or by voice in developer mode, because its command and folder are still known.

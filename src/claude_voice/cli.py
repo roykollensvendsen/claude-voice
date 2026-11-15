@@ -135,8 +135,8 @@ def main(
         p.add_argument("--transport", choices=["stdio", "http"], default="stdio")
         if name == "check":
             p.add_argument("--json", action="store_true", help="answer in JSON, for an assistant doing the setup")
-    plugin_cmd = sub.add_parser("plugins", help="list plugins, or approve one by typing its name")
-    plugin_cmd.add_argument("action", nargs="?", choices=["list", "approve"], default="list")
+    plugin_cmd = sub.add_parser("plugins", help="list plugins, approve one by typing its name, or revoke one")
+    plugin_cmd.add_argument("action", nargs="?", choices=["list", "approve", "revoke"], default="list")
     plugin_cmd.add_argument("name", nargs="?")
     home_cmd = sub.add_parser("home", help="set the home position plugins share, typed without showing it")
     home_cmd.add_argument("action", nargs="?", choices=["set"], default="set")
@@ -262,8 +262,9 @@ def _show_approved(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> None
 def plugins_command(action: str, name: str | None, env: Mapping[str, str]) -> int:
     """List the plugins in the settings file, or approve one: the owner types its name."""
     from . import config as settings
-    from . import plugins
 
+    if action == "revoke":
+        return _revoke(name)
     try:
         specs = settings.load(settings.FILE, env=env).plugins
     except settings.ConfigError as exc:
@@ -275,7 +276,30 @@ def plugins_command(action: str, name: str | None, env: Mapping[str, str]) -> in
     if chosen is None:
         sys.stderr.write(f"claude-voice: no plugin {name!r} in the settings file\n")
         return 1
-    spec = chosen
+    return _approve(chosen)
+
+
+def _revoke(name: str | None) -> int:
+    """Take a plugin's approval back; it needs typing again before the voice gets its tools."""
+    from . import plugins
+
+    if not name:
+        sys.stderr.write("claude-voice: say which plugin, such as: claude-voice plugins revoke garage\n")
+        return 1
+    if plugins.revoke(name):
+        sys.stdout.write(
+            f"{name} is no longer approved. A running bridge stops offering its tools within a few "
+            f"seconds. To approve it again: claude-voice plugins approve {name}\n"
+        )
+    else:
+        sys.stdout.write(f"{name} was not approved, so nothing changed.\n")
+    return 0
+
+
+def _approve(spec: PluginSpec) -> int:
+    """Show what the plugin runs and approve it when the owner types its name."""
+    from . import plugins
+
     sys.stdout.write(
         f"Plugin {spec.name}\n  runs: {' '.join([spec.command, *spec.args])}\n  in:   {spec.cwd}\n"
         f"  the voice may call: {', '.join(spec.tools)}\n"

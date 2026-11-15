@@ -189,9 +189,26 @@ def approve(spec: PluginSpec, listing: dict[str, dict[str, Any]], path: Path | N
     log.info("plugin %s approved", spec.name)
 
 
+def revoke(name: str, path: Path | None = None) -> bool:
+    """Take a plugin's approval back, so a running bridge stops offering its tools; whether
+    there was one."""
+    target = (path or APPROVALS).expanduser()
+    body = _approvals(target)
+    if name not in body:
+        return False
+    # RULE: a revoked plugin is no longer approved
+    del body[name]
+    _save(target, body)
+    log.info("plugin %s's approval was taken back", name)
+    return True
+
+
 def _write(name: str, entry: dict[str, Any], path: Path | None) -> None:
     target = (path or APPROVALS).expanduser()
-    body = {**_approvals(target), name: entry}
+    _save(target, {**_approvals(target), name: entry})
+
+
+def _save(target: Path, body: dict[str, Any]) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     spare = target.with_name(target.name + ".tmp")
     spare.write_text(json.dumps(body, indent=2) + "\n")
