@@ -197,3 +197,47 @@ def test_a_new_module_must_keep_every_function_at_fifteen_or_below():
     found = problems(BASE, now)
     assert found and "pkg/new.py" in found[0]
     assert problems(BASE, measured(complexity={"pkg/a.py": 10, "pkg/b.py": 5, "pkg/new.py": 15})) == []
+
+
+STOPPED_RATCHET = """
+import sys, tempfile, time
+sys.path.insert(0, sys.argv[1])
+import ratchet
+ratchet.stop_cleanly()
+with tempfile.TemporaryDirectory(dir=sys.argv[2]):
+    print("ready", flush=True)
+    time.sleep(60)
+"""
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows has no polite stop signal to send")
+def test_a_stopped_ratchet_still_removes_its_copy_of_main(tmp_path):
+    """The ratchet measures main in a copy of it, and a stop signal used to leave that copy.
+
+    Python runs no `finally` and no `with` exit on a stop signal unless it is told to, which is
+    how whole copies of the repository piled up in the temporary folder.
+    """
+    import signal
+    import subprocess
+
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    script = tmp_path / "stopped.py"
+    script.write_text(STOPPED_RATCHET)
+    where = str(pathlib.Path(ratchet.__file__).parent)
+    run = subprocess.Popen([sys.executable, str(script), where, str(scratch)], stdout=subprocess.PIPE, text=True)
+    try:
+        assert run.stdout.readline().strip() == "ready"
+        run.send_signal(signal.SIGTERM)
+        assert run.wait(60) == 128 + signal.SIGTERM
+    finally:
+        run.kill()
+    assert list(scratch.iterdir()) == []
+
+
+def test_the_ratchet_turns_a_stop_into_an_exit_before_it_starts(monkeypatch):
+    seen = []
+    monkeypatch.setattr(ratchet, "stop_cleanly", lambda: seen.append("stop"))
+    monkeypatch.setattr(sys, "argv", ["ratchet.py", "check"])
+    assert ratchet.main() == 1  # no --base: it stops before measuring anything
+    assert seen == ["stop"]

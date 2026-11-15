@@ -33,6 +33,7 @@ import os
 import pathlib
 import re
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -281,6 +282,22 @@ def run_suite(targets: list[str] | None = None) -> tuple[int, list[str]]:
     return int(m.group(1)) if m else 0, [f.split("::")[-1].split("[")[0] for f in failed]
 
 
+def stop_cleanly() -> None:
+    """Turn a polite stop into an ordinary exit, so every `with` and `finally` still runs.
+
+    CI cancels a run, and a closed terminal ends one, with a stop signal. Python's own answer to
+    it is to end at once, cleaning up nothing, which left whole folders in the temporary folder.
+    """
+
+    def stop(signum: int, _frame: object) -> None:
+        raise SystemExit(128 + signum)
+
+    for name in ("SIGTERM", "SIGHUP"):
+        if hasattr(signal, name):  # Windows has neither
+            # RULE: a stopped mutation run still cleans up
+            signal.signal(getattr(signal, name), stop)
+
+
 def main() -> int:
     """Mutate every rule in turn, restore the tree, and report."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -288,6 +305,7 @@ def main() -> int:
     parser.add_argument("--json", type=pathlib.Path, help="write the run's figures here, for the checks to keep")
     args = parser.parse_args()
 
+    stop_cleanly()
     repair()
     sweep()
     # RULE: an empty rule table is not a crash
