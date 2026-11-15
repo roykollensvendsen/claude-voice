@@ -35,6 +35,11 @@ dev = [
     "types-psutil>=7.2.2.20260906",
 ]
 
+[tool.coverage.run]
+# The plugin template is a project of its own, and its own checks measure its coverage.
+# Its scripts are only imported here, by the tests that read the template.
+omit = ["templates/*"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
