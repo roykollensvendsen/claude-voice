@@ -1,0 +1,5 @@
+[[rule]]
+name = "a run keeps its files only in a folder of its own that no one else can open"
+file = "scripts/temproot.py"
+find = '^\s*if status\.st_uid != os\.getuid\(\) or status\.st_mode & 0o077:$'
+replace = 'if False:'
