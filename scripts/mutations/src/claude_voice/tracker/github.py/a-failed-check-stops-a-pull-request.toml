@@ -1,0 +1,5 @@
+[[rule]]
+name = "a failed check stops a pull request"
+file = "src/claude_voice/tracker/github.py"
+find = '^\s*if failed:$'
+replace = 'if False:'

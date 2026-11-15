@@ -1,0 +1,5 @@
+[[rule]]
+name = "a repository that is not owner and name is refused"
+file = "src/claude_voice/tracker/github.py"
+find = 'if repo is not None and not NAME\.fullmatch\(repo\):'
+replace = 'if False:'

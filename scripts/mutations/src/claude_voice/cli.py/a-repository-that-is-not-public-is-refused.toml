@@ -1,0 +1,5 @@
+[[rule]]
+name = "a repository that is not public is refused"
+file = "src/claude_voice/cli.py"
+find = 'if visibility != "PUBLIC":'
+replace = 'if False:'

@@ -175,6 +175,7 @@ but names `main` or `master` is refused too, from the forms under `other pushes`
 | --- | --- |
 | `~/.config/claude-voice/env` | the bridge's login secret |
 | `~/.config/claude-voice/machines/` | the hub's keys for the other machines |
+| `~/.config/claude-voice/private.toml` | the owner's private words, which the tracker's privacy gate looks for |
 | `~/.config/dreame…` | the robot vacuum plugin's cloud sign-in |
 | `~/.config/tv-mcp…` | the TV plugin's keys |
 | `secrets.yaml` | the garage door's firmware secrets |
