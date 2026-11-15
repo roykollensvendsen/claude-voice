@@ -505,8 +505,29 @@ def test_a_session_may_run_these_without_asking(command):
 
 
 @pytest.mark.parametrize("command", PLAIN_PUSHES_TO_A_PROTECTED_BRANCH)
-def test_any_other_push_to_main_or_master_asks_first(command):
-    assert decision(permissions.load(), command) == "asked"
+def test_any_other_push_to_main_or_master_is_refused(command):
+    assert decision(permissions.load(), command) == "refused"
+
+
+FAST_FORWARD_RULES = (
+    "Bash(git fetch origin)",
+    "Bash(git fetch origin main)",
+    "Bash(git pull --ff-only origin main)",
+    "Bash(git pull --ff-only)",
+    "Bash(git merge --ff-only origin/main)",
+)
+
+
+def test_a_session_may_bring_main_up_to_date_by_fast_forward_only():
+    """The owner's decision: local main may follow GitHub, but never be moved or overwritten."""
+    rules = permissions.load()
+    assert [rule for rule in FAST_FORWARD_RULES if rule not in rules.allow] == []
+    for command in ("git pull --ff-only origin main", "git merge --ff-only origin/main", "git fetch origin main"):
+        assert decision(rules, command) == "allowed", command
+    assert "Bash(git branch -f*)" in rules.deny
+    assert "Bash(git reset --hard*)" in rules.deny
+    for command in ("git branch -f main origin/main", "git reset --hard origin/main", "git push origin main"):
+        assert decision(rules, command) == "refused", command
 
 
 @pytest.mark.parametrize("command", NOW_ASKED)

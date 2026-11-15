@@ -69,15 +69,15 @@ def _for_each_branch(branches: list[str], forms: list[str]) -> list[str]:
 
 def load(table: Path = TABLE) -> Rules:
     """The rules, each group flattened; every protected branch refused to every forced push
-    and asked for before every other push; every secret file refused to every reader; and
+    and to every other push; every secret file refused to every reader; and
     every device tool asked for under each name the bridge is known by."""
     raw = json.loads(table.read_text(encoding="utf-8"))
     allow, ask, deny = _flat(raw["allow"]), _flat(raw.get("ask", {})), _flat(raw["deny"])
     protected = raw["protected branches"]
     # RULE: a forced push can never reach main or master
     deny += _for_each_branch(protected["branches"], protected["forced pushes"])
-    # RULE: any other push to main or master asks first
-    ask += _for_each_branch(protected["branches"], protected.get("other pushes", []))
+    # RULE: any other push to main or master is refused
+    deny += _for_each_branch(protected["branches"], protected.get("other pushes", []))
     secrets = raw["secrets"]
     deny += [f"Bash({reader} {path})" for path in secrets["files"] for reader in secrets["readers"]]
     devices = raw.get("device tools", {"servers": [], "tools": []})

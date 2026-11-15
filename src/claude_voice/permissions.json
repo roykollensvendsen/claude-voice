@@ -59,6 +59,13 @@
       "Bash(git worktree prune*)",
       "Bash(git worktree remove *)"
     ],
+    "bringing main up to date, by fast-forward only": [
+      "Bash(git fetch origin)",
+      "Bash(git fetch origin main)",
+      "Bash(git pull --ff-only origin main)",
+      "Bash(git pull --ff-only)",
+      "Bash(git merge --ff-only origin/main)"
+    ],
     "GitHub, looking only": [
       "Bash(gh pr checks*)",
       "Bash(gh pr diff*)",

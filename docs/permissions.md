@@ -82,6 +82,7 @@ The retired rules so far are all allow rules:
 | read files and folders | `cat`, `head`, `tail`, `sed -n`, `grep`, `ls` and `wc`, to look at code |
 | git, looking only | status, diffs, logs, branches and worktrees, read but not changed |
 | git, making work on a branch | adding and committing, also with `git -C`; new branches, switching branch, worktrees, cherry-picks; `git rebase origin/main` and `--continue` |
+| bringing main up to date, by fast-forward only | `git fetch origin`, with or without `main`; `git pull --ff-only`, with or without `origin main`; and `git merge --ff-only origin/main` |
 | GitHub, looking only | reading pull requests, their checks and status, workflow runs and watching one, issues, the repository and its releases |
 | pushing a session's own pull-request branch | `git push origin <branch>`, with `-u` or `-q -u`; `git push --force-with-lease origin <branch>`, with or without `-u`; and `gh pr update-branch <n> --rebase` |
 | the gates of the Python repositories | `uv sync`, ruff, mypy and pytest, also with `uv run --quiet`, the mutation run and the ratchet |
@@ -94,13 +95,17 @@ ask, as does anything no rule names. Merging gets no rule of either kind on
 purpose: the owner lets a session merge its own pull request once every check
 is green.
 
+The owner decided that a session may bring its local `main` up to date with
+GitHub. It does so by fast-forward only, which adds GitHub's commits and changes
+none. Moving `main` by force, with `git branch -f` or `git reset --hard`, stays
+refused, and so does every push to it.
+
 **Asked, even where an allow rule would let it through.** An ask rule wins over
 an allow rule, and a deny rule wins over both. The question reaches the phone
 like any other.
 
 | Group | What it is for |
 | --- | --- |
-| pushes to `main` or `master` | a push naming the branch alone, `HEAD:main`, `feature:refs/heads/main` or `+main`; written for each protected branch, like the forced pushes below |
 | pushes that delete a branch or could land on main without naming it | `--delete`, `-d`, `origin :feature`, pushing `HEAD`, `--all`, and a push naming no branch |
 | a lease push in any other form than the one allowed | `--force-with-lease` after the remote, as in `git push origin feature --force-with-lease` |
 | GitHub, writing what others read | commenting on, closing or reviewing a pull request; creating or commenting on an issue; creating or editing a release; editing the repository; secrets; `gh api graphql`; and `gh api` with `-X`, `--method`, `-f`, `-F`, `--field`, `--raw-field` or `--input` |
@@ -142,7 +147,7 @@ They match wherever the lease stands in the command, so
 
 The table lists the branches once and these forms once. The bridge writes each
 pair as a rule, the way it writes the secret rules. A push that is not forced
-but names `main` or `master` is asked, from the forms under `other pushes`.
+but names `main` or `master` is refused too, from the forms under `other pushes`.
 
 **Refused, even when the owner would say yes:**
 
@@ -157,6 +162,9 @@ but names `main` or `master` is asked, from the forms under `other pushes`.
   a branch, or pushes every branch with `--all`. The plain pushes the table
   allows would let all of these through without these rules.
 - **A forced push to `main` or `master`,** in every form listed above.
+- **Any other push to `main` or `master`.** That is a push naming the branch
+  alone, `HEAD:main`, `feature:refs/heads/main` or `+main`. A change reaches
+  `main` through a pull request only.
 - **Secrets.** Each command allowed to read a file is refused for each secret
   file by its path. So are the commands that copy a file, `cp` and `rsync`,
   and those that print its bytes in another form, `base64`, `xxd` and `od`.
