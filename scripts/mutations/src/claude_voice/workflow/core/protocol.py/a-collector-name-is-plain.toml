@@ -1,0 +1,5 @@
+[[rule]]
+name = "a collector name is plain"
+file = "src/claude_voice/workflow/core/protocol.py"
+find = 'if not NAME\.fullmatch\(collector\.name\):'
+replace = 'if False:'

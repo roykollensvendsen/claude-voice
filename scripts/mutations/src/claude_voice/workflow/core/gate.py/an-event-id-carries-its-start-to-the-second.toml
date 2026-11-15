@@ -1,0 +1,5 @@
+[[rule]]
+name = "an event id carries its start to the second"
+file = "src/claude_voice/workflow/core/gate.py"
+find = 'return f\"\{source\}:\{key\}:\{moment'
+replace = 'return f"{source}:{key}"'

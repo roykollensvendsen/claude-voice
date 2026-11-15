@@ -1,0 +1,5 @@
+[[rule]]
+name = "a collector name is unique"
+file = "src/claude_voice/workflow/core/protocol.py"
+find = 'if collector\.name in seen:'
+replace = 'if False:'

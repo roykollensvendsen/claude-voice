@@ -1,0 +1,5 @@
+[[rule]]
+name = "an event kind outside the fixed list is refused"
+file = "src/claude_voice/workflow/core/event.py"
+find = 'if e\.kind not in KINDS:'
+replace = 'if False:'

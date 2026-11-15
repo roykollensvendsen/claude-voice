@@ -1,0 +1,5 @@
+[[rule]]
+name = "an unknown what from a collector with a catch all becomes its catch all"
+file = "src/claude_voice/workflow/core/gate.py"
+find = 'return catch_all, True'
+replace = 'return None, True'

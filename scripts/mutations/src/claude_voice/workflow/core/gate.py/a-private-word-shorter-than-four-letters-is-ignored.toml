@@ -1,0 +1,5 @@
+[[rule]]
+name = "a private word shorter than four letters is ignored"
+file = "src/claude_voice/workflow/core/gate.py"
+find = 'listed = \[word\.lower\(\) for word in words if len\(word\) >= MIN_WORD\]'
+replace = 'listed = [word.lower() for word in words]'

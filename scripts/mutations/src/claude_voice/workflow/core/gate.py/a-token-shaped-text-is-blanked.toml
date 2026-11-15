@@ -1,0 +1,5 @@
+[[rule]]
+name = "a token shaped text is blanked"
+file = "src/claude_voice/workflow/core/gate.py"
+find = 'flat = blank_tokens\(flat\)'
+replace = 'flat = flat'

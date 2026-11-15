@@ -1,0 +1,5 @@
+[[rule]]
+name = "a vocabulary holds its own catch all"
+file = "src/claude_voice/workflow/core/protocol.py"
+find = 'if \(words or catch_all is not None\) and catch_all not in words:'
+replace = 'if False:'

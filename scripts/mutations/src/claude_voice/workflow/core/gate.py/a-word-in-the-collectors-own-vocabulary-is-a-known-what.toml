@@ -1,0 +1,5 @@
+[[rule]]
+name = "a word in the collectors own vocabulary is a known what"
+file = "src/claude_voice/workflow/core/gate.py"
+find = 'allowed = allowed \| vocabulary'
+replace = 'allowed = allowed'

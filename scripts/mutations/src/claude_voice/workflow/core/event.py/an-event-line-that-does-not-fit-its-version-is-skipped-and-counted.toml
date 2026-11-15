@@ -1,0 +1,6 @@
+[[rule]]
+name = "an event line that does not fit its version is skipped and counted"
+file = "src/claude_voice/workflow/core/event.py"
+find = 'out\.skipped\[\"unreadable\"\] \+= 1'
+replace = 'pass'
+occurrence = 2
