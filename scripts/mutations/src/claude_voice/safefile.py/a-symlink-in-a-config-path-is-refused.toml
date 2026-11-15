@@ -1,0 +1,5 @@
+[[rule]]
+name = "a symlink in a config path is refused"
+file = "src/claude_voice/safefile.py"
+find = '^\s*if step\.is_symlink\(\):$'
+replace = 'if False:'

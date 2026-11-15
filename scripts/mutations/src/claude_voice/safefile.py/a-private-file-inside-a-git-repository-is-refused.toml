@@ -1,0 +1,5 @@
+[[rule]]
+name = "a private file inside a git repository is refused"
+file = "src/claude_voice/safefile.py"
+find = 'if \(folder / "\.git"\)\.exists\(\):'
+replace = 'if False:'

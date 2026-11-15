@@ -1,0 +1,5 @@
+[[rule]]
+name = "a written file is readable by its owner alone"
+file = "src/claude_voice/safefile.py"
+find = 'os\.fchmod\(f\.fileno\(\), 0o600\)'
+replace = 'os.fchmod(f.fileno(), 0o644)'

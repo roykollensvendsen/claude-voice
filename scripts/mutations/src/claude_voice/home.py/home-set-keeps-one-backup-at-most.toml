@@ -1,0 +1,5 @@
+[[rule]]
+name = "home set keeps one backup at most"
+file = "src/claude_voice/home.py"
+find = '^\s*if old != spare:$'
+replace = 'if False:'

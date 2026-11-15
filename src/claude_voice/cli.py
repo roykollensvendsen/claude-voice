@@ -24,6 +24,7 @@ COMMANDS: tuple[str, ...] = (
     "serve",
     "check",
     "plugins",
+    "home",
     "agent",
     "machines",
     "permissions",
@@ -137,6 +138,9 @@ def main(
     plugin_cmd = sub.add_parser("plugins", help="list plugins, or approve one by typing its name")
     plugin_cmd.add_argument("action", nargs="?", choices=["list", "approve"], default="list")
     plugin_cmd.add_argument("name", nargs="?")
+    home_cmd = sub.add_parser("home", help="set the home position plugins share, typed without showing it")
+    home_cmd.add_argument("action", nargs="?", choices=["set"], default="set")
+    home_cmd.add_argument("--anywhere", action="store_true", help="allow a position outside Norway")
     agent_cmd = sub.add_parser("agent", help="on another machine: answer the paired hub, or pair with one")
     agent_cmd.add_argument(
         "action",
@@ -166,6 +170,7 @@ def main(
         "machines": lambda: machines_command(parsed.action, parsed.name, env),
         "agent": lambda: agent_command(parsed.action, env, parsed.sessions),
         "plugins": lambda: plugins_command(parsed.action, parsed.name, env),
+        "home": lambda: home_command(parsed.anywhere, env),
         "check": lambda: check_command(env, parsed.transport, parsed.json, login),
     }
     if parsed.command in verbs:
@@ -291,6 +296,46 @@ def plugins_command(action: str, name: str | None, env: Mapping[str, str]) -> in
     plugins.approve(spec, listing)
     _show_approved(spec, listing)
     sys.stdout.write(f"Approved. A running bridge offers {spec.name}'s tools within a few seconds.\n")
+    return 0
+
+
+def _terminal(env: Mapping[str, str]) -> bool:
+    """Whether the owner is at a terminal of their own to answer questions."""
+    from . import fields
+
+    return fields.in_terminal(env, sys.stdin, sys.stdout)
+
+
+def _refuse_outside_a_terminal(verb: str, env: Mapping[str, str]) -> bool:
+    """Say why a command that asks questions will not run here, before it reads anything."""
+    from . import fields
+
+    if _terminal(env):
+        return False
+    sys.stderr.write(f"claude-voice: {fields.NOT_A_TERMINAL.format(verb=verb)}.\n")
+    return True
+
+
+def _say(line: str) -> None:
+    sys.stdout.write(line + "\n")
+
+
+def home_command(anywhere: bool, env: Mapping[str, str]) -> int:
+    """Ask for the home position again and save it for every plugin that reads it."""
+    import getpass
+
+    from . import home, safefile
+
+    if _refuse_outside_a_terminal("home set", env):
+        return 1
+    try:
+        home.set_position(Path(env.get("HOME") or Path.home()), getpass.getpass, _say, anywhere)
+    except (EOFError, KeyboardInterrupt):
+        sys.stdout.write("\nStopped; nothing was changed.\n")
+        return 1
+    except (safefile.Unsafe, OSError) as exc:
+        sys.stderr.write(f"claude-voice: {exc}. Nothing was changed.\n")
+        return 1
     return 0
 
 
