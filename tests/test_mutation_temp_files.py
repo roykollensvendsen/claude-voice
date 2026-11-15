@@ -139,3 +139,20 @@ def test_the_mutation_run_turns_a_stop_into_an_exit_before_it_starts(tmp_path, m
     monkeypatch.setattr(sys, "argv", ["mutate.py"])
     mutate.main()
     assert seen == ["stop"]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows has no hang-up signal")
+def test_a_second_stop_cannot_cut_the_mutation_run_s_cleanup_short(tmp_path, monkeypatch):
+    """GitHub sends an interrupt and then a stop; the second must not end the cleanup halfway."""
+    import signal
+
+    mutate = _mutate(tmp_path, monkeypatch)
+    kept = {s: signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT)}
+    try:
+        mutate.stop_cleanly()
+        with pytest.raises(SystemExit):
+            signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+        assert {s: signal.getsignal(s) for s in kept} == dict.fromkeys(kept, signal.SIG_IGN)
+    finally:
+        for s, handler in kept.items():
+            signal.signal(s, handler)
