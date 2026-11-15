@@ -75,6 +75,48 @@ def test_a_terminated_run_removes_its_temporary_files(tmp_path):
     assert not folder.exists()
 
 
+def test_an_interrupted_run_removes_its_temporary_files_too(tmp_path):
+    """GitHub cancels a job with SIGINT first; the run stops as Ctrl-C stops it, cleaning up."""
+    child, folder = _holder(tmp_path)
+    child.send_signal(signal.SIGINT)
+    assert _wait(child) != 0
+    assert not folder.exists()
+
+
+#: A run whose clean-up takes a second, and says when it starts and when it is done.
+SLOW_CLEANUP = """
+import pathlib, sys, time
+sys.path.insert(0, {scripts!r})
+import temproot
+temproot.exit_on_signals()
+parent = pathlib.Path(sys.argv[1])
+with temproot.run_folder(parent) as folder:
+    try:
+        print(folder, flush=True)
+        time.sleep(60)
+    finally:
+        (parent.parent / "cleaning").touch()
+        time.sleep(1)
+        (parent.parent / "cleaned").touch()
+"""
+
+
+def test_a_second_stop_does_not_cut_the_cleanup_short(tmp_path):
+    """GitHub cancels with SIGINT and then SIGTERM; the second must find the first one's clean-up running on."""
+    parent = tmp_path / "runs"
+    script = SLOW_CLEANUP.format(scripts=str(ROOT / "scripts"))
+    child = subprocess.Popen([sys.executable, "-c", script, str(parent)], stdout=subprocess.PIPE, text=True)
+    folder = pathlib.Path(child.stdout.readline().strip())
+    child.send_signal(signal.SIGINT)
+    deadline = time.monotonic() + 30
+    while not (tmp_path / "cleaning").exists() and time.monotonic() < deadline:
+        time.sleep(0.02)
+    child.send_signal(signal.SIGTERM)
+    _wait(child)
+    assert (tmp_path / "cleaned").exists(), "the second signal cut the clean-up short"
+    assert not folder.exists()
+
+
 def test_a_hung_up_run_removes_its_temporary_files_too(tmp_path):
     child, folder = _holder(tmp_path)
     child.send_signal(signal.SIGHUP)
