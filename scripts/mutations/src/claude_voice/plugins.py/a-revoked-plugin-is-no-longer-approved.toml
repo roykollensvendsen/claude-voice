@@ -1,0 +1,5 @@
+[[rule]]
+name = "a revoked plugin is no longer approved"
+file = "src/claude_voice/plugins.py"
+find = '^\s*del body\[name\]$'
+replace = 'pass'

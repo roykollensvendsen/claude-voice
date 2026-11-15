@@ -142,6 +142,20 @@ def test_approving_with_nothing_typed_approves_nothing(tmp_path, monkeypatch, ca
 # -- through the bridge ------------------------------------------------------------------
 
 
+def test_a_revoked_plugin_is_no_longer_approved(tmp_path, monkeypatch, capsys):
+    approvals = tmp_path / "approved.json"
+    other = config.PluginSpec(**{**GARAGE.__dict__, "name": "tv"})
+    plugins.approve(GARAGE, LISTING, approvals)
+    plugins.approve(other, LISTING, approvals)
+    monkeypatch.setattr(plugins, "APPROVALS", approvals)
+    env = {"HOME": str(tmp_path), "CLAUDE_VOICE_CONFIG": str(tmp_path / "none.toml")}
+    assert cli.main(["plugins", "revoke", "garage"], env=env) == 0
+    assert "garage is no longer approved" in capsys.readouterr().out
+    assert not plugins.approved(GARAGE, approvals) and plugins.approved(other, approvals)
+    assert cli.main(["plugins", "revoke", "garage"], env=env) == 0  # twice changes nothing
+    assert "garage was not approved" in capsys.readouterr().out
+
+
 def bridge(tmp_path, specs, approve=True, factory=None):
     approvals = tmp_path / "approved.json"
     for spec in specs if approve else []:
