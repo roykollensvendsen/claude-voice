@@ -28,31 +28,54 @@ def _calls(node, name):
     ]
 
 
-def _guarded(statements, i):
-    """Whether a try with a finally comes after statement `i`, in the same list of statements."""
-    return any(isinstance(s, ast.Try) and bool(s.finalbody) for s in statements[i + 1 :])
+def _names(stmt):
+    """The names an assignment binds; none for any other statement."""
+    if isinstance(stmt, ast.Assign):
+        targets = stmt.targets
+    elif isinstance(stmt, ast.AnnAssign):
+        targets = [stmt.target]
+    else:
+        return set()
+    return {n.id for target in targets for n in ast.walk(target) if isinstance(n, ast.Name)}
+
+
+def _handed(calls, names):
+    """Whether any of `calls` is handed one of `names`, as an argument or as what it is called on."""
+    return any(isinstance(n, ast.Name) and n.id in names for call in calls for n in ast.walk(call))
+
+
+def _all_calls(statements):
+    return [c for stmt in statements for c in ast.walk(stmt) if isinstance(c, ast.Call)]
 
 
 def _forgotten_folders(tree, where):
-    """A folder made by mkdtemp with no finally beside it, in the statement list it sits in."""
+    """A folder made by mkdtemp whose name no `finally` beside it, or around it, removes."""
     safe = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.Try) and node.finalbody:
-            safe |= {id(c) for stmt in node.body for c in ast.walk(stmt)}
         body = getattr(node, "body", None)
-        for i, stmt in enumerate(body if isinstance(body, list) else []):
-            if _guarded(body, i):
+        statements = body if isinstance(body, list) else []
+        for i, stmt in enumerate(statements):
+            names = _names(stmt)
+            later = [s for s in statements[i + 1 :] if isinstance(s, ast.Try)]
+            around = [node] if isinstance(node, ast.Try) else []
+            if names and any(_handed(_all_calls(s.finalbody), names) for s in later + around):
                 safe |= {id(c) for c in ast.walk(stmt)}
     return [f"{where}:{c.lineno}: mkdtemp, {FORGOTTEN}" for c in _calls(tree, "mkdtemp") if id(c) not in safe]
 
 
 def _forgotten_files(tree, where):
-    """A file made by mkstemp in a function that never removes or moves a file, and NamedTemporaryFile(delete=False)."""
+    """A file made by mkstemp whose name its function never removes or moves, and NamedTemporaryFile(delete=False)."""
     found = []
     for function in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)):
-        made = _calls(function, "mkstemp")
-        if made and not any(_calls(function, name) for name in ("unlink", "remove", "replace")):
-            found += [f"{where}:{c.lineno}: mkstemp, {FORGOTTEN}" for c in made]
+        gone = [c for name in ("unlink", "remove", "replace") for c in _calls(function, name)]
+        for stmt in ast.walk(function):
+            made = _calls(stmt, "mkstemp") if _names(stmt) else []
+            if made and not _handed(gone, _names(stmt)):
+                found += [f"{where}:{c.lineno}: mkstemp, {FORGOTTEN}" for c in made]
+        bare = [
+            c for c in _calls(function, "mkstemp") if not any(c in ast.walk(s) for s in ast.walk(function) if _names(s))
+        ]
+        found += [f"{where}:{c.lineno}: mkstemp, {FORGOTTEN}" for c in bare]
     found += [
         f"{where}:{call.lineno}: NamedTemporaryFile(delete=False), {FORGOTTEN}"
         for call in _calls(tree, "NamedTemporaryFile")
@@ -96,8 +119,19 @@ def test_no_code_makes_a_temporary_file_it_may_leave_behind():
         ("import tempfile\nd = tempfile.mkdtemp()\n", "mkdtemp"),
         ("import tempfile\ndef f():\n    fd, name = tempfile.mkstemp()\n", "mkstemp"),
         ("import tempfile\nf = tempfile.NamedTemporaryFile(delete=False)\n", "NamedTemporaryFile"),
+        (
+            (
+                "import tempfile, shutil\ndef f(other):\n    d = tempfile.mkdtemp()\n"
+                "    try:\n        pass\n    finally:\n        shutil.rmtree(other)\n"
+            ),
+            "mkdtemp",
+        ),
+        (
+            "import tempfile\ndef f(text):\n    fd, name = tempfile.mkstemp()\n    return text.replace('a', 'b')\n",
+            "mkstemp",
+        ),
     ],
-    ids=["mkdtemp", "mkstemp", "NamedTemporaryFile"],
+    ids=["mkdtemp", "mkstemp", "NamedTemporaryFile", "a finally that removes another name", "str.replace"],
 )
 def test_the_static_check_refuses_each_forgotten_temporary_file(source, said):
     found = offences(source)
@@ -141,8 +175,9 @@ def test_nothing_sets_pytest_to_sweep_the_shared_folder():
 
 
 def test_a_run_s_temporary_files_lie_under_its_own_folder(tmp_path):
-    root = pathlib.Path(os.environ["GIZMO_MCP_TEST_ROOT"])
+    root = pathlib.Path(tempfile.gettempdir())
     assert root.name.startswith("run-")
+    assert os.environ["TMPDIR"] == str(root)
     assert tmp_path.is_relative_to(root)
     assert "pytest-of-" not in str(tmp_path)
     assert pathlib.Path(tempfile.gettempdir()) == root
@@ -182,7 +217,6 @@ def _project(tmp_path, test):
 
 def _run(project, base):
     env = {**os.environ, "TMPDIR": str(base)}
-    env.pop("GIZMO_MCP_TEST_ROOT", None)
     return subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "--rootdir", str(project), "tests"],
         cwd=project,
@@ -227,6 +261,9 @@ def test_a_killed_test_run_is_swept_at_the_next_start(tmp_path):
     left.mkdir()
     (left / temproot.LOCK).touch()
     (left / "made-by-the-killed-run.txt").write_text("x")
+    (left / "shut").mkdir()
+    (left / "shut" / "inside.txt").write_text("x")
+    (left / "shut").chmod(0)  # as a test that took its own folder's rights away would leave it
     other = base / "gizmo-mcp-tests-00000000"  # another checkout's: never ours to sweep
     other.mkdir()
     done = _run(project, base)
