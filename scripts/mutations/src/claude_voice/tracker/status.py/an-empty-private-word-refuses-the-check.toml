@@ -1,0 +1,5 @@
+[[rule]]
+name = "an empty private word refuses the check"
+file = "src/claude_voice/tracker/status.py"
+find = 'if any\(not w\.strip\(\) for w in words\):'
+replace = 'if False:'

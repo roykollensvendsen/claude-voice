@@ -1,0 +1,5 @@
+[[rule]]
+name = "a private word list others may read refuses the check"
+file = "src/claude_voice/tracker/status.py"
+find = 'if mode & \(stat\.S_IRWXG \| stat\.S_IRWXO\):'
+replace = 'if False:'

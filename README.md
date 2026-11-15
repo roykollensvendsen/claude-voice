@@ -458,6 +458,10 @@ first, and what it may never run ([docs/permissions.md](docs/permissions.md)). I
 uv run pytest -m e2e
 ```
 
+`claude-voice tracker status --check` says where one repository's open pull
+requests stand: moving, stopped or waiting on its owner. It only reads, and each
+line it prints is one a public board could show ([docs/tracker.md](docs/tracker.md)).
+
 ## Skills
 
 A skill is a set of written steps that Claude Code follows for one kind of

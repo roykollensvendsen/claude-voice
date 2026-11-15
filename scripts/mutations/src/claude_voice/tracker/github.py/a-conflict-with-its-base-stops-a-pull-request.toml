@@ -1,0 +1,5 @@
+[[rule]]
+name = "a conflict with its base stops a pull request"
+file = "src/claude_voice/tracker/github.py"
+find = 'if pr\.get\("mergeable"\) == "CONFLICTING":'
+replace = 'if False:'

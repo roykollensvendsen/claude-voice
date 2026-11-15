@@ -293,6 +293,7 @@
     "files": [
       "*.config/claude-voice/env*",
       "*.config/claude-voice/machines/*",
+      "*.config/claude-voice/private.toml*",
       "*.config/dreame*",
       "*.config/tv-mcp*",
       "*secrets.yaml*",

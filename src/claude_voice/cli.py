@@ -30,6 +30,7 @@ COMMANDS: tuple[str, ...] = (
     "permissions",
     "org",
     "restart",
+    "tracker",
 )
 
 SIGN_IN = (
@@ -166,9 +167,15 @@ def main(
     restart_cmd = sub.add_parser("restart", help="restart the bridge's service, noting why for its health answer")
     restart_cmd.add_argument("--why", default="", help="what the restart is for, shown in health")
     restart_cmd.add_argument("--dry-run", action="store_true", help="say what it would do, and do nothing")
+    tracker_cmd = sub.add_parser("tracker", help="where pushed work stands, read from the work tracker")
+    tracker_cmd.add_argument("action", choices=["status"], help="status: where each open pull request stands")
+    tracker_cmd.add_argument("--check", action="store_true", help="read one repository's pull requests; write nothing")
+    tracker_cmd.add_argument("--repo", help="owner/name (default: the repository of this folder)")
+    tracker_cmd.add_argument("--words", type=Path, help="the private word list (see docs/tracker.md)")
     parsed = parser.parse_args(args)
 
     verbs: dict[str, Callable[[], int]] = {
+        "tracker": lambda: tracker_command(parsed.check, parsed.repo, parsed.words, env),
         "restart": lambda: restart_command(parsed.why, parsed.dry_run, systemctl),
         "permissions": lambda: permissions_command(parsed.folders, parsed.dry_run, env),
         "org": lambda: org_command(parsed.action, env),
@@ -523,6 +530,38 @@ def org_command(action: str, env: Mapping[str, str]) -> int:
     for line in org.check(chart, running):
         sys.stdout.write(line + "\n")
     return 1 if chart.problems else 0
+
+
+def tracker_command(check: bool, repo: str | None, words: Path | None, env: Mapping[str, str]) -> int:
+    """Print where one repository's pull requests stand, each line fit for a public board (docs/tracker.md)."""
+    from .tracker import github, status
+
+    if not check:
+        sys.stderr.write("claude-voice: only `tracker status --check` is built so far; it reads and writes nothing\n")
+        return 2
+    home = Path(env.get("HOME") or Path.home())
+    try:
+        listed, note = status.private_words(words or home / ".config/claude-voice/private.toml")
+    except status.WordsError as exc:
+        sys.stderr.write(f"claude-voice: {exc}\n")
+        return 2
+    if note:
+        sys.stderr.write(f"claude-voice: note: {note}\n")
+    try:
+        adapter = github.GitHub(repo)
+        name, visibility = adapter.describe()
+        # RULE: a repository that is not public is refused
+        if visibility != "PUBLIC":
+            sys.stderr.write(f"claude-voice: {name} is not public, so nothing of it may go on a public board\n")
+            return 1
+        found = adapter.items(name)
+    except github.GitHubError as exc:
+        sys.stderr.write(f"claude-voice: {exc}\n")
+        return 1
+    printed, refused = status.lines(name, found, listed, adapter.capped)
+    for line in printed:
+        sys.stdout.write(line + "\n")
+    return 1 if refused else 0
 
 
 def _systemctl(command: list[str]) -> None:

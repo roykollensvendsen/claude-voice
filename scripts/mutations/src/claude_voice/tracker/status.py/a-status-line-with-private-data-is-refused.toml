@@ -1,0 +1,5 @@
+[[rule]]
+name = "a status line with private data is refused"
+file = "src/claude_voice/tracker/status.py"
+find = 'if private\(flat, words\):'
+replace = 'if False:'

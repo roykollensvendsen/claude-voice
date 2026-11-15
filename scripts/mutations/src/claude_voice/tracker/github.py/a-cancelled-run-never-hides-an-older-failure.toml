@@ -1,0 +1,5 @@
+[[rule]]
+name = "a cancelled run never hides an older failure"
+file = "src/claude_voice/tracker/github.py"
+find = 'if outcome == "CANCELLED":'
+replace = 'if False:'
