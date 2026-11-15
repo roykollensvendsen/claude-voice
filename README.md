@@ -550,6 +550,31 @@ $ claude-voice plugins
 No plugins in the settings file.
 ```
 
+### One home position for every plugin
+
+A plugin that needs to know where home is, such as a weather or fuel price plugin,
+reads one shared file: `~/.config/claude-voice-home/home.toml`, readable by you
+alone. It holds only `lat` and `lon`, rounded to 2 decimals (about 1 km), and it is
+outside the bridge's own config and every repository. Each plugin is told the file's
+path in its own config, as `home_file`, and reads it itself; the bridge passes it
+nothing, and nothing looks the position up from the network.
+
+`claude-voice home set` asks for latitude and longitude, typed or pasted from your
+phone's map, without showing them. Each must be a number inside Norway (57 to 72
+north, 4 to 32 east) unless you add `--anywhere`. It keeps one backup, of the file
+it replaced, and prints the command that undoes the change. It refuses when the file
+would land inside a git repository, as it would if `~/.config` linked into a dotfiles
+repository. That check finds a `.git` folder above the file, so it cannot see a
+dotfiles tool that keeps its repository elsewhere: never add
+`~/.config/claude-voice-home` to a dotfiles tool such as yadm or vcsh. A folder others
+could list is narrowed to owner-only, and it says so.
+Every plugin sees the new position at its next read. It asks you questions, so it runs only in a terminal of your own:
+
+```console
+$ claude-voice home set
+claude-voice: home set asks you questions; run it in a terminal of your own, not from Claude Code or through a pipe.
+```
+
 ## Another machine
 
 Any other computer you own can be reached through this one. It runs a small

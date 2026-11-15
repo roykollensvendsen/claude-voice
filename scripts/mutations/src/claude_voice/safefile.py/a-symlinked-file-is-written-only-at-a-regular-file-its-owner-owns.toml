@@ -1,0 +1,5 @@
+[[rule]]
+name = "a symlinked file is written only at a regular file its owner owns"
+file = "src/claude_voice/safefile.py"
+find = 'if not real\.is_file\(\) or not _owned\(real\):'
+replace = 'if False:'

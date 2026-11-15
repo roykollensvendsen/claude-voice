@@ -1,0 +1,5 @@
+[[rule]]
+name = "a home position is rounded to two decimals before it is written"
+file = "src/claude_voice/home.py"
+find = 'return fields\.Field\("float", range=bounds, round=2\)'
+replace = 'return fields.Field("float", range=bounds)'

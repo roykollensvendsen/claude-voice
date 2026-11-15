@@ -16,8 +16,8 @@ def env(tmp_path, **extra):
     return {"CLAUDE_VOICE_ROOT": str(tmp_path), **extra}
 
 
-def test_the_command_has_serve_check_plugins_agent_machines_permissions_org_and_restart():
-    assert COMMANDS == ("serve", "check", "plugins", "agent", "machines", "permissions", "org", "restart")
+def test_the_command_has_serve_check_plugins_home_agent_machines_permissions_org_and_restart():
+    assert COMMANDS == ("serve", "check", "plugins", "home", "agent", "machines", "permissions", "org", "restart")
 
 
 class Systemctl:

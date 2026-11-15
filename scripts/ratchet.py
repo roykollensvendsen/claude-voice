@@ -69,6 +69,7 @@ LAYERS = {
             "restarts",
             "invocation",
             "fields",
+            "safefile",
         ),
         0,
     ),
@@ -95,6 +96,7 @@ LAYERS = {
             "hints",
             "prompts",
             "manifest",
+            "home",
         ),
         1,
     ),  # parts, each about one thing
