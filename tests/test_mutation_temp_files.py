@@ -52,10 +52,11 @@ def test_a_suite_run_leaves_no_temporary_files_behind(tmp_path, monkeypatch):
 #: A test run while red-first's cleanup is switched off: it makes its checkout folder the way
 #: red_first.py does and never removes it. Any mutant that stops a cleanup leaks the same way.
 LEAKS_A_FOLDER = """
-import os, tempfile
+import os, pathlib, tempfile
 
 def test_it_leaves_a_folder_in_the_temporary_folder():
-    tempfile.mkdtemp(prefix="red-first-", dir=os.environ.get("RUNNER_TEMP"))
+    leaked = tempfile.mkdtemp(prefix="red-first-", dir=os.environ.get("RUNNER_TEMP"))
+    pathlib.Path({ran!r}).write_text(leaked)
 """
 
 
@@ -71,10 +72,13 @@ def test_a_mutant_s_leaked_temporary_folder_stays_inside_the_run_s_own_folder(tm
     monkeypatch.delenv("RUNNER_TEMP", raising=False)
     monkeypatch.setattr(tempfile, "tempdir", None)  # gettempdir() caches its first answer
     mutate = _mutate(tmp_path, monkeypatch)
-    (mutate.ROOT / "tests" / "test_leaves_files.py").write_text(LEAKS_A_FOLDER)
+    ran = tmp_path / "ran"  # outside both folders, so it outlives the run
+    (mutate.ROOT / "tests" / "test_leaves_files.py").write_text(LEAKS_A_FOLDER.format(ran=str(ran)))
     monkeypatch.setattr(mutate, "MUTATE_TMP", outer / "mutate-tmp")
     failed, _ = mutate.run_suite()
     assert failed == 0
+    # No failures is also what a run that collected nothing gives; this says the leak happened.
+    assert mutate.MUTATE_TMP in pathlib.Path(ran.read_text()).parents
     left = sorted(p.relative_to(outer).as_posix() for p in outer.rglob("*"))
     assert left == ["mutate-tmp"]
 
