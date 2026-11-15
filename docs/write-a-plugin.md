@@ -32,6 +32,7 @@ fake device, and every check passes with no network.
 | `config.default.toml` | The first config install writes, with made-up values only. |
 | `scripts/ratchet.py` | The quality levels. None may get worse than main's without a reason in the pull request. |
 | `scripts/mutate.py` | Switches each rule off in turn, to prove its own test can fail. |
+| `scripts/temproot.py` | Gives each run of the tests, the mutation check or the ratchet a temporary folder of its own. A test that leaves a file there fails the run. A stopped run cleans up, and a killed run's folder goes at the next start. |
 | `justfile` | Every check as a plain command, the same lines CI runs. |
 
 The layers run one way. The core never imports MCP, and only the server and the command line

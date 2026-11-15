@@ -7,7 +7,9 @@ of a mutation run that loses the original. `tests/conftest.py` fails the whole r
 when it happens. These tests copy it to a scratch project and prove it there.
 """
 
+import os
 import pathlib
+import shutil
 import subprocess
 import sys
 
@@ -25,12 +27,16 @@ def _run(tmp_path, test, *, there_before):
     (tmp_path / "tests").mkdir()
     (tmp_path / "scripts").mkdir()
     (tmp_path / "tests/conftest.py").write_text((ROOT / "tests/conftest.py").read_text(encoding="utf-8"))
+    shutil.copy(ROOT / "scripts/temproot.py", tmp_path / "scripts/temproot.py")
+    (tmp_path / "tmp").mkdir()
     (tmp_path / "tests/test_scratch.py").write_text(test)
     if there_before:
         (tmp_path / "scripts/.mutate-recovery.json").write_text('{"file": "kept"}')
     return subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "--rootdir", str(tmp_path), "tests"],
         cwd=tmp_path,
+        # A temporary folder of its own: a run that fails keeps pytest's files there, for reading.
+        env={**os.environ, "TMPDIR": str(tmp_path / "tmp")},
         capture_output=True,
         text=True,
         check=False,

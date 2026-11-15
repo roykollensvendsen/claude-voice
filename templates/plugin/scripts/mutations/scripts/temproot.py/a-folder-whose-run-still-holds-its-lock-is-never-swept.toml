@@ -1,0 +1,5 @@
+[[rule]]
+name = "a folder whose run still holds its lock is never swept"
+file = "scripts/temproot.py"
+find = '^\s*return _lock_is_free\(folder\)$'
+replace = 'return True'

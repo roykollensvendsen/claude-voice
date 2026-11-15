@@ -1,5 +1,0 @@
-[[rule]]
-name = "a killed run's temporary files are swept at the next start"
-file = "scripts/mutate.py"
-find = 'for left in MUTATE_TMP\.iterdir\(\) if MUTATE_TMP\.is_dir\(\) else \[\]:'
-replace = 'for left in []:'

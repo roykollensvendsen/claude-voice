@@ -1,0 +1,5 @@
+[[rule]]
+name = "a terminated run removes its temporary files"
+file = "scripts/temproot.py"
+find = 'raise SystemExit\(SIGNALS\[signal\.Signals\(signum\)\]\)'
+replace = 'os._exit(1)'
