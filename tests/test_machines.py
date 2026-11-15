@@ -231,8 +231,12 @@ async def test_the_bridge_offers_an_approved_machines_tools(laptop, tmp_path):
     assert not res.is_error and res.structured_content["machine"] == "hjemme"
 
 
-async def test_machines_list_says_which_are_approved(laptop, tmp_path, capsys):
+async def test_machines_list_says_which_are_approved(laptop, tmp_path, capsys, monkeypatch):
+    from claude_voice import invocation
     from claude_voice.cli import main
+
+    # How the hint names the program depends on the shell's search path; fix it so the test reads the same everywhere.
+    monkeypatch.setattr(invocation, "command", lambda: "claude-voice")
 
     home = tmp_path / "home"
     (home / ".config/claude-voice").mkdir(parents=True)
