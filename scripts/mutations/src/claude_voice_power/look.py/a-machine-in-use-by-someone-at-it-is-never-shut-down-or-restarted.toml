@@ -1,0 +1,5 @@
+[[rule]]
+name = "a machine in use by someone at it is never shut down or restarted"
+file = "src/claude_voice_power/look.py"
+find = "found.refused = f\"Someone is using"
+replace = "pass"

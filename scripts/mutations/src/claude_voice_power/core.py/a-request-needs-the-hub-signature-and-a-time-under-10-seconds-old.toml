@@ -1,0 +1,5 @@
+[[rule]]
+name = "a request needs the hub signature and a time under 10 seconds old"
+file = "src/claude_voice_power/core.py"
+find = "if not \\(self.verifier.ok\\(payload, signature\\) and -SKEW_SECONDS"
+replace = "if False:"

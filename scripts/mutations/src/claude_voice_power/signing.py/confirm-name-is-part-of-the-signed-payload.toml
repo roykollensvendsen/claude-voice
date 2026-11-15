@@ -1,0 +1,5 @@
+[[rule]]
+name = "confirm_name is part of the signed payload"
+file = "src/claude_voice_power/signing.py"
+find = "fields = \\(\"confirm\""
+replace = "fields = (\"confirm\", _word(\"machine\", machine), action, _word(\"nonce\", nonce), str(int(expires)))"

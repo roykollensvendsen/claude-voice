@@ -1,0 +1,5 @@
+[[rule]]
+name = "a locked screen with a login open needs the machine name in the yes"
+file = "src/claude_voice_power/look.py"
+find = "found.needs_name = True"
+replace = "pass"

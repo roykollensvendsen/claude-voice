@@ -1,0 +1,5 @@
+[[rule]]
+name = "only cv-power holds a power right"
+file = "src/claude_voice_power/units.py"
+find = "who = f'subject.system_unit"
+replace = "who = \"true\""

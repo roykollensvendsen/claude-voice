@@ -1,0 +1,5 @@
+[[rule]]
+name = "a power action needs the hub signature over this machine, this action, this nonce and an unexpired time"
+file = "src/claude_voice_power/core.py"
+find = "if not \\(self.verifier.ok\\(payload, signature\\) and fresh"
+replace = "if False:"

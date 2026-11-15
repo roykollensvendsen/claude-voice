@@ -1,0 +1,5 @@
+[[rule]]
+name = "a nonce works once, for its own action, within 60 seconds"
+file = "src/claude_voice_power/core.py"
+find = "valid = _belongs\\(question, nonce, action, now\\)"
+replace = "valid = question is not None"
