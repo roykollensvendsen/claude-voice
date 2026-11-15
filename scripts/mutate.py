@@ -290,6 +290,10 @@ def stop_cleanly() -> None:
     """
 
     def stop(signum: int, _frame: object) -> None:
+        # A second signal (GitHub sends an interrupt, then a stop) must not cut the cleanup short.
+        for later in ("SIGTERM", "SIGHUP", "SIGINT"):
+            if hasattr(signal, later):
+                signal.signal(getattr(signal, later), signal.SIG_IGN)
         raise SystemExit(128 + signum)
 
     for name in ("SIGTERM", "SIGHUP"):

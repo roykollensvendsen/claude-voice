@@ -343,10 +343,10 @@ def measure_at(ref: str) -> dict[str, Any]:
     and is pointed at the copy, so the base is measured exactly as it stands."""
     with tempfile.TemporaryDirectory() as tmp:
         copy, out = Path(tmp) / "base", Path(tmp) / "levels.json"
-        added = _run("git", "worktree", "add", "--detach", str(copy), ref)
-        if added.returncode:
-            raise SystemExit(f"Cannot check out {ref} to measure it:\n{added.stderr}")
-        try:
+        try:  # opened before the checkout, so a stop right after it still removes it
+            added = _run("git", "worktree", "add", "--detach", str(copy), ref)
+            if added.returncode:
+                raise SystemExit(f"Cannot check out {ref} to measure it:\n{added.stderr}")
             synced = _run("uv", "sync", "--locked", "--all-extras", cwd=copy)
             if synced.returncode:
                 raise SystemExit(f"Cannot install {ref} to measure it:\n{synced.stderr[-2000:]}")
@@ -368,6 +368,10 @@ def stop_cleanly() -> None:
     """
 
     def stop(signum: int, _frame: object) -> None:
+        # A second signal (GitHub sends an interrupt, then a stop) must not cut the cleanup short.
+        for later in ("SIGTERM", "SIGHUP", "SIGINT"):
+            if hasattr(signal, later):
+                signal.signal(getattr(signal, later), signal.SIG_IGN)
         raise SystemExit(128 + signum)
 
     for name in ("SIGTERM", "SIGHUP"):
