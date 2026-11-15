@@ -46,6 +46,7 @@ decision nobody writes down.
 | [ADR-CV-015](ADR-CV-015-the-red-run-is-proved-by-ci.md) | The red run is proved by continuous integration, not by a red commit | Accepted |
 | [ADR-CV-016](ADR-CV-016-a-plugin-is-installed-from-its-own-manifest.md) | A plugin is installed from a data-only manifest it ships, in the owner's own terminal | Accepted |
 | [ADR-CV-017](ADR-CV-017-a-profile-is-an-allow-listed-shape-without-values.md) | A profile is an allow-listed shape, and the values stay with the user | Accepted |
+| [ADR-CV-018](ADR-CV-018-a-paired-machine-powers-off-only-on-a-yes-the-hub-signed.md) | A paired machine powers off only on a yes the hub signed, through a helper of its own | Accepted |
 
 What is deliberately left undone, and what would make each worth doing, is
 [`deferred.md`](deferred.md). A thing left undone with no trigger is a thing
