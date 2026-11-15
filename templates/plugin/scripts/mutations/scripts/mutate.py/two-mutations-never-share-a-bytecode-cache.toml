@@ -1,0 +1,5 @@
+[[rule]]
+name = "two mutations never share a bytecode cache"
+file = "scripts/mutate.py"
+find = 'env = \{\*\*os\.environ, "PYTHONDONTWRITEBYTECODE": "1"\}'
+replace = 'env = {**os.environ}'

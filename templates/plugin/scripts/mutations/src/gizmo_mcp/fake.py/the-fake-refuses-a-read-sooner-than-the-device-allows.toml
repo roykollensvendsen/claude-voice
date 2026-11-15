@@ -1,0 +1,5 @@
+[[rule]]
+name = "the fake refuses a read sooner than the device allows"
+file = "src/gizmo_mcp/fake.py"
+find = 'if len\(self\._reads\) >= READS_PER_MINUTE:'
+replace = 'if False:'

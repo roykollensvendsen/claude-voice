@@ -1,0 +1,15 @@
+# How claude-voice installs this plugin (docs/plugin-manifest/v1.json in claude-voice).
+# Data only: the bridge reads it and never runs it. tests/test_manifest.py checks it.
+manifest = 1
+name = "gizmo"
+command = "uv"
+args = ["run", "gizmo-mcp", "serve"]
+tools = ["gizmo_status"]
+timeout = 30
+branch = "main"
+# Add "home" here when the plugin needs a position; it then reads home_file, never a copy.
+uses = []
+
+[config]
+default = "config.default.toml"
+dir = "gizmo-mcp"

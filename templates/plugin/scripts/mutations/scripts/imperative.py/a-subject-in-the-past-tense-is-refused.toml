@@ -1,0 +1,5 @@
+[[rule]]
+name = "a subject in the past tense is refused"
+file = "scripts/imperative.py"
+find = '\(word\.endswith\("ed"\), "is a past tense"\),'
+replace = '(False, "is a past tense"),'

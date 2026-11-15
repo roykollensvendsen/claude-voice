@@ -1,0 +1,5 @@
+[[rule]]
+name = "every answer has a sentence to say even when the gizmo fails"
+file = "src/gizmo_mcp/service.py"
+find = 'except Exception:  # noqa: BLE001'
+replace = 'except ZeroDivisionError:  # switched off'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a coloured failure line is still attributed"
+file = "scripts/mutate.py"
+find = 'plain = ANSI\.sub\("", r\.stdout\)'
+replace = 'plain = r.stdout'

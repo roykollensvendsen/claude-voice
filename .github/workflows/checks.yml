@@ -154,6 +154,23 @@ jobs:
           path: ${{ runner.temp }}/mutations.json
           if-no-files-found: ignore
 
+  # The plugin template, rendered under a made-up name into a temporary folder and put through
+  # its own gates there, offline: its suite, its mutation run and its ratchet.
+  template:
+    runs-on: ubuntu-latest
+    # No time limit, on purpose: this job holds the template's mutation run, and a run cut
+    # short proves nothing. Never cap it; remove a cap rather than raise it.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          version: "0.12.13"
+          python-version: "3.12"
+      - run: uv sync --locked --all-extras
+      - name: The template's own gates, on a rendered copy
+        run: uv run pytest -q -p no:cacheprovider --strict-markers -m template
+
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 10          # the default is 360; this job takes under a minute

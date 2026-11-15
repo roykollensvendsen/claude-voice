@@ -1,0 +1,5 @@
+[[rule]]
+name = "a module with no layer is a breach"
+file = "scripts/ratchet.py"
+find = 'if layer\(module\) == "unassigned":'
+replace = 'if False:'

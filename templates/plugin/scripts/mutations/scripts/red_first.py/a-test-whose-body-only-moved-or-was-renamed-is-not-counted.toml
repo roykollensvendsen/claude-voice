@@ -1,0 +1,5 @@
+[[rule]]
+name = "a test whose body only moved or was renamed is not counted"
+file = "scripts/red_first.py"
+find = '^\s*if shape in before:'
+replace = 'if False:'

@@ -38,8 +38,11 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-markers = ["e2e: needs a real logged-in Claude Code; never run in CI"]
-addopts = "-m 'not e2e'"
+markers = [
+    "e2e: needs a real logged-in Claude Code; never run in CI",
+    "template: runs the rendered plugin template's own gates; a CI job of its own",
+]
+addopts = "-m 'not e2e and not template'"
 # A passing test's temporary files are deleted at once, and only the latest run's
 # failures are kept to read: a day of runs otherwise filled the machine's /tmp.
 tmp_path_retention_count = 1

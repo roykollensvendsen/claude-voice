@@ -1,0 +1,5 @@
+[[rule]]
+name = "the mutation report counts only rules whose own test went red"
+file = "scripts/mutate.py"
+find = 'return \{"killed": sum\(rule\["own_test_red"\] for rule in rules\)'
+replace = 'return {"killed": sum(rule["tests_red"] > 0 for rule in rules), "total": len(rules), "rules": rules}'
