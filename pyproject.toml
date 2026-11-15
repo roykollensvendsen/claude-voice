@@ -25,7 +25,9 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "cryptography>=46",
     "httpx>=0.28.1",
+    "jeepney>=0.9.0",
     "jsonschema>=4.26.0",
     "mypy>=2.4.1",
     "pytest>=9.2.0",
@@ -60,5 +62,10 @@ line-length = 120
 select = ["E", "F", "I", "B", "UP", "ASYNC"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["claude_voice"]
-known-third-party = ["fakes"]
+known-first-party = ["claude_voice", "claude_voice_power"]
+known-third-party = ["fakes", "power_fakes", "power_scan"]
+
+# jeepney, the helper's D-Bus library, ships no type hints.
+[[tool.mypy.overrides]]
+module = ["jeepney", "jeepney.*"]
+ignore_missing_imports = true

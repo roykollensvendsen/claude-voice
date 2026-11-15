@@ -1,0 +1,5 @@
+[[rule]]
+name = "the helper refuses to start from a home folder or a folder others can write"
+file = "src/claude_voice_power/selfcheck.py"
+find = "reason = unsafe\\(real, tuple\\(allowed\\), status\\)"
+replace = "reason = None"

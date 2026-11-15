@@ -1,0 +1,5 @@
+[[rule]]
+name = "a new request replaces the open question"
+file = "src/claude_voice_power/core.py"
+find = "self.replaced.add\\(self.open.nonce\\)"
+replace = "pass"

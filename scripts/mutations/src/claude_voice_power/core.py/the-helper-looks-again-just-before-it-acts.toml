@@ -1,0 +1,5 @@
+[[rule]]
+name = "the helper looks again just before it acts"
+file = "src/claude_voice_power/core.py"
+find = "again = self._look\\(check_inhibitors=False\\)"
+replace = "again = Look()"

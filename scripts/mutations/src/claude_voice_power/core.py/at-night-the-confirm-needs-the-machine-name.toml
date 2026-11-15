@@ -1,0 +1,5 @@
+[[rule]]
+name = "at night the confirm needs the machine name"
+file = "src/claude_voice_power/core.py"
+find = "needs_name = seen.needs_name or self._night\\(\\)"
+replace = "needs_name = seen.needs_name"

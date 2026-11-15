@@ -1,0 +1,5 @@
+[[rule]]
+name = "a shutdown not made by the helper is never cancelled or replaced"
+file = "src/claude_voice_power/look.py"
+find = "found.refused = f\"\\{machine\\} already has"
+replace = "pass"
