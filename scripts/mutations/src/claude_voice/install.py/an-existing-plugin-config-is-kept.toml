@@ -1,0 +1,6 @@
+[[rule]]
+name = "an existing plugin config is kept"
+file = "src/claude_voice/install.py"
+find = '^\s*if target\.exists\(\):$'
+replace = 'if False:'
+occurrence = 2

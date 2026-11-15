@@ -1,0 +1,5 @@
+[[rule]]
+name = "a plugin checkout that is not clean or not on its branch is refused"
+file = "src/claude_voice/install.py"
+find = '^\s*if why:$'
+replace = 'if False:'

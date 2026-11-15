@@ -135,9 +135,14 @@ def main(
         p.add_argument("--transport", choices=["stdio", "http"], default="stdio")
         if name == "check":
             p.add_argument("--json", action="store_true", help="answer in JSON, for an assistant doing the setup")
-    plugin_cmd = sub.add_parser("plugins", help="list plugins, approve one by typing its name, or revoke one")
-    plugin_cmd.add_argument("action", nargs="?", choices=["list", "approve", "revoke"], default="list")
+    plugin_cmd = sub.add_parser(
+        "plugins", help="list plugins, install one from its checkout, approve one by typing its name, or revoke one"
+    )
+    plugin_cmd.add_argument("action", nargs="?", choices=["list", "install", "approve", "revoke"], default="list")
     plugin_cmd.add_argument("name", nargs="?")
+    plugin_cmd.add_argument("--from", dest="source", help="with install: the plugin's checkout (default ~/<its repo>)")
+    plugin_cmd.add_argument("--dry-run", action="store_true", help="with install: show each change, write nothing")
+    plugin_cmd.add_argument("--anywhere", action="store_true", help="with install: allow a home outside Norway")
     home_cmd = sub.add_parser("home", help="set the home position plugins share, typed without showing it")
     home_cmd.add_argument("action", nargs="?", choices=["set"], default="set")
     home_cmd.add_argument("--anywhere", action="store_true", help="allow a position outside Norway")
@@ -169,7 +174,7 @@ def main(
         "org": lambda: org_command(parsed.action, env),
         "machines": lambda: machines_command(parsed.action, parsed.name, env),
         "agent": lambda: agent_command(parsed.action, env, parsed.sessions),
-        "plugins": lambda: plugins_command(parsed.action, parsed.name, env),
+        "plugins": lambda: plugins_command(parsed.action, parsed.name, env, parsed),
         "home": lambda: home_command(parsed.anywhere, env),
         "check": lambda: check_command(env, parsed.transport, parsed.json, login),
     }
@@ -259,12 +264,15 @@ def _show_approved(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> None
         sys.stdout.write(f"  {spec.name}'s rules for the voice: {rules}\n")
 
 
-def plugins_command(action: str, name: str | None, env: Mapping[str, str]) -> int:
-    """List the plugins in the settings file, or approve one: the owner types its name."""
+def plugins_command(action: str, name: str | None, env: Mapping[str, str], options: Any = None) -> int:
+    """List the plugins in the settings file, install one, approve one (the owner types its
+    name), or take an approval back."""
     from . import config as settings
 
     if action == "revoke":
         return _revoke(name)
+    if action == "install":
+        return install_command(name, options, env)
     try:
         specs = settings.load(settings.FILE, env=env).plugins
     except settings.ConfigError as exc:
@@ -277,6 +285,54 @@ def plugins_command(action: str, name: str | None, env: Mapping[str, str]) -> in
         sys.stderr.write(f"claude-voice: no plugin {name!r} in the settings file\n")
         return 1
     return _approve(chosen)
+
+
+def install_command(name: str | None, options: Any, env: Mapping[str, str]) -> int:
+    """Add a plugin from its checkout step by step, then ask for the typed approval."""
+    import getpass
+
+    from . import install
+
+    # RULE: plugins install asks only in a real terminal
+    if _refuse_outside_a_terminal("plugins install", env):
+        return 1
+    if not name:
+        sys.stderr.write(
+            "claude-voice: say which plugin, such as: claude-voice plugins install fuel --from ~/fuel-mcp\n"
+        )
+        return 1
+    try:
+        plan = install.plan(name, options.source, env)
+    except install.InstallError as exc:
+        sys.stderr.write(f"claude-voice: {exc}.\n")
+        return 1
+    outcome = install.run(plan, install.Asker(_say, getpass.getpass, input), options.dry_run, options.anywhere)
+    code = 1 if outcome.stopped else _install_approval(plan, outcome, options.dry_run, env)
+    if outcome.error:
+        sys.stderr.write(f"claude-voice: {outcome.error}.\n")
+    for line in install.summary(outcome, plan, options.dry_run):
+        _say(line)
+    return code
+
+
+def _install_approval(plan: Any, outcome: Any, dry_run: bool, env: Mapping[str, str]) -> int:
+    """The last step: plugins approve's own typed approval, unless it is still valid."""
+    from . import config as settings
+    from . import install, plugins
+
+    name, number = plan.manifest.name, outcome.steps + 1
+    if dry_run:
+        _say(f"{number}. Approve {name}: would ask you to type {name}.")
+        return 0
+    spec = next(s for s in settings.load(settings.FILE, env=env).plugins if s.name == name)
+    if plugins.check_one(spec)[2] == "started":
+        _say(f"{number}. Approve {name}: already approved.")
+        return 0
+    _say(f"{number}. Approve {name}:")
+    code = _approve(spec)
+    if code == 0:
+        outcome.changes.append(install.Change("approved", name, f"claude-voice plugins revoke {name}"))
+    return code
 
 
 def _revoke(name: str | None) -> int:
@@ -305,7 +361,10 @@ def _approve(spec: PluginSpec) -> int:
         f"  the voice may call: {', '.join(spec.tools)}\n"
     )
     try:
-        typed = input(f"Type {spec.name} to approve it, anything else to stop: ")
+        # RULE: the approval prompt says the plugin starts after its name is typed
+        typed = input(
+            f"Type {spec.name} to approve it (this starts it once to read its tools), anything else to stop: "
+        )
     except EOFError:  # run with nothing to read from, such as from inside another program
         sys.stdout.write("\nNot approved: no answer was typed. Run it in a terminal.\n")
         return 1

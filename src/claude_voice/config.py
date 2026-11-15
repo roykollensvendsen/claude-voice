@@ -97,25 +97,25 @@ class PluginSpec:
 
 
 def _plugins(raw: Any, home: str) -> list[PluginSpec]:
-    out = []
-    for name, body in (raw or {}).items():
-        body = body if isinstance(body, dict) else {}
-        tools = body.get("tools")
-        # RULE: a plugin without a command or any allowed tool is refused
-        if not PLUGIN_NAME.fullmatch(str(name)) or not body.get("command") or not body.get("cwd") or not tools:
-            raise ConfigError(f"[plugins.{name}] needs a lowercase name, a command, a cwd and at least one tool")
-        out.append(
-            PluginSpec(
-                name=str(name),
-                command=str(body["command"]),
-                args=[str(a) for a in body.get("args") or []],
-                cwd=str(_path(body["cwd"], home)),
-                tools=[str(t) for t in tools],
-                timeout=float(body.get("timeout", 30.0)),
-                branch=str(body.get("branch") or "main"),
-            )
-        )
-    return out
+    return [plugin_spec(str(name), body, home) for name, body in (raw or {}).items()]
+
+
+def plugin_spec(name: str, body: Any, home: str) -> PluginSpec:
+    """One [plugins.<name>] table as the bridge reads it, or ConfigError."""
+    body = body if isinstance(body, dict) else {}
+    tools = body.get("tools")
+    # RULE: a plugin without a command or any allowed tool is refused
+    if not PLUGIN_NAME.fullmatch(name) or not body.get("command") or not body.get("cwd") or not tools:
+        raise ConfigError(f"[plugins.{name}] needs a lowercase name, a command, a cwd and at least one tool")
+    return PluginSpec(
+        name=name,
+        command=str(body["command"]),
+        args=[str(a) for a in body.get("args") or []],
+        cwd=str(_path(body["cwd"], home)),
+        tools=[str(t) for t in tools],
+        timeout=float(body.get("timeout", 30.0)),
+        branch=str(body.get("branch") or "main"),
+    )
 
 
 MACHINE_NAME = re.compile(r"[a-z][a-z0-9-]{0,31}")

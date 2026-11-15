@@ -1,0 +1,5 @@
+[[rule]]
+name = "a config folder no known plugin uses is written only on a yes"
+file = "src/claude_voice/install.py"
+find = 'return self\.asker\.line\(question\)\.strip\(\)\.lower\(\) in \("y", "yes"\)'
+replace = 'return True'

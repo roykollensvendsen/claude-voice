@@ -1,0 +1,5 @@
+[[rule]]
+name = "plugins install asks only in a real terminal"
+file = "src/claude_voice/cli.py"
+find = 'if _refuse_outside_a_terminal\("plugins install", env\):'
+replace = 'if False:'

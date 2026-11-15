@@ -1,0 +1,5 @@
+[[rule]]
+name = "a config folder that is neither the plugin nor its checkout is refused"
+file = "src/claude_voice/install.py"
+find = '^\s*if where not in allowed:$'
+replace = 'if False:'
