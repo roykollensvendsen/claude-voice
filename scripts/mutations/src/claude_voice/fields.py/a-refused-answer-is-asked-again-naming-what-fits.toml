@@ -1,0 +1,5 @@
+[[rule]]
+name = "a refused answer is asked again naming what fits"
+file = "src/claude_voice/fields.py"
+find = 'say\(f"   That does not fit'
+replace = 'raise'

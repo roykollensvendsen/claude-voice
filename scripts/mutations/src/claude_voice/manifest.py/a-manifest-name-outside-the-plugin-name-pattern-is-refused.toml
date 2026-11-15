@@ -1,0 +1,5 @@
+[[rule]]
+name = "a manifest name outside the plugin name pattern is refused"
+file = "src/claude_voice/manifest.py"
+find = 'if not isinstance\(name, str\) or not PLUGIN_NAME\.fullmatch\(name\):'
+replace = 'if not isinstance(name, str):'

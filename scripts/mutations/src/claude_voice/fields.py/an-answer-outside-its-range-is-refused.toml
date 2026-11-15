@@ -1,0 +1,5 @@
+[[rule]]
+name = "an answer outside its range is refused"
+file = "src/claude_voice/fields.py"
+find = 'if self\.range is not None and not self\.range\[0\] <= value <= self\.range\[1\]:'
+replace = 'if False:'

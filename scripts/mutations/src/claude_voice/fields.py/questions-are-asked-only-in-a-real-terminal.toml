@@ -1,0 +1,5 @@
+[[rule]]
+name = "questions are asked only in a real terminal"
+file = "src/claude_voice/fields.py"
+find = 'return stdin\.isatty\(\) and stdout\.isatty\(\) and not env\.get\("CLAUDECODE"\)'
+replace = 'return True'

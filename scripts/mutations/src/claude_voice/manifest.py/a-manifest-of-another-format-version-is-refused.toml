@@ -1,0 +1,5 @@
+[[rule]]
+name = "a manifest of another format version is refused"
+file = "src/claude_voice/manifest.py"
+find = 'if raw\.get\("manifest"\) != VERSION:'
+replace = 'if False:'
