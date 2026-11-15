@@ -8,6 +8,10 @@
     "unit": "%"
   },
   {
+    "id": "mutants",
+    "unit": "%"
+  },
+  {
     "id": "tests",
     "unit": ""
   },

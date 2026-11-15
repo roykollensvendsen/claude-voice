@@ -1,0 +1,5 @@
+[[rule]]
+name = "a measure only some repositories publish is left out where none is kept"
+file = "src/claude_voice/software.py"
+find = 'shown = \[m for m in MEASURES if m\[0\] not in PUBLISHED_ONLY or any\(m\[0\] in q for q in past\)\]'
+replace = 'shown = list(MEASURES)'
