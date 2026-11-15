@@ -1,0 +1,5 @@
+[[rule]]
+name = "a new or changed test must fail before the change"
+file = "scripts/red_first.py"
+find = '^\s*return "excused" if excused else "not proved"'
+replace = 'return "proved"'

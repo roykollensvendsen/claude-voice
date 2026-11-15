@@ -1,0 +1,78 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gizmo-mcp"
+version = "0.1.0"
+description = "A made-up gizmo, read by voice: an MCP server and claude-voice plugin."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["mcp>=2.3"]
+
+[project.scripts]
+gizmo-mcp = "gizmo_mcp.cli:main"
+
+[project.optional-dependencies]
+dev = ["jsonschema>=4.23", "mypy>=1.11", "pytest>=8", "pytest-cov>=5", "ruff>=0.13"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gizmo_mcp"]
+# py.typed tells a consumer's type checker that these annotations are meant.
+artifacts = ["src/gizmo_mcp/py.typed"]
+
+[tool.ruff]
+# Without this the package under src/ is sorted as a third-party import, and a
+# freshly scaffolded repository fails its own import-order check.
+src = ["src"]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+# D203/D213 contradict D211/D212, which are kept; COM812 and ISC001 fight the
+# formatter; CPY001 wants a header in every file, and the licence is one file;
+# D401 wants an imperative first line, but a command's docstring is also its help.
+select = ["ALL"]
+ignore = ["D203", "D213", "COM812", "ISC001", "CPY001", "D401"]
+
+[tool.ruff.lint.per-file-ignores]
+# A test's name is its docstring, its fixtures need no annotations, and a bare
+# assert is the point of pytest. The scripts are tools run by hand and in CI.
+# E402: a test puts scripts/ on the path before it imports one.
+"tests/*" = [
+    "S101", "ANN", "D1", "D205", "PLR2004", "INP001", "S603", "S607", "T201", "PLC0415", "SLF001",
+    "E402", "EM102", "TRY003", "PT018", "ARG005", "PLW1510", "PTH101", "RUF043",
+]
+"scripts/*" = ["T201", "S603", "S607", "INP001", "PLR2004", "C901", "PLR0912", "PLR0915", "FBT001", "FBT002"]
+# Copied whole from claude-voice, so it stays easy to compare: its pytest hooks keep pytest's
+# own untyped signatures.
+"scripts/red_first.py" = ["RUF001", "S101", "N818", "D205", "D107", "ANN001", "ANN201", "D103", "ARG001"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The suite imports the package from src/ as it stands, so it runs with no install.
+pythonpath = ["src"]
+markers = ["slow: starts the server as a fresh process"]
+# A passing test's temporary files are deleted at once, and only the latest run's
+# failures are kept. Never "none" or 0: pytest then sweeps the shared folder,
+# other sessions' running tests included (tests/test_temp_files.py refuses both).
+tmp_path_retention_count = 1
+tmp_path_retention_policy = "failed"
+
+[tool.coverage.run]
+branch = true
+source = ["gizmo_mcp"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_also = ["if __name__ == .__main__.:", "if TYPE_CHECKING:"]
+
+# The OS paths and commands allowed outside src/gizmo_mcp/platform/, each with its reason
+# (tests/test_platform_boundary.py). Keep it short: each line is a place another platform breaks.
+[tool.platform-boundary]
+allow = []

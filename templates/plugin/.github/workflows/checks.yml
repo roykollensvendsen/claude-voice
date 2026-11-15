@@ -1,0 +1,160 @@
+name: checks
+
+# pull_request covers every pull request; push:main covers a direct push to main.
+# A commit cannot be both, so the pair never runs the same commit twice.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# One run per ref: a new push cancels the run it superseded.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Nothing here writes to the repository, its issues or its packages.
+permissions:
+  contents: read
+
+# Every step below is also a recipe in the justfile, so CI elsewhere can run the same lines.
+jobs:
+  # The commits this event adds: Conventional Commits, subjects in the imperative, and no
+  # trailer but Co-Authored-By and Signed-off-by. A fixup! or squash! commit is refused here.
+  commits:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Dependabot's messages carry two full commit hashes on one line, and are not a person's to fix.
+    if: github.actor != 'dependabot[bot]'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0       # the checks read a range, so they need both ends
+      - name: The range this event added
+        id: range
+        run: |
+          before='${{ github.event.before }}'
+          if [ -n "${{ github.event.pull_request.base.sha }}" ]; then
+            echo "range=${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+          elif [ -n "$before" ] && [ "$before" != "0000000000000000000000000000000000000000" ] \
+               && git cat-file -e "$before^{commit}" 2>/dev/null; then
+            echo "range=$before..${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          elif git rev-parse -q --verify "${{ github.sha }}^" >/dev/null; then
+            # A branch's first push, or a force push, reports no predecessor that exists.
+            echo "range=${{ github.sha }}~1..${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            # The very first commit in a repository has no parent, so no range can name it.
+            echo "range=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: crate-ci/committed@faeed42f2e10c244533a01525f13c4d8b6ce383f # v1.1.11
+        with:
+          args: --no-merge-commit
+          commits: ${{ steps.range.outputs.range }}
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          version: "0.12.13"
+          python-version: "3.13"
+      - run: uv sync --locked --all-extras
+      # committed's own imperative rule flags nothing, so this is what does.
+      - name: Subjects in the imperative
+        run: uv run python scripts/imperative.py ${{ steps.range.outputs.range }}
+      - name: No session link, and no trailer but credit
+        run: uv run python scripts/no_session_links.py ${{ steps.range.outputs.range }}
+
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false           # one version failing should not hide another
+      matrix:                    # every version pyproject.toml claims to support
+        python: ["3.12", "3.13", "3.14"]
+    steps:
+      # Actions are pinned to a commit, not a tag, as GitHub's own hardening guide asks.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0         # the private-data scan reads the whole history
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          version: "0.12.13"
+          python-version: ${{ matrix.python }}
+      # From the lock file, so a new release of a tool cannot turn CI red on its own.
+      - run: uv sync --locked --all-extras
+      - name: Lint and format
+        run: uv run python -m ruff check . && uv run python -m ruff format --check .
+      - name: Types
+        run: uv run python -m mypy src
+      - name: Nothing private in any file or commit
+        run: uv run python scripts/private_data_scan.py --tracked --history
+      - name: The tests
+        run: uv run python -m pytest -q -p no:cacheprovider --strict-markers --cov
+
+  # Each marked rule switched off in turn: the test named after it has to go red, or the
+  # rule is guarded by nothing. One Python version is enough.
+  mutation:
+    runs-on: ubuntu-latest
+    # No time limit, on purpose: a mutation run is never cut short, however many rules it has.
+    # Never add one; remove a limit rather than raise it.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          version: "0.12.13"
+          python-version: "3.13"
+      - run: uv sync --locked --all-extras
+      - name: Each rule's own test can fail
+        run: uv run python scripts/mutate.py
+
+  # The quality ratchet: no level gets worse than main's without a Ratchet-Exception line in
+  # the pull request. Main keeps what it measured as the quality-levels artifact; measured
+  # numbers never go into the repository.
+  quality:
+    runs-on: ubuntu-latest
+    # No time limit, on purpose: on main the ratchet measures the mutation run too.
+    # Never add one; remove a limit rather than raise it.
+    permissions:
+      contents: read
+      actions: read              # to fetch the levels main kept with its own run
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0         # the base is measured in a copy when main's levels are missing
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          version: "0.12.13"
+          python-version: "3.13"
+      - run: uv sync --locked --all-extras
+      # A pull request is checked out merged onto main, so its first parent is exactly the
+      # main it would land on.
+      - name: The base this change lands on
+        if: github.event_name == 'pull_request'
+        run: echo "BASE=$(git rev-parse HEAD^1)" >> "$GITHUB_ENV"
+      - name: The levels main kept for the base
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for run in $(gh run list --repo "$GITHUB_REPOSITORY" --workflow checks.yml --commit "$BASE" \
+                         --event push --json databaseId -q '.[].databaseId'); do
+            gh run download "$run" --repo "$GITHUB_REPOSITORY" --name quality-levels --dir "$RUNNER_TEMP/base" \
+              && break
+          done
+          ls "$RUNNER_TEMP/base" 2>/dev/null || echo "Main kept no levels for $BASE; the ratchet will measure it."
+      - name: The quality ratchet
+        if: github.event_name == 'pull_request'
+        env:                     # the pull request's text, for its Ratchet-Exception lines
+          RATCHET_EXCEPTIONS: ${{ github.event.pull_request.body }}
+          LEVELS: ${{ runner.temp }}/base/levels.json
+        run: uv run python scripts/ratchet.py check --base "$BASE" --levels "$LEVELS" --skip-mutation
+      - name: The levels main reached
+        if: github.event_name == 'push'
+        run: uv run python scripts/ratchet.py measure --out "$RUNNER_TEMP/levels.json"
+      - name: Keep main's levels with this run
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: quality-levels
+          path: ${{ runner.temp }}/levels.json
+          if-no-files-found: error

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a suite run leaves no temporary files behind"
+file = "scripts/mutate.py"
+find = '^\s*_remove\(temporary\)$'
+replace = 'pass'

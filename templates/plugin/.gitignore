@@ -1,0 +1,22 @@
+# Working notes per branch, kept out of the history.
+work/
+
+# Python bytecode, build output and test caches.
+__pycache__/
+*.py[co]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+*.egg-info/
+dist/
+.coverage
+coverage.xml
+htmlcov/
+
+# What a mutation run keeps while it runs, and what it writes when asked.
+scripts/.mutate-recovery.json
+mutations.json
+
+# Claude Code's per-machine permissions, and its backups of them.
+.claude/settings.local.json*

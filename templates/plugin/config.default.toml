@@ -1,0 +1,9 @@
+# gizmo-mcp's settings. `claude-voice plugins install` copies this file to
+# ~/.config/gizmo-mcp/config.toml the first time, and never over one that exists.
+# Made-up values only: nothing here names a real device, place or person.
+
+[device]
+# The gizmo's address on your network. The made-up default reaches nothing.
+address = "gizmo.example.invalid"
+# Answer from the made-up gizmo in fake.py instead of a real one.
+simulate = true

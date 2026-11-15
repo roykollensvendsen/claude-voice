@@ -1,0 +1,5 @@
+[[rule]]
+name = "a measure that gets worse fails the check"
+file = "scripts/ratchet.py"
+find = 'if _worse\(metric, base\[metric\], now\[metric\]\) and metric not in allowed:'
+replace = 'if False:'

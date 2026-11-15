@@ -1,0 +1,5 @@
+[[rule]]
+name = "a file changed during the run is never restored over"
+file = "scripts/mutate.py"
+find = 'if path\.read_text\(encoding="utf-8"\) != mutated:'
+replace = 'if False:'

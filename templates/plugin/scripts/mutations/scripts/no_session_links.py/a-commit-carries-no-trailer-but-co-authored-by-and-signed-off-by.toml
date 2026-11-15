@@ -1,0 +1,5 @@
+[[rule]]
+name = "a commit carries no trailer but Co-Authored-By and Signed-off-by"
+file = "scripts/no_session_links.py"
+find = '^\s*if unknown:$'
+replace = 'if False:'

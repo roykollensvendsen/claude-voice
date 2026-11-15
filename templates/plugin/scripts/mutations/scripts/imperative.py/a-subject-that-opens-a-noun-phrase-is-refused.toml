@@ -1,0 +1,5 @@
+[[rule]]
+name = "a subject that opens a noun phrase is refused"
+file = "scripts/imperative.py"
+find = '\(word in NOT_A_VERB, "opens a phrase rather than an instruction"\),'
+replace = '(False, "opens a phrase rather than an instruction"),'

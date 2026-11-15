@@ -1,0 +1,40 @@
+name: red-first
+
+# A pull request's new and changed tests, run against the code before it: each must fail
+# there and pass on the branch. The logic is in scripts/red_first.py.
+#
+# A workflow of its own, not a job in checks.yml: `edited` lets a `Red-first:` line added to
+# the body re-run this without a push, and in checks.yml every body edit would re-run all.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  red-first:
+    runs-on: ubuntu-latest
+    # No time limit, on purpose, as for the mutation run: a run cut short proves nothing.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}   # the branch itself, not a merge
+          fetch-depth: 0                                    # the merge base, and both trees
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          # A pull request with no new or changed tests installs nothing, so the cache folder
+          # never appears; without this, the cleanup step fails a run that has passed.
+          ignore-nothing-to-cache: true
+          version: "0.12.13"
+          python-version: "3.13"
+      - name: Tests that must fail before the change
+        env:                     # the pull request's text, for its Red-first lines; never run as code
+          RED_FIRST_BODY: ${{ github.event.pull_request.body }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: uv run python scripts/red_first.py --base "$BASE" --head HEAD

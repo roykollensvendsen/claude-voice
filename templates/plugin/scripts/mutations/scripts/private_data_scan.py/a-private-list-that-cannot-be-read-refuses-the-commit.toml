@@ -1,0 +1,5 @@
+[[rule]]
+name = "a private list that cannot be read refuses the commit"
+file = "scripts/private_data_scan.py"
+find = 'if not words\.is_file\(\):'
+replace = 'if False:'

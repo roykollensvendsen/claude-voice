@@ -45,6 +45,9 @@ The last one follows the README's "Start here" on an empty Ubuntu, so it needs
 Docker and about two minutes. Run it when you touch the README's first steps,
 the setup check or the packaging.
 
+A change to `templates/plugin/` also runs the template's own gates on a rendered copy, in a
+job of its own: `uv run pytest -m template`. It takes a few minutes and needs no network.
+
 The ratchet takes about ten minutes, because it switches every rule off in
 turn; `--skip-mutation` gives a quick look that keeps main's mutation figures.
 

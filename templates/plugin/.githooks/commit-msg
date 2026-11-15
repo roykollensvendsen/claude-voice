@@ -1,0 +1,37 @@
+#!/bin/sh
+# Refuse a message the gates would refuse later, while it is still being written. This is a
+# convenience, not the gate: --no-verify skips it, and continuous integration is what blocks.
+# `just setup` turns it on for a clone, with
+#
+#     git config core.hooksPath .githooks
+#
+set -e
+
+# A fixup, amend or squash commit is a note to fold into an earlier commit before the branch
+# is pushed, so it is let through here. Continuous integration still refuses one.
+case "$(sed -n '/^[^#]/{p;q;}' "$1")" in
+    "fixup! "* | "amend! "* | "squash! "*) exit 0 ;;
+esac
+
+if command -v committed >/dev/null 2>&1; then
+    committed --commit-file "$1" || exit 1
+else
+    echo "commit-msg: committed is not installed; the convention is unchecked here" >&2
+fi
+
+root="$(git rev-parse --show-toplevel)"
+# The linter's own imperative rule flags nothing, so this is what covers it.
+python3 "$root/scripts/imperative.py" --file "$1" >/dev/null || {
+    python3 "$root/scripts/imperative.py" --file "$1" >&2
+    exit 1
+}
+
+# No session link, and no trailer but Co-Authored-By and Signed-off-by.
+python3 "$root/scripts/no_session_links.py" --file "$1" || exit 1
+
+# No address or private word in the message itself.
+python3 "$root/scripts/private_data_scan.py" --message "$1" || exit 1
+
+# Readability only ever warns: a gate that refuses a message nobody can shorten teaches
+# people to pass --no-verify.
+python3 "$root/scripts/readable.py" --file "$1" >&2 || true

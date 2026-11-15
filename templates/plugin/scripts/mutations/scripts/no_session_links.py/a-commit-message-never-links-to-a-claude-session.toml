@@ -1,0 +1,5 @@
+[[rule]]
+name = "a commit message never links to a Claude session"
+file = "scripts/no_session_links.py"
+find = 'if SESSION\.search\(message\):'
+replace = 'if False:'
