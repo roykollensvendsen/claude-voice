@@ -264,7 +264,7 @@ def test_a_stop_while_main_is_being_copied_still_removes_the_copy(monkeypatch, t
     monkeypatch.setattr(ratchet.tempfile, "tempdir", str(tmp_path))
 
     def run(*args, **kwargs):
-        if args[:2] == ("git", "fetch"):
+        if "fetch" in args:
             raise SystemExit(143)  # a stop the moment the copy has begun
         return ratchet.subprocess.CompletedProcess(args, 0, "abc123\n", "")
 
@@ -348,3 +348,24 @@ def test_measuring_never_needs_the_held_folder_module():
     )
     ran = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=False)
     assert ran.returncode == 0, ran.stderr[-1500:]
+
+
+def test_the_base_may_be_a_commit_no_branch_points_at(monkeypatch, tmp_path):
+    """CI's base is main's commit when the pull request began, which main may since have moved on from.
+
+    git's newer protocol fetches such a commit by its id; the older one refuses it, so the test
+    sets the older one, as an old git or a person's own settings would."""
+    settings = tmp_path / "gitconfig"
+    settings.write_text("[protocol]\n\tversion = 0\n")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(settings))
+    here = tmp_path / "clone"
+    here.mkdir()
+    _git(here, "init", "-q", "-b", "main")
+    for message in ("base", "later"):
+        who = ("-c", "user.name=t", "-c", "user.email=t@example.com")
+        _git(here, *who, "commit", "-q", "--allow-empty", "-m", message)
+    behind = _git(here, "rev-parse", "main~1")
+    monkeypatch.setattr(ratchet, "ROOT", here)
+    copy = tmp_path / "copy"
+    ratchet.copy_of(behind, copy)
+    assert _git(copy, "rev-parse", "HEAD") == behind

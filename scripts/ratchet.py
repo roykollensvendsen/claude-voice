@@ -375,12 +375,18 @@ def sweep(place: Path | None = None) -> None:
     held_folder.sweep(Path(place or tempfile.gettempdir()), RUN_PREFIX)
 
 
+#: git, set to fetch a commit by its id whether or not a branch points at it. The newer protocol
+#: does by default; the older one, still chosen by an old git or a person's own settings,
+#: refuses unless the serving side allows it.
+ANY_COMMIT = ("git", "-c", "protocol.version=2", "-c", "uploadpack.allowAnySHA1InWant=true")
+
+
 def copy_of(ref: str, copy: Path) -> None:
     """Check `ref` out into `copy`, a repository of its own holding that one commit and no ref.
 
     A worktree would share every branch of this clone, and git keeps a record of it that a
-    killed run leaves behind. `ref` must name a branch tip (such as origin/main): git fetches
-    a commit by its id only when it is one.
+    killed run leaves behind. `ref` may be any commit this clone has, a branch tip or not:
+    CI's base is main's commit when the pull request began, which main may have moved past.
     """
     sha = _run("git", "rev-parse", "--verify", f"{ref}^{{commit}}", cwd=ROOT)
     if sha.returncode:
@@ -389,7 +395,8 @@ def copy_of(ref: str, copy: Path) -> None:
     # RULE: the base is measured where no other branch can be seen
     steps = (
         ("git", "init", "-q"),
-        ("git", "fetch", "-q", "--depth", "1", str(ROOT), sha.stdout.strip()),
+        # RULE: the base may be a commit no branch points at
+        (*ANY_COMMIT, "fetch", "-q", "--depth", "1", str(ROOT), sha.stdout.strip()),
         ("git", "checkout", "-q", "--detach", "FETCH_HEAD"),
     )
     for step in steps:
