@@ -306,46 +306,53 @@ def main() -> int:
 
 def mutate_all(rules: list[dict], here: pathlib.Path, args: argparse.Namespace) -> int:
     """Switch each rule off in turn, keeping every suite's files in `here`; report, and restore."""
-    results = []
+    results: list[Result] = []
     lost: list[str] = []
     bad_rows: list[str] = []
-    standing: tuple[pathlib.Path, str, str] | None = None
-    try:
-        for rule in rules:
-            path = ROOT / rule["file"]
-            # Read each file as it is now, not as it was when the run began: a
-            # bulk snapshot taken up front is restored over anything edited
-            # since, and losing an edit that way costs more than the run.
-            text = path.read_text(encoding="utf-8")
-            mutated = switched_off(text, rule)
-            why = broken(rule["file"], mutated)
-            if why:
-                bad_rows.append(rule["name"])
-                print(f"BROKEN   {rule['name']}: the replacement is not valid code ({why})")
-                continue
-            RECOVERY.write_text(
-                json.dumps({"file": rule["file"], "original": text, "mutated": mutated}), encoding="utf-8"
-            )
-            path.write_text(mutated, encoding="utf-8")
-            standing = (path, text, mutated)
-            # Only the files holding the rule's own test: the suite once per rule outgrew
-            # the time the check has. A rule with no test of its own runs the whole suite.
-            count, failed = run_suite(files_naming(test_name_for(rule["name"])), here)
-            if not restore(path, text, mutated):
-                lost.append(rule["file"])
-            standing = None
-            RECOVERY.unlink(missing_ok=True)
-            # A kill by some other test is not evidence about this rule.
-            own = test_name_for(rule["name"])
-            by_its_own = own in failed
-            results.append((rule["name"], rule["file"], count, own, by_its_own))
-            verdict = "KILLED  " if by_its_own else ("BY LUCK " if count else "SURVIVED")
-            print(f"{verdict} {rule['name']}: {count}")
-    finally:
-        if standing is not None:
-            restore(*standing)
-        RECOVERY.unlink(missing_ok=True)
+    for rule in rules:
+        outcome = mutate_one(rule, here, lost)
+        if outcome is None:
+            bad_rows.append(rule["name"])
+        else:
+            results.append(outcome)
+    return summarise(results, lost, bad_rows, args)
 
+
+def mutate_one(rule: dict, here: pathlib.Path, lost: list[str]) -> Result | None:
+    """Switch one rule off, run its own tests, and put the line back however the run ends.
+
+    None for a row whose replacement is not valid code; a file edited meanwhile goes in `lost`.
+    """
+    path = ROOT / rule["file"]
+    # Read each file as it is now, not as it was when the run began: a
+    # bulk snapshot taken up front is restored over anything edited
+    # since, and losing an edit that way costs more than the run.
+    text = path.read_text(encoding="utf-8")
+    mutated = switched_off(text, rule)
+    why = broken(rule["file"], mutated)
+    if why:
+        print(f"BROKEN   {rule['name']}: the replacement is not valid code ({why})")
+        return None
+    RECOVERY.write_text(json.dumps({"file": rule["file"], "original": text, "mutated": mutated}), encoding="utf-8")
+    path.write_text(mutated, encoding="utf-8")
+    own = test_name_for(rule["name"])
+    try:
+        # Only the files holding the rule's own test: the suite once per rule outgrew
+        # the time the check has. A rule with no test of its own runs the whole suite.
+        count, failed = run_suite(files_naming(own), here)
+    finally:
+        if not restore(path, text, mutated):
+            lost.append(rule["file"])
+        RECOVERY.unlink(missing_ok=True)
+    # A kill by some other test is not evidence about this rule.
+    by_its_own = own in failed
+    verdict = "KILLED  " if by_its_own else ("BY LUCK " if count else "SURVIVED")
+    print(f"{verdict} {rule['name']}: {count}")
+    return (rule["name"], rule["file"], count, own, by_its_own)
+
+
+def summarise(results: list[Result], lost: list[str], bad_rows: list[str], args: argparse.Namespace) -> int:
+    """Say what the run proved and what it did not, write the reports asked for, and give the exit."""
     survived, lucky = _weak(results)
     proven = len(results) - len(survived) - len(lucky)
     print(f"\n{proven}/{len(results)} rules turned off the test that names them")
