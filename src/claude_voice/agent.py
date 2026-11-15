@@ -27,7 +27,7 @@ from typing import Any
 
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from . import tailnet
+from . import invocation, tailnet
 from .config import Config, PluginSpec
 
 log = logging.getLogger("claude_voice")
@@ -251,7 +251,8 @@ class Gate:
             code = ""
         key = self.pairing.redeem(code, node)
         if key is None:
-            return JSONResponse({"error": "no open pairing with that code; run: claude-voice agent pair"}, 403)
+            refused = f"no open pairing with that code; run: {invocation.command()} agent pair"
+            return JSONResponse({"error": refused}, 403)
         return JSONResponse({"key": key, "hub": node[1]})
 
 
@@ -356,6 +357,6 @@ def install(
         f"The agent runs on {address}:{PORT}, and answers only a paired hub.\n"
         "It runs while you are logged in; to keep it running when nobody is: sudo loginctl enable-linger $USER\n\n"
         f'On the hub, add to ~/.config/claude-voice/config.toml:\n\n[machines.{machine}]\naddress = "{address}"\n\n'
-        f"Then run `claude-voice agent pair` here, and on the hub: claude-voice machines approve {machine}"
+        f"Then run `{invocation.command()} agent pair` here, and on the hub: claude-voice machines approve {machine}"
     )
     return 0

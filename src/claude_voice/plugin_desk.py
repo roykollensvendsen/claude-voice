@@ -18,7 +18,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from . import plugins
+from . import invocation, plugins
 from .config import PluginSpec
 from .devmode import DeveloperMode, Questions
 
@@ -31,7 +31,7 @@ def _no(say: str) -> dict[str, Any]:
 
 
 def _typed(name: str) -> str:
-    return f"type it in a terminal: claude-voice plugins approve {name}"
+    return f"type it in a terminal: {invocation.command()} plugins approve {name}"
 
 
 class Desk:

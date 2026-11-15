@@ -26,6 +26,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from . import invocation
 from .config import PluginSpec
 
 log = logging.getLogger("claude_voice")
@@ -456,7 +457,7 @@ def check_one(spec: PluginSpec, approvals: Path | None = None, client: Callable[
     """List one plugin's tools and check them against the owner's approval, offering nothing
     yet: the plugin or None, its listing, and in a word why."""
     if not approved(spec, approvals):
-        log.info("plugin %s is not approved; run: claude-voice plugins approve %s", spec.name, spec.name)
+        log.info("plugin %s is not approved; run: %s plugins approve %s", spec.name, invocation.command(), spec.name)
         return None, {}, "not approved"
     plugin = Plugin(spec, client or CLIENT)
     listing = plugin.listing()
@@ -465,7 +466,7 @@ def check_one(spec: PluginSpec, approvals: Path | None = None, client: Callable[
         log.info("plugin %s did not start in time, so it is not offered: %s", spec.name, plugin.unlisted)
         return None, {}, "not started"
     if not inputs_approved(spec, listing, approvals):
-        log.info("plugin %s's tools changed; run: claude-voice plugins approve %s", spec.name, spec.name)
+        log.info("plugin %s's tools changed; run: %s plugins approve %s", spec.name, invocation.command(), spec.name)
         return None, listing, "tools changed"
     return plugin, listing, "started"
 

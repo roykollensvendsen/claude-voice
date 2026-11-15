@@ -15,10 +15,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from . import invocation
+
 TIMELINE = 50  # the newest items kept
 TEXT = 120  # characters of each item's text
 HELPERS = ("Agent", "Task")
-RETRY = "Try again, and if it fails again run `claude-voice check`, which says what is missing."
 # A command counts only where it starts a line or a step, not inside text a command writes.
 STEP = r"(?:^|[;&|(]\s*|\n\s*)"
 COMMIT = re.compile(STEP + r"git\s[^|;&\n]*\bcommit\b")  # git and a space: not git(...) in a program
@@ -41,6 +42,11 @@ def read(path: Path) -> Iterator[dict[str, Any]]:
                     yield entry
     except OSError:
         return
+
+
+def _retry() -> str:
+    """What to do when a summary failed, naming the check by a command that runs here."""
+    return f"Try again, and if it fails again run `{invocation.command()} check`, which says what is missing."
 
 
 def _short(text: str) -> str:
@@ -245,7 +251,7 @@ class Summaries:
         except Exception as exc:
             reason = str(exc)[:300].rstrip(". ") or type(exc).__name__
             # RULE: a failed summary says what to do next
-            self.errors[sid] = f"{reason}. {RETRY}"
+            self.errors[sid] = f"{reason}. {_retry()}"
             self.publish("summary", {"session": sid, "summary": None, "summary_state": "error"})
             return None
         at = datetime.now(UTC).isoformat(timespec="seconds")
