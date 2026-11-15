@@ -1,0 +1,5 @@
+[[rule]]
+name = "a repos check takes no git lock"
+file = "src/claude_voice/reposync.py"
+find = 'LOCKLESS = \("--no-optional-locks",\)'
+replace = 'LOCKLESS = ()'

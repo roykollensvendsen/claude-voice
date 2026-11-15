@@ -1,0 +1,27 @@
+# The default profile: what anyone setting up claude-voice gets.
+# Your own profile, named by `profile = ...` in config.toml, is laid over it,
+# and then this machine's profile.local.toml. Each adds an entry, or replaces
+# or removes one by its name (docs/setup.md).
+#
+# Only public repositories and templates go here. Never a value of your own:
+# those live in ~/.config/claude-voice/values.toml.
+# Comments start their line, so the private-word scan reads them.
+
+# The bridge itself.
+[[repo]]
+name = "claude-voice"
+url = "https://github.com/roykollensvendsen/claude-voice"
+kind = "core"
+
+# The companion app, which the bridge serves to the phone.
+[[repo]]
+name = "claude-voice-ui"
+url = "https://github.com/roykollensvendsen/claude-voice-ui"
+kind = "app"
+
+# The phone app, for those who build it themselves.
+[[repo]]
+name = "claude-voice-mobile"
+url = "https://github.com/roykollensvendsen/claude-voice-mobile"
+kind = "app"
+optional = true

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a profile comment starts its line"
+file = "src/claude_voice/profiles.py"
+find = 'elif "#" in line:'
+replace = 'elif False:'

@@ -30,6 +30,8 @@ COMMANDS: tuple[str, ...] = (
     "permissions",
     "org",
     "restart",
+    "setup",
+    "repos",
 )
 
 SIGN_IN = (
@@ -68,10 +70,22 @@ def _config_check_name(text: str) -> str:
     return "configuration"
 
 
+def _env_file_unread(env: Mapping[str, str]) -> list[envfile.Problem]:
+    """No problems, because the service's env file is not opened at all."""
+    return []
+
+
 def checks(
-    env: Mapping[str, str], transport: str, login: Callable[[], tuple[bool, str]]
+    env: Mapping[str, str],
+    transport: str,
+    login: Callable[[], tuple[bool, str]],
+    env_file: Callable[[Mapping[str, str]], list[envfile.Problem]] = envfile.read,
 ) -> tuple[Config | None, list[dict[str, Any]]]:
-    """Every check, in the order a person would fix them, each with the step that fixes it."""
+    """Every check, in the order a person would fix them, each with the step that fixes it.
+
+    `env_file` reads the service's env file for its warnings; `setup --check` passes
+    `_env_file_unread`, so that file is never opened.
+    """
     found: list[dict[str, Any]] = []
 
     def add(name: str, ok: bool, detail: str, fix: str = "", required: bool = True) -> None:
@@ -107,7 +121,7 @@ def checks(
             "To reach it from a phone, set CLAUDE_VOICE_PUBLIC_HOSTS to the tunnel's hostname (see the README).",
             required=False,
         )
-    for problem in envfile.read(env):
+    for problem in env_file(env):
         # RULE: a misread env file line is a warning and never stops the check
         add("env_file", False, problem.detail, problem.fix, required=False)
     return cfg, found
@@ -166,9 +180,17 @@ def main(
     restart_cmd = sub.add_parser("restart", help="restart the bridge's service, noting why for its health answer")
     restart_cmd.add_argument("--why", default="", help="what the restart is for, shown in health")
     restart_cmd.add_argument("--dry-run", action="store_true", help="say what it would do, and do nothing")
+    setup_cmd = sub.add_parser("setup", help="set up the platform; --check reports each step and changes nothing")
+    setup_cmd.add_argument("--check", action="store_true", help="say what is done, missing or yours to run")
+    setup_cmd.add_argument("--json", action="store_true", help="answer in JSON, for an assistant doing the setup")
+    repos_cmd = sub.add_parser("repos", help="the profile's repositories: where each one stands")
+    repos_cmd.add_argument("action", choices=["sync"])
+    repos_cmd.add_argument("--check", action="store_true", help="say what a sync would do, from local refs only")
     parsed = parser.parse_args(args)
 
     verbs: dict[str, Callable[[], int]] = {
+        "setup": lambda: setup_command(parsed.check, parsed.json, env, login),
+        "repos": lambda: repos_command(parsed.check, env),
         "restart": lambda: restart_command(parsed.why, parsed.dry_run, systemctl),
         "permissions": lambda: permissions_command(parsed.folders, parsed.dry_run, env),
         "org": lambda: org_command(parsed.action, env),
@@ -225,6 +247,79 @@ def check_command(env: Mapping[str, str], transport: str, as_json: bool, login: 
             if not c["ok"]:
                 sys.stdout.write(f"claude-voice: note: {c['detail']}. {c['fix']}\n")
     return 0 if ready else 1
+
+
+NOT_BUILT = (
+    "claude-voice: only the check is built so far. "
+    "Run `{command} --check`: it says what is left, and changes nothing.\n"
+)
+
+
+def _where(value: str, home: Path) -> Path:
+    return Path(str(home) + value[1:] if value.startswith("~") else value)
+
+
+def _platform(env: Mapping[str, str]) -> tuple[Any, Any, list[Any], Path] | str:
+    """The settings, the merged profile and its folders as they stand, or what is wrong and its fix."""
+    from . import config as settings
+    from . import profiles, reposync, roles
+
+    home = Path(env.get("HOME") or Path.home())
+    try:
+        cfg = settings.load(settings.FILE, own_clone=roles.own_clone(), env=env)
+        profile = profiles.load(profiles.layers(cfg.profile, home))
+    except (settings.ConfigError, profiles.ProfileError) as exc:
+        return f"claude-voice: {exc}"
+    known = {Path(p.cwd).name: Path(p.cwd) for p in cfg.plugins}
+    for name, path in (
+        ("claude-voice", cfg.paths.claude_voice),
+        ("claude-voice-ui", cfg.paths.claude_voice_ui),
+        ("claude-voice-mobile", cfg.paths.claude_voice_mobile),
+    ):
+        if path is not None:
+            known[name] = path
+    parent = _where(env.get("CLAUDE_VOICE_ROOT", "~/src"), home)
+    return cfg, profile, reposync.check(profile.repos.values(), parent, known), home
+
+
+def setup_command(check: bool, as_json: bool, env: Mapping[str, str], login: Callable[[], tuple[bool, str]]) -> int:
+    """Report every setup step as done, missing or the person's own to run; change nothing."""
+    from dataclasses import asdict
+
+    from . import setup
+
+    if not check:
+        sys.stderr.write(NOT_BUILT.format(command="claude-voice setup"))
+        return 2
+    state = _platform(env)
+    if isinstance(state, str):
+        sys.stderr.write(state + "\n")
+        return 1
+    cfg, profile, folders, home = state
+    # RULE: setup never opens the service's env file
+    _, bridge = checks(env, "stdio", login, env_file=_env_file_unread)  # it holds the login secret
+    found = setup.steps(cfg, env, home, bridge, profile, folders, procs.find)
+    left = setup.missing(found)
+    if as_json:
+        report = {"ready": not left, "missing": [s.name for s in left], "steps": [asdict(s) for s in found]}
+        sys.stdout.write(json.dumps(report, indent=2) + "\n")
+    else:
+        sys.stdout.write("\n".join(setup.lines(found)) + "\n")
+    return 1 if left else 0
+
+
+def repos_command(check: bool, env: Mapping[str, str]) -> int:
+    """Say where each of the profile's repositories stands, and what a sync would do with it."""
+    if not check:
+        sys.stderr.write(NOT_BUILT.format(command="claude-voice repos sync"))
+        return 2
+    state = _platform(env)
+    if isinstance(state, str):
+        sys.stderr.write(state + "\n")
+        return 1
+    for folder in state[2]:
+        sys.stdout.write(folder.line() + "\n")
+    return 0
 
 
 def _plugin_state(spec: PluginSpec) -> str:

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a detached head is left alone"
+file = "src/claude_voice/reposync.py"
+find = 'if self\.branch is None:'
+replace = 'if False:'

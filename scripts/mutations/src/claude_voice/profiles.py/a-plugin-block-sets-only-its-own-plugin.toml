@@ -1,0 +1,5 @@
+[[rule]]
+name = "a plugin block sets only its own plugin"
+file = "src/claude_voice/profiles.py"
+find = 'if set\(block\) != \{"plugins"\}'
+replace = 'if False:'

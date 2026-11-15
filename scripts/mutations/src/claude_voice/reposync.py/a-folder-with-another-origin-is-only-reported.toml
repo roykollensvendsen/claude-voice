@@ -1,0 +1,5 @@
+[[rule]]
+name = "a folder with another origin is only reported"
+file = "src/claude_voice/reposync.py"
+find = 'if folder\.origin is None or not same_repo\(folder\.origin, repo\.url\):'
+replace = 'if folder.origin is None:'

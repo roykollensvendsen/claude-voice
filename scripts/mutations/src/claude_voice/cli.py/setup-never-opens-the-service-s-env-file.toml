@@ -1,0 +1,5 @@
+[[rule]]
+name = "setup never opens the service's env file"
+file = "src/claude_voice/cli.py"
+find = '_, bridge = checks\(env, "stdio", login, env_file=_env_file_unread\)'
+replace = '_, bridge = checks(env, "stdio", login, env_file=envfile.read)'

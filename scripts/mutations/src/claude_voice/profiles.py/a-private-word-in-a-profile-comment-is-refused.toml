@@ -1,0 +1,5 @@
+[[rule]]
+name = "a private word in a profile comment is refused"
+file = "src/claude_voice/profiles.py"
+find = 'for word in private_words\(line\):'
+replace = 'for word in []:'

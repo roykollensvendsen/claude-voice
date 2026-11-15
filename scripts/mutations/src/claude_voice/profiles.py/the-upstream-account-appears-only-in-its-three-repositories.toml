@@ -1,0 +1,5 @@
+[[rule]]
+name = "the upstream account appears only in its three repositories"
+file = "src/claude_voice/profiles.py"
+find = 'if match\.group\(1\)\.lower\(\) == UPSTREAM_OWNER and url\.removesuffix\("\.git"\) not in UPSTREAM_URLS:'
+replace = 'if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a profile layer can remove an entry by name"
+file = "src/claude_voice/profiles.py"
+find = 'table\.pop\(str\(name\), None\)'
+replace = 'pass'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a checkout without the commit hook is flagged"
+file = "src/claude_voice/setup.py"
+find = 'on = hooks_path == "\.githooks"'
+replace = 'on = True'
