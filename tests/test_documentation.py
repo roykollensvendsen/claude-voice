@@ -115,3 +115,18 @@ def test_the_org_chart_page_shows_the_example_file_as_it_is():
     page = (ROOT / "docs" / "org-chart.md").read_text(encoding="utf-8")
     example = (ROOT / "docs" / "examples" / "acme-robots" / ".claude" / "org.toml").read_text(encoding="utf-8")
     assert "```toml\n" + example + "```" in page
+
+
+def test_the_readme_lists_exactly_the_skills_the_repository_ships():
+    """A new user finds the skills through the README's table, so it names every one and no others."""
+    table = read("README.md").split("\n## Skills", 1)
+    assert len(table) == 2, "the README has no Skills section"
+    rows = [row for row in table[1].split("\n## ", 1)[0].splitlines() if row.startswith("| `")]
+    listed = [re.findall(r"`([^`]+)`", row.split("|")[1])[0] for row in rows]
+    shipped = sorted(p.parent.name for p in (ROOT / ".claude" / "skills").glob("*/SKILL.md"))
+    assert sorted(listed) == shipped, (
+        f"README's Skills table lists {sorted(listed)}, .claude/skills/ holds {shipped}: "
+        "add a row for each new skill and remove the row of one that is gone"
+    )
+    for row in rows:
+        assert all(cell.strip() for cell in row.strip("|").split("|")), f"a skill row has an empty cell: {row[:60]}"
