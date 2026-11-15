@@ -1,0 +1,5 @@
+[[rule]]
+name = "a repair-only run puts the line back and switches nothing off"
+file = "scripts/mutate.py"
+find = '^\s*if args\.repair_only:$'
+replace = 'if False:'

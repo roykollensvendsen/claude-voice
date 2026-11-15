@@ -10,7 +10,10 @@ None of these runs a real suite: the suite is a stand-in that records what it wa
 asked to do, so a test here never mutates anything.
 """
 
+import fcntl
 import importlib.util
+import json
+import os
 import pathlib
 import subprocess
 
@@ -89,6 +92,45 @@ def test_rules_marked_with_no_rows_fail_the_run(tmp_path, monkeypatch, mutate, c
     # The fix it names must be one a session may run: `git checkout -- ...` is refused to sessions.
     assert "git restore --source=origin/main scripts/mutations" in said
     assert "git checkout" not in said
+
+
+def test_a_repair_only_run_puts_the_line_back_and_switches_nothing_off(tmp_path, monkeypatch, mutate):
+    """The first step of cleaning up a worktree: no line a killed run switched off is left behind."""
+    monkeypatch.setattr(mutate.sys, "argv", ["mutate.py", "--repair-only"])
+    root = _repository(tmp_path, marked=True)
+    monkeypatch.setattr(mutate, "ROOT", root)
+    monkeypatch.setattr(mutate, "ROWS", root / "scripts/mutations")
+    monkeypatch.setattr(mutate, "RECOVERY", root / "scripts/.mutate-recovery.json")
+    original = (root / "src/pkg/core.py").read_text()
+    (root / "src/pkg/core.py").write_text("switched off\n")
+    mutate.RECOVERY.write_text(
+        json.dumps({"file": "src/pkg/core.py", "original": original, "mutated": "switched off\n"})
+    )
+    # With no rows for its marked rule, a full run would fail; a repair-only run never gets there.
+    assert mutate.main() == 0
+    assert (root / "src/pkg/core.py").read_text() == original
+    assert not mutate.RECOVERY.exists()
+
+
+def test_two_mutation_runs_never_share_a_checkout(tmp_path, monkeypatch, mutate, capsys):
+    """A second run would repair the first one's switched-off line, or switch off its own beside it."""
+    monkeypatch.setattr(mutate.sys, "argv", ["mutate.py"])
+    root = _repository(tmp_path, marked=True)
+    monkeypatch.setattr(mutate, "ROOT", root)
+    monkeypatch.setattr(mutate, "ROWS", root / "scripts/mutations")
+    monkeypatch.setattr(mutate, "RECOVERY", root / "scripts/.mutate-recovery.json")
+    (root / "src/pkg/core.py").write_text("switched off by the run going now\n")
+    kept = {"file": "src/pkg/core.py", "original": "# RULE: a rule\n", "mutated": "switched off by the run going now\n"}
+    mutate.RECOVERY.write_text(json.dumps(kept))
+    going = os.open(root, os.O_RDONLY)  # the run going now holds the checkout
+    try:
+        fcntl.flock(going, fcntl.LOCK_EX)
+        assert mutate.main() == 1
+    finally:
+        os.close(going)
+    assert f"a mutation run is already going in {root}" in capsys.readouterr().out
+    assert (root / "src/pkg/core.py").read_text() == "switched off by the run going now\n"
+    assert mutate.RECOVERY.exists()
 
 
 def test_a_repository_with_no_rules_marked_passes_with_no_rows(tmp_path, monkeypatch, mutate):

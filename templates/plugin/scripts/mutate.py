@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import fcntl
 import itertools
 import json
 import os
@@ -261,14 +262,41 @@ def run_suite(targets: list[str] | None = None, place: pathlib.Path | None = Non
     return int(m.group(1)) if m else 0, [f.split("::")[-1].split("[")[0] for f in failed]
 
 
+#: The checkout this process holds, kept open until it ends; the kernel lets go however it ends.
+_held: list[int] = []
+
+
+def hold_checkout() -> bool:
+    """Hold the checkout for this run alone; False when another run holds it now."""
+    fd = os.open(ROOT, os.O_RDONLY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(fd)
+        # RULE: two mutation runs never share a checkout
+        return False  # another run holds it
+    _held.append(fd)
+    return True
+
+
 def main() -> int:
     """Mutate every rule in turn, restore the tree, and report."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--write", type=pathlib.Path, help="write the evidence table here")
     parser.add_argument("--json", type=pathlib.Path, help="write the run's figures here, for the checks to keep")
+    parser.add_argument(
+        "--repair-only", action="store_true", help="put back a line a stopped run left switched off, and stop"
+    )
     args = parser.parse_args()
     temproot.exit_on_signals()
+    if not hold_checkout():
+        # Before repair(): the recovery file is the running one's, its line switched off on purpose.
+        print(f"a mutation run is already going in {ROOT}; wait for it, or stop it with SIGTERM")
+        return 1
     repair()
+    # RULE: a repair-only run puts the line back and switches nothing off
+    if args.repair_only:
+        return 0
     rules = all_rows()
     if not rules:
         return no_rows()

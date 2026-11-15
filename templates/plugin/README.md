@@ -61,3 +61,22 @@ name, and a row in `scripts/mutations/`.
 A commit may carry `Co-Authored-By` and an outside contributor's `Signed-off-by`, and no other
 trailers. Any other note
 belongs in the pull request's text. `just setup` turns on the hook that says so early.
+
+## Cleaning up your own worktree
+
+A session that worked in a worktree of its own removes it when it is done. Do it in this order.
+
+1. While `scripts/.mutate-recovery.json` exists, a mutation run of yours still has a line
+   switched off. Stop that run with SIGTERM, and it puts the line back itself.
+2. Run the repair, which puts back a line a killed run left and runs nothing else.
+3. Check that `git status` shows nothing. A plain `git worktree remove` refuses a worktree with
+   changes, and that refusal is the point: never add `--force`.
+4. Remove the worktree. Each run's temporary folder went with the run itself.
+
+<!-- not run: these clean up a worktree, so they would remove the one the docs check runs in -->
+```
+kill -TERM <the mutation run's process>
+uv run python scripts/mutate.py --repair-only
+git status --short
+git worktree remove <the worktree's path>
+```
