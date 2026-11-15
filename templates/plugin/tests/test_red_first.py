@@ -15,6 +15,17 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "scripts"))
 
 import red_first
 
+
+@pytest.fixture(autouse=True)
+def _checkouts_in_tmp_path(tmp_path, monkeypatch):
+    """Every run's checkout folder goes in the test's own folder, never the machine's.
+
+    A mutation run switches off the folder's removal, and a run made without this then left an
+    empty red-first-* folder in the machine's temporary folder each time.
+    """
+    monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
+
+
 OLD = """
 def test_kept():
     assert add(1, 1) == 2
