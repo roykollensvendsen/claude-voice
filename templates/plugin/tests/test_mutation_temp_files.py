@@ -89,6 +89,21 @@ ROW = '[[rule]]\nname = "a slow rule"\nfile = "src/pkg/core.py"\nfind = "^X = 1$
 
 ORIGINAL = "# RULE: a slow rule\nX = 1\n"
 
+#: Plays a slow restore: before the run writes the rule's line back, it marks that it is
+#: restoring and takes two seconds, so a second stop lands in the middle of the clean-up.
+SLOW_RESTORE = f"""
+import pathlib
+real = pathlib.Path.write_text
+def write_text(self, data, *args, **kwargs):
+    if self.name == "core.py" and data == {ORIGINAL!r}:
+        real(self.with_name("restoring"), "")
+        import time
+        time.sleep(2)
+    return real(self, data, *args, **kwargs)
+pathlib.Path.write_text = write_text
+"""
+
+
 def _project(tmp_path):
     """A scratch plugin with one slow rule, and the real mutation run's scripts."""
     project = tmp_path / "project"
@@ -127,6 +142,33 @@ def test_a_mutation_run_stopped_by_sigterm_restores_the_file_and_leaves_nothing(
         assert source.read_text().endswith("X = 2\n"), "the run never switched the rule off"
         run.send_signal(signal.SIGTERM)
         assert run.wait(timeout=30) == 143
+    finally:
+        run.kill()
+    assert source.read_text() == ORIGINAL
+    assert not (project / "scripts/.mutate-recovery.json").exists()
+    assert list(base.iterdir()) == []
+
+
+def test_a_mutation_run_stopped_twice_still_puts_its_line_back(tmp_path):
+    """GitHub sends SIGINT and then SIGTERM; a stop that lands while the line goes back must not cut it short."""
+    project, base = _project(tmp_path)
+    source = project / "src/pkg/core.py"
+    hook = tmp_path / "hook"
+    hook.mkdir()
+    (hook / "sitecustomize.py").write_text(SLOW_RESTORE)
+    run = subprocess.Popen(
+        [sys.executable, "scripts/mutate.py"],
+        cwd=project,
+        env={**os.environ, "TMPDIR": str(base), "PYTHONPATH": str(hook)},
+        stdout=subprocess.DEVNULL,
+    )
+    try:
+        _until(lambda: list(base.glob("gizmo-mcp-mutate-*/run-*/suite-*")), "the run never started a suite")
+        run.send_signal(signal.SIGINT)
+        _until((project / "src/pkg/restoring").exists, "the run never began to put the line back")
+        run.send_signal(signal.SIGINT)
+        run.send_signal(signal.SIGTERM)
+        assert run.wait(timeout=30) in (130, -signal.SIGINT)
     finally:
         run.kill()
     assert source.read_text() == ORIGINAL
