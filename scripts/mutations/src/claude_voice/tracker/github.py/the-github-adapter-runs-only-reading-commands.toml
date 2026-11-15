@@ -1,0 +1,5 @@
+[[rule]]
+name = "the github adapter runs only reading commands"
+file = "src/claude_voice/tracker/github.py"
+find = 'if tuple\(args\[:2\]\) not in READS:'
+replace = 'if False:'

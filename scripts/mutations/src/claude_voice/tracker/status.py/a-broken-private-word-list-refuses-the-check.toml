@@ -1,0 +1,5 @@
+[[rule]]
+name = "a broken private word list refuses the check"
+file = "src/claude_voice/tracker/status.py"
+find = 'raise WordsError\(why\) from exc'
+replace = 'return frozenset(), None'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a pull request quiet for a day is stopped"
+file = "src/claude_voice/tracker/github.py"
+find = 'if moved is not None and now - moved >= QUIET:'
+replace = 'if False:'

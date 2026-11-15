@@ -1,0 +1,5 @@
+[[rule]]
+name = "a review asked of the owner waits on the owner"
+file = "src/claude_voice/tracker/github.py"
+find = 'if owner\.lower\(\) in asked:'
+replace = 'if False:'
