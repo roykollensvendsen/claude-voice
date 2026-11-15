@@ -19,6 +19,10 @@ the order to do them in.
 - Check that it carries nothing private, and no secret.
 - Ask: does anything here make a temp file or folder without removing it,
   including when the run is interrupted?
+- Ask: does anything here remove temp files it didn't make
+  (retention_policy none or count 0, or a sweep of a shared folder)?
+- Ask: does every merge command given to a person pin the full 40-character
+  head SHA? `gh pr merge --match-head-commit` refuses a short one.
 - Note who else's lines it changes, so they can be mentioned.
 
 ## 2. Let the checks run
