@@ -112,11 +112,38 @@ async def test_the_app_reads_both_repositories_on_one_page(tmp_path):
     await asyncio.to_thread(server.software_report.refresh)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=build_app(server)), base_url=HOST) as c:
         page = (await c.get("/api/v1/health/software", headers=BEARER)).json()
-    assert [r["mutations"] and r["mutations"]["run"] for r in page["repos"]] == [7, None]
+    assert [r["mutations"] and r["mutations"]["run"] for r in page["repos"]] == [7, None, None]
     names = [r["name"] for r in page["repos"]]
-    assert names == ["claude-voice", "claude-voice-ui"] and page["as_of"]
+    assert names[:2] == ["claude-voice", "claude-voice-ui"] and page["as_of"]
     assert by_id(page["repos"][1])["coverage"]["status"] == "bad"
     assert by_id(page["repos"][0])["ci"]["url"] == "https://ci/roykollensvendsen/claude-voice"
+
+
+async def test_the_phone_app_is_on_the_software_panel_after_the_page(tmp_path):
+    voice = repo_with_history(tmp_path / "voice", QUALITY)
+    mobile = tmp_path / "mobile"
+    mobile.mkdir()
+    store = Store(tmp_path / "b.db")
+    m = SessionManager(store, project_root=tmp_path, client_factory=FakeClaude())
+    repos = config.Config(config.Repos(), config.Paths(voice, None, None, None, mobile), None)
+    asked = []
+    server = build_server(
+        m,
+        oauth=OAuthProvider(store, SECRET, HOST, static_token=SECRET),
+        conversations=lambda **k: [],
+        live_dir=tmp_path / "live",
+        repo_config=repos,
+        ci_status=lambda repo, **_: {"conclusion": "success", "status": "completed", "url": f"https://ci/{repo}"},
+        kept_levels=lambda repo, **_: asked.append(repo) or [],
+        kept_mutations=lambda repo, **_: None,
+        main_head=lambda repo, **_: "aaa",
+    )
+    await asyncio.to_thread(server.software_report.refresh)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=build_app(server)), base_url=HOST) as c:
+        page = (await c.get("/api/v1/health/software", headers=BEARER)).json()
+    assert [r["name"] for r in page["repos"]] == ["claude-voice", "claude-voice-ui", "claude-voice-mobile"]
+    assert "roykollensvendsen/claude-voice-mobile" in asked
+    assert by_id(page["repos"][2])["ci"]["url"] == "https://ci/roykollensvendsen/claude-voice-mobile"
 
 
 def test_layering_and_duplication_are_measures_once_a_repository_records_them(tmp_path):

@@ -1,0 +1,5 @@
+[[rule]]
+name = "the phone app is on the software panel after the page"
+file = "src/claude_voice/server.py"
+find = '            \("claude-voice-mobile", repos\.repos\.claude_voice_mobile, repos\.paths\.claude_voice_mobile\),'
+replace = '            # the phone app left out'

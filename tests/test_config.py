@@ -23,6 +23,7 @@ def test_without_a_file_the_defaults_follow_the_clone_the_bridge_runs_from(tmp_p
     out = config.load(tmp_path / "missing.toml", own_clone=here, env={})
     assert out.repos.claude_voice == "roykollensvendsen/claude-voice"
     assert out.repos.claude_voice_ui == "roykollensvendsen/claude-voice-ui"
+    assert out.repos.claude_voice_mobile == "roykollensvendsen/claude-voice-mobile"
     assert out.repos.fork is None
     assert out.paths.claude_voice == here
     assert out.paths.claude_voice_ui == here.parent / "claude-voice-ui"
