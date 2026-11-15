@@ -5,7 +5,12 @@
 ``tempfile.tempdir`` and pytest's ``--basetemp`` into it, so every subprocess a test starts uses
 it too. At the end it must hold nothing but pytest's own folder: anything else fails the run,
 naming each path and the test file that ran last. Then it is removed. A run that was killed
-leaves its folder behind, and the next start sweeps it, by its lock (``scripts/temproot.py``).
+leaves its folder behind, and the next start sweeps it, by its lock (``scripts/temproot.py``,
+design A: the folder is locked before it takes a run's name).
+
+TODO: pytest-xdist is not a dependency, and a run split over workers is not handled: each worker
+would make a run folder of its own, and pytest's --basetemp would differ per worker. Give each
+worker a subfolder of the controller's, with a test that runs -n 2, before adding it.
 
 pytest's shared ``<tmp>/pytest-of-<user>/`` is never used or swept: with a retention policy of
 "none" pytest would sweep other sessions' running tests there, so that setting is refused
@@ -32,29 +37,18 @@ import temproot
 
 RECOVERY = ROOT / "scripts/.mutate-recovery.json"
 BEFORE = pytest.StashKey[bytes | None]()
-#: Where a pytest-xdist worker finds the controller's folder.
-ROOT_ENV = "GIZMO_MCP_TEST_ROOT"
 #: pytest's own folder inside the run's, which pytest prunes itself.
 BASETEMP = "pytest"
 KEEP = {BASETEMP, temproot.LOCK}
 _state: dict[str, object] = {}
 
 
-def _is_worker() -> bool:
-    return "PYTEST_XDIST_WORKER" in os.environ
-
-
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config: pytest.Config) -> None:
     """Make the run's folder before pytest's own tmp_path factory reads --basetemp."""
     _state["saved"] = (os.environ.get("TMPDIR"), tempfile.tempdir)
-    if _is_worker():
-        root = pathlib.Path(os.environ[ROOT_ENV]) / os.environ["PYTEST_XDIST_WORKER"]
-        root.mkdir(exist_ok=True)
-    else:
-        root = temproot.start(temproot.parent_for("tests", ROOT))
-        os.environ[ROOT_ENV] = str(root)
-        config.option.basetemp = str(root / BASETEMP)
+    root = temproot.start(temproot.parent_for("tests", ROOT))
+    config.option.basetemp = str(root / BASETEMP)
     _state["root"] = root
     os.environ["TMPDIR"] = str(root)
     tempfile.tempdir = str(root)
@@ -76,10 +70,8 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
             "A test that runs scripts/mutate.py must point RECOVERY at its own temporary file."
         )
         session.exitstatus = pytest.ExitCode.TESTS_FAILED
-    if _is_worker():
-        return
     root = pathlib.Path(str(_state["root"]))
-    left = [p for p in temproot.leftovers(root, KEEP) if not (p.name.startswith("gw") and not any(p.iterdir()))]
+    left = temproot.leftovers(root, KEEP)
     if left:
         print(f"\nThe tests left temporary files behind; the last test file to run was {_state.get('last')}:")
         for path in left:
@@ -98,7 +90,7 @@ def pytest_unconfigure(config: pytest.Config) -> None:  # noqa: ARG001 - pytest'
         os.environ["TMPDIR"] = saved_env
     tempfile.tempdir = saved_tempdir
     root = _state.get("root")
-    if root is None or _is_worker():
+    if root is None:
         return
     root = pathlib.Path(str(root))
     if _state.get("passed"):
