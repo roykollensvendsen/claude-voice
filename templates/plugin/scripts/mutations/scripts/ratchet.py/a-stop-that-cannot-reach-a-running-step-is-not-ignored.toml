@@ -1,0 +1,5 @@
+[[rule]]
+name = "a stop that cannot reach a running step is not ignored"
+file = "scripts/ratchet.py"
+find = '^\s*if step\.poll\(\) is None:$'
+replace = 'if False:'
