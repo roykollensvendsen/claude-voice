@@ -11,6 +11,7 @@ runs from, so the file is only needed to change something:
     [repos]
     claude_voice = "roykollensvendsen/claude-voice"        # the project, on GitHub
     claude_voice_ui = "roykollensvendsen/claude-voice-ui"
+    claude_voice_mobile = "roykollensvendsen/claude-voice-mobile"  # the phone app
     fork = "you/claude-voice"                               # your fork, if you have one
 
     [paths]
@@ -47,6 +48,7 @@ STATE_DIR = Path("~/.local/state/claude-voice")  # what the bridge keeps between
 REPO = re.compile(r"[A-Za-z0-9-]+/[A-Za-z0-9._-]+")
 UPSTREAM = "roykollensvendsen/claude-voice"
 UPSTREAM_UI = "roykollensvendsen/claude-voice-ui"
+UPSTREAM_MOBILE = "roykollensvendsen/claude-voice-mobile"
 LAUNCHES = ("terminal", "background")
 
 
@@ -58,6 +60,7 @@ class ConfigError(ValueError):
 class Repos:
     claude_voice: str = UPSTREAM
     claude_voice_ui: str = UPSTREAM_UI
+    claude_voice_mobile: str = UPSTREAM_MOBILE
     fork: str | None = None
 
 
@@ -231,6 +234,7 @@ def _repos(raw: dict[str, Any]) -> Repos:
     return Repos(
         claude_voice=_repo(raw.get("claude_voice", UPSTREAM), "claude_voice"),
         claude_voice_ui=_repo(raw.get("claude_voice_ui", UPSTREAM_UI), "claude_voice_ui"),
+        claude_voice_mobile=_repo(raw.get("claude_voice_mobile", UPSTREAM_MOBILE), "claude_voice_mobile"),
         fork=_repo(raw["fork"], "fork") if raw.get("fork") else None,
     )
 

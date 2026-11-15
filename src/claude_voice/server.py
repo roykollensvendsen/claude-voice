@@ -1345,10 +1345,14 @@ def build_server(
         except LookupError as exc:
             raise ToolError(str(exc)) from None
 
-    # Each plugin's own repository joins the two above, on the software panel and the work page.
+    # Each plugin's own repository joins the three above, on the software panel and the work page.
     plugin_repos = work.plugin_repos(repos.plugins)
     board = work_board or work.Board(
-        {"claude-voice": repos.repos.claude_voice, "claude-voice-ui": repos.repos.claude_voice_ui}
+        {
+            "claude-voice": repos.repos.claude_voice,
+            "claude-voice-ui": repos.repos.claude_voice_ui,
+            "claude-voice-mobile": repos.repos.claude_voice_mobile,
+        }
         | {name: repo for name, repo, _ in plugin_repos},
         run=software._gh,
         login_expiry=lambda: work.read_login_expiry(),  # looked up late, so the suite can stand in for it
@@ -1361,6 +1365,8 @@ def build_server(
         listed = (
             ("claude-voice", repos.repos.claude_voice, bridge_folder or repos.paths.claude_voice),
             ("claude-voice-ui", repos.repos.claude_voice_ui, repos.paths.claude_voice_ui),
+            # RULE: the phone app is on the software panel after the page
+            ("claude-voice-mobile", repos.repos.claude_voice_mobile, repos.paths.claude_voice_mobile),
             *plugin_repos,
         )
         return [(name, repo, folder, followed.get(str(folder), "main")) for name, repo, folder in listed]
