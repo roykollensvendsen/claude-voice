@@ -17,6 +17,8 @@ the order to do them in.
   `pyproject.toml`, `uv.lock`, `scripts/`, and anything a hook or the build
   calls. A change there can run code on our machines or in our checks.
 - Check that it carries nothing private, and no secret.
+- Ask: does anything here make a temp file or folder without removing it,
+  including when the run is interrupted?
 - Note who else's lines it changes, so they can be mentioned.
 
 ## 2. Let the checks run

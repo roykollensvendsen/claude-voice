@@ -128,7 +128,9 @@ broken the same way as a layer breach, by moving shared code down.
 
 **When you review code**, as a quality round does, add this to the checklist:
 for each outside call, name the documented limit and the test that breaks it;
-a missing one is a finding. And read the commit trailers: Co-Authored-By only,
+a missing one is a finding. Ask too: does anything here make a temp file or
+folder without removing it, including when the run is interrupted? One left
+behind is a finding. And read the commit trailers: Co-Authored-By only,
 with a contributor's Signed-off-by allowed. A session's link or any other note
 belongs in the pull request's text, which can be edited, not in history, which
 cannot. Here `scripts/no_session_links.py` refuses the session link in the
