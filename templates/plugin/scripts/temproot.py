@@ -7,8 +7,13 @@ and holds a lock on ``.lock`` inside it until the process ends. The kernel drops
 death, SIGKILL included, so the next start can tell a dead run's folder from a live one's. A pid
 cannot tell them apart: in another pid namespace a live run's pid looks gone.
 
-A start sweeps a folder only when all of these hold: it is named ``run-<digits>``; it lies directly
-under this checkout's own parent; it is ours; no link was followed on the way; and its lock is free.
+A run's folder is made as ``starting-<random>``, locked, and only then renamed to its run name,
+so a sweep never meets a run's name without its lock held. A run killed in between leaves a
+starting folder, swept once it is old.
+
+A start sweeps a folder only when all of these hold: it is named ``run-<digits>``, or is a starting
+folder older than ``GRACE``; it lies directly under this checkout's own parent; it is ours; no link
+was followed on the way; and its lock is free.
 
 This module calls nothing at import, so the test conftest may import it before it moves the
 temporary folder.
@@ -22,6 +27,7 @@ import hashlib
 import os
 import pathlib
 import re
+import secrets
 import shutil
 import signal
 import stat
@@ -36,8 +42,10 @@ if TYPE_CHECKING:
 PACKAGE = "gizmo-mcp"
 LOCK = ".lock"
 RUN = re.compile(r"run-\d+")
-#: A folder with no lock file yet may belong to a run that is just starting; it is left alone
-#: until it is this many seconds old.
+#: A run's folder before it is locked and renamed.
+STARTING = re.compile(r"starting-\w+")
+#: A starting folder, or a run's with no lock file, may belong to a run that is starting now;
+#: it is left alone until it is this many seconds old.
 GRACE = 600.0
 #: The exit status a shell gives a process ended by each signal.
 SIGNALS = {signal.SIGTERM: 143, signal.SIGHUP: 129}
@@ -94,7 +102,13 @@ def _lock_is_free(folder: pathlib.Path) -> bool:
 
 def stale(folder: pathlib.Path) -> bool:
     """Whether `folder` is a dead run's, and so may be swept."""
-    if not RUN.fullmatch(folder.name) or _ours(folder) is None:
+    status = _ours(folder)
+    if status is None:
+        return False
+    if STARTING.fullmatch(folder.name):
+        # RULE: a run's folder is locked before it takes a run's name
+        return time.time() - status.st_mtime > GRACE and _lock_is_free(folder)
+    if not RUN.fullmatch(folder.name):
         return False
     # RULE: a folder whose run still holds its lock is never swept
     return _lock_is_free(folder)
@@ -120,20 +134,36 @@ def start(parent: pathlib.Path) -> pathlib.Path:
         raise SystemExit(msg)
     parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     sweep(parent)
+    starting = _locked_starting_folder(parent)
     for suffix in ("", *map(str, range(1, 1000))):
         folder = parent / f"run-{os.getpid()}{suffix}"
         try:
-            # The parent again, in case another run just finished and removed it, empty.
-            parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            folder.mkdir(mode=0o700)
+            folder.mkdir(mode=0o700)  # claims the name, so the rename never replaces another's
         except FileExistsError:
             continue
-        fd = os.open(folder / LOCK, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        _held.append(fd)
+        starting.rename(folder)
         return folder
+    remove(starting)
     msg = f"no free run folder in {parent}; remove the folders there"
     raise SystemExit(msg)
+
+
+def _locked_starting_folder(parent: pathlib.Path) -> pathlib.Path:
+    """A new folder under a starting name, with this process holding its lock until it ends."""
+    while True:
+        starting = parent / f"starting-{secrets.token_hex(8)}"
+        try:
+            starting.mkdir(mode=0o700)
+        except FileExistsError:
+            continue
+        except FileNotFoundError:
+            # Another run just finished and removed the parent, empty; make it again.
+            parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            continue
+        fd = os.open(starting / LOCK, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        _held.append(fd)
+        return starting
 
 
 @contextlib.contextmanager

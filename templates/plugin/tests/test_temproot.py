@@ -84,21 +84,48 @@ def test_a_hung_up_run_removes_its_temporary_files_too(tmp_path):
 
 def test_only_a_dead_run_s_own_kind_of_folder_is_swept(tmp_path):
     """Not another name, not a link, and not a folder still starting up, with no lock yet."""
-    other = tmp_path / "keep-me"
-    other.mkdir()
-    outside = tmp_path.parent / f"{tmp_path.name}-outside"
+    parent = tmp_path / "parent"
+    other = parent / "keep-me"
+    other.mkdir(parents=True)
+    outside = tmp_path / "outside"
     outside.mkdir()
     (outside / temproot.LOCK).touch()
-    (tmp_path / "run-7").symlink_to(outside)
-    starting = tmp_path / "run-8"
+    (parent / "run-7").symlink_to(outside)
+    starting = parent / "starting-x1"
     starting.mkdir()
-    assert temproot.sweep(tmp_path) == []
+    (starting / temproot.LOCK).touch()
+    assert temproot.sweep(parent) == []
     assert other.is_dir()
     assert outside.is_dir()
     assert starting.is_dir()
     old = time.time() - temproot.GRACE - 1
     os.utime(starting, (old, old))
-    assert temproot.sweep(tmp_path) == [starting]
+    assert temproot.sweep(parent) == [starting]
+
+
+def test_a_run_s_folder_is_locked_before_it_takes_a_run_s_name(tmp_path, monkeypatch):
+    """Another run sweeping just as this one takes its lock must find nothing it may take.
+
+    The other run's sweep is played inside this run's own call to lock: at that moment the
+    folder exists, but its lock is not held yet. Named as a run's then, it would be swept.
+    """
+    real_flock = fcntl.flock
+    calls = []
+
+    def flock_after_a_sweep(fd, operation):
+        calls.append(operation)
+        if len(calls) == 1:
+            temproot.sweep(tmp_path)
+        return real_flock(fd, operation)
+
+    monkeypatch.setattr(temproot.fcntl, "flock", flock_after_a_sweep)
+    folder = temproot.start(tmp_path)
+    try:
+        assert temproot.RUN.fullmatch(folder.name)
+        assert (folder / temproot.LOCK).is_file(), "the other run's sweep took this run's folder"
+        assert [p.name for p in tmp_path.iterdir()] == [folder.name]
+    finally:
+        temproot.remove(folder)
 
 
 def test_a_parent_that_is_a_link_is_refused(tmp_path):
