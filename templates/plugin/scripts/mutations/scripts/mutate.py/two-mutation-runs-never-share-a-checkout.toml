@@ -1,0 +1,5 @@
+[[rule]]
+name = "two mutation runs never share a checkout"
+file = "scripts/mutate.py"
+find = '^\s*return False  # another run holds it$'
+replace = 'return True'
