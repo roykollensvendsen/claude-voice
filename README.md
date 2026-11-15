@@ -458,6 +458,24 @@ first, and what it may never run ([docs/permissions.md](docs/permissions.md)). I
 uv run pytest -m e2e
 ```
 
+## Skills
+
+A skill is a set of written steps that Claude Code follows for one kind of
+task. These come with the clone, in `.claude/skills/`, and Claude Code offers
+them as soon as you open it in this folder; type `/` to see them by name.
+
+| Skill | When it is used | What it does |
+| --- | --- | --- |
+| `write-plugin` | Making a local tool reachable by voice | Writes or wires up a plugin, and adds, approves or changes one |
+| `code-quality` | A measure on the code-health page is amber or red | Measures it locally, fixes the worst one test-first and lands the fix |
+| `write-commit` | Every commit and every pull request description | Writes the message for a reader who has never seen the project |
+| `review-contribution` | A pull request comes from outside the project | Reviews it, runs its code only in a sandbox, merges it and thanks the author |
+| `org-chart` | Sessions that belong together should show as one programme | Writes the programme file the bridge's org chart reads, after the owner's yes |
+| `manage` | You are the session the owner talks to about the bridge and its plugins | Keeps the overview, passes decisions on and collects the owner's questions |
+
+The last two are for running several sessions as an organisation, and are
+optional.
+
 ## Plugins: other local tools for the voice
 
 A plugin is another MCP server on this computer whose tools the voice may call
