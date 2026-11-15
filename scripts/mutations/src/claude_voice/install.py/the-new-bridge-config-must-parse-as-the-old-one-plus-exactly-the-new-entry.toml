@@ -1,0 +1,5 @@
+[[rule]]
+name = "the new bridge config must parse as the old one plus exactly the new entry"
+file = "src/claude_voice/install.py"
+find = '^\s*if parsed != expected:$'
+replace = 'if False:'

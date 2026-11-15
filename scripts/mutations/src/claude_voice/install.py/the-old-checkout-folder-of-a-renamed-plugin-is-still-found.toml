@@ -1,0 +1,5 @@
+[[rule]]
+name = "the old checkout folder of a renamed plugin is still found"
+file = "src/claude_voice/install.py"
+find = 'if old is not None and old\.is_dir\(\) and not \(home / found\.folder\)\.exists\(\):'
+replace = 'if False:'

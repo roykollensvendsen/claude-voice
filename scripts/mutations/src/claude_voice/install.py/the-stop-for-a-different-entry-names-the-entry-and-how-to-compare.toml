@@ -1,0 +1,5 @@
+[[rule]]
+name = "the stop for a different entry names the entry and how to compare"
+file = "src/claude_voice/install.py"
+find = 'entry = f"\[plugins\.\{self\.name\}\]"'
+replace = 'entry = "an entry"'

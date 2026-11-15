@@ -1,0 +1,5 @@
+[[rule]]
+name = "an install dry run writes nothing"
+file = "src/claude_voice/install.py"
+find = '^\s*if self\.dry:$'
+replace = 'if False:'

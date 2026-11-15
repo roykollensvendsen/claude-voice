@@ -1,0 +1,5 @@
+[[rule]]
+name = "the approval prompt says the plugin starts after its name is typed"
+file = "src/claude_voice/cli.py"
+find = 'f"Type \{spec\.name\} to approve it \(this starts it once'
+replace = 'f"Type {spec.name} to approve it, anything else to stop: "'

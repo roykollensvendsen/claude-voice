@@ -1,0 +1,38 @@
+# The owner's own plugins: the name each installs under, and its repository on GitHub.
+# `claude-voice plugins install` uses this for two things only. When a checkout is missing,
+# it prints the clone command for the owner to run; it never clones by itself. And a config
+# folder named after one of these is known, so install does not ask before writing there.
+
+[garage]
+repo = "roykollensvendsen/garage-door"
+
+[tv]
+repo = "roykollensvendsen/tv-mcp"
+
+[vacuum]
+repo = "roykollensvendsen/dreame-mcp"
+
+[weather]
+repo = "roykollensvendsen/weather-mcp"
+
+[fuel]
+repo = "roykollensvendsen/fuel-mcp"
+
+[easee]
+repo = "roykollensvendsen/easee-mcp"
+
+[grocery]
+repo = "roykollensvendsen/grocery-mcp"
+formerly = "kassalapp-mcp"  # its checkout's folder before the rename, still found until it is renamed too
+
+[mister]
+repo = "roykollensvendsen/mister-mcp"
+
+[heatpump]
+repo = "roykollensvendsen/heatpump-mcp"
+
+[ams]
+repo = "roykollensvendsen/ams-mcp"
+
+[xbox]
+repo = "roykollensvendsen/xbox-mcp"

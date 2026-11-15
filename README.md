@@ -547,6 +547,46 @@ voice reads. So after upgrading, every plugin waits for one more approval, typed
 above or by voice in developer mode, because its command and folder are still known.
 Until then its tools are not offered, and `claude-voice plugins list` says `tools changed`.
 
+### Installing a plugin in one command
+
+A plugin that ships a manifest ([docs/plugin-manifest.md](docs/plugin-manifest.md))
+is installed from its checkout in one go, instead of the steps above by hand:
+
+<!-- not run: it asks for typed input -->
+```
+claude-voice plugins install fuel --from ~/fuel-mcp --dry-run   # shows each change, writes nothing
+claude-voice plugins install fuel --from ~/fuel-mcp             # does it, step by step
+```
+
+Each step is numbered and names the file it changes:
+
+1. It reads the manifest. The checkout must be a clean git checkout on the
+   manifest's branch. If the folder is missing, it prints the `git clone` command
+   for you to run; it never fetches anything itself.
+2. It adds the plugin's entry to the settings file, after a backup. The entry is
+   written as TOML by a library, so no text in the manifest can add another table, and
+   the result must read back as your old file plus exactly that entry. If an entry by
+   that name is already there and differs, it changes nothing and shows the
+   difference for you to edit by hand.
+3. When the plugin uses the shared home position and there is none yet, it asks for
+   it, as `home set` does.
+4. It writes the plugin's own config to `~/.config/<dir>/config.toml`, from the default
+   the plugin ships, and asks only for the values the manifest marks as yours, without
+   showing them. A config that is already there is kept. It writes nowhere else: never
+   through a symlink, never outside that folder, never inside a git repository, and it
+   asks first when no known plugin uses the folder.
+5. It ends with the usual typed approval, or says the plugin is already approved.
+
+The summary at the end lists each file it changed, where the backup is and the exact
+command that undoes it. A second run changes nothing. A dry run shows each file's
+difference with your values masked, and asks nothing. It asks you questions, so it
+runs only in a terminal of your own:
+
+```console
+$ claude-voice plugins install fuel --from ~/fuel-mcp
+claude-voice: plugins install asks you questions; run it in a terminal of your own, not from Claude Code or through a pipe.
+```
+
 To list them:
 
 ```console
