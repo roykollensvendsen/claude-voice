@@ -127,8 +127,9 @@ def test_a_hung_up_run_removes_its_temporary_files_too(tmp_path):
 def test_only_a_dead_run_s_own_kind_of_folder_is_swept(tmp_path):
     """Not another name, not a link, and not a folder still starting up, with no lock yet."""
     parent = tmp_path / "parent"
+    parent.mkdir(mode=0o700)
     other = parent / "keep-me"
-    other.mkdir(parents=True)
+    other.mkdir()
     outside = tmp_path / "outside"
     outside.mkdir()
     (outside / temproot.LOCK).touch()
@@ -140,7 +141,7 @@ def test_only_a_dead_run_s_own_kind_of_folder_is_swept(tmp_path):
     assert other.is_dir()
     assert outside.is_dir()
     assert starting.is_dir()
-    old = time.time() - temproot.GRACE - 1
+    old = time.time() - temproot.STARTING_SECONDS - 1
     os.utime(starting, (old, old))
     assert temproot.sweep(parent) == [starting]
 
@@ -170,12 +171,47 @@ def test_a_run_s_folder_is_locked_before_it_takes_a_run_s_name(tmp_path, monkeyp
         temproot.remove(folder)
 
 
-def test_a_parent_that_is_a_link_is_refused(tmp_path):
+def test_a_run_keeps_its_files_only_in_a_folder_of_its_own_that_no_one_else_can_open(tmp_path):
+    """Another user who made the parent first, open to all, or a link there, would see every run's files.
+
+    Refused loudly, at the start and at the sweep, naming the folder and how to clear it; never
+    used quietly, and never swept quietly either.
+    """
     real = tmp_path / "real"
-    real.mkdir()
+    real.mkdir(mode=0o700)
     (tmp_path / "link").symlink_to(real)
-    with pytest.raises(SystemExit, match="is a link"):
-        temproot.start(tmp_path / "link")
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    shared.chmod(0o750)
+    for parent in (tmp_path / "link", shared):
+        for call in (temproot.start, temproot.sweep):
+            with pytest.raises(SystemExit) as refused:
+                call(parent)
+            said = str(refused.value)
+            assert str(parent) in said
+            assert f"rm -r {parent}" in said
+    assert list(real.iterdir()) == []
+    assert list(shared.iterdir()) == []
+    shared.chmod(0o700)
+    assert temproot.start(shared).parent == shared
+
+
+def test_a_sweep_of_a_parent_another_run_just_removed_finds_nothing(tmp_path):
+    """Another run's finish removes the empty parent; a sweep just then must not fail the run."""
+    assert temproot.sweep(tmp_path / "gone") == []
+    parent = tmp_path / "parent"
+    parent.mkdir(mode=0o700)
+    real_open = os.open
+
+    def open_then_lose_it(path, flags, *rest):
+        fd = real_open(path, flags, *rest)
+        if pathlib.Path(path) == parent:
+            parent.rmdir()
+        return fd
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(temproot.os, "open", open_then_lose_it)
+        assert temproot.sweep(parent) == []
 
 
 def test_a_run_holds_its_lock_until_it_ends(tmp_path):

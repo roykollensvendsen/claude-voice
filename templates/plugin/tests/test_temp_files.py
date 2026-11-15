@@ -223,7 +223,8 @@ def test_a_killed_test_run_is_swept_at_the_next_start(tmp_path):
     import temproot
 
     left = temproot.parent_for("tests", project, base) / "run-1"
-    left.mkdir(parents=True)
+    left.parent.mkdir(mode=0o700)
+    left.mkdir()
     (left / temproot.LOCK).touch()
     (left / "made-by-the-killed-run.txt").write_text("x")
     other = base / "gizmo-mcp-tests-00000000"  # another checkout's: never ours to sweep
