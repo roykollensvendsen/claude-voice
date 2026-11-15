@@ -1,0 +1,5 @@
+[[rule]]
+name = "the base is measured where no other branch can be seen"
+file = "scripts/ratchet.py"
+find = '\("git", "init", "-q"\),'
+replace = '("git", "clone", "-q", "--no-checkout", str(repo), "."),'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a quality step hears terminal stops only through the ratchet"
+file = "scripts/ratchet.py"
+find = '^\s*start_new_session=True,$'
+replace = 'start_new_session=False,'

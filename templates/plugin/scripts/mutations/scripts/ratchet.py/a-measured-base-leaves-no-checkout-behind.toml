@@ -1,5 +1,0 @@
-[[rule]]
-name = "a measured base leaves no checkout behind"
-file = "scripts/ratchet.py"
-find = '_run\("git", "worktree", "remove", "--force", str\(copy\), cwd=repo\)'
-replace = 'pass'
