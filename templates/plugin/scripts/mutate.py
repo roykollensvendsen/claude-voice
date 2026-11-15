@@ -232,6 +232,9 @@ def run_suite(targets: list[str] | None = None, place: pathlib.Path | None = Non
     temporary.mkdir(parents=True)
     env["TMPDIR"] = str(temporary)
     try:
+        # A plain run is enough here, unlike a ratchet step: nothing outside stops it on its own.
+        # A stop ends this whole process, whose own handling puts the mutated line back in a
+        # `finally`, and `subprocess.run` kills the suite when its wait is cut short.
         r = subprocess.run(
             [
                 sys.executable,

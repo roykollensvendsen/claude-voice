@@ -250,7 +250,14 @@ def run_suite(targets: list[str] | None = None) -> tuple[int, list[str]]:
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     MUTATE_TMP.mkdir(parents=True, exist_ok=True)
     temporary = pathlib.Path(tempfile.mkdtemp(prefix="run-", dir=MUTATE_TMP))
+    # A mutant that switches off a cleanup leaks into the suite's temporary folder. Pointing that
+    # here keeps the leak in this run's folder, removed below, out of the machine's.
+    # RULE: a mutant's leaked temporary folder stays inside the run's own folder
+    env["TMPDIR"] = str(temporary)
     try:
+        # A plain run is enough here, unlike a ratchet step: nothing outside stops it on its own.
+        # A stop ends this whole process, whose own handling puts the mutated line back in a
+        # `finally`, and `subprocess.run` kills the suite when its wait is cut short.
         r = subprocess.run(
             [
                 sys.executable,
