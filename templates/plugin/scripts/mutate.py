@@ -37,6 +37,7 @@ from typing import Any
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
+import own_code
 import temproot
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -300,6 +301,7 @@ def main() -> int:
     rules = all_rows()
     if not rules:
         return no_rows()
+    own_code.require(ROOT, sys.executable, {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
     with temproot.run_folder(MUTATE_TMP) as here:
         return mutate_all(rules, here, args)
 

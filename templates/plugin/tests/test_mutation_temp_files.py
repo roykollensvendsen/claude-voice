@@ -87,19 +87,35 @@ SLOW_TEST = "import time\n\ndef test_a_slow_rule():\n    time.sleep(60)\n"
 ROW = '[[rule]]\nname = "a slow rule"\nfile = "src/pkg/core.py"\nfind = "^X = 1$"\nreplace = "X = 2"\n'
 
 
-def test_a_mutation_run_stopped_by_sigterm_restores_the_file_and_leaves_nothing(tmp_path):
-    """CI cancels a job with SIGTERM: the switched-off line comes back, and every folder goes."""
+ORIGINAL = "# RULE: a slow rule\nX = 1\n"
+
+def _project(tmp_path):
+    """A scratch plugin with one slow rule, and the real mutation run's scripts."""
     project = tmp_path / "project"
-    for folder in ("scripts/mutations/src/pkg/core.py", "src/pkg", "tests"):
+    for folder in ("scripts/mutations/src/pkg/core.py", "src/pkg", "src/gizmo_mcp", "tests"):
         (project / folder).mkdir(parents=True)
-    for name in ("mutate.py", "temproot.py"):
+    (project / "src/gizmo_mcp/__init__.py").write_text("")
+    for name in ("mutate.py", "temproot.py", "own_code.py"):
         shutil.copy(ROOT / "scripts" / name, project / "scripts" / name)
-    source = project / "src/pkg/core.py"
-    source.write_text("# RULE: a slow rule\nX = 1\n")
+    (project / "src/pkg/core.py").write_text(ORIGINAL)
     (project / "scripts/mutations/src/pkg/core.py/a-slow-rule.toml").write_text(ROW)
     (project / "tests/test_core.py").write_text(SLOW_TEST)
     base = tmp_path / "tmp"
     base.mkdir()
+    return project, base
+
+
+def _until(found, what):
+    deadline = time.monotonic() + 30
+    while not found() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert found(), what
+
+
+def test_a_mutation_run_stopped_by_sigterm_restores_the_file_and_leaves_nothing(tmp_path):
+    """CI cancels a job with SIGTERM: the switched-off line comes back, and every folder goes."""
+    project, base = _project(tmp_path)
+    source = project / "src/pkg/core.py"
     run = subprocess.Popen(
         [sys.executable, "scripts/mutate.py"],
         cwd=project,
@@ -107,14 +123,12 @@ def test_a_mutation_run_stopped_by_sigterm_restores_the_file_and_leaves_nothing(
         stdout=subprocess.DEVNULL,
     )
     try:
-        deadline = time.monotonic() + 30
-        while not list(base.glob("gizmo-mcp-mutate-*/run-*/suite-*")) and time.monotonic() < deadline:
-            time.sleep(0.1)
+        _until(lambda: list(base.glob("gizmo-mcp-mutate-*/run-*/suite-*")), "the run never started a suite")
         assert source.read_text().endswith("X = 2\n"), "the run never switched the rule off"
         run.send_signal(signal.SIGTERM)
         assert run.wait(timeout=30) == 143
     finally:
         run.kill()
-    assert source.read_text() == "# RULE: a slow rule\nX = 1\n"
+    assert source.read_text() == ORIGINAL
     assert not (project / "scripts/.mutate-recovery.json").exists()
     assert list(base.iterdir()) == []

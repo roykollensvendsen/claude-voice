@@ -46,6 +46,7 @@ from typing import TYPE_CHECKING, Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import own_code
 import temproot
 
 if TYPE_CHECKING:
@@ -339,6 +340,7 @@ def measure(*, skip_mutation: bool = False, recorded: dict[str, Any] | None = No
     """Every measure, from the tree as it is; every tool it starts keeps its files in this run's folder."""
     with temproot.run_folder(RATCHET_TMP) as tmp:
         env = {**os.environ, "TMPDIR": str(tmp)}
+        own_code.require(ROOT, sys.executable, env)
         report = tmp / "coverage.json"
         started = time.monotonic()
         suite = _python("-m", "pytest", "-q", "-p", "no:cacheprovider", "--cov", f"--cov-report=json:{report}", env=env)

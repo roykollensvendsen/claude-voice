@@ -1,0 +1,5 @@
+[[rule]]
+name = "a check measures only this checkout's own code"
+file = "scripts/own_code.py"
+find = '^\s*if not found\.is_relative_to\(source\):$'
+replace = 'if False:'
