@@ -10,6 +10,7 @@ import json
 import os
 import socket
 import subprocess
+import sys
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
@@ -17,6 +18,8 @@ from typing import Any
 
 from . import core, signing
 from .units import SOCKET_PATH
+
+assert sys.platform != "win32"  # the helper runs on Linux only: a Unix socket and systemd
 
 ETC = Path("/etc/claude-voice-power")
 LISTEN_FD = 3

@@ -9,17 +9,22 @@ import json
 import os
 import re
 import socket
+import sys
 import threading
 import tomllib
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
+if sys.platform == "win32":  # the helper serves a Unix socket for systemd, on Linux only
+    pytest.skip("the helper runs on Linux only", allow_module_level=True)
+
 from power_fakes import MACHINE, Hub
 from power_scan import commands, words
 
-from claude_voice_power import __main__ as main
-from claude_voice_power import selfcheck, server, units
+from claude_voice_power import __main__ as main  # noqa: E402
+from claude_voice_power import selfcheck, server, units  # noqa: E402
 
 SOURCE = Path(__file__).parent.parent / "src/claude_voice_power"
 HELPER = "/usr/local/lib/claude-voice-power"

@@ -10,6 +10,8 @@ from collections.abc import Callable
 from . import core, selfcheck, server, signing
 from .logind import DBusLogind, JeepneyBus
 
+assert sys.platform != "win32"  # the helper runs on Linux only
+
 log = logging.getLogger("claude_voice_power")
 
 
