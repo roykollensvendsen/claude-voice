@@ -1,0 +1,5 @@
+[[rule]]
+name = "an event key is plain"
+file = "src/claude_voice/workflow/core/gate.py"
+find = 'if not KEY\.fullmatch\(key\) or'
+replace = 'if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a vocabulary is a frozen set"
+file = "src/claude_voice/workflow/core/protocol.py"
+find = 'if not isinstance\(words, frozenset\):'
+replace = 'if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a what from outside the collectors words is counted per source"
+file = "src/claude_voice/workflow/core/gate.py"
+find = 'if unknown:'
+replace = 'if False:'

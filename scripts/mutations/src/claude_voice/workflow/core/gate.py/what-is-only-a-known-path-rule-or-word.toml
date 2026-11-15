@@ -1,0 +1,5 @@
+[[rule]]
+name = "what is only a known path rule or word"
+file = "src/claude_voice/workflow/core/gate.py"
+find = 'if what in allowed:'
+replace = 'if True:'

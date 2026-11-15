@@ -1,0 +1,5 @@
+[[rule]]
+name = "a collector runs at most once a second"
+file = "src/claude_voice/workflow/core/protocol.py"
+find = 'if collector\.every_s < 1:'
+replace = 'if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "an event key holds no private data"
+file = "src/claude_voice/workflow/core/gate.py"
+find = 'if private\(key, words\):'
+replace = 'if False:'

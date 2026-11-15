@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/roykollensvendsen/claude-voice/blob/main/docs/workflow-event/v1.json",
+  "title": "A workflow event, version 1",
+  "description": "One line of the bridge's local friction log: where work got stuck, for how long, and on whom. docs/workflow-event.md explains it. A new version is a new file; this one is never edited once published.",
+  "type": "object",
+  "required": ["v", "at", "source", "id", "session", "repo", "kind", "blocker", "state", "started", "duration_s", "what", "line"],
+  "additionalProperties": false,
+  "properties": {
+    "v": {
+      "const": 1,
+      "description": "The format's version, written first. A reader skips and counts a version it does not read."
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(Z|[+-]\\d{2}:\\d{2})$",
+      "description": "When the bridge wrote the event, to the second, with its offset."
+    },
+    "source": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,31}$",
+      "description": "The registered name of the collector that saw it, set by the bridge."
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable per friction point: the source, the collector's own key and the friction's start to the second, in UTC. An open and its close share it."
+    },
+    "session": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The session, from the bridge's programme files, never from what the collector read."
+    },
+    "repo": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The repository, from the bridge's programme files, never from what the collector read."
+    },
+    "kind": {
+      "enum": ["conflict", "permission", "flaky", "slow", "waiting", "stall", "other"],
+      "description": "What sort of friction it is."
+    },
+    "blocker": {
+      "enum": ["roy", "review", "ci", "permission", "session", "outside", "none"],
+      "description": "Who or what it waits on."
+    },
+    "state": {
+      "enum": ["open", "closed", "point"],
+      "description": "open when it is seen, closed when it ends, or point for one moment with no duration."
+    },
+    "started": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(Z|[+-]\\d{2}:\\d{2})$",
+      "description": "When the friction began, with its offset. A point starts when it is written."
+    },
+    "duration_s": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "Only on a close: at minus started, in whole seconds. Null otherwise."
+    },
+    "what": {
+      "type": ["string", "null"],
+      "description": "A path the repository's git knows, a rule name, or a word from the collector's own vocabulary. Anything else is the collector's catch-all word, or null when it has none."
+    },
+    "line": {
+      "type": ["string", "null"],
+      "maxLength": 120,
+      "description": "One line, kept in the local log only, after the private scan and with token-shaped text blanked. Null when there is none or it held private data."
+    },
+    "closed_late": {
+      "const": true,
+      "description": "Only on a close the bridge saw after the friction had ended while it was down. Its at is when it looked, so the duration is at most that."
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"state": {"const": "closed"}}},
+      "then": {"properties": {"duration_s": {"type": "integer"}}},
+      "else": {"properties": {"duration_s": {"type": "null"}}, "not": {"required": ["closed_late"]}}
+    }
+  ],
+  "examples": [
+    {
+      "v": 1,
+      "at": "2026-11-16T09:12:17+01:00",
+      "source": "prs",
+      "id": "prs:fuel-mcp#14:review:2026-11-16T07:02:17Z",
+      "session": "fuel-mcp",
+      "repo": "fuel-mcp",
+      "kind": "waiting",
+      "blocker": "review",
+      "state": "closed",
+      "started": "2026-11-16T08:02:17+01:00",
+      "duration_s": 4200,
+      "what": "other-reviewer",
+      "line": null
+    },
+    {
+      "v": 1,
+      "at": "2026-11-16T08:32:17+01:00",
+      "source": "live",
+      "id": "live:fuel-mcp:2026-11-16T07:02:17Z",
+      "session": "fuel-mcp",
+      "repo": "fuel-mcp",
+      "kind": "stall",
+      "blocker": "session",
+      "state": "open",
+      "started": "2026-11-16T08:02:17+01:00",
+      "duration_s": null,
+      "what": null,
+      "line": "no transcript line for 30 minutes"
+    },
+    {
+      "v": 1,
+      "at": "2026-11-17T07:00:00+01:00",
+      "source": "approvals",
+      "id": "approvals:fuel-mcp:merge:2026-11-16T21:40:00Z",
+      "session": "fuel-mcp",
+      "repo": "fuel-mcp",
+      "kind": "waiting",
+      "blocker": "roy",
+      "state": "closed",
+      "started": "2026-11-16T22:40:00+01:00",
+      "duration_s": 30000,
+      "what": null,
+      "line": null,
+      "closed_late": true
+    }
+  ]
+}

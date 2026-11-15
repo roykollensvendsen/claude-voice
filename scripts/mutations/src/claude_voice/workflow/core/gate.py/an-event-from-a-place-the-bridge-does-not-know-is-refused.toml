@@ -1,0 +1,5 @@
+[[rule]]
+name = "an event from a place the bridge does not know is refused"
+file = "src/claude_voice/workflow/core/gate.py"
+find = 'where = setting\.programmes\.get\(raw\.about\)'
+replace = 'where = setting.programmes.get(raw.about) or Where(raw.about, raw.about)'

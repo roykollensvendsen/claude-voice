@@ -1,0 +1,5 @@
+[[rule]]
+name = "a line with private data is dropped"
+file = "src/claude_voice/workflow/core/gate.py"
+find = 'if private\(flat, words\):'
+replace = 'if False:'

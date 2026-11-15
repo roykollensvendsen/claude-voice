@@ -1,0 +1,5 @@
+[[rule]]
+name = "an open or closed event needs its start"
+file = "src/claude_voice/workflow/core/gate.py"
+find = 'if raw\.started is None and raw\.state != \"point\":'
+replace = 'if False:'

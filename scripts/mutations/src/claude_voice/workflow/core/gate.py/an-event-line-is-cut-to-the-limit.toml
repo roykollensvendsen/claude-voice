@@ -1,0 +1,5 @@
+[[rule]]
+name = "an event line is cut to the limit"
+file = "src/claude_voice/workflow/core/gate.py"
+find = 'return one_line\(flat\)'
+replace = 'return flat'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "an event id writes its start in utc"
+file = "src/claude_voice/workflow/core/gate.py"
+find = 'moment = started\.astimezone\(UTC\)'
+replace = 'moment = started'

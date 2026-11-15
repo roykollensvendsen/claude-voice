@@ -1,0 +1,5 @@
+[[rule]]
+name = "a vocabulary word is short and plain"
+file = "src/claude_voice/workflow/core/protocol.py"
+find = 'if not WORD\.fullmatch\(word\):'
+replace = 'if False:'
