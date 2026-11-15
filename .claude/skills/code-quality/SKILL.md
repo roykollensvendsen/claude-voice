@@ -130,8 +130,11 @@ broken the same way as a layer breach, by moving shared code down.
 for each outside call, name the documented limit and the test that breaks it;
 a missing one is a finding. Ask too: does anything here make a temp file or
 folder without removing it, including when the run is interrupted? One left
-behind is a finding. And read the commit trailers: Co-Authored-By only,
-with a contributor's Signed-off-by allowed. A session's link or any other note
+behind is a finding. Does anything here remove temp files it didn't make
+(retention_policy none or count 0, or a sweep of a shared folder)? Does every
+merge command given to a person pin the full 40-character head SHA?
+`gh pr merge --match-head-commit` refuses a short one. And read the commit
+trailers: Co-Authored-By only, with a contributor's Signed-off-by allowed. A session's link or any other note
 belongs in the pull request's text, which can be edited, not in history, which
 cannot. Here `scripts/no_session_links.py` refuses the session link in the
 commits check; in a repository with no such check, a trailer is a finding.
