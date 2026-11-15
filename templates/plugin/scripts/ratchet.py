@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import argparse
 import ast
-import contextlib
 import json
 import os
 import re
@@ -321,9 +320,14 @@ def _run(*command: str, cwd: Path = ROOT, env: dict[str, str] | None = None) -> 
             step.wait()
         except BaseException:
             sys.stderr.write(f"stopping {command[0]}; if it hangs, end it with: kill -9 -- -{step.pid}\n")
-            with contextlib.suppress(ProcessLookupError):
+            try:
                 # RULE: a stopped ratchet lets its mutation run put the line back
                 os.killpg(step.pid, signal.SIGINT)
+            except ProcessLookupError:
+                # Only a step that has ended may be missing; a live one with no group was never told.
+                # RULE: a stop that cannot reach a running step is not ignored
+                if step.poll() is None:
+                    raise
             step.wait()
             raise
         out.seek(0)

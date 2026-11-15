@@ -395,6 +395,42 @@ def test_a_quality_step_hears_terminal_stops_only_through_the_ratchet():
     assert int(done.stdout) != os.getsid(0)
 
 
+class _StopError(Exception):
+    """Stands in for Ctrl-C, which would stop pytest itself."""
+
+
+class _UnreachableStep:
+    """A step whose first wait is cut short by a stop, as Ctrl-C cuts it, and that has no group."""
+
+    pid = 2**22 + 1  # past any pid the kernel hands out, so no group has this number
+
+    def __init__(self, *_args, ended=False, **_kwargs):
+        self.waits, self.ended = 0, ended
+
+    def wait(self):
+        self.waits += 1
+        if self.waits == 1:
+            raise _StopError
+        return 0
+
+    def poll(self):
+        return 0 if self.ended else None
+
+
+def test_a_stop_that_cannot_reach_a_running_step_is_not_ignored(monkeypatch):
+    """A step that was never given a group of its own cannot be told to stop by its group.
+
+    Ignoring that error left the ratchet waiting on a step nobody told, so the run looked fine.
+    Only a step that has already ended may be missing.
+    """
+    monkeypatch.setattr(ratchet.subprocess, "Popen", _UnreachableStep)
+    with pytest.raises(ProcessLookupError):
+        ratchet._run(sys.executable, "-c", "pass")
+    monkeypatch.setattr(ratchet.subprocess, "Popen", lambda *a, **k: _UnreachableStep(ended=True))
+    with pytest.raises(_StopError):
+        ratchet._run(sys.executable, "-c", "pass")
+
+
 def test_a_step_with_a_lot_to_say_never_blocks():
     """Its output goes to files, not pipes, and all of it comes back."""
     done = ratchet._run(sys.executable, "-c", "import sys; sys.stdout.write('x' * 1_000_000)")
