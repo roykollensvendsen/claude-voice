@@ -65,3 +65,22 @@ The schema cannot see the checkout or the owner's folders, so these are checked 
 
 Every other rule is in the schema, and the bridge's own check follows it. A test requires
 a case for each of the schema's constraints and puts each case to both.
+
+## How the bridge starts it
+
+A plugin declared as `command = "uv"` with `args = ["run", "<script>", ...]` is not started
+through `uv run`. That would keep uv running as the plugin's parent, holding uv's cache lock
+for as long as the plugin runs, so the cache could never be pruned. Instead, after the
+approval is checked, the bridge:
+
+- runs `uv sync --locked` in the plugin's folder, which makes `.venv` match its `uv.lock` and
+  makes a missing `.venv`. It waits up to five minutes, and takes turns with the bridge's
+  other uv work;
+- starts `.venv/bin/<script>` with the rest of the arguments (on Windows,
+  `.venv\Scripts\<script>.exe`).
+
+A failed sync, or a script missing after it, refuses the start. The refusal names the folder
+and says to run `uv sync --locked` there. The script must be a plain name: no slash and no
+`..`. Its path must also stay inside `.venv`. Any other command starts as it is written.
+
+The approval covers the command as the manifest writes it, so this needs no new approval.

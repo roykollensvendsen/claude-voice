@@ -1,0 +1,5 @@
+[[rule]]
+name = "a plugin starts only from inside its own environment"
+file = "src/claude_voice/plugin_venv.py"
+find = 'if not program\.resolve\(\)\.is_relative_to'
+replace = 'if False:'

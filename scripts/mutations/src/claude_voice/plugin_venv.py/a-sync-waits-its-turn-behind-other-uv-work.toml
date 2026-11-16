@@ -1,0 +1,5 @@
+[[rule]]
+name = "a sync waits its turn behind other uv work"
+file = "src/claude_voice/plugin_venv.py"
+find = 'with uvlock\.held\(LOCK, SYNC_SECONDS\):'
+replace = 'if True:'

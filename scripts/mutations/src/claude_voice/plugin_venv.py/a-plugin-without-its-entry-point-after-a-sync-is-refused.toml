@@ -1,0 +1,5 @@
+[[rule]]
+name = "a plugin without its entry point after a sync is refused"
+file = "src/claude_voice/plugin_venv.py"
+find = 'if not program\.is_file\(\):'
+replace = 'if False:'
