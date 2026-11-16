@@ -321,7 +321,10 @@ def test_the_shipped_rules_name_no_person_host_or_home_folder():
 # The permissions module has no matcher of its own: Claude Code does the matching. This is a
 # small faithful copy of it. A rule without `*` matches the whole command exactly. With `*`,
 # each `*` matches any run of characters, spaces included, and the rule must match the whole
-# command. A command matching any deny rule is refused, even when an allow rule matches too.
+# command. A rule ending in `:*` is the older prefix form instead: what stands before the colon
+# is a plain prefix, with no wildcard in it, so `Bash(git push* :*)` matches only commands that
+# begin with "git push* " itself, which none does. A command matching any deny rule is refused,
+# even when an allow rule matches too.
 
 
 def _matches(rule, command):
@@ -329,6 +332,8 @@ def _matches(rule, command):
         return False  # another tool's rule: these tests match only shell commands
     assert rule.endswith(")"), rule
     pattern = rule[len("Bash(") : -1]
+    if pattern.endswith(":*"):
+        return command.startswith(pattern[:-2])
     if "*" not in pattern:
         return command == pattern
     return re.fullmatch(".*".join(re.escape(part) for part in pattern.split("*")), command, re.DOTALL) is not None
@@ -356,6 +361,41 @@ def test_the_matcher_reads_rules_the_way_claude_code_does():
     assert decision(asking, "git push origin feature") == "allowed"
     assert decision(asking, "git push origin main") == "asked"
     assert decision(asking, "git push origin main -f") == "refused"
+    prefixed = permissions.Rules(allow=["Bash(npm test:*)"], deny=["Bash(git push* :*)"])
+    assert decision(prefixed, "npm test --watch") == "allowed"
+    assert decision(prefixed, "git push origin :feature") == "asked"  # the old form never applied
+
+
+def test_a_rule_ending_in_a_colon_and_a_star_is_refused(tmp_path):
+    table = json.loads(permissions.TABLE.read_text(encoding="utf-8"))
+    table["ask"]["pushes that delete a branch or could land on main without naming it"].append("Bash(git push* :*)")
+    broken = tmp_path / "permissions.json"
+    broken.write_text(json.dumps(table), encoding="utf-8")
+    with pytest.raises(permissions.PermissionsError, match=r"git push\* :\*"):
+        permissions.load(broken)
+    permissions.load()  # the shipped table has none
+
+
+def test_the_ask_rule_that_never_applied_is_taken_out_of_the_settings(tmp_path):
+    with_settings(tmp_path, {"permissions": {"ask": ["Bash(git push* :*)"]}})
+    apply(tmp_path, permissions.load())
+    asked = read(tmp_path)["permissions"]["ask"]
+    assert "Bash(git push* :*)" not in asked and "Bash(git push* :**)" in asked
+
+
+APPROVALS_IN_THE_OWNERS_NAME = (
+    "gh pr review 5 --approve",
+    "gh pr review --approve 5",
+    "gh pr review 5 --approve --body fine",
+    "gh pr review 5 -a",
+    "gh pr review -a 5",
+)
+
+
+@pytest.mark.parametrize("command", APPROVALS_IN_THE_OWNERS_NAME)
+def test_a_session_can_never_approve_a_pull_request(command):
+    """Sessions act on GitHub as the owner, so an approval would be public in his name."""
+    assert decision(permissions.load(), command) == "refused"
 
 
 OWN_BRANCH_PUSHES = (
@@ -478,7 +518,9 @@ NOW_ASKED = (
     "git push origin feature --force-with-lease",
     "gh pr comment 5 --body hi",
     "gh pr close 5",
-    "gh pr review 5 --approve",
+    "gh pr review 5 --comment --body looks-fine",
+    "gh pr review 5 --request-changes --body fix-this",
+    "git push -u origin :feature",
     "gh issue create --title x",
     "gh issue comment 7 --body x",
     "gh release create v2",
