@@ -125,7 +125,7 @@
     "pushes that delete a branch or could land on main without naming it": [
       "Bash(git push* --delete*)",
       "Bash(git push* -d *)",
-      "Bash(git push* :*)",
+      "Bash(git push* :**)",
       "Bash(git push* HEAD)",
       "Bash(git push* HEAD *)",
       "Bash(git push* --all*)",
@@ -231,11 +231,15 @@
       "Bash(git push --force-with-lease -u origin)",
       "Bash(git push --force-with-lease* HEAD)",
       "Bash(git push --force-with-lease* HEAD *)",
-      "Bash(git push --force-with-lease* :*)",
+      "Bash(git push --force-with-lease* :**)",
       "Bash(git push --force-with-lease* --delete*)",
       "Bash(git push --force-with-lease* -d *)",
       "Bash(git push --force-with-lease* --all*)",
       "Bash(git push --force-with-lease* --mirror*)"
+    ],
+    "approving a pull request, which GitHub shows in the owner's name": [
+      "Bash(gh pr review* --approve*)",
+      "Bash(gh pr review* -a*)"
     ],
     "settings and secrets, read broadly with sed": [
       "Bash(sed -n *.config/*)",
@@ -273,7 +277,9 @@
       "Bash(git commit -m *)",
       "Bash(git commit -F *)"
     ],
-    "ask": []
+    "ask": [
+      "Bash(git push* :*)"
+    ]
   },
   "secrets": {
     "readers": [

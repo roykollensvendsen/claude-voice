@@ -1,0 +1,5 @@
+[[rule]]
+name = "a rule ending in a colon and a star is refused"
+file = "src/claude_voice/permissions.py"
+find = 'if old := next\(\(r for r in rules if r\.endswith'
+replace = 'if old := None:'

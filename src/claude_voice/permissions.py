@@ -67,6 +67,14 @@ def _for_each_branch(branches: list[str], forms: list[str]) -> list[str]:
     return [f"Bash({form.replace('{branch}', branch)})" for branch in branches for form in forms]
 
 
+def _refuse_prefix_rules(rules: list[str]) -> None:
+    """PermissionsError for a rule ending in ':*': Claude Code reads that older form as a plain
+    prefix with no wildcard in it, so the rule would never apply as written."""
+    # RULE: a rule ending in a colon and a star is refused
+    if old := next((r for r in rules if r.endswith(":*)")), None):
+        raise PermissionsError(f"{old} ends in ':*', which Claude Code reads as a plain prefix, not a wildcard")
+
+
 def load(table: Path = TABLE) -> Rules:
     """The rules, each group flattened; every protected branch refused to every forced push
     and to every other push; every secret file refused to every reader; and
@@ -83,6 +91,7 @@ def load(table: Path = TABLE) -> Rules:
     devices = raw.get("device tools", {"servers": [], "tools": []})
     # RULE: a tool that moves something in the house asks first, by every name it is seen under
     ask += [f"mcp__{server}__{tool}" for server in devices["servers"] for tool in devices["tools"]]
+    _refuse_prefix_rules(allow + ask + deny)
     retired = raw.get("retired", {})
     return Rules(
         _unique(allow),
