@@ -77,6 +77,11 @@ The owner approved this list. Each item is a lesson a plugin had to learn late.
    they cannot drift. A limit that isn't documented is measured once against the
    real device, with the date written next to it.
 
+   Every stand-in that waits has its own limit, and a test stops its child processes in
+   `finally`, killing a saved process number only while its command line still carries the
+   test's marker. A `sleep` stand-in never takes a marker argument
+   ([write-a-plugin.md](../../../docs/write-a-plugin.md), "The fake refuses what the device refuses").
+
    To show the old code fails, run it from its own checkout: `git worktree add <dir> main`,
    then run the tests with `PYTHONPATH=<dir>/src`. Print the module's `__file__` in that
    run, so the output shows which copy was tested. An editable install in a shared
