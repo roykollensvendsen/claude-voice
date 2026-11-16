@@ -1,0 +1,5 @@
+[[rule]]
+name = "a conversation is listed under one role only"
+file = "src/claude_voice/roster.py"
+find = 'kept = \{key: r for key, r in kept\.items\(\) if r\.conversation != row\.conversation\}'
+replace = 'pass'

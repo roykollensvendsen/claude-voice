@@ -1,0 +1,5 @@
+[[rule]]
+name = "a role that has gone stays in the sessions file"
+file = "src/claude_voice/roster.py"
+find = 'kept = \{\(r\.organisation, r\.role\): r for r in rows\}'
+replace = 'kept = {}'
