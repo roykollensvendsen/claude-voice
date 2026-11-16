@@ -49,6 +49,16 @@ answering.
 When you learn a new limit of the real device, write it into the fake first, with a test. Then
 write the code that copes with it.
 
+Every stand-in that waits has its own limit: a fake that never answers, a step that waits for a
+stop, a child process that sleeps. A test that starts a child stops it in a `finally` block.
+Otherwise one hang holds uv's lock for hours under a mutation run. A process number can be
+reused by another program. So the test kills a saved number only while `/proc/<pid>/cmdline`
+still carries its own marker, such as its `tmp_path`, and then waits until the process is gone. Before it relies on that command line, it waits until it shows the child's own
+arguments: right after the start it can still be empty, or show the parent's. Never add a marker
+argument to a `sleep` stand-in, because GNU `sleep` rejects it as an invalid time interval and
+exits at once. Run `[sys.executable, "-c", "import time; time.sleep(30)", marker]` instead, so
+the test uses the interpreter it runs under.
+
 ## A test fails before the code
 
 A test that passes on its first run proves nothing. Write the test, watch it fail, then write
