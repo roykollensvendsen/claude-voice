@@ -45,6 +45,8 @@ omit = ["templates/*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# Said outright, so pytest-asyncio does not warn on every run that it is unset.
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 markers = [
     "e2e: needs a real logged-in Claude Code; never run in CI",

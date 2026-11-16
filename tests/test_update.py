@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+import sys
 
 import pytest
 
@@ -306,3 +307,104 @@ def test_a_refused_fetch_says_why_and_what_to_do():
         updater.fetch_failure("fatal: unable to access: Could not resolve host")
         == "Could not fetch the latest version."
     )
+
+
+#: What a failing run prints on stdout: the failing tests by name, then pytest's last line.
+FAILING_RUN = """\
+..F.E                                                                    [100%]
+=================================== FAILURES ===================================
+____________________________ test_a_thing_holds ________________________________
+E   assert 1 == 2
+=========================== short test summary info ============================
+FAILED tests/test_things.py::test_a_thing_holds - assert 1 == 2
+ERROR tests/test_other.py::test_another_thing - RuntimeError: no room
+1 failed, 2 passed, 1 error in 3.21s
+"""
+#: What it prints on stderr: a warning, which used to be the only thing an update kept.
+WARNING = "PytestDeprecationWarning: The configuration option asyncio_default_fixture_loop_scope is unset.\n"
+
+
+@pytest.fixture
+def suite(monkeypatch):
+    """Stands in for `uv run pytest` printing a failing run, and records how it was started."""
+    seen = []
+
+    def run(command, **kwargs):
+        seen.append(command)
+        if kwargs.get("stderr") == subprocess.STDOUT:
+            return subprocess.CompletedProcess(command, 1, FAILING_RUN + WARNING, None)
+        return subprocess.CompletedProcess(command, 1, FAILING_RUN, WARNING)
+
+    monkeypatch.setattr(updater.procs, "find", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(updater.subprocess, "run", run)
+    return seen
+
+
+def test_a_failing_update_names_the_tests_that_failed(suite, tmp_path):
+    """The saved detail names each failing test, though a warning was the last thing printed."""
+    ok, detail = updater.run_tests(tmp_path, tmp_path / "update-test.log")
+    assert not ok
+    assert detail.splitlines() == [
+        "FAILED tests/test_things.py::test_a_thing_holds - assert 1 == 2",
+        "ERROR tests/test_other.py::test_another_thing - RuntimeError: no room",
+        "1 failed, 2 passed, 1 error in 3.21s",
+    ]
+    assert "-rfE" in suite[0]
+
+
+def test_an_update_keeps_everything_its_tests_printed(suite, tmp_path):
+    """The whole run is kept in a file, replaced by the next run."""
+    kept = tmp_path / "update-test.log"
+    kept.write_text("an older run")
+    updater.run_tests(tmp_path, kept)
+    assert kept.read_text() == FAILING_RUN + WARNING
+    assert [p.name for p in tmp_path.iterdir()] == ["update-test.log"]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes")
+def test_the_kept_test_run_is_readable_by_its_owner_alone(suite, tmp_path):
+    kept = tmp_path / "update-test.log"
+    kept.write_text("an older run")
+    kept.chmod(0o644)
+    updater.run_tests(tmp_path, kept)
+    assert kept.stat().st_mode & 0o777 == 0o600
+
+
+def test_at_most_eight_failing_tests_are_named():
+    output = "".join(f"FAILED tests/t.py::test_{n} - boom\n" for n in range(12)) + "12 failed in 1.00s\n"
+    detail = updater.failure_summary(output).splitlines()
+    assert detail[:8] == [f"FAILED tests/t.py::test_{n} - boom" for n in range(8)]
+    assert detail[8:] == ["and 4 more", "12 failed in 1.00s"]
+
+
+def test_the_failing_tests_names_fit_in_the_update_s_log(install, tmp_path):
+    """The test step's detail is kept whole, where another step's is cut to its last 400 characters."""
+    origin, clone = install
+    commit(origin, "b")
+    names = [f"FAILED tests/test_a_long_module_name_{n}.py::test_a_rather_long_test_name_{n}" for n in range(8)]
+    said = "\n".join([*names, "8 failed in 9.99s"])
+    updater.run(
+        clone,
+        tmp_path / "update.json",
+        install=lambda folder: (True, "installed"),
+        tests=lambda folder: (False, said),
+        restart=lambda: None,
+        healthy=lambda: True,
+    )
+    steps = json.loads((tmp_path / "update.json").read_text())["steps"]
+    assert next(s for s in steps if s["step"] == "test")["detail"] == said
+
+
+def test_a_test_run_that_runs_out_of_time_keeps_what_it_printed(monkeypatch, tmp_path):
+    """A run stopped at the time limit keeps its output so far, and says it ran out of time."""
+
+    def run(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"], output=b"..F\nFAILED tests/t.py::test_x\n")
+
+    monkeypatch.setattr(updater.procs, "find", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(updater.subprocess, "run", run)
+    kept = tmp_path / "update-test.log"
+    ok, detail = updater.run_tests(tmp_path, kept)
+    assert not ok
+    assert kept.read_text() == "..F\nFAILED tests/t.py::test_x\nThe tests ran past 900 s and were stopped.\n"
+    assert detail.splitlines() == ["FAILED tests/t.py::test_x", "The tests ran past 900 s and were stopped."]
