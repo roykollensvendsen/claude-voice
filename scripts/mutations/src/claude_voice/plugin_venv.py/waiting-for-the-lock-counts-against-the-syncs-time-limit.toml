@@ -1,0 +1,5 @@
+[[rule]]
+name = "waiting for the lock counts against the syncs time limit"
+file = "src/claude_voice/plugin_venv.py"
+find = 'done = _sync\(uv, folder, max\(0\.0, deadline'
+replace = 'done = _sync(uv, folder, SYNC_SECONDS)'

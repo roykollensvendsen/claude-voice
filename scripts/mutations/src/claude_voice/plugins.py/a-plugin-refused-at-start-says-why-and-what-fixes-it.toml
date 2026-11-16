@@ -1,0 +1,5 @@
+[[rule]]
+name = "a plugin refused at start says why and what fixes it"
+file = "src/claude_voice/plugins.py"
+find = 'return None, \{\}, f"not started: \{plugin\.refused\}"'
+replace = 'return None, {}, "not started"'

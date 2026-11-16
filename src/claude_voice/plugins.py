@@ -255,6 +255,7 @@ class Plugin:
         self.state = "not started"
         self.offered: list[str] = []
         self.unlisted: str | None = None  # why the latest listing got no answer, or None
+        self.refused: str | None = None  # why its start was refused, with what fixes it, or None
         self._failure: Exception | None = None
         self._down = False  # its latest start failed, and that was logged once
         self.last_failure: Exception | None = None  # what made the latest call fail, for a caller to tell apart
@@ -275,7 +276,7 @@ class Plugin:
         plugin gave no answer, `unlisted` says why."""
         found: dict[str, dict[str, Any]] = {}
         limit = self.list_seconds()
-        self.unlisted = None
+        self.unlisted = self.refused = None
 
         async def read() -> None:
             async with self.open() as client:
@@ -291,8 +292,13 @@ class Plugin:
                         }
 
         def run() -> None:
+            from .plugin_venv import Refused
+
             try:
                 asyncio.run(asyncio.wait_for(read(), limit))
+            except Refused as exc:
+                self.refused = str(exc)
+                self._unlisted(self.refused)
             except Exception as exc:
                 self._unlisted(_reason(exc, limit))
 
@@ -490,7 +496,8 @@ def check_one(spec: PluginSpec, approvals: Path | None = None, client: Callable[
     # RULE: a plugin that could not be listed is reported as not started never as changed tools
     if plugin.unlisted is not None:
         log.info("plugin %s did not start in time, so it is not offered: %s", spec.name, plugin.unlisted)
-        return None, {}, "not started"
+        # RULE: a plugin refused at start says why and what fixes it
+        return None, {}, f"not started: {plugin.refused}" if plugin.refused else "not started"
     if not inputs_approved(spec, listing, approvals):
         log.info("plugin %s's tools changed; run: %s plugins approve %s", spec.name, invocation.command(), spec.name)
         return None, listing, "tools changed"

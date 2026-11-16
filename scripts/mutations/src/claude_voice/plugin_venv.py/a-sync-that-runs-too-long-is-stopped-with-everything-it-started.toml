@@ -1,0 +1,5 @@
+[[rule]]
+name = "a sync that runs too long is stopped with everything it started"
+file = "src/claude_voice/plugin_venv.py"
+find = 'os\.killpg\(sync\.pid, signal\.SIGKILL\)'
+replace = 'sync.kill()'

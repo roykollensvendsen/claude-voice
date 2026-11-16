@@ -331,6 +331,8 @@ def _plugin_state(spec: PluginSpec) -> str:
     # RULE: plugins list says approved only when a restart would offer it
     if why == "started":
         return "approved"
+    if why.startswith("not started: "):
+        return f"approved, but it was not started: {why.removeprefix('not started: ')}"
     if why == "not started":
         return "approved, but it did not start; check its command and folder"
     return f"{why}; to approve it, run: {invocation.command()} plugins approve {spec.name}"

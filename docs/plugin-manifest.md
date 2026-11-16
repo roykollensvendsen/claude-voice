@@ -74,13 +74,13 @@ for as long as the plugin runs, so the cache could never be pruned. Instead, aft
 approval is checked, the bridge:
 
 - runs `uv sync --locked` in the plugin's folder, which makes `.venv` match its `uv.lock` and
-  makes a missing `.venv`. It waits up to five minutes, and takes turns with the bridge's
-  other uv work;
+  makes a missing `.venv`. It waits up to five minutes in all, waiting for its turn behind the
+  bridge's other uv work included. When the time runs out it stops, with everything it started;
 - starts `.venv/bin/<script>` with the rest of the arguments (on Windows,
   `.venv\Scripts\<script>.exe`).
 
 A failed sync, or a script missing after it, refuses the start. The refusal names the folder
-and says to run `uv sync --locked` there. The script must be a plain name: no slash and no
+and says to run `uv sync --locked` there, and the voice is told it when it restarts the plugin. The script must be a plain name: no slash and no
 `..`. Its path must also stay inside `.venv`. Any other command starts as it is written.
 
 The approval covers the command as the manifest writes it, so this needs no new approval.
