@@ -161,9 +161,11 @@ but names `main` or `master` is refused too, from the forms under `other pushes`
   branch or only `HEAD`, since that could be `main`. A lease push that deletes
   a branch, or pushes every branch with `--all`. The plain pushes the table
   allows would let all of these through without these rules.
-- **Approving a pull request,** with `gh pr review --approve` or `-a`. A session
-  acts on GitHub as the owner, so its approval would show publicly in his name.
-  Commenting on a review, or asking for changes, is asked instead.
+- **Approving a pull request,** with `gh pr review --approve` or `-a`, or with
+  any `gh api` call that names `APPROVE`. A session acts on GitHub as the owner,
+  so its approval would show publicly in his name. Commenting on a review, or
+  asking for changes, is asked instead. An approval sent from a file with
+  `gh api --input` cannot be seen in the command, so it is only asked.
 - **A forced push to `main` or `master`,** in every form listed above.
 - **Any other push to `main` or `master`.** That is a push naming the branch
   alone, `HEAD:main`, `feature:refs/heads/main` or `+main`. A change reaches

@@ -6,9 +6,11 @@ session may run without asking (looking at git, running the tests), and what it 
 never run (deleting history, reading a secret). The owner's own rules are kept.
 """
 
+import contextlib
 import json
 import os
 import re
+import shlex
 
 import pytest
 
@@ -323,8 +325,9 @@ def test_the_shipped_rules_name_no_person_host_or_home_folder():
 # each `*` matches any run of characters, spaces included, and the rule must match the whole
 # command. A rule ending in `:*` is the older prefix form instead: what stands before the colon
 # is a plain prefix, with no wildcard in it, so `Bash(git push* :*)` matches only commands that
-# begin with "git push* " itself, which none does. A command matching any deny rule is refused,
-# even when an allow rule matches too.
+# begin with "git push* " itself, which none does. Quotes are taken off the command first, the
+# way a shell would, so `git push origin ':feature'` is matched as `git push origin :feature`.
+# A command matching any deny rule is refused, even when an allow rule matches too.
 
 
 def _matches(rule, command):
@@ -332,6 +335,8 @@ def _matches(rule, command):
         return False  # another tool's rule: these tests match only shell commands
     assert rule.endswith(")"), rule
     pattern = rule[len("Bash(") : -1]
+    with contextlib.suppress(ValueError):  # unbalanced quotes: matched as written
+        command = " ".join(shlex.split(command))
     if pattern.endswith(":*"):
         return command.startswith(pattern[:-2])
     if "*" not in pattern:
@@ -364,6 +369,9 @@ def test_the_matcher_reads_rules_the_way_claude_code_does():
     prefixed = permissions.Rules(allow=["Bash(npm test:*)"], deny=["Bash(git push* :*)"])
     assert decision(prefixed, "npm test --watch") == "allowed"
     assert decision(prefixed, "git push origin :feature") == "asked"  # the old form never applied
+    quoted = permissions.Rules(allow=["Bash(git push origin *)"], deny=["Bash(git push* :**)"])
+    assert decision(quoted, "git push origin ':feature'") == "refused"
+    assert decision(quoted, 'git push origin ":feature"') == "refused"
 
 
 def test_a_rule_ending_in_a_colon_and_a_star_is_refused(tmp_path):
@@ -389,6 +397,12 @@ APPROVALS_IN_THE_OWNERS_NAME = (
     "gh pr review 5 --approve --body fine",
     "gh pr review 5 -a",
     "gh pr review -a 5",
+    "gh api repos/o/r/pulls/5/reviews -f event=APPROVE",
+    "gh api repos/o/r/pulls/5/reviews -F event=APPROVE",
+    "gh api repos/o/r/pulls/5/reviews --field event=APPROVE",
+    "gh api repos/o/r/pulls/5/reviews --raw-field event=APPROVE",
+    "gh api -X POST repos/o/r/pulls/5/reviews -f event=APPROVE",
+    "gh api graphql -f query='mutation { addPullRequestReview(input: {event: APPROVE}) { clientMutationId } }'",
 )
 
 
@@ -434,6 +448,10 @@ PUSHES_THAT_CHECK_NOTHING = (
     "git push --force-with-lease origin",
     "git push --force-with-lease origin HEAD",
     "git push --force-with-lease origin :feature",
+    "git push --force-with-lease origin ':feature'",
+    'git push --force-with-lease origin ":feature"',
+    "git push origin +:feature",
+    "git push --force-with-lease origin +:feature",
     "git push --force-with-lease origin --delete feature",
     "git push --force-with-lease origin --all",
     "git push --force-with-lease origin --mirror",
@@ -521,6 +539,9 @@ NOW_ASKED = (
     "gh pr review 5 --comment --body looks-fine",
     "gh pr review 5 --request-changes --body fix-this",
     "git push -u origin :feature",
+    "git push origin ':feature'",
+    'git push origin ":feature"',
+    "gh api repos/o/r/pulls/5/reviews -f event=COMMENT",
     "gh issue create --title x",
     "gh issue comment 7 --body x",
     "gh release create v2",

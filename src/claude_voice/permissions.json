@@ -239,7 +239,8 @@
     ],
     "approving a pull request, which GitHub shows in the owner's name": [
       "Bash(gh pr review* --approve*)",
-      "Bash(gh pr review* -a*)"
+      "Bash(gh pr review* -a*)",
+      "Bash(gh api*APPROVE*)"
     ],
     "settings and secrets, read broadly with sed": [
       "Bash(sed -n *.config/*)",
