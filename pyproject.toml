@@ -18,6 +18,7 @@ dependencies = [
 
 [project.scripts]
 claude-voice = "claude_voice.cli:entry"
+cv = "claude_voice.cv:entry"
 
 [build-system]
 requires = ["uv_build>=0.13.6,<0.14.0"]

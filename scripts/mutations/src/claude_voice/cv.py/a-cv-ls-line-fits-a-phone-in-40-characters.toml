@@ -1,0 +1,5 @@
+[[rule]]
+name = "a cv ls line fits a phone in 40 characters"
+file = "src/claude_voice/cv.py"
+find = 'return text if len\(text\) <= width else text\[: width - 1\] \+ "…"'
+replace = 'return text'
