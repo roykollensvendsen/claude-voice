@@ -11,6 +11,17 @@ def no_owner_settings(tmp_path_factory, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_checkout_programme_file(tmp_path_factory, monkeypatch):
+    """The bridge counts the programme file in its own clone, and the suite runs in a clone. A
+    clone the bridge updates keeps its owner's file there, which git leaves out, so the suite
+    gives the bridge an empty folder as its clone instead."""
+    from claude_voice import roles
+
+    clone = tmp_path_factory.mktemp("clone")
+    monkeypatch.setattr(roles, "own_clone", lambda: clone)
+
+
+@pytest.fixture(autouse=True)
 def no_owner_developer_mode(tmp_path_factory, monkeypatch):
     """Keep the owner's own developer mode out of the suite: a test never reads it or ends it."""
     from claude_voice import devmode

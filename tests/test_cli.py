@@ -91,6 +91,22 @@ def test_org_check_warns_about_a_role_whose_session_is_not_running(tmp_path, cap
     assert "acme: role manager names session 'acme', which is not running" in capsys.readouterr().out
 
 
+def test_org_check_never_reads_the_programme_file_of_the_checkout_the_suite_runs_in(tmp_path, monkeypatch, capsys):
+    """A clone the bridge updates runs the suite in itself, next to its owner's own programme file,
+    which git leaves out. That file must not change what a test sees."""
+    from claude_voice import roles
+
+    checkout = tmp_path / "checkout"
+    (checkout / ".git").mkdir(parents=True)
+    (checkout / ".claude").mkdir()
+    (checkout / ".claude" / "org.toml").write_text("this is not toml [")
+    monkeypatch.setattr(roles, "__file__", str(checkout / "src" / "claude_voice" / "roles.py"))
+    projects = tmp_path / "projects"
+    org_file(projects, ACME)
+    code = main(["org", "check"], env=env(projects, HOME=str(tmp_path)))
+    assert code == 0, capsys.readouterr().out
+
+
 def test_org_check_fails_on_a_file_it_cannot_use(tmp_path, capsys):
     org_file(tmp_path, '[programme]\nname = "no code"\n')
     assert main(["org", "check"], env=env(tmp_path, HOME=str(tmp_path))) == 1
