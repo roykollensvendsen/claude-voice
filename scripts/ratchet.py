@@ -109,7 +109,7 @@ LAYERS = {
     ),
     **dict.fromkeys(("api", "phone_hook", "agent", "fleet"), 3),  # the doors in from outside
     "server": 4,  # where it is all put together
-    "cli": 5,  # the command line that starts it
+    **dict.fromkeys(("cli", "cv"), 5),  # the command lines: one starts the bridge, one reads its files
 }
 EXCEPTION = re.compile(r"^\s*ratchet-exception:\s*([a-z_]+)", re.IGNORECASE | re.MULTILINE)
 
