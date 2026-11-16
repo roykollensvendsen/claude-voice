@@ -13,9 +13,13 @@ again. This runs only for a plugin the owner approved: the approval is checked f
 
 from __future__ import annotations
 
+import contextlib
+import os
 import re
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from . import procs, uvlock
@@ -59,6 +63,34 @@ def environment() -> dict[str, str]:
     return get_default_environment()
 
 
+def _sync(uv: str, folder: Path, seconds: float) -> subprocess.CompletedProcess[str]:
+    """Run `uv sync --locked` in a process group of its own, so that a time-out stops it and
+    everything it started, such as a package build that would otherwise hold uv's lock."""
+    alone = sys.platform != "win32"
+    with subprocess.Popen(
+        [uv, "sync", "--locked"],
+        cwd=folder,
+        # RULE: a sync gets none of the bridges secrets
+        env=environment(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=alone,
+    ) as sync:
+        try:
+            out, err = sync.communicate(timeout=seconds)
+        except subprocess.TimeoutExpired:
+            if sys.platform == "win32":
+                sync.kill()
+            else:
+                with contextlib.suppress(ProcessLookupError):
+                    # RULE: a sync that runs too long is stopped with everything it started
+                    os.killpg(sync.pid, signal.SIGKILL)
+            sync.communicate()
+            raise
+    return subprocess.CompletedProcess(sync.args, sync.returncode, out, err)
+
+
 def ready(spec: PluginSpec) -> tuple[str, list[str]] | None:
     """Sync the plugin's environment and say how to start it from there: the program and its
     arguments, or None to start the plugin as its command is written. Refused, naming the
@@ -71,19 +103,12 @@ def ready(spec: PluginSpec) -> tuple[str, list[str]] | None:
     uv = find_uv()
     if uv is None:
         raise Refused(f"{spec.name} cannot be synced: uv is not installed; install it, then {fix}")
+    deadline = time.monotonic() + SYNC_SECONDS
     try:
         # RULE: a sync waits its turn behind other uv work
         with uvlock.held(LOCK, SYNC_SECONDS):
-            done = subprocess.run(
-                [uv, "sync", "--locked"],
-                cwd=folder,
-                # RULE: a sync gets none of the bridges secrets
-                env=environment(),
-                capture_output=True,
-                text=True,
-                timeout=SYNC_SECONDS,
-                check=False,
-            )
+            # RULE: waiting for the lock counts against the syncs time limit
+            done = _sync(uv, folder, max(0.0, deadline - time.monotonic()))
     except uvlock.Busy as exc:
         raise Refused(f"{spec.name} was not synced: {exc}; it is tried again on the next start") from None
     except subprocess.TimeoutExpired:

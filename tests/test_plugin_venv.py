@@ -10,6 +10,7 @@ import os
 import stat
 import sys
 import textwrap
+import time
 from pathlib import Path
 
 import pytest
@@ -32,6 +33,11 @@ FAKE_UV = textwrap.dedent(
         print("error: The lockfile at `uv.lock` needs to be updated", file=sys.stderr)
         sys.exit(2)
     if does == "sleep":
+        time.sleep(30)
+    if does == "spawn":  # a build step of its own, which outlives uv unless its group is stopped
+        import subprocess
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)", str(here)])
+        (here / ".uv-child").write_text(str(child.pid))
         time.sleep(30)
     if does == "make":
         script = here / ".venv" / "bin" / "gizmo-mcp"
@@ -226,3 +232,64 @@ def test_on_windows_the_entry_point_is_in_scripts_with_exe():
 def test_the_manifest_page_gives_the_syncs_time_limit():
     page = (Path(__file__).parent.parent / "docs" / "plugin-manifest.md").read_text(encoding="utf-8")
     assert plugin_venv.SYNC_SECONDS == 300 and "waits up to five minutes" in page
+
+
+def _runs(pid: int, marker: str) -> bool:
+    """Whether `pid` is still the stand-in, by its own marker, since a number can be reused."""
+    try:
+        return marker in Path(f"/proc/{pid}/cmdline").read_bytes().decode(errors="replace")
+    except OSError:
+        return False
+
+
+@posix
+def test_a_sync_that_runs_too_long_is_stopped_with_everything_it_started(tmp_path, uv, monkeypatch):
+    monkeypatch.setattr(plugin_venv, "SYNC_SECONDS", 2.0)
+    folder = tmp_path / "gizmo"
+    spec = gizmo(folder, "run", "gizmo-mcp")
+    (folder / ".uv-does").write_text("spawn")
+    child = None
+    try:
+        began = time.monotonic()
+        with pytest.raises(plugin_venv.Refused):
+            plugins.parameters(spec)
+        assert time.monotonic() - began < 10  # not held until the build step ends by itself
+        child = int((folder / ".uv-child").read_text())
+        deadline = time.monotonic() + 5
+        while _runs(child, str(folder)) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert not _runs(child, str(folder))
+    finally:
+        if child is not None and _runs(child, str(folder)):
+            os.kill(child, 9)
+
+
+@posix
+def test_waiting_for_the_lock_counts_against_the_syncs_time_limit(tmp_path, uv, monkeypatch):
+    import fcntl
+    import threading
+
+    monkeypatch.setattr(plugin_venv, "SYNC_SECONDS", 1.0)
+    folder = tmp_path / "gizmo"
+    spec = gizmo(folder, "run", "gizmo-mcp")
+    (folder / ".uv-does").write_text("sleep")
+    plugin_venv.LOCK.parent.mkdir(parents=True)
+    other = os.open(plugin_venv.LOCK, os.O_RDWR | os.O_CREAT, 0o600)
+    fcntl.flock(other, fcntl.LOCK_EX)
+    threading.Timer(0.7, os.close, [other]).start()  # another uv step lets go after 0.7 s
+    began = time.monotonic()
+    with pytest.raises(plugin_venv.Refused):
+        plugins.parameters(spec)
+    assert time.monotonic() - began < 1.5  # one budget of 1 s, not 0.7 s of waiting and 1 s more
+
+
+@posix
+def test_a_plugin_refused_at_start_says_why_and_what_fixes_it(tmp_path, uv):
+    folder = tmp_path / "gizmo"
+    spec = gizmo(folder, "run", "gizmo-mcp")
+    (folder / ".uv-does").write_text("fail")
+    approvals = tmp_path / "approvals.json"
+    plugins.approve(spec, {}, approvals)
+    plugin, _, why = plugins.check_one(spec, approvals, client=lambda p: pytest.fail("started"))
+    assert plugin is None and why.startswith("not started: ")
+    assert str(folder) in why and "uv sync --locked" in why

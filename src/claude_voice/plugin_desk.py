@@ -75,8 +75,8 @@ class Desk:
         self._seen = {**self._seen, name: plugins.read_approvals(self.approvals).get(name)}
         running = [p for p in self.active if p.spec.name == name]
         # RULE: a restart that fails keeps the plugin that was running
-        if why == "not started":
-            return self._kept(name, running)
+        if why.startswith("not started"):
+            return self._kept(name, running, why)
         await self._swap(spec, running, plugin, listing)
         if self.announce is not None:
             with contextlib.suppress(Exception):
@@ -89,11 +89,14 @@ class Desk:
         log.info("plugin %s restarted by voice", name)
         return {"ok": True, "say": f"{name} started again with its new code.", "tools": plugin.offered}
 
-    def _kept(self, name: str, running: list[plugins.Plugin]) -> dict[str, Any]:
-        """The answer when the new process did not start: the one running, if any, stays."""
-        log.info("plugin %s did not start in time; %d running kept", name, len(running))
+    def _kept(self, name: str, running: list[plugins.Plugin], why: str) -> dict[str, Any]:
+        """The answer when the new process did not start: the one running, if any, stays. A start
+        that was refused says why, and what fixes it."""
+        log.info("plugin %s did not start; %d running kept", name, len(running))
         kept = " The one already running stays." if running else ""
-        return _no(f"{name} did not start in time; try again.{kept}")
+        refused = why.removeprefix("not started: ") if why != "not started" else None
+        said = f"{name} was not started: {refused}." if refused else f"{name} did not start in time; try again."
+        return _no(f"{said}{kept}")
 
     async def _swap(
         self,

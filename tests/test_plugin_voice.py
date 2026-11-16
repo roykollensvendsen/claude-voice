@@ -133,6 +133,16 @@ async def test_a_restart_that_finds_the_plugin_not_started_says_try_again_and_as
     assert "approve" not in out["say"]
 
 
+async def test_a_restart_that_was_refused_tells_the_voice_why_and_what_fixes_it(tmp_path, monkeypatch):
+    fake, _ = stand_in()
+    made, *_ = desk(tmp_path, fake)
+    why = "not started: garage's sync failed (lock out of date); run `uv sync --locked` in /x/garage"
+    monkeypatch.setattr(plugins, "check_one", lambda *a: (None, {}, why))
+    out = await made.restart("garage")
+    assert not out["ok"] and "run `uv sync --locked` in /x/garage" in out["say"]
+    assert "in time" not in out["say"] and "The one already running stays." in out["say"]
+
+
 async def test_a_restart_that_fails_keeps_the_plugin_that_was_running(tmp_path):
     fake, _ = stand_in()
     made, _, server, _ = desk(tmp_path, fake)
