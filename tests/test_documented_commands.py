@@ -15,6 +15,8 @@ nobody sees. Every verb the command has must appear in at least one block that
 is run, so a verb cannot be added without a worked example.
 """
 
+import json
+import os
 import pathlib
 import re
 import shutil
@@ -54,6 +56,16 @@ def pages() -> list[pathlib.Path]:
     names = sorted(name for name in tracked.split("\0") if name)
     found = (pathlib.PurePosixPath(name) for name in names)
     return [ROOT / p for p in found if not any(part in SKIP or part.startswith(".venv") for part in p.parts)]
+
+
+def _environment(tmp_path: pathlib.Path) -> dict[str, str]:
+    """The suite's environment, with a settings file that names an empty folder as the bridge's
+    own clone. Without it the command reads the programme file of the checkout it runs in."""
+    clone = tmp_path / "clone"
+    clone.mkdir(exist_ok=True)
+    settings = tmp_path / "settings.toml"
+    settings.write_text(f"[paths]\nclaude_voice = {json.dumps(str(clone))}\n", encoding="utf-8")
+    return {**os.environ, "CLAUDE_VOICE_CONFIG": str(settings)}
 
 
 def examples() -> list[tuple[str, str, str]]:
@@ -127,10 +139,26 @@ def test_the_documentation_shows_at_least_one_command():
 
 @pytest.mark.skipif(shutil.which("claude-voice") is None, reason="the command is not installed")
 @pytest.mark.parametrize(("page", "command", "expected"), CASES, ids=[c[1][:40] for c in CASES])
-def test_a_documented_command_prints_what_the_page_says(page: str, command: str, expected: str):
-    r = subprocess.run(command, shell=True, capture_output=True, text=True, cwd=ROOT, check=False)  # noqa: S602
+def test_a_documented_command_prints_what_the_page_says(page: str, command: str, expected: str, tmp_path):
+    env = _environment(tmp_path)
+    r = subprocess.run(command, shell=True, capture_output=True, text=True, cwd=ROOT, env=env, check=False)  # noqa: S602
     got = (r.stdout + r.stderr).strip()
     assert got == expected.strip(), f"{page} says this prints:\n{expected}\nit prints:\n{got}"
+
+
+def test_a_documented_command_never_reads_the_programme_file_of_the_checkout(tmp_path):
+    """The commands run in this checkout, where a clone the bridge updates keeps its owner's own
+    programme file, which git leaves out. A documented command must print the same without it."""
+    from claude_voice import config
+
+    checkout = tmp_path / "checkout"
+    (checkout / ".claude").mkdir(parents=True)
+    (checkout / ".claude" / "org.toml").write_text("this is not toml [")
+
+    clone = config.load(config.FILE, own_clone=checkout, env=_environment(tmp_path)).paths.claude_voice
+
+    assert clone is not None and clone != checkout
+    assert not (clone / ".claude" / "org.toml").exists()
 
 
 def test_no_block_of_commands_escapes_by_choosing_another_fence():
