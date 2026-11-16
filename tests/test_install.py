@@ -16,7 +16,7 @@ import pytest
 from mcp.client import Client
 from mcp.server.mcpserver import MCPServer
 
-from claude_voice import cli, config, plugins
+from claude_voice import cli, config, plugin_venv, plugins
 
 # Owner-only file modes, symlinks and owner ids are what these tests check, and Windows has none
 # of them as POSIX does. The bridge that installs plugins runs on Linux.
@@ -111,6 +111,9 @@ def home(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "_terminal", lambda env: True)
     monkeypatch.setattr(plugins, "APPROVALS", folder / ".config/claude-voice/plugins-approved.json")
     monkeypatch.setattr(plugins, "CLIENT", lambda params: Client(stand_in()))
+    # The checkout here is a manifest and no project, so there is nothing for uv to sync; the
+    # stand-in answers however it is started.
+    monkeypatch.setattr(plugin_venv, "ready", lambda spec: None)
     return folder
 
 

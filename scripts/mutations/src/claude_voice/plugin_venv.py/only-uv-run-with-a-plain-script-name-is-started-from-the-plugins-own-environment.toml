@@ -1,0 +1,5 @@
+[[rule]]
+name = "only uv run with a plain script name is started from the plugins own environment"
+file = "src/claude_voice/plugin_venv.py"
+find = 'return spec\.args\[1\] if shaped and SCRIPT'
+replace = 'return spec.args[1] if len(spec.args) > 1 else None'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a plugin whose sync fails is refused with the command to fix it"
+file = "src/claude_voice/plugin_venv.py"
+find = 'if done\.returncode != 0:'
+replace = 'if False:'
