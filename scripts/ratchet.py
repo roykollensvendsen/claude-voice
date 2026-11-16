@@ -99,6 +99,7 @@ LAYERS = {
             "home",
             "reposync",
             "profiles",
+            "roster",
         ),
         1,
     ),  # parts, each about one thing

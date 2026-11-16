@@ -58,6 +58,7 @@ from . import (
     renames,
     restarts,
     roles,
+    roster,
     software,
     tailnet,
     titles,
@@ -557,6 +558,7 @@ def build_server(
     tmux: Any = None,
     terminals: Terminals | None = None,
     org_folders: list[Path] | None = None,
+    sessions_file: Path | None = None,
 ) -> MCPServer:
     auth = None
     if oauth is not None:
@@ -656,6 +658,7 @@ def build_server(
             return
         try:
             watcher.check()
+            keep_roster()
             version = tree.build()["version"]
             if tree_version and tree_version[0] != version:
                 watcher.record("claude-voice", "tree_changed", version)
@@ -931,6 +934,23 @@ def build_server(
         chart = org.load(org.known_folders(manager.root, given))
         org_kept[:] = [manager.clock(), chart]
         return chart
+
+    def keep_roster() -> None:
+        """Write each running session's row to the sessions file, when the bridge keeps one."""
+        if sessions_file is None:
+            return
+        placer = org_now().placer()
+
+        def organisation(d: dict[str, Any]) -> str | None:
+            found = placer(d).programme
+            return found.code if found else None
+
+        now = datetime.now(UTC).isoformat(timespec="minutes")
+        try:
+            rows = roster.seen(roster.read(sessions_file), reachable(), organisation, now)
+            roster.write(sessions_file, rows)
+        except (OSError, ValueError) as exc:  # the news still comes; only recovery's list is late
+            log.warning("could not keep the sessions file %s: %s", sessions_file, exc)
 
     def tell_programmes() -> None:
         """Tell open streams when the programmes have changed since last looked at."""
@@ -2492,7 +2512,13 @@ def serve_forever(cfg: Config) -> None:
     )
     restart = restarts.restart_info(config.STATE_DIR)
     server = build_server(
-        manager, oauth=oauth, watch_interval=5.0, restart=restart, ui_origins=cfg.ui_origins, bridge_port=cfg.port
+        manager,
+        oauth=oauth,
+        watch_interval=5.0,
+        restart=restart,
+        ui_origins=cfg.ui_origins,
+        bridge_port=cfg.port,
+        sessions_file=roster.FILE.expanduser(),
     )
     app = build_app(server, cfg.public_hosts, ui_origins=cfg.ui_origins, ui_dir=cfg.ui_dir)
     configure_logging(cfg.db.parent / LOG_FILE)

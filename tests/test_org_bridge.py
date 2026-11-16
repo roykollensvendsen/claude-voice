@@ -278,3 +278,64 @@ def test_the_voice_is_told_to_ask_the_org_chart_who_handles_what():
     from claude_voice.server import INSTRUCTIONS
 
     assert "org_chart" in INSTRUCTIONS
+
+
+class NoTmux:
+    """No session runs in a tmux pane, so a rename is never typed anywhere."""
+
+    def pane(self, pid):
+        return None
+
+
+def keeper(tmp_path, world):
+    root, live = world
+    m = SessionManager(Store(tmp_path / "k.db"), project_root=root, client_factory=FakeClaude(), clock=Clock())
+    kept = tmp_path / "state" / "sessions.toml"
+    server = build_server(
+        m,
+        conversations=lambda **k: [],
+        live_dir=live,
+        read_transcript=lambda s, d: [],
+        org_folders=[],
+        tmux=NoTmux(),
+        sessions_file=kept,
+    )
+    return server, kept
+
+
+def kept_rows(path):
+    from claude_voice import roster
+
+    return {(r.organisation, r.role): r.conversation for r in roster.read(path)}
+
+
+async def test_the_bridge_writes_each_running_session_under_its_programme(tmp_path, world):
+    server, kept = keeper(tmp_path, world)
+    await call(server, "whats_new")
+    assert kept_rows(kept) == {
+        ("acme", "acme-robots"): "acme-id",
+        ("acme", "fix-gripper"): "gripper-id",
+        ("shop", "shop"): "shop-id",
+        ("solo", "loose"): "loose-id",
+    }
+
+
+async def test_a_session_the_bridge_renames_moves_to_its_new_row(tmp_path, world):
+    server, kept = keeper(tmp_path, world)
+    await call(server, "whats_new")
+    renamed = await call(server, "rename_session", session="loose", new_name="tidy")
+    assert not renamed.is_error, renamed.content
+    await call(server, "whats_new")
+    rows = kept_rows(kept)
+    assert rows[("solo", "tidy")] == "loose-id" and ("solo", "loose") not in rows
+
+
+async def test_a_session_that_ends_keeps_its_row(tmp_path, world):
+    server, kept = keeper(tmp_path, world)
+    await call(server, "whats_new")
+    _, live = world
+    for f in live.glob("*.json"):
+        if json.loads(f.read_text())["name"] == "loose":
+            f.unlink()
+    await call(server, "whats_new")
+    assert kept_rows(kept)[("solo", "loose")] == "loose-id"
