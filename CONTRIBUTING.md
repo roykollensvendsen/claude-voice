@@ -252,10 +252,11 @@ change them for yourself in `~/.config/claude-voice/roles.toml`.
 Point rather than copy. Where a document has to copy anyway, two test files
 keep the copy honest. Any block fenced as ` ```console ` is run by
 `tests/test_documented_commands.py`, and its output has to match what the page
-shows. Pages are found by walking rather than listed, so a new one is covered
-the day it is written; a block that looks like commands and is not run must
-carry `<!-- not run: why -->` above it, because choosing another fence would
-otherwise be an opt-out nobody sees.
+shows. Pages are found by asking git for every page it tracks rather than
+listed, so a new one is covered the day it is added. Other checkouts kept inside
+this folder, and pages not yet added, are left out. A block that looks like
+commands and is not run must carry `<!-- not run: why -->` above it, because
+choosing another fence would otherwise be an opt-out nobody sees.
 
 `tests/test_documentation.py` checks the facts that are not commands: the
 gates above against the workflow that must run them, and every deferred item
