@@ -839,3 +839,36 @@ def test_applied_settings_have_the_placeholders_filled(tmp_path):
     every = written["allow"] + written["ask"] + written["deny"]
     assert not [rule for rule in every if "{" in rule and "}" in rule]
     assert f"Bash(rm -r* {folder.resolve()})" in written["deny"]
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "pkill -f claude",
+        "pkill sleep",
+        "pkill",
+        "killall python3",
+        "killall -9 node",
+        "pgrep -f claude | xargs kill",
+        "pgrep -f x | xargs kill -9",
+        "pgrep x | xargs -r kill",
+    ],
+)
+def test_no_session_stops_processes_by_name(command):
+    """Claude Code judges each part of a pipe on its own, so the part that kills is refused."""
+    rules = permissions.load()
+    assert any(decision(rules, part.strip()) == "refused" for part in command.split("|")), command
+
+
+@pytest.mark.parametrize("command", ["kill 12345", "kill -TERM 12345", "pgrep -f claude"])
+def test_stopping_one_process_by_its_number_is_not_refused(command):
+    assert decision(permissions.load(), command) != "refused", command
+
+
+def test_the_by_name_kill_rules_reach_every_repo_without_the_owner_typing():
+    """The update writes a rule by itself only when it takes rights away and is not broad (#326)."""
+    from claude_voice import shipped
+
+    raw = json.loads(Path(permissions.__file__).with_name("permissions.json").read_text(encoding="utf-8"))
+    for rule in raw["deny"]["stopping processes by name, which ends other sessions' work too"]:
+        assert not shipped.broad(rule), rule

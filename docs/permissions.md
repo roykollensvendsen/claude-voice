@@ -213,6 +213,12 @@ but names `main` or `master` is refused too, from the forms under `other pushes`
 
 **Refused, even when the owner would say yes:**
 
+- **Stopping processes by name.** `pkill`, `killall`, and a list of process
+  numbers piped into `kill` through `xargs`. A name matches every session's
+  processes, so one session's cleanup can end another's work. Stopping one
+  process by its number with `kill <pid>` still asks. The `xargs` rule also
+  refuses a few harmless forms, such as `xargs echo kill`. A refusal costs a
+  reworded command, and a miss costs another session's work.
 - **History that cannot be got back.** A hard reset, discarding changes with
   `checkout --`, `git clean -f`, deleting or moving a branch, forcing a
   worktree away, and a `git switch` with `-f`, `--force`, `--discard-changes`
