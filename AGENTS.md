@@ -82,6 +82,18 @@ what to add on the hub. Then:
   - its `health` tool lists the latest errors;
   - each error carries the trace id of the call that caused it.
 
+## Freedom under responsibility
+
+This holds for every session that works under a manager.
+
+- Do the side tasks your own job needs without asking: re-run a check, rebase
+  your own branch, clean up what you made.
+- Never work round a refusal. Send the manager the exact refused command.
+- Run one destructive step per call. A command chained with a refused part is
+  refused whole, even when the rest is allowed.
+- When the work does not flow, tell the manager in one message what stopped you,
+  how often, and what you propose.
+
 ## When you are changing claude-voice itself
 
 If you are the session working in this repository on the owner's own machine,

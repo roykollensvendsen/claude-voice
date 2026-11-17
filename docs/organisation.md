@@ -16,10 +16,11 @@ The manager:
   and how far each plugin is from [the plugin standard](plugin-standard.md);
 - passes the owner's decisions to the session they concern, and their reports
   back;
-- collects every question for the owner into one short list at the end of an
-  answer, with a recommendation, and decides routine matters itself;
-- puts every step that needs the owner's own hands in front of them as one
-  command to run, so they never have to open another session;
+- collects every decision for the owner into one short numbered list at the end
+  of an answer, with a recommendation, and decides routine matters itself;
+- runs each step itself once the owner says yes, so the owner decides and never
+  has to open another session;
+- speaks up when the work does not flow, and proposes the change that fixes it;
 - starts the session for a new plugin, and brings it in as below.
 
 ## The plugin sessions
@@ -33,15 +34,17 @@ session:
   by rebase once every check is green;
 - tells the manager when a pull request opens and when it lands, and whether the
   bridge needs a restart or a new approval for it;
-- gives the manager the exact command for anything only the owner may do.
+- gives the manager the exact command for anything it was refused, and never
+  works round the refusal.
 
 Technical matters go straight between sessions, by message. The manager is not
 a go-between for those; it needs only the outcome.
 
 ## What stays with the owner
 
-The manager arranges these, but the owner does them, by a command the manager
-gives:
+The owner makes these decisions. Doing the step does not stay with the owner:
+the manager runs it on their yes, unless typing is the point, such as a name typed
+to approve, a secret or a login. These are the decisions:
 
 - approving a new plugin, by typing its name (`claude-voice plugins approve`), and
   approving a plugin whose tools changed, by voice in developer mode or by typing.
@@ -54,6 +57,16 @@ gives:
   else's pull request.
 
 Everything else the manager decides, or the plugin session decides and reports.
+What the organisation made, it cleans up itself. A branch the owner made by hand
+is never touched.
+
+## Freedom under responsibility
+
+Every session does the side tasks its own job needs without asking: re-running a
+check, rebasing its own branch, cleaning up what it made. It never works round a
+refusal; it sends the manager the exact command instead. When the work does not
+flow, it tells the manager in one message what stopped it, how often, and what it
+proposes. The manager does the same with the owner.
 
 ## Bringing in a new plugin
 
