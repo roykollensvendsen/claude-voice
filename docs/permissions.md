@@ -366,3 +366,47 @@ that fills it in has to change the test on purpose.
 
 Each opened approval carries `routed`: `to` (always `roy` for now), the
 fixed-list `lines` it matched, the first as `line`, and `shape`.
+
+## What later runs as the owner
+
+Some files run later as the owner, with no session watching: at login, on a
+timer, from the shell, from git on the owner's own commits, or from Claude Code
+at its next start. A session can read them, but never write them. That covers
+the user's systemd units, autostart files, the shell's start files, `~/.local/bin`
+and `~/bin`, git's hooks and code-running settings, ssh and tmux settings,
+Claude Code's own settings, hooks and plugins, and the bridge's settings. The
+whole list is the group "what later runs as the owner" in `permissions.json`.
+
+Each path is refused to the Edit and Write tools, and to each command that
+writes a file there: `tee`, `cp`, `mv`, `install`, `ln`, `rsync`, `sed -i`,
+`dd`, `truncate`, `chmod` and `touch`. Moving into one of these folders with
+`cd`, `pushd` or a `-C` option is refused too. Every form of `crontab` is
+refused. Two gaps are not caught here, and the command gate will close both:
+
+- a move to a folder above them, such as `cd ~`;
+- a copy into such a folder that names only the folder, such as `cp x/.bashrc ~/`,
+  `rsync -a d/ ~/` or `cp -t ~ .profile`.
+
+A repository's own `.claude/settings.json` and `.claude/settings.local.json` are
+refused too, in every clone. The owner changes them by hand, or through
+`claude-voice permissions`.
+
+git settings that run code are refused in the settings file for the global
+forms. The session hook refuses them in every form, including `git -c` and
+`git --config-env`. The one
+value it lets through is `git config core.hooksPath .githooks`, the setup line
+in CONTRIBUTING.
+
+These paths are written the POSIX way, so they don't cover a session running on
+native Windows yet. The session hook's git checks are tested on Windows too.
+
+The bridge's settings change only through its own commands. A key that changes
+what a plugin runs is set only back to what the owner approved by typing. The
+commands change only the lines they name, so comments and order are kept.
+
+```console
+$ claude-voice set profile /tmp/x.toml
+claude-voice: set: profile can't be set by command; these can: voice_instructions_file
+$ claude-voice roles add demo terminal_command=sh
+claude-voice: roles add: a role's start line comes only from the template; leave out terminal_command
+```

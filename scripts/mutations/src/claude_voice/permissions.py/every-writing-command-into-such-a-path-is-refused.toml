@@ -1,0 +1,5 @@
+[[rule]]
+name = "every writing command into such a path is refused"
+file = "src/claude_voice/permissions.py"
+find = 'deny \+= owner_rules\.runs_as_owner\(raw\.get\("what later runs as the owner", \{\}\)\)'
+replace = 'deny += []'

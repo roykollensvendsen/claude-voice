@@ -1,0 +1,5 @@
+[[rule]]
+name = "the session hook lets the contributing setup line through"
+file = "src/claude_voice/session_hook.py"
+find = 'return not \(key\.lower\(\) == "core\.hookspath" and value == TRACKED_HOOKS\)'
+replace = 'return True'

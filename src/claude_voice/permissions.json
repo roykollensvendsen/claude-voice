@@ -288,6 +288,49 @@
       "~/.config*", "{home}/.config*"
     ]
   },
+  "what later runs as the owner": {
+    "home": [
+      ".config/systemd/user/**", ".config/environment.d/**", ".local/share/systemd/user/**",
+      ".config/autostart/**", ".local/share/applications/**",
+      ".bashrc", ".bash_profile", ".bash_login", ".profile", ".zshrc", ".zprofile", ".zshenv",
+      ".config/fish/**", ".pam_environment", ".xprofile",
+      ".local/bin/**", "bin/**",
+      ".gitconfig", ".config/git/**",
+      ".ssh/config", ".ssh/authorized_keys", ".ssh/rc", ".tmux.conf", ".config/tmux/**",
+      ".claude/settings*.json", ".claude/hooks/**", ".claude/skills/**", ".claude/plugins/**", ".claude.json",
+      ".config/claude-voice/config.toml", ".config/claude-voice/roles.toml",
+      ".config/claude-voice/machines/**", ".config/claude-voice/plugins/**",
+      ".config/gh/config.yml",
+      ".config/uv/**", ".config/pip/**", ".pip/**", ".npmrc",
+      ".vimrc", ".config/nvim/**", ".emacs", ".emacs.d/**"
+    ],
+    "any clone": [".git/hooks/**", ".git/config", ".claude/settings.json", ".claude/settings.local.json"],
+    "own checkout": [".githooks/**", ".npmrc", "uv.toml", "pip.conf", ".envrc"],
+    "writers": [
+      "tee {path}", "tee * {path}", "cp * {path}", "mv * {path}", "install * {path}", "ln * {path}",
+      "rsync * {path}", "sed -i * {path}", "dd *of={path}", "dd *of={path} *", "truncate * {path}",
+      "chmod * {path}", "touch {path}", "touch * {path}"
+    ],
+    "movers": [
+      "cd {folder}", "cd {folder}/*", "pushd {folder}", "pushd {folder}/*",
+      "git -C {folder} *", "git -C {folder}/* *", "make *-C {folder}*", "tar *-C {folder}*"
+    ],
+    "commands": [
+      "crontab", "crontab *",
+      "systemctl --user edit*", "systemctl --user link*", "systemctl --user enable */*",
+      "systemctl --user set-environment*", "systemctl --user import-environment*",
+      "git config --global *core.hooksPath *", "git config --system *core.hooksPath *",
+      "git config -f * core.hooksPath *", "git config --file * core.hooksPath *",
+      "git config *core.fsmonitor *", "git config *core.sshCommand *", "git config *core.pager *",
+      "git config *core.editor *", "git config *credential.* *", "git config *alias.* *",
+      "git config *include.* *", "git config *includeIf.* *", "git config *filter.* *",
+      "git config *diff.*.textconv *", "git config *gpg.program *",
+      "git config *core.askPass *", "git config *core.gitProxy *", "git config *sequence.editor *",
+      "git config *diff.external *", "git config *diff.*.command *", "git config *difftool.*.cmd *",
+      "git config *mergetool.*.cmd *", "git config *merge.*.driver *", "git config *gpg.*.program *",
+      "git config *remote.*.uploadpack *", "git config *remote.*.receivepack *"
+    ]
+  },
   "retired": {
     "allow": [
       "Bash(cp * /tmp/*)",

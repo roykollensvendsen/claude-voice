@@ -1,0 +1,5 @@
+[[rule]]
+name = "roles add never switches the push guard off or points it elsewhere"
+file = "src/claude_voice/settings_edit.py"
+find = 'if "upstream" in fields or fields\.get\("guard", True\) is not True:'
+replace = 'if False:'

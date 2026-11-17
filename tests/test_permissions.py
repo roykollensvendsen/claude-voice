@@ -7,6 +7,7 @@ never run (deleting history, reading a secret). The owner's own rules are kept.
 """
 
 import contextlib
+import functools
 import json
 import os
 import re
@@ -318,7 +319,9 @@ def test_the_shipped_rules_name_no_person_host_or_home_folder():
     # The rules about removing folders name everyone's home and state folders the same way and
     # no person's, so those exact rules are taken out before looking for anything private.
     raw = json.loads(text)
-    generic = raw["what cannot be got back"]["targets"]
+    owner = raw["what later runs as the owner"]
+    generic = raw["what cannot be got back"]["targets"] + owner["home"]
+    assert not any(p.startswith(("/", "~")) for p in owner["home"])  # relative to any home folder
     for rule in generic:
         text = text.replace(json.dumps(rule), "")
     for private in ("/home/", "/users/", "~/", "roykollensvendsen", "192.168.", "100.", ".local/"):
@@ -342,13 +345,26 @@ def _matches(rule, command):
         return False  # another tool's rule: these tests match only shell commands
     assert rule.endswith(")"), rule
     pattern = rule[len("Bash(") : -1]
-    with contextlib.suppress(ValueError):  # unbalanced quotes: matched as written
-        command = " ".join(shlex.split(command))
+    command = _spoken(command)
     if pattern.endswith(":*"):
         return command.startswith(pattern[:-2])
     if "*" not in pattern:
         return command == pattern
-    return re.fullmatch(".*".join(re.escape(part) for part in pattern.split("*")), command, re.DOTALL) is not None
+    return _glob(pattern).fullmatch(command) is not None
+
+
+@functools.cache
+def _spoken(command):
+    """The command as Claude Code compares it, its quoting undone; built once per command."""
+    with contextlib.suppress(ValueError):  # unbalanced quotes: matched as written
+        return " ".join(shlex.split(command))
+    return command
+
+
+@functools.cache
+def _glob(pattern):
+    """A rule's pattern as a regular expression, built once: the rule tables are large."""
+    return re.compile(".*".join(re.escape(part) for part in pattern.split("*")), re.DOTALL)
 
 
 def decision(rules, command):

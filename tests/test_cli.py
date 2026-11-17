@@ -16,7 +16,7 @@ def env(tmp_path, **extra):
     return {"CLAUDE_VOICE_ROOT": str(tmp_path), **extra}
 
 
-def test_the_command_has_serve_check_plugins_home_agent_machines_permissions_org_restart_setup_and_repos():
+def test_the_command_has_serve_check_plugins_home_agent_machines_permissions_org_restart_setup_repos_roles_set():
     assert COMMANDS == (
         "serve",
         "check",
@@ -29,6 +29,8 @@ def test_the_command_has_serve_check_plugins_home_agent_machines_permissions_org
         "restart",
         "setup",
         "repos",
+        "roles",
+        "set",
     )
 
 
