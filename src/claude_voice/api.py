@@ -267,6 +267,7 @@ class EventApi:
         clock: Callable[[], float] = time.monotonic,
         book: prompts.Book | None = None,
         away: Callable[[bool], bool] | None = None,
+        route: Callable[[str, Any, str], dict[str, Any]] | None = None,
     ) -> None:
         self.store = store
         self.login_secret = login_secret
@@ -298,6 +299,8 @@ class EventApi:
         self.org = org or (lambda code: None if code else {"programmes": []})
         self.clock = clock
         self._failures: list[float] = []
+        # Who may answer an approval (routing.sort), recorded on it; every one still goes to the owner.
+        self.route = route
 
     def routes(self, mcp: Any) -> None:
         route = mcp.custom_route
@@ -602,6 +605,14 @@ class EventApi:
             text = json.dumps(tool_input, ensure_ascii=False)
         return (text[:300], True) if len(text) > 300 else (text, False)
 
+    def _approval(self, prompt: dict[str, Any], body: dict[str, Any]) -> None:
+        """Fill in what an approval would run, and how it was sorted."""
+        prompt["tool"] = str(body.get("tool", ""))
+        prompt["input"], prompt["cut"] = self._readable(prompt["tool"], body.get("input"))
+        if self.route is not None:
+            # RULE: an opened approval records how it was sorted and still goes to the owner
+            prompt["routed"] = self.route(prompt["tool"], body.get("input"), str(body.get("cwd") or ""))
+
     def _public(self, prompt: dict[str, Any]) -> dict[str, Any]:
         return {k: v for k, v in prompt.items() if k not in ("done", "answer", "raw_input", "hook")}
 
@@ -637,8 +648,7 @@ class EventApi:
                 "multi": bool(first.get("multiSelect")),
             }
         elif kind == "approval":
-            prompt["tool"] = str(body.get("tool", ""))
-            prompt["input"], prompt["cut"] = self._readable(prompt["tool"], body.get("input"))
+            self._approval(prompt, body)
         else:
             return JSONResponse({"error": "kind is question or approval"}, 400)
         self.book.add(prompt)

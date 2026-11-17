@@ -1,0 +1,5 @@
+[[rule]]
+name = "diff takes two regular files only"
+file = "src/claude_voice/routing.py"
+find = 'if part\[0\] == "diff":'
+replace = 'if False:'

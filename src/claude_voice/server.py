@@ -59,6 +59,7 @@ from . import (
     restarts,
     roles,
     roster,
+    routing,
     software,
     tailnet,
     titles,
@@ -350,6 +351,15 @@ def note_voice_call(ctx: Any, tool: str, trace: str | None, result: Any) -> None
     connection = trace if client == "voice_app" else request.headers.get("mcp-session-id") or api.caller_address(scope)
     with contextlib.suppress(Exception):
         usage.record(VOICE_STORE[0], client, str(connection), tool, _result_chars(result))
+
+
+def route_prompt(tool: str, given: Any, cwd: str, machines: list[str]) -> dict[str, Any]:
+    """How an approval is sorted: the fixed-list lines it matches, and whether a manager could
+    one day answer it. Every one goes to the owner until managers answer (managers-answer v2)."""
+    owner = config.Repos().claude_voice.split("/")[0]
+    place = routing.Place(repo=Path(cwd), scratchpad=None, home=Path.home(), owner=owner) if cwd else None
+    found = routing.sort(tool, given, place=place, now=datetime.now(UTC), machines=machines)
+    return {"to": found.to, "line": found.line, "lines": list(found.lines), "shape": found.shape}
 
 
 def _trace_of(params: dict[str, Any]) -> str | None:
@@ -2426,6 +2436,7 @@ def build_server(
             org=org_page,
             book=prompt_book,
             away=lambda app_open: PRESENCE[0].away(app_open=app_open),
+            route=lambda tool, given, cwd: route_prompt(tool, given, cwd, [m.machine.name for m in across.machines]),
         ).routes(mcp)
 
     mcp.prompt_book = prompt_book  # type: ignore[attr-defined]  # for tests

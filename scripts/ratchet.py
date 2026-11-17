@@ -104,6 +104,7 @@ LAYERS = {
             "reposync",
             "profiles",
             "roster",
+            "routing",
         ),
         1,
     ),  # parts, each about one thing
