@@ -1,0 +1,5 @@
+[[rule]]
+name = "a file that is not utf8 text is refused and never copied wrongly"
+file = "src/claude_voice/accepted.py"
+find = 'raise Changed\(f"\{item\.path\} is not UTF-8 text, so it cannot be kept as accepted"\) from None'
+replace = 'pass'

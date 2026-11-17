@@ -1,0 +1,5 @@
+[[rule]]
+name = "the lines that widen a sessions rights are shown first"
+file = "src/claude_voice/accepted.py"
+find = 'return sorted\(lines, key=lambda line: line\.kind != WIDENS\)'
+replace = 'return lines'

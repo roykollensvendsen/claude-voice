@@ -1,0 +1,5 @@
+[[rule]]
+name = "the owner accepts a repositorys rights by typing its name"
+file = "src/claude_voice/cli.py"
+find = 'if typed\.strip\(\) != repo\.name:'
+replace = 'if False:'

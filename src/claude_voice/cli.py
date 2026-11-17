@@ -177,6 +177,9 @@ def main(
     permission_cmd.add_argument("folders", nargs="*", type=Path, help="default: the clones in the settings file")
     permission_cmd.add_argument("--dry-run", action="store_true", help="say what would be added, and write nothing")
     permission_cmd.add_argument("--check", action="store_true", help="run each repository's session hook once")
+    permission_cmd.add_argument(
+        "--accept", action="store_true", help="show one repository's rights files, and accept them by typing its name"
+    )
     org_cmd = sub.add_parser("org", help="print the org chart, or check its files")
     org_cmd.add_argument("action", nargs="?", choices=["show", "check"], default="show")
     restart_cmd = sub.add_parser("restart", help="restart the bridge's service, noting why for its health answer")
@@ -197,6 +200,8 @@ def main(
         "permissions": lambda: (
             hook_check_command(parsed.folders, env)
             if parsed.check
+            else accept_command(parsed.folders, env)
+            if parsed.accept
             else permissions_command(parsed.folders, parsed.dry_run, env)
         ),
         "org": lambda: org_command(parsed.action, env),
@@ -657,6 +662,50 @@ def hook_check_command(folders: list[Path], env: Mapping[str, str]) -> int:
         sys.stdout.write(f"{folder}: {detail}. Fix: run `claude-voice permissions` to write it again.\n")
         code = 1
     return code
+
+
+def _read_from_terminal(prompt: str) -> str:
+    """One line typed at the terminal itself, never from a pipe into stdin."""
+    with open("/dev/tty", "r+", encoding="utf-8") as tty:
+        tty.write(prompt)
+        tty.flush()
+        return tty.readline()
+
+
+def accept_command(folders: list[Path], env: Mapping[str, str]) -> int:
+    """Show what changed in one repository's rights files since the owner last accepted them,
+    the lines that widen a session's rights first, and record them once its name is typed."""
+    from . import accepted
+
+    if len(folders) != 1:
+        sys.stderr.write("claude-voice: an accept names one repository: claude-voice permissions --accept <repo>\n")
+        return 1
+    if sys.platform == "win32":
+        sys.stderr.write("claude-voice: the accept reads a terminal of its own; run it inside WSL\n")
+        return 1
+    # RULE: an accept is typed in a terminal never piped
+    if _refuse_outside_a_terminal("permissions --accept", env):
+        return 1
+    repo = folders[0].resolve()
+    shown = accepted.show(repo)
+    if not shown:
+        sys.stdout.write(f"{repo}: nothing to accept; every rights file is as last accepted.\n")
+        return 0
+    sys.stdout.write(accepted.text(shown))
+    typed = _read_from_terminal(
+        f"Read the WIDENS lines first. Type {repo.name} to accept these files, anything else to stop: "
+    )
+    # RULE: the owner accepts a repositorys rights by typing its name
+    if typed.strip() != repo.name:
+        sys.stdout.write("Not accepted.\n")
+        return 1
+    try:
+        accepted.accept(shown)
+    except accepted.Changed as exc:
+        sys.stderr.write(f"claude-voice: {exc}\n")
+        return 1
+    sys.stdout.write(f"Accepted {len(shown)} file{'' if len(shown) == 1 else 's'} for {repo.name}.\n")
+    return 0
 
 
 def org_command(action: str, env: Mapping[str, str]) -> int:

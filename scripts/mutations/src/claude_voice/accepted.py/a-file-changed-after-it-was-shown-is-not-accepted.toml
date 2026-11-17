@@ -1,0 +1,5 @@
+[[rule]]
+name = "a file changed after it was shown is not accepted"
+file = "src/claude_voice/accepted.py"
+find = 'if item\.path\.read_bytes\(\) != item\.body:'
+replace = 'if False:'

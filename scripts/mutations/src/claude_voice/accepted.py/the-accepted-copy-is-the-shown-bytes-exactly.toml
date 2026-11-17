@@ -1,0 +1,5 @@
+[[rule]]
+name = "the accepted copy is the shown bytes exactly"
+file = "src/claude_voice/accepted.py"
+find = 'safefile\.replace\(folder / item\.sha256, item\.body\)'
+replace = 'safefile.replace(folder / item.sha256, item.body.decode("utf-8"))'

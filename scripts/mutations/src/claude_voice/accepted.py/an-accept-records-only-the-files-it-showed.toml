@@ -1,0 +1,5 @@
+[[rule]]
+name = "an accept records only the files it showed"
+file = "src/claude_voice/accepted.py"
+find = 'files\[str\(item\.path\)\] = \{"sha256"'
+replace = 'pass'
