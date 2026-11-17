@@ -30,6 +30,37 @@ $ claude-voice permissions --dry-run no-such-folder
 claude-voice: no-such-folder is not a folder, so it was left alone
 ```
 
+## Accepting a repository's rights
+
+A session's rights come from its repository's `.claude/settings.json` and
+`.claude/settings.local.json`. A session can write those files too, so a change
+on disk is not a change the owner wanted. The owner accepts a version by typing:
+
+<!-- not run: it waits for a name typed at a terminal -->
+```sh
+claude-voice permissions --accept ~/src/garage-door
+```
+
+It shows each file's changes since the version last accepted. The lines that
+widen a session's rights come first, marked `WIDENS`: a new allow rule, a removed
+ask or deny rule, or any other changed setting, such as a hook. A file never
+accepted before is shown whole, as widening. Then it asks for the repository's
+name, read from the terminal itself, so a pipe cannot answer.
+
+Only the files it showed are recorded, and only as they were shown. A file that
+changes before the name is typed refuses the accept; run it again and read it
+anew. The record is `accepted.json` in the bridge's state folder, with a private
+copy of each accepted file beside it, so the next accept is compared with the
+real contents.
+
+The shipped rules refuse the usual ways a session would run it. That is not a wall:
+a session can still call the same code another way, or type into a terminal it
+started itself. Until the bridge runs under a system user of its own, the record is
+the owner's file, and a session that can write it could forge it. A forged record can
+only restart sessions sooner; it never widens what is on disk.
+
+Rolling sessions onto accepted rights builds on this record.
+
 ## What it changes, and what it leaves alone
 
 It writes `.claude/settings.local.json` in each repository. That file stays out

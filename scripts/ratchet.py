@@ -90,6 +90,7 @@ LAYERS = {
             "work",
             "plugins",
             "plugin_venv",
+            "accepted",
             "detail",
             "oauth",
             "renames",

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a file never accepted before is shown as all widening"
+file = "src/claude_voice/accepted.py"
+find = 'return \[Line\(WIDENS, line\) for line in new'
+replace = 'return [Line(NARROWS, line) for line in new.decode("utf-8", errors="replace").splitlines()]'

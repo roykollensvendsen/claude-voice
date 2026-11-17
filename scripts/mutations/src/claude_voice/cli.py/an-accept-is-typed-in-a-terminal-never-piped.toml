@@ -1,0 +1,5 @@
+[[rule]]
+name = "an accept is typed in a terminal never piped"
+file = "src/claude_voice/cli.py"
+find = 'if _refuse_outside_a_terminal\("permissions --accept", env\):'
+replace = 'if False:'

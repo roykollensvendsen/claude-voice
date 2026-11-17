@@ -60,12 +60,14 @@ def _owned(path: Path) -> bool:
     return path.stat().st_uid == os.getuid()
 
 
-def replace(path: Path, text: str) -> None:
-    """Write `text` as the whole of `path`, owner-only, or leave the old file as it was."""
+def replace(path: Path, text: str | bytes) -> None:
+    """Write `text` as the whole of `path`, owner-only, or leave the old file as it was.
+    Bytes are written exactly as they are, with no line endings changed on Windows."""
     real = target(path)
     fd, spare = tempfile.mkstemp(dir=real.parent, prefix=f".{real.name}.", suffix=".tmp")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with os.fdopen(fd, "wb") as f:
+            text = text if isinstance(text, bytes) else text.replace("\n", os.linesep).encode("utf-8")
             if sys.platform != "win32":  # Windows has no owner-only mode to set
                 # RULE: a written file is readable by its owner alone
                 os.fchmod(f.fileno(), 0o600)
