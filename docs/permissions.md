@@ -281,6 +281,15 @@ and `.env` files anywhere. A tracked `.env.example` that is a plain file in the
 repo is not secret. A hard link to one of the secret files is caught too, by
 comparing the file's device and inode with theirs.
 
+The hard-link search covers only the table's own paths under the home folder,
+looked up at most once a minute and bounded like the walk below. When it runs
+past that bound, any hard-linked file goes to the owner. It doesn't cover a
+secret found by name elsewhere, such as another repo's `.env`. Planting such a
+link takes a command that already goes to the owner. Files under `.venv`,
+`node_modules` and `.git` are skipped, as their tools link files on purpose.
+The sorting runs in a thread, so it never holds up the bridge. `routed` appears
+on the prompt a moment after it opens.
+
 A read that walks a tree, such as `grep -r`, `rg`, `find`, `ls -R` or the Grep
 tool on a folder, is walked first, the way grep does it: no links followed, and
 `.git` skipped. A secret found there goes to the owner, and the reason names the

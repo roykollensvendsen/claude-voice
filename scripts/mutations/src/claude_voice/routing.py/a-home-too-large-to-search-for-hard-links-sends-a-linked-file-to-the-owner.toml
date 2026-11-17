@@ -1,0 +1,5 @@
+[[rule]]
+name = "a home too large to search for hard links sends a linked file to the owner"
+file = "src/claude_voice/routing.py"
+find = 'ask\.why\.append\(f"\{full\}: a hard link, and the secret files could not all be checked"\)'
+replace = 'return False'

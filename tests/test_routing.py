@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from datetime import UTC, datetime
 from pathlib import Path
@@ -693,7 +694,11 @@ async def test_an_opened_approval_records_how_it_was_sorted_and_still_goes_to_th
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8811") as c:
         await c.post("/api/v1/prompts", json={**body, "input": {"command": "git push -f origin x"}}, headers=bearer)
         await c.post("/api/v1/prompts", json={**body, "input": {"command": "git status"}}, headers=bearer)
-        listed = (await c.get("/api/v1/prompts", headers=bearer)).json()["prompts"]
+        for _ in range(100):  # the sorting lands a moment after the prompt opens
+            listed = (await c.get("/api/v1/prompts", headers=bearer)).json()["prompts"]
+            if all("routed" in p for p in listed):
+                break
+            await asyncio.sleep(0.02)
     routed = [p["routed"] for p in listed]
     assert routed == [
         {"to": "roy", "line": 2, "lines": [2], "shape": False},
@@ -770,3 +775,86 @@ def test_a_hard_link_to_a_secret_goes_to_the_owner(place, home_secrets):
 def test_a_hard_link_between_plain_files_is_not_secret(place, home_secrets):
     os.link(place.repo / "src" / "a.py", place.repo / "src" / "same.py")
     assert bash("cat src/same.py", place).shape is True
+
+
+def test_a_home_folder_with_backslashes_is_read_as_it_is(tmp_path):
+    home = tmp_path / "C:\\Users\\gh"
+    (home / ".config").mkdir(parents=True)
+    (home / ".netrc").write_text("")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    place = routing.Place(repo=repo, scratchpad=None, home=home, owner="acme")
+    assert routing.sort("Bash", {"command": 'cat "$HOME/.netrc"'}, place=place, now=DAY).line == 1
+
+
+def test_the_secret_inodes_are_found_quickly_in_a_large_home(place, home_secrets):
+    import time
+
+    crowded = place.home / ".config" / "big"
+    for n in range(500):
+        sub = crowded / f"d{n}"
+        sub.mkdir(parents=True)
+        for m in range(100):
+            (sub / f"f{m}").write_text("")
+    routing.SECRET_INODES.clear()
+    os.link(place.repo / "src" / "a.py", place.repo / "src" / "same.py")
+    started = time.monotonic()
+    out = bash("cat src/same.py", place)
+    assert time.monotonic() - started < 1.0 and out.shape is True
+
+
+def test_a_home_too_large_to_search_for_hard_links_sends_a_linked_file_to_the_owner(place, home_secrets, monkeypatch):
+    monkeypatch.setattr(routing, "WALK_ENTRIES", 2)
+    routing.SECRET_INODES.clear()
+    os.link(place.repo / "src" / "a.py", place.repo / "src" / "same.py")
+    out = bash("cat src/same.py", place)
+    assert out.shape is False and any("hard link" in why for why in out.why)
+
+
+def test_files_in_a_virtual_environment_skip_the_hard_link_search(place, home_secrets, monkeypatch):
+    venv = place.repo / ".venv" / "lib"
+    venv.mkdir(parents=True)
+    os.link(place.repo / "src" / "a.py", venv / "a.py")
+    monkeypatch.setattr(routing, "_secret_inodes", lambda ask: pytest.fail("searched"))
+    assert routing.is_secret(".venv/lib/a.py", routing.Ask("Read", {}, place, DAY, [], [], [])) is False
+
+
+async def test_sorting_a_prompt_never_holds_up_the_bridge(tmp_path):
+    import asyncio
+    import threading
+
+    import httpx
+    from fakes import FakeClaude
+
+    from claude_voice.oauth import OAuthProvider
+    from claude_voice.server import build_app, build_server
+    from claude_voice.sessions import SessionManager
+    from claude_voice.store import Store
+
+    release = threading.Event()
+
+    def slow_route(tool, given, cwd):
+        release.wait(5)
+        return {"to": "roy", "line": None, "lines": [], "shape": False}
+
+    secret = "s3cret-token-for-the-routing-tests"
+    bearer = {"Authorization": f"Bearer {secret}"}
+    (tmp_path / "home").mkdir()
+    store = Store(tmp_path / "b.db")
+    oauth = OAuthProvider(store, secret, "http://127.0.0.1:8811", static_token=secret)
+    manager = SessionManager(store, project_root=tmp_path / "home", client_factory=FakeClaude())
+    app = build_app(
+        build_server(manager, oauth=oauth, conversations=lambda **k: [], live_dir=tmp_path / "live", route=slow_route)
+    )
+    body = {"session_id": "s1", "kind": "approval", "tool": "Bash", "input": {"command": "ls"}, "cwd": str(tmp_path)}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8811") as c:
+        made = await asyncio.wait_for(c.post("/api/v1/prompts", json=body, headers=bearer), 2)
+        listed = (await asyncio.wait_for(c.get("/api/v1/prompts", headers=bearer), 2)).json()["prompts"]
+        assert made.status_code == 200 and "routed" not in listed[0]
+        release.set()
+        for _ in range(50):
+            listed = (await c.get("/api/v1/prompts", headers=bearer)).json()["prompts"]
+            if "routed" in listed[0]:
+                break
+            await asyncio.sleep(0.05)
+    assert listed[0]["routed"]["to"] == "roy"
