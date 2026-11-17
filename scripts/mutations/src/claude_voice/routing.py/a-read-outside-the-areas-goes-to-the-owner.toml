@@ -1,0 +1,5 @@
+[[rule]]
+name = "a read outside the areas goes to the owner"
+file = "src/claude_voice/routing.py"
+find = 'return inside$'
+replace = 'return True'

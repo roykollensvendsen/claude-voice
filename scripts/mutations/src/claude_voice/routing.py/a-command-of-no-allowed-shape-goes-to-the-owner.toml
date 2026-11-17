@@ -1,0 +1,5 @@
+[[rule]]
+name = "a command of no allowed shape goes to the owner"
+file = "src/claude_voice/routing.py"
+find = 'shape = not lines and _shape\(ask, read_only\)'
+replace = 'shape = True'

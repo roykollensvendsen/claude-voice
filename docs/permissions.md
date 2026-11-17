@@ -251,3 +251,39 @@ environment cannot stop it. If it cannot start at all, a recursive remove inside
 a repository would run unasked. So `claude-voice permissions --check` runs each
 repository's hook once, and the bridge's health shows a hook that does not
 answer as an error, with the fix.
+
+## Who answers a prompt
+
+When a session asks to run a tool, the phone hook hands the prompt to the bridge.
+The plan is for a manager session to answer the routine ones for the sessions
+under it, so the owner is asked less. For now, every prompt still goes to the
+owner. The bridge only sorts each one and records how, so the sorting can be
+checked before anyone relies on it.
+
+The sorting (`routing.py`) looks at the tool and its input, never at what a
+session says about it.
+
+- **The fixed list** names what only the owner may ever answer. A match goes to
+  the owner, whatever else is true. It has 19 lines: secrets, force pushes,
+  money, writes in another account, the rules and configuration, plugin
+  approval, the owner's own list, the standing rules, anything that can't be
+  read safely, main and admin, typing into another terminal, device tools, the
+  bridge's state, start-up and identity files, merges at night, the sandbox,
+  making something public, installs, and stopping processes.
+- **The shapes** say what a manager may answer at all: reading and editing
+  inside the session's own repo, everyday git and test commands, the read
+  tools with only the options on their list, and three bridge tools by name.
+  Anything of no shape goes to the owner.
+
+A secret is found by its realpath, so a link, `~` or `$HOME` doesn't hide it.
+The table covers the usual credential files under the home folder, key files,
+and `.env` files anywhere. A tracked `.env.example` that is a plain file in the
+repo is not secret.
+
+Where the data to judge a prompt doesn't exist yet, the answer is the owner.
+That covers a session's own branch and pull request, a plugin's money or
+read-only mark, and its scratchpad. Each such case has a test, so the change
+that fills it in has to change the test on purpose.
+
+Each opened approval carries `routed`: `to` (always `roy` for now), the
+fixed-list `lines` it matched, the first as `line`, and `shape`.

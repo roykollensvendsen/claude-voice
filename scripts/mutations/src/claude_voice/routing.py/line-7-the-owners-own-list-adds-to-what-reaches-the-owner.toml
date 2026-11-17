@@ -1,0 +1,5 @@
+[[rule]]
+name = "line 7 the owners own list adds to what reaches the owner"
+file = "src/claude_voice/routing.py"
+find = 'if any\(fnmatch\.fnmatch\(text, pattern\) for pattern in also\):'
+replace = 'if False:'

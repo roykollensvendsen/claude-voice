@@ -1,0 +1,5 @@
+[[rule]]
+name = "line 9 what cannot be read safely goes to the owner"
+file = "src/claude_voice/routing.py"
+find = 'if cut or parts is None or \(tool not in KNOWN and not tool\.startswith\("mcp__"\)\):'
+replace = 'if False:'
