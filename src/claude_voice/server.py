@@ -362,6 +362,15 @@ def route_prompt(tool: str, given: Any, cwd: str, machines: list[str]) -> dict[s
     return {"to": found.to, "line": found.line, "lines": list(found.lines), "shape": found.shape}
 
 
+def _router(
+    given: Callable[[str, Any, str], dict[str, Any]] | None, across: fleet.Fleet
+) -> Callable[[str, Any, str], dict[str, Any]]:
+    """The sorting a test hands in, or route_prompt with the paired machines' names."""
+    if given is not None:
+        return given
+    return lambda tool, inp, cwd: route_prompt(tool, inp, cwd, [m.machine.name for m in across.machines])
+
+
 def _trace_of(params: dict[str, Any]) -> str | None:
     """The trace id a voice client sent with a call, as params._meta.trace_id."""
     meta = params.get("_meta")
@@ -526,6 +535,7 @@ def build_server(
     oauth: OAuthProvider | None = None,
     conversations: Callable[..., list[SDKSessionInfo]] = list_claude_sessions,
     live_dir: Path = LIVE_DIR,
+    route: Callable[[str, Any, str], dict[str, Any]] | None = None,
     deliver: Callable[[str, str], Awaitable[dict[str, Any]]] = transcripts.deliver,
     read_transcript: Callable[[str, str | None], list[Any]] | None = None,
     watch_interval: float | None = None,
@@ -2436,7 +2446,7 @@ def build_server(
             org=org_page,
             book=prompt_book,
             away=lambda app_open: PRESENCE[0].away(app_open=app_open),
-            route=lambda tool, given, cwd: route_prompt(tool, given, cwd, [m.machine.name for m in across.machines]),
+            route=_router(route, across),
         ).routes(mcp)
 
     mcp.prompt_book = prompt_book  # type: ignore[attr-defined]  # for tests

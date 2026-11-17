@@ -24,8 +24,10 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import logging
 import os
 import re
+import stat
 import subprocess
 import time
 from collections.abc import Callable, Iterable
@@ -35,6 +37,8 @@ from pathlib import Path
 from typing import Any
 
 from . import session_hook
+
+log = logging.getLogger(__name__)
 
 #: The bridge tools a manager may answer by name; never a pattern (managers-answer v2 §1a).
 BRIDGE_SHAPES = frozenset({"health", "org_chart", "list_projects"})
@@ -161,7 +165,6 @@ class Ask:
     command: str = ""
     tracked: Callable[[Path], bool] = lambda path: False  # whether git tracks a file in the repo
     why: list[str] = field(default_factory=list)  # what a check found, to tell the owner
-    inodes: set[tuple[int, int]] | None = None  # the secret files' inodes, once looked up
 
     def words(self) -> Iterable[list[str]]:
         return self.parts or []
@@ -239,7 +242,8 @@ def _loose_words(command: str, home: str) -> list[str]:
     """A command's words read loosely, quotes dropped and the home folder spelled out, so a
     secret path is found even in a command too tangled to read safely."""
     text = re.sub(r"[\"'\\]", "", command)
-    text = re.sub(r"\$\{?HOME\}?", home, text)
+    # A function, so a backslash in the home folder (C:\Users) is never read as an escape.
+    text = re.sub(r"\$\{?HOME\}?", lambda _: home, text)
     words = re.split(r"[\s;&|<>()`=]+", text)
     return [home + w[1:] if w.startswith("~/") or w == "~" else w for w in words if w]
 
@@ -254,18 +258,26 @@ def _template(path: str, ask: Ask) -> bool:
     return not os.path.islink(full) and os.path.realpath(full) == full and inside and ask.tracked(Path(full))
 
 
-#: The folders under home where the secret table's files live, searched for hard links.
+#: The secret table's own paths under home, searched for the inodes a hard link could share.
 SECRET_HOMES = (
     ".netrc",
     ".git-credentials",
     ".aws",
-    ".docker",
-    ".config",
+    ".docker/config.json",
+    ".config/gh",
+    ".config/claude-voice",
     ".ssh",
     ".gnupg",
     ".local/share/keyrings",
-    ".claude",
+    ".claude/.credentials.json",
 )
+#: Names directly in ~/.config that the table names; each one found is searched too.
+CONFIG_SECRETS = ("*key*", "*token*", "*secret*", "*credential*", "dreame*", "tv-mcp*")
+#: Folders whose files are hard-linked by their tools (uv, npm, git); never searched for.
+LINKED_FOLDERS = frozenset({".venv", "node_modules", ".git"})
+INODES_SECONDS = 60.0
+#: home -> (when found, the inodes, or None when the search ran past its bound)
+SECRET_INODES: dict[str, tuple[float, frozenset[tuple[int, int]] | None]] = {}
 
 
 def _named_secret(path: str, ask: Ask) -> bool:
@@ -283,22 +295,59 @@ def _named_secret(path: str, ask: Ask) -> bool:
     return False
 
 
-def _secret_inodes(ask: Ask) -> set[tuple[int, int]]:
-    """The (device, inode) of every secret-table file under home, found once per prompt."""
-    if ask.inodes is None:
-        home = ask.place.home if ask.place else Path.home()
-        ask.inodes, folders = set(), [str(home / name) for name in SECRET_HOMES]
-        while folders and len(ask.inodes) < WALK_ENTRIES:
-            top = folders.pop()
-            try:
-                info = os.lstat(top)
-                entries = [e.path for e in os.scandir(top)] if os.path.isdir(top) and not os.path.islink(top) else []
-            except OSError:
-                continue
-            folders.extend(entries)
-            if not entries and _named_secret(top, ask):
-                ask.inodes.add((info.st_dev, info.st_ino))
-    return ask.inodes
+def _search_inodes(home: Path) -> frozenset[tuple[int, int]] | None:
+    """The (device, inode) of the regular files at the secret table's own paths under home,
+    never following a link; None when the search runs past the walk's bounds."""
+    clock, seen, found = time.monotonic(), 0, set()
+    paths = [str(home / name) for name in SECRET_HOMES]
+    try:
+        config = list(os.scandir(home / ".config"))
+    except OSError:
+        config = []
+    paths += [e.path for e in config if any(fnmatch.fnmatch(e.name, p) for p in CONFIG_SECRETS)]
+    while paths:
+        top = paths.pop()
+        seen += 1
+        if time.monotonic() - clock > WALK_SECONDS or seen > WALK_ENTRIES:
+            return None  # the caller sends a hard-linked file to the owner
+        try:
+            info = os.lstat(top)
+            if stat.S_ISDIR(info.st_mode):
+                paths.extend(e.path for e in os.scandir(top))
+            elif stat.S_ISREG(info.st_mode):
+                found.add((info.st_dev, info.st_ino))
+        except OSError:
+            continue
+    return frozenset(found)
+
+
+def _secret_inodes(ask: Ask) -> frozenset[tuple[int, int]] | None:
+    """The secret files' inodes, searched at most once a minute for each home folder."""
+    home = ask.place.home if ask.place else Path.home()
+    when, inodes = SECRET_INODES.get(str(home), (-INODES_SECONDS, None))
+    if time.monotonic() - when >= INODES_SECONDS:
+        inodes = _search_inodes(home)
+        SECRET_INODES[str(home)] = (time.monotonic(), inodes)
+    return inodes
+
+
+def _hard_linked(full: str, ask: Ask) -> bool:
+    """Whether `full` is a second name for one of the secret table's files."""
+    try:
+        info = os.stat(full)
+    except OSError:
+        return False
+    if info.st_nlink < 2 or not stat.S_ISREG(info.st_mode):
+        return False  # a folder always has several names
+    if LINKED_FOLDERS.intersection(Path(full).parts):
+        log.debug("not searched for a hard link, as its tools link files: %s", full)
+        return False
+    inodes = _secret_inodes(ask)
+    if inodes is None:
+        # RULE: a home too large to search for hard links sends a linked file to the owner
+        ask.why.append(f"{full}: a hard link, and the secret files could not all be checked")
+        return True
+    return (info.st_dev, info.st_ino) in inodes
 
 
 def is_secret(path: str, ask: Ask) -> bool:
@@ -307,12 +356,8 @@ def is_secret(path: str, ask: Ask) -> bool:
     if _named_secret(path, ask):
         return True
     base = ask.place.repo if ask.place else Path.cwd()
-    try:
-        info = os.stat(os.path.join(base, os.path.expanduser(path)))
-    except OSError:
-        return False
     # RULE: a hard link to a secret goes to the owner
-    return info.st_nlink > 1 and (info.st_dev, info.st_ino) in _secret_inodes(ask)
+    return _hard_linked(os.path.join(base, os.path.expanduser(path)), ask)
 
 
 def secrets(ask: Ask) -> bool:

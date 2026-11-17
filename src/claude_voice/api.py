@@ -301,6 +301,7 @@ class EventApi:
         self._failures: list[float] = []
         # Who may answer an approval (routing.sort), recorded on it; every one still goes to the owner.
         self.route = route
+        self._sorting: set[asyncio.Task[None]] = set()  # kept, so a running sort is not collected
 
     def routes(self, mcp: Any) -> None:
         route = mcp.custom_route
@@ -610,8 +611,20 @@ class EventApi:
         prompt["tool"] = str(body.get("tool", ""))
         prompt["input"], prompt["cut"] = self._readable(prompt["tool"], body.get("input"))
         if self.route is not None:
-            # RULE: an opened approval records how it was sorted and still goes to the owner
-            prompt["routed"] = self.route(prompt["tool"], body.get("input"), str(body.get("cwd") or ""))
+            # Sorting may walk folders, so it runs in a thread and lands on the prompt later.
+            task = asyncio.get_running_loop().create_task(self._sort(prompt, body))
+            self._sorting.add(task)
+            task.add_done_callback(self._sorting.discard)
+
+    async def _sort(self, prompt: dict[str, Any], body: dict[str, Any]) -> None:
+        assert self.route is not None
+        try:
+            routed = await asyncio.to_thread(self.route, prompt["tool"], body.get("input"), str(body.get("cwd") or ""))
+        except Exception:
+            log.exception("could not sort the prompt %s", prompt.get("id"))
+            return
+        # RULE: an opened approval records how it was sorted and still goes to the owner
+        prompt["routed"] = routed
 
     def _public(self, prompt: dict[str, Any]) -> dict[str, Any]:
         return {k: v for k, v in prompt.items() if k not in ("done", "answer", "raw_input", "hook")}
