@@ -38,6 +38,7 @@ from starlette.types import ASGIApp
 from . import (
     answers,
     api,
+    calllog,
     config,
     detail,
     devmode,
@@ -315,6 +316,7 @@ def app_url(bridge_session_id: Any) -> str | None:
 
 VOICE_STORE: list[Store] = []  # the store voice calls are counted in, set by build_server
 PRESENCE: list[Presence] = []  # what tells whether the owner is away, set by build_server
+CALLS: list[calllog.CallLog] = []  # the call log, set by serve_forever; none in tests and stdio
 # Clients connected the older way (an initialize handshake), told when the tool list
 # changes; one is known once it has made a call. Newer clients listen on the server's
 # subscription stream instead.
@@ -406,6 +408,24 @@ def _log_finished_tool_call(
     METRICS.record(tool, ms, error=_error_text(result) if failed else None, trace_id=trace)
 
 
+def _call_started(ctx: Any, tool: str, params: dict[str, Any], trace: str | None) -> str | None:
+    """Open the call log's line for a tool call; the log never stops a call."""
+    if ctx.method != "tools/call" or not CALLS:
+        return None
+    source = caller_kind(ctx, trace)
+    with contextlib.suppress(Exception):
+        return CALLS[0].start(tool, "local" if source == "in_process" else source, calllog.caller_of(params))
+    return None
+
+
+def _call_ended(logged: str | None, ms: float, **how: Any) -> None:
+    if logged is None or not CALLS:
+        return
+    with contextlib.suppress(Exception):
+        # RULE: every tool call is written by the middleware once
+        CALLS[0].end(logged, *calllog.classify(**how), ms)
+
+
 async def log_requests(ctx, call_next):
     """Log and count each MCP call: method, tool, outcome, time and the caller's trace id.
 
@@ -421,10 +441,12 @@ async def log_requests(ctx, call_next):
             LISTENERS.add(session)
     token = transcripts.current_trace.set(trace)
     client_token = transcripts.current_client.set(caller_kind(ctx, trace))
+    logged = _call_started(ctx, tool, params, trace)
     started = time.monotonic()
     try:
         result = await call_next(ctx)
     except asyncio.CancelledError:
+        _call_ended(logged, (time.monotonic() - started) * 1000, cancelled=True)
         # RULE: a cancelled tool call is logged as cancelled
         ms = (time.monotonic() - started) * 1000
         log.info("mcp %s -> cancelled %dms trace=%s", what, ms, trace or "-")
@@ -434,6 +456,7 @@ async def log_requests(ctx, call_next):
         raise
     except Exception as exc:
         ms = (time.monotonic() - started) * 1000
+        _call_ended(logged, ms, error=exc)
         log.info("mcp %s -> %s %dms trace=%s", what, type(exc).__name__, ms, trace or "-")
         if ctx.method == "tools/call":
             METRICS.record(tool, ms, error=f"{type(exc).__name__}: {exc}", kind="exception", trace_id=trace)
@@ -442,6 +465,8 @@ async def log_requests(ctx, call_next):
         transcripts.current_trace.reset(token)
         transcripts.current_client.reset(client_token)
     ms = (time.monotonic() - started) * 1000
+    refused = bool(getattr(result, "is_error", None) or (isinstance(result, dict) and result.get("isError")))
+    _call_ended(logged, ms, refused=refused)
     if ctx.method == "tools/call":
         _log_finished_tool_call(ctx, tool, params, what, trace, ms, result)
     elif ctx.request_id is not None:
@@ -2544,7 +2569,18 @@ def serve_forever(cfg: Config) -> None:
     app = build_app(server, cfg.public_hosts, ui_origins=cfg.ui_origins, ui_dir=cfg.ui_dir)
     configure_logging(cfg.db.parent / LOG_FILE)
     envfile.warn(log)
-    web_server(app, cfg.host, cfg.port).run()
+    calls = calllog.CallLog(config.STATE_DIR / calllog.FILE, store)
+    try:
+        calls.start_up()
+        CALLS[:] = [calls]
+    except Exception:  # the log must never keep the bridge from starting
+        log.exception("the call log could not start; calls are not logged")
+    try:
+        web_server(app, cfg.host, cfg.port).run()
+    finally:
+        if CALLS:
+            with contextlib.suppress(Exception):
+                CALLS[0].flush()
 
 
 #: What health says about the last restart: when, why, who asked, and the commits it brought.

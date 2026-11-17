@@ -1,0 +1,5 @@
+[[rule]]
+name = "the caller is a claim of at most 64 characters"
+file = "src/claude_voice/calllog.py"
+find = 'return str\(name\)\[:CALLER_CHARS\] if name else None'
+replace = 'return str(name) if name else None'

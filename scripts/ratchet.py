@@ -108,6 +108,7 @@ LAYERS = {
             "profiles",
             "roster",
             "routing",
+            "calllog",
         ),
         1,
     ),  # parts, each about one thing

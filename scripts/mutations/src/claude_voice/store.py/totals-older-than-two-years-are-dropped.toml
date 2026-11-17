@@ -1,0 +1,5 @@
+[[rule]]
+name = "totals older than two years are dropped"
+file = "src/claude_voice/store.py"
+find = 'self\.db\.execute\("DELETE FROM call_totals WHERE day < \?", \(day,\)\)'
+replace = 'pass'

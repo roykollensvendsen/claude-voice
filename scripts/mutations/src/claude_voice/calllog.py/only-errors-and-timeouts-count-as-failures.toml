@@ -1,0 +1,5 @@
+[[rule]]
+name = "only errors and timeouts count as failures"
+file = "src/claude_voice/calllog.py"
+find = 'counts\[1\] \+= row\["outcome"\] in FAILURES'
+replace = 'counts[1] += row["outcome"] != "ok"'
