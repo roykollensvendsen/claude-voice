@@ -322,7 +322,8 @@ def _search_inodes(home: Path) -> frozenset[tuple[int, int]] | None:
 
 
 def _secret_inodes(ask: Ask) -> frozenset[tuple[int, int]] | None:
-    """The secret files' inodes, searched at most once a minute for each home folder."""
+    """The secret files' inodes, searched at most once a minute for each home folder. Two
+    sorting threads may both search at once; that is harmless, as either result is right."""
     home = ask.place.home if ask.place else Path.home()
     when, inodes = SECRET_INODES.get(str(home), (-INODES_SECONDS, None))
     if time.monotonic() - when >= INODES_SECONDS:
@@ -339,15 +340,15 @@ def _hard_linked(full: str, ask: Ask) -> bool:
         return False
     if info.st_nlink < 2 or not stat.S_ISREG(info.st_mode):
         return False  # a folder always has several names
-    if LINKED_FOLDERS.intersection(Path(full).parts):
-        log.debug("not searched for a hard link, as its tools link files: %s", full)
-        return False
     inodes = _secret_inodes(ask)
-    if inodes is None:
-        # RULE: a home too large to search for hard links sends a linked file to the owner
-        ask.why.append(f"{full}: a hard link, and the secret files could not all be checked")
-        return True
-    return (info.st_dev, info.st_ino) in inodes
+    if inodes is not None:
+        return (info.st_dev, info.st_ino) in inodes  # a known set is always looked in
+    if LINKED_FOLDERS.intersection(Path(full).parts):
+        log.debug("a hard link in a folder its tools link, let through past the bound: %s", full)
+        return False
+    # RULE: a home too large to search for hard links sends a linked file to the owner
+    ask.why.append(f"{full}: a hard link, and the secret files could not all be checked")
+    return True
 
 
 def is_secret(path: str, ask: Ask) -> bool:

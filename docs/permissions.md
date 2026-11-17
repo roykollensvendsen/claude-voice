@@ -286,7 +286,8 @@ looked up at most once a minute and bounded like the walk below. When it runs
 past that bound, any hard-linked file goes to the owner. It doesn't cover a
 secret found by name elsewhere, such as another repo's `.env`. Planting such a
 link takes a command that already goes to the owner. Files under `.venv`,
-`node_modules` and `.git` are skipped, as their tools link files on purpose.
+`node_modules` and `.git` are skipped only when the search ran past its bound,
+as their tools link files on purpose. A known set is always checked.
 The sorting runs in a thread, so it never holds up the bridge. `routed` appears
 on the prompt a moment after it opens.
 

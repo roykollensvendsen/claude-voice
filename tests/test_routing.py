@@ -520,7 +520,9 @@ def test_line_1_every_secret_path_goes_to_the_owner_for_any_tool(place, home_sec
     for tool in ("Read", "Edit"):
         assert routing.sort(tool, {"file_path": target}, place=place, now=DAY).line == 1, (tool, name)
     assert routing.sort("Grep", {"pattern": "x", "path": target}, place=place, now=DAY).line == 1
-    assert line_of(f"cat {target}", place) == 1
+    # Forward slashes: a backslash makes a command unreadable (line 9), which also goes to the
+    # owner but would not show the secret check at work on Windows.
+    assert line_of(f"cat {Path(target).as_posix()}", place) == 1
 
 
 @pytest.mark.parametrize("name", ["server.pem", "deploy.key", "id_rsa", ".env", ".env.local", "sub/.env"])
@@ -812,11 +814,21 @@ def test_a_home_too_large_to_search_for_hard_links_sends_a_linked_file_to_the_ow
 
 
 def test_files_in_a_virtual_environment_skip_the_hard_link_search(place, home_secrets, monkeypatch):
+    """Only when the search ran past its bound: a known set is always looked in."""
     venv = place.repo / ".venv" / "lib"
     venv.mkdir(parents=True)
     os.link(place.repo / "src" / "a.py", venv / "a.py")
-    monkeypatch.setattr(routing, "_secret_inodes", lambda ask: pytest.fail("searched"))
+    monkeypatch.setattr(routing, "_secret_inodes", lambda ask: None)
     assert routing.is_secret(".venv/lib/a.py", routing.Ask("Read", {}, place, DAY, [], [], [])) is False
+    assert routing.is_secret("src/a.py", routing.Ask("Read", {}, place, DAY, [], [], [])) is True
+
+
+@pytest.mark.parametrize("folder", [".git", ".venv", "node_modules"])
+def test_a_hard_link_to_a_secret_in_a_linked_folder_is_still_secret(place, home_secrets, folder):
+    routing.SECRET_INODES.clear()
+    (place.repo / folder).mkdir(exist_ok=True)
+    os.link(place.home / ".netrc", place.repo / folder / "n")
+    assert routing.is_secret(f"{folder}/n", routing.Ask("Read", {}, place, DAY, [], [], [])) is True
 
 
 async def test_sorting_a_prompt_never_holds_up_the_bridge(tmp_path):
