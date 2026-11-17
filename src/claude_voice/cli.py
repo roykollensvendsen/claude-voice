@@ -33,6 +33,8 @@ COMMANDS: tuple[str, ...] = (
     "restart",
     "setup",
     "repos",
+    "roles",
+    "set",
 )
 
 SIGN_IN = (
@@ -153,8 +155,11 @@ def main(
     plugin_cmd = sub.add_parser(
         "plugins", help="list plugins, install one from its checkout, approve one by typing its name, or revoke one"
     )
-    plugin_cmd.add_argument("action", nargs="?", choices=["list", "install", "approve", "revoke"], default="list")
+    plugin_cmd.add_argument(
+        "action", nargs="?", choices=["list", "install", "approve", "revoke", "set"], default="list"
+    )
     plugin_cmd.add_argument("name", nargs="?")
+    plugin_cmd.add_argument("values", nargs="*", help="with set: the key and its new value")
     plugin_cmd.add_argument("--from", dest="source", help="with install: the plugin's checkout (default ~/<its repo>)")
     plugin_cmd.add_argument("--dry-run", action="store_true", help="with install: show each change, write nothing")
     plugin_cmd.add_argument("--anywhere", action="store_true", help="with install: allow a home outside Norway")
@@ -171,8 +176,18 @@ def main(
     )
     agent_cmd.add_argument("--sessions", action="store_true", help="with install: offer this machine's sessions")
     machine_cmd = sub.add_parser("machines", help="list other machines, or pair with one by typing its code")
-    machine_cmd.add_argument("action", nargs="?", choices=["list", "approve"], default="list")
+    machine_cmd.add_argument("action", nargs="?", choices=["list", "approve", "add"], default="list")
     machine_cmd.add_argument("name", nargs="?")
+    machine_cmd.add_argument("values", nargs="*", help="with add: the machine's address")
+    roles_cmd = sub.add_parser("roles", help="add one of your own roles, change one field of a role, or take one out")
+    roles_cmd.add_argument("action", choices=["add", "set", "remove"])
+    roles_cmd.add_argument("name")
+    roles_cmd.add_argument(
+        "fields", nargs="*", help="with add: key=value, such as folder=~/demo; with set: the key and its value"
+    )
+    set_cmd = sub.add_parser("set", help="set one of the settings that are not run, such as voice_instructions_file")
+    set_cmd.add_argument("key")
+    set_cmd.add_argument("value")
     permission_cmd = sub.add_parser("permissions", help="give Claude Code the voice repositories' permission rules")
     permission_cmd.add_argument("folders", nargs="*", type=Path, help="default: the clones in the settings file")
     permission_cmd.add_argument("--dry-run", action="store_true", help="say what would be added, and write nothing")
@@ -207,7 +222,9 @@ def main(
         "restart": lambda: restart_command(parsed.why, parsed.dry_run, systemctl),
         "permissions": lambda: permissions_verb(parsed, env),
         "org": lambda: org_command(parsed.action, env),
-        "machines": lambda: machines_command(parsed.action, parsed.name, env),
+        "machines": lambda: _machines(parsed, env),
+        "roles": lambda: _settings_edit(f"roles {parsed.action}", [parsed.name, *parsed.fields], env),
+        "set": lambda: _settings_edit("set", [parsed.key, parsed.value], env),
         "agent": lambda: agent_command(parsed.action, env, parsed.sessions),
         "plugins": lambda: plugins_command(parsed.action, parsed.name, env, parsed),
         "home": lambda: home_command(parsed.anywhere, env),
@@ -223,6 +240,12 @@ def main(
         return 1
     serve(cfg)
     return 0
+
+
+def _settings_edit(verb: str, words: list[str | None], env: Mapping[str, str]) -> int:
+    from . import settings_edit
+
+    return settings_edit.command(verb, [w for w in words if w], env)
 
 
 def restart_command(why: str, dry_run: bool, systemctl: Callable[[list[str]], int]) -> int:
@@ -381,6 +404,10 @@ def plugins_command(action: str, name: str | None, env: Mapping[str, str], optio
 
     if action == "revoke":
         return _revoke(name)
+    if action == "set":
+        from . import settings_edit
+
+        return settings_edit.command("plugins set", [w for w in (name, *options.values) if w], env)
     if action == "install":
         return install_command(name, options, env)
     try:
@@ -558,6 +585,13 @@ def agent_command(action: str, env: Mapping[str, str], sessions: bool = False) -
         sys.stderr.write(f"claude-voice: {exc}\n")
         return 1
     return 0
+
+
+def _machines(parsed: Any, env: Mapping[str, str]) -> int:
+    """machines add writes the settings file; every other machines action is machines_command."""
+    if parsed.action == "add":
+        return _settings_edit("machines add", [parsed.name, *parsed.values], env)
+    return machines_command(parsed.action, parsed.name, env)
 
 
 def machines_command(action: str, name: str | None, env: Mapping[str, str]) -> int:

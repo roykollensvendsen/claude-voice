@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from . import owner_rules
 from .config import STATE_DIR, Config
 
 TABLE = Path(__file__).with_name("permissions.json")
@@ -92,6 +93,8 @@ def load(table: Path = TABLE) -> Rules:
     lost = raw.get("what cannot be got back", {"removers": [], "targets": []})
     # RULE: removing what cannot be got back is refused
     deny += [f"Bash({remover} {target})" for remover in lost["removers"] for target in lost["targets"]]
+    # RULE: every writing command into such a path is refused
+    deny += owner_rules.runs_as_owner(raw.get("what later runs as the owner", {}))
     devices = raw.get("device tools", {"servers": [], "tools": []})
     # RULE: a tool that moves something in the house asks first, by every name it is seen under
     ask += [f"mcp__{server}__{tool}" for server in devices["servers"] for tool in devices["tools"]]

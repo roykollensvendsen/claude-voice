@@ -1,0 +1,5 @@
+[[rule]]
+name = "roles add refuses a start line of its own"
+file = "src/claude_voice/settings_edit.py"
+find = 'if ROLE_START\.intersection\(fields\):'
+replace = 'if False:'

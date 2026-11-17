@@ -1,0 +1,5 @@
+[[rule]]
+name = "plugins set refuses each key a plugin runs with unless the owner approved it"
+file = "src/claude_voice/settings_edit.py"
+find = 'if key not in APPROVED_KEYS:'
+replace = 'if False:'

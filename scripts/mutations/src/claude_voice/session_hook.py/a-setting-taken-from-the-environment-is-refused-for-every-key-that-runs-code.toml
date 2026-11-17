@@ -1,0 +1,5 @@
+[[rule]]
+name = "a setting taken from the environment is refused for every key that runs code"
+file = "src/claude_voice/session_hook.py"
+find = 'if any\(RUNS_CODE\.fullmatch\(key\) for key in _from_environment\(words\)\):'
+replace = 'if False:'
