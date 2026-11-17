@@ -1,0 +1,5 @@
+[[rule]]
+name = "each call publishes its start and end but polling publishes nothing"
+file = "src/claude_voice/calllog.py"
+find = 'self\.publish\("call_end", \{key: row\[key\] for key in END\}\)'
+replace = 'pass'

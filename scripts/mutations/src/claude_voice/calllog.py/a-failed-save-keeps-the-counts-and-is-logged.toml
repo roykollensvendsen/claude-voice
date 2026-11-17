@@ -1,0 +1,5 @@
+[[rule]]
+name = "a failed save keeps the counts and is logged"
+file = "src/claude_voice/calllog.py"
+find = 'self\._counts\.setdefault\(key, counts\)'
+replace = 'pass'

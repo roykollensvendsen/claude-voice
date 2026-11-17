@@ -21,14 +21,14 @@ import logging
 import secrets
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from . import answers, prompts
+from . import answers, calllog, prompts
 
 COOKIE = "cv_ui"
 SIGN_IN_SECONDS = 30 * 24 * 3600
@@ -268,6 +268,8 @@ class EventApi:
         book: prompts.Book | None = None,
         away: Callable[[bool], bool] | None = None,
         route: Callable[[str, Any, str], dict[str, Any]] | None = None,
+        calls: Callable[[], Any] | None = None,
+        offered: Callable[[], list[str]] | None = None,
     ) -> None:
         self.store = store
         self.login_secret = login_secret
@@ -302,6 +304,8 @@ class EventApi:
         # Who may answer an approval (routing.sort), recorded on it; every one still goes to the owner.
         self.route = route
         self._sorting: set[asyncio.Task[None]] = set()  # kept, so a running sort is not collected
+        self.calls = calls or (lambda: None)  # the call log (calllog.CallLog), None while it is off
+        self.offered = offered or (lambda: [])  # the names of the tools this bridge offers now
 
     def routes(self, mcp: Any) -> None:
         route = mcp.custom_route
@@ -334,6 +338,9 @@ class EventApi:
         route("/api/v1/roles/{role}/start", methods=["POST"])(self.role_start)
         route("/api/v1/org", methods=["GET"])(self.org_chart)
         route("/api/v1/org/{programme}", methods=["GET"])(self.org_chart)
+        route("/api/v1/calls/totals", methods=["GET"])(self.call_totals)
+        route("/api/v1/calls/recent", methods=["GET"])(self.recent_calls)
+        route("/api/v1/calls/day/{day}/{tool}", methods=["GET"])(self.day_calls)
 
     # -- who is asking ---------------------------------------------------------------
 
@@ -503,6 +510,40 @@ class EventApi:
             return JSONResponse({"error": "no doctor here"}, 404)
         report = await asyncio.to_thread(self.doctor)
         return JSONResponse(report, headers={"Cache-Control": "no-store"})
+
+    async def _call_log(self, request: Request, read: Callable[[Any], dict[str, Any]]) -> Response:
+        """One read of the call log (docs/call-log.md), signed in; a bad day, tool or limit is a 400."""
+        if not await self._allowed(request):
+            return JSONResponse({"error": "sign in first"}, 401)
+        log = self.calls()
+        if log is None:
+            return JSONResponse({"error": "the call log is off here"}, 404)
+        try:
+            out = await asyncio.to_thread(read, log)  # the lines are read from a file
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, 400)
+        return JSONResponse(out, headers={"Cache-Control": "no-store"})
+
+    async def call_totals(self, request: Request) -> Response:
+        """Calls per Oslo day and tool, with median and p95, and the tools no one called."""
+        query = request.query_params
+        today = date.fromisoformat(calllog.oslo_day(time.time()))
+        first = query.get("from") or (today - timedelta(days=calllog.SHOWN_DAYS - 1)).isoformat()
+        last = query.get("to") or today.isoformat()
+        return await self._call_log(request, lambda log: log.totals_between(first, last, self.offered()))
+
+    async def recent_calls(self, request: Request) -> Response:
+        """The last calls, newest first, and the calls running now."""
+        raw = request.query_params.get("limit", "20")
+        # RULE: the recent calls limit is a whole number from 1 to 100
+        if not raw.isdigit() or not 1 <= int(raw) <= 100:
+            return JSONResponse({"error": "limit is a whole number from 1 to 100"}, 400)
+        return await self._call_log(request, lambda log: log.recent(int(raw)))
+
+    async def day_calls(self, request: Request) -> Response:
+        """One day's calls to one tool, for a tapped cell on the map."""
+        day, tool = request.path_params["day"], request.path_params["tool"]
+        return await self._call_log(request, lambda log: log.day_calls(day, tool, self.offered()))
 
     async def usage_now(self, request: Request) -> Response:
         if not await self._allowed(request):
