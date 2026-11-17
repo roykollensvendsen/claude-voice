@@ -1,0 +1,5 @@
+[[rule]]
+name = "a hook that cannot decide asks"
+file = "src/claude_voice/session_hook.py"
+find = 'said = ASK if removes_a_tree\(command\) or ISSUE\.search\(command\) else None'
+replace = 'said = None'

@@ -109,7 +109,7 @@ like any other.
 | pushes that delete a branch or could land on main without naming it | `--delete`, `-d`, `origin :feature`, pushing `HEAD`, `--all`, and a push naming no branch |
 | a lease push in any other form than the one allowed | `--force-with-lease` after the remote, as in `git push origin feature --force-with-lease` |
 | GitHub, writing what others read | commenting on, closing or reviewing a pull request; creating or commenting on an issue; creating or editing a release; editing the repository; secrets; `gh api graphql`; and `gh api` with `-X`, `--method`, `-f`, `-F`, `--field`, `--raw-field` or `--input` |
-| deleting files | `rm -r` and `rm -f`, in any combination |
+| deleting files | `rm -f`; a recursive remove is asked by the session hook, below |
 | changing the session's own settings | `Edit(./.claude/**)`, so a session cannot edit its own rules without the owner |
 | the devices in the house | the tools that open the garage door, switch a TV on or off, or start, stop, pause, send home, find or clean with the vacuum |
 | the garage door's own server, run in its repository | the same garage tools, by the name the garage door's repository gives its own server |
@@ -204,3 +204,50 @@ fence against a slip, and the files themselves stay readable by the owner alone.
 
 A new plugin that keeps a secret in a file of its own adds that file to
 `secrets.files` in the table, in the same pull request as the plugin.
+
+## The session hook
+
+Two routine steps used to wait on the owner many times a day: clearing out a
+session's own scratch folder, and filing an issue. The owner decided that a
+session may take both alone, within narrow limits. A rule pattern cannot hold
+those limits, so a small hook does. Claude Code runs it before every shell
+command, and the bridge writes it beside the rules.
+
+It lets through:
+
+- **a recursive remove inside the session's own scratchpad.** It must be a plain
+  `rm` with no quoting, chain, glob or variable. Every target, with links and
+  `..` followed, must lie inside the scratchpad of the session that runs it.
+  Another session's scratchpad does not count.
+- **an issue in the programme's own repositories.** The repository must be named
+  with `--repo`, and listed as a component's remote in the org chart. These
+  repositories are public, so whatever the issue holds is published at once.
+
+So an issue asks when:
+
+- its command names a variable or a home folder (`$`, `~`), which the shell would
+  fill in after the hook has looked;
+- its body file is neither in the session's own scratchpad nor a file git tracks.
+  An ignored file, such as one holding a network password, never qualifies;
+- its title, body or body file holds the shape of a secret: a token prefix such as
+  `ghp_`, a private-key header, a long run of hex or base64, or a secret's name set
+  to a value. A 40-character hex run is a commit, and allowed;
+- it names one of the owner's personal terms. The bridge passes the hook a terms
+  file from its own settings, `personal_terms_file`. Only a count of matches is
+  read, never the words. With no terms file, every issue asks.
+
+Every other recursive remove it asks about, however it is spelled: in quotes,
+behind a backslash, `command` or `env`, by a full path, as `find -delete` or
+`-exec rm`, or as a tree removal inside another program. A single-file `rm` and
+`git rm` keep the rules they always had, but only with a plain command word and
+plain flags. A command whose name the shell builds, from a glob or `$'…'`, is not
+caught, as it was not before; the deny rules above stay the floor for what cannot
+be got back.
+
+A settings ask beats a hook's allow, so the old asks `Bash(rm -r*)` and
+`Bash(gh issue create*)` are retired; the hook asks in their place. The hook runs with
+the system `python3` and the standard library only, so a broken bridge
+environment cannot stop it. If it cannot start at all, a recursive remove inside
+a repository would run unasked. So `claude-voice permissions --check` runs each
+repository's hook once, and the bridge's health shows a hook that does not
+answer as an error, with the fix.

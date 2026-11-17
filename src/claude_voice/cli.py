@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import subprocess
 import sys
 from collections.abc import Callable, Mapping
@@ -175,6 +176,7 @@ def main(
     permission_cmd = sub.add_parser("permissions", help="give Claude Code the voice repositories' permission rules")
     permission_cmd.add_argument("folders", nargs="*", type=Path, help="default: the clones in the settings file")
     permission_cmd.add_argument("--dry-run", action="store_true", help="say what would be added, and write nothing")
+    permission_cmd.add_argument("--check", action="store_true", help="run each repository's session hook once")
     org_cmd = sub.add_parser("org", help="print the org chart, or check its files")
     org_cmd.add_argument("action", nargs="?", choices=["show", "check"], default="show")
     restart_cmd = sub.add_parser("restart", help="restart the bridge's service, noting why for its health answer")
@@ -192,7 +194,11 @@ def main(
         "setup": lambda: setup_command(parsed.check, parsed.json, env, login),
         "repos": lambda: repos_command(parsed.check, env),
         "restart": lambda: restart_command(parsed.why, parsed.dry_run, systemctl),
-        "permissions": lambda: permissions_command(parsed.folders, parsed.dry_run, env),
+        "permissions": lambda: (
+            hook_check_command(parsed.folders, env)
+            if parsed.check
+            else permissions_command(parsed.folders, parsed.dry_run, env)
+        ),
         "org": lambda: org_command(parsed.action, env),
         "machines": lambda: machines_command(parsed.action, parsed.name, env),
         "agent": lambda: agent_command(parsed.action, env, parsed.sessions),
@@ -573,28 +579,83 @@ def machines_command(action: str, name: str | None, env: Mapping[str, str]) -> i
     return 0 if asyncio.run(machines.pair(chosen, folder=folder))["approved"] else 1
 
 
-def permissions_command(folders: list[Path], dry_run: bool, env: Mapping[str, str]) -> int:
-    """Add the permission rules to each repository's local settings, keeping the owner's own."""
+def _the_clones(folders: list[Path], env: Mapping[str, str]) -> list[Path]:
+    """The folders named, or else the clones in the settings; none, said on stderr, when
+    there are none or the settings cannot be read."""
     from . import config as settings
     from . import permissions, roles
 
-    if not folders:
-        try:
-            folders = permissions.folders(settings.load(settings.FILE, own_clone=roles.own_clone(), env=env))
-        except settings.ConfigError as exc:
-            sys.stderr.write(f"claude-voice: {exc}\n")
-            return 1
-    if not folders:
+    if folders:
+        return folders
+    try:
+        found = permissions.folders(settings.load(settings.FILE, own_clone=roles.own_clone(), env=env))
+    except settings.ConfigError as exc:
+        sys.stderr.write(f"claude-voice: {exc}\n")
+        return []
+    if not found:
         sys.stderr.write(f"claude-voice: no clone was found; name the folders, or set [paths] in {settings.FILE}\n")
+    return found
+
+
+def permissions_command(folders: list[Path], dry_run: bool, env: Mapping[str, str]) -> int:
+    """Add the permission rules to each repository's local settings, keeping the owner's own."""
+    from . import permissions
+
+    folders = _the_clones(folders, env)
+    if not folders:
         return 1
     rules, code = permissions.load(), 0
     backups = permissions.backup_root(Path(env.get("HOME") or Path.home()))
+    hooks = _session_hooks(folders, env)
     for folder in folders:
         try:
-            sys.stdout.write(permissions.apply(folder, rules, dry_run, backup_root=backups).line() + "\n")
+            outcome = permissions.apply(folder, rules, dry_run, backup_root=backups, hook=hooks[folder])
+            sys.stdout.write(outcome.line() + "\n")
         except permissions.PermissionsError as exc:
             sys.stderr.write(f"claude-voice: {exc}\n")
             code = 1
+    return code
+
+
+def _session_hooks(folders: list[Path], env: Mapping[str, str]) -> dict[Path, str]:
+    """The session hook's command for each folder: its programme's repositories from the org
+    chart, and the owner's terms file from the bridge's own settings."""
+    from . import config as settings
+    from . import org, permissions, roles
+
+    own = roles.own_clone()
+    try:
+        terms = settings.load(settings.FILE, own_clone=own, env=env).personal_terms_file
+    except settings.ConfigError:
+        terms = None
+    root = Path(env.get("CLAUDE_VOICE_ROOT", "~/src")).expanduser()
+    chart = org.load(org.known_folders(root, [own, *folders]))
+    return {
+        folder: permissions.hook_command(org.repositories(chart.place(str(folder.resolve()), ()).programme), terms)
+        for folder in folders
+    }
+
+
+def hook_check_command(folders: list[Path], env: Mapping[str, str]) -> int:
+    """Run the session hook written in each repository once, and say whether it answers."""
+    from . import permissions, session_hook
+
+    folders = _the_clones(folders, env)
+    if not folders:
+        return 1
+    code = 0
+    for folder in folders:
+        try:
+            written = permissions.written_hook(permissions._read(folder / permissions.SETTINGS))
+        except permissions.PermissionsError:
+            written = None
+        found = session_hook.self_check(shlex.split(written)) if written else None
+        if found and found["ok"]:
+            sys.stdout.write(f"{folder}: the session hook answers\n")
+            continue
+        detail = found["detail"] if found else "no session hook is written"
+        sys.stdout.write(f"{folder}: {detail}. Fix: run `claude-voice permissions` to write it again.\n")
+        code = 1
     return code
 
 

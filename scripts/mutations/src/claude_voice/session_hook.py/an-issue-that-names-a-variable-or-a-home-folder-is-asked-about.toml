@@ -1,0 +1,5 @@
+[[rule]]
+name = "an issue that names a variable or a home folder is asked about"
+file = "src/claude_voice/session_hook.py"
+find = 'if "\$" in command or "~" in command:'
+replace = 'if False:'

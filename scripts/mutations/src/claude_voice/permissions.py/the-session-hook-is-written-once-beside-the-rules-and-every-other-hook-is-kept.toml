@@ -1,0 +1,5 @@
+[[rule]]
+name = "the session hook is written once beside the rules and every other hook is kept"
+file = "src/claude_voice/permissions.py"
+find = 'kept\.append\(\{"matcher": "Bash", "hooks": \[\{"type": "command", "command": command\}\]\}\)'
+replace = 'pass'

@@ -1,6 +1,7 @@
 """The doctor: which dependencies are missing for full use of the bridge, and how to fix each."""
 
 import json
+import sys
 
 import pytest
 
@@ -10,13 +11,15 @@ from claude_voice import doctor
 class Host:
     """A computer with exactly the tools and answers a test gives it."""
 
-    def __init__(self, tools=("git", "gh", "uv", "tailscale"), answers=None, trusted=(), signed_in=True):
+    def __init__(self, tools=("git", "gh", "uv", "tailscale", "python3"), answers=None, trusted=(), signed_in=True):
         self.tools = set(tools)
         self.answers = answers or {}
         self.trusted_folders = set(trusted)
         self.signed_in = signed_in
 
     def which(self, name):
+        if name == "python3" and name in self.tools:
+            return sys.executable  # the session hook is really run, with this Python
         return f"/usr/bin/{name}" if name in self.tools else None
 
     def run(self, *command):

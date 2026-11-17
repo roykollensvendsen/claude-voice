@@ -1,0 +1,5 @@
+[[rule]]
+name = "a programmes repositories are only those its chart lists"
+file = "src/claude_voice/org.py"
+find = 'return sorted\(\{remote\.lower\(\) for c in programme\.components for remote in c\.remotes if "/" in remote\}\)'
+replace = 'return sorted({str(f) for c in programme.components for f in c.folders} | {r.lower() for c in programme.components for r in c.remotes})'

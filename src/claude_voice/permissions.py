@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import time
 from collections.abc import Callable
@@ -134,8 +135,48 @@ def folders(cfg: Config) -> list[Path]:
     return list(found)
 
 
-def merged(settings: dict[str, Any], rules: Rules) -> dict[str, Any]:
-    """The settings with the rules added after the owner's own, each rule once, and none retired."""
+HOOK_MARK = "session_hook.py"
+
+
+def hook_command(repos: list[str], terms: Path | None, python: str = "python3") -> str:
+    """The shell command Claude Code runs before each shell command: the session hook, with
+    the standard library only, told the programme's repositories and the owner's terms file."""
+    script = Path(__file__).with_name(HOOK_MARK).resolve()
+    parts = [python, "-I", str(script), "--repos", ",".join(sorted(set(repos)))]
+    if terms is not None:
+        parts += ["--terms", str(terms)]
+    return " ".join(shlex.quote(part) for part in parts)
+
+
+def written_hook(settings: dict[str, Any]) -> str | None:
+    """The session hook's command in these settings, if they have one."""
+    for entry in (settings.get("hooks") or {}).get("PreToolUse") or []:
+        for hook in entry.get("hooks") or []:
+            if HOOK_MARK in str(hook.get("command", "")):
+                return str(hook["command"])
+    return None
+
+
+def _without_hook(entry: dict[str, Any]) -> dict[str, Any] | None:
+    """One PreToolUse entry less the session hook, or None when nothing else was in it."""
+    rest = [h for h in entry.get("hooks") or [] if HOOK_MARK not in str(h.get("command", ""))]
+    return {**entry, "hooks": rest} if rest else None
+
+
+def _with_hook(settings: dict[str, Any], command: str) -> dict[str, Any]:
+    """The settings with the session hook as their one session hook, every other hook kept."""
+    hooks = dict(settings.get("hooks") or {})
+    if not isinstance(hooks, dict):
+        raise PermissionsError("its hooks are not a table")
+    kept = [e for e in map(_without_hook, hooks.get("PreToolUse") or []) if e is not None]
+    # RULE: the session hook is written once beside the rules and every other hook is kept
+    kept.append({"matcher": "Bash", "hooks": [{"type": "command", "command": command}]})
+    return {**settings, "hooks": {**hooks, "PreToolUse": kept}}
+
+
+def merged(settings: dict[str, Any], rules: Rules, hook: str | None = None) -> dict[str, Any]:
+    """The settings with the rules added after the owner's own, each rule once, and none retired;
+    and the session hook, when one is given."""
     have = settings.get("permissions") or {}
     if not isinstance(have, dict):
         raise PermissionsError("its permissions are not a table of rules")
@@ -143,7 +184,8 @@ def merged(settings: dict[str, Any], rules: Rules) -> dict[str, Any]:
     for key, wanted in (("allow", rules.allow), ("ask", rules.ask), ("deny", rules.deny)):
         if key in have or wanted:
             out[key] = _merged_list(have, key, wanted, rules)
-    return {**settings, "permissions": out}
+    result = {**settings, "permissions": out}
+    return _with_hook(result, hook) if hook else result
 
 
 def _merged_list(have: dict[str, Any], key: str, wanted: list[str], rules: Rules) -> list[str]:
@@ -171,18 +213,26 @@ class Outcome:
     backup: Path | None = None
     added_ask: int = 0
     removed_ask: int = 0
+    #: Whether the session hook was written or changed.
+    hook: bool = False
 
     def line(self) -> str:
         asks = f", {self.added_ask} ask" if self.added_ask else ""
         counts = f"{self.added_allow} allow{asks} and {self.added_deny} deny rules"
         if not any((self.added_allow, self.added_ask, self.added_deny, self.removed_allow, self.removed_ask)):
-            return f"{self.folder}: already has every rule"
+            return self._only_the_hook()
         retired = self._retired_note()
         if self.dry_run:
             return f"{self.folder}: would add {counts}{retired}"
         notes = [f"created {SETTINGS}"] if self.created else []
         notes += [f"kept the old file as {self.backup}"] if self.backup else []
         return f"{self.folder}: added {counts}{retired}" + "".join(f"; {note}" for note in notes)
+
+    def _only_the_hook(self) -> str:
+        """The line when no rule changed: the session hook was written, or nothing was."""
+        if not self.hook:
+            return f"{self.folder}: already has every rule"
+        return f"{self.folder}: {'would write' if self.dry_run else 'wrote'} the session hook"
 
     def _retired_note(self) -> str:
         """The words about removed retired rules, or nothing when none were removed."""
@@ -262,6 +312,7 @@ def apply(
     *,
     backup_root: Path,
     clock: Callable[[], float] = time.time,
+    hook: str | None = None,
 ) -> Outcome:
     """Add the rules to one repository's local settings, or say what that would change.
 
@@ -272,10 +323,10 @@ def apply(
     file = folder / SETTINGS
     before = _read(file)
     try:
-        after = merged(before, for_folder(rules, folder.resolve()))
+        after = merged(before, for_folder(rules, folder.resolve()), hook)
     except PermissionsError as exc:
         raise PermissionsError(f"{file}: {exc}, so it was left alone") from exc
-    counts = _changes(folder, before, after)
+    counts = replace(_changes(folder, before, after), hook=written_hook(before) != written_hook(after))
     outcome = replace(counts, dry_run=dry_run, created=not file.exists())
     # RULE: a second run writes nothing
     if after == before:

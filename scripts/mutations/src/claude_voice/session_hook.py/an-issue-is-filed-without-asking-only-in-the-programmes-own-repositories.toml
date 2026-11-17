@@ -1,0 +1,5 @@
+[[rule]]
+name = "an issue is filed without asking only in the programmes own repositories"
+file = "src/claude_voice/session_hook.py"
+find = 'if found is None or _repo_name\(found\.get\("repo", ""\)\) not in \{_repo_name\(r\) for r in repos\}:'
+replace = 'if found is None:'
