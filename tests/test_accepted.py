@@ -336,3 +336,15 @@ def test_accept_all_says_so_when_the_chart_cannot_name_the_bridges_own_programme
     env = {"CLAUDE_VOICE_ROOT": str(tmp_path / "nowhere")}
     assert cli.main(["permissions", "--accept", "--all"], env=env) == 1
     assert "org chart" in capsys.readouterr().err
+
+
+@needs_a_terminal
+def test_a_dry_run_accept_shows_everything_and_records_nothing(tmp_path, state, at_a_terminal, monkeypatch, capsys):
+    repo = tmp_path / "voice-repo"
+    settings(repo, {"permissions": {"allow": ["Bash(curl *)"]}})
+    asked = typed(monkeypatch, "voice-repo")
+    assert cli.main(["permissions", "--accept", "--dry-run", str(repo)], env={}) == 0
+    out = capsys.readouterr().out
+    assert "WIDENS" in out and "Bash(curl *)" in out
+    assert out.strip().splitlines()[-1].startswith("Dry run: nothing was accepted")
+    assert not asked and accepted.read_record(accepted.RECORD) == {}

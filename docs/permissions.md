@@ -59,6 +59,9 @@ anew. The record is `accepted.json` in the bridge's state folder, with a private
 copy of each accepted file beside it, so the next accept is compared with the
 real contents.
 
+With `--dry-run`, the accept shows everything the same way and records nothing.
+It asks for no answer, and its last line says that nothing was accepted.
+
 The shipped rules refuse the usual ways a session would run it. That is not a wall:
 a session can still call the same code another way, or type into a terminal it
 started itself. Until the bridge runs under a system user of its own, the record is
