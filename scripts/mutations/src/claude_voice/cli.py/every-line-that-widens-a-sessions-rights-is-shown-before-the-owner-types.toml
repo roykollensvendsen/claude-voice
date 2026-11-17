@@ -1,0 +1,5 @@
+[[rule]]
+name = "every line that widens a sessions rights is shown before the owner types"
+file = "src/claude_voice/cli.py"
+find = 'if any\(line\.kind == accepted\.WIDENS for item in shown for line in item\.lines\):'
+replace = 'if False:'
