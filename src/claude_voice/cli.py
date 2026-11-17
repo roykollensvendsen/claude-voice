@@ -706,7 +706,7 @@ def permissions_verb(parsed: argparse.Namespace, env: Mapping[str, str]) -> int:
     if parsed.shipped:
         return shipped_command(parsed.folders, env)
     if parsed.accept:
-        return accept_command(parsed.folders, env, parsed.all)
+        return accept_command(parsed.folders, env, parsed.all, parsed.dry_run)
     return permissions_command(parsed.folders, parsed.dry_run, env)
 
 
@@ -837,10 +837,11 @@ def _record_accept(every_file: list[Any]) -> int:
     return 0
 
 
-def accept_command(folders: list[Path], env: Mapping[str, str], every: bool = False) -> int:
+def accept_command(folders: list[Path], env: Mapping[str, str], every: bool = False, only_show: bool = False) -> int:
     """Show what changed in the repositories' rights files since the owner last accepted them,
     and record them all once the owner types one answer. Every line that widens a session's
-    rights is shown in full; a repository that only narrows gets one line."""
+    rights is shown in full; a repository that only narrows gets one line. A dry run shows
+    the same and records nothing."""
     from . import accepted
 
     chosen = _accept_folders(folders, env, every)
@@ -852,6 +853,15 @@ def accept_command(folders: list[Path], env: Mapping[str, str], every: bool = Fa
         sys.stdout.write("Nothing to accept; every rights file is as last accepted.\n")
         return 0
     _show_for_accept(found)
+    # RULE: a dry run accept shows everything and records nothing
+    if only_show:
+        sys.stdout.write("Dry run: nothing was accepted. Run it again without --dry-run to accept.\n")
+        return 0
+    return _accept_shown(found)
+
+
+def _accept_shown(found: list[tuple[Path, list[Any]]]) -> int:
+    """Record what was shown once the owner types the answer; 1 when it isn't accepted."""
     if not _typed_yes(found):
         sys.stdout.write("Not accepted.\n")
         return 1
