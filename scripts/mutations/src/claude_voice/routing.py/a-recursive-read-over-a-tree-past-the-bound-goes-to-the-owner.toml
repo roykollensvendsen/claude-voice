@@ -1,0 +1,5 @@
+[[rule]]
+name = "a recursive read over a tree past the bound goes to the owner"
+file = "src/claude_voice/routing.py"
+find = 'if seen > WALK_ENTRIES or time\.monotonic\(\) - clock > WALK_SECONDS:'
+replace = 'if False:'

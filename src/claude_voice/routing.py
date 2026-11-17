@@ -27,6 +27,7 @@ import json
 import os
 import re
 import subprocess
+import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -99,6 +100,9 @@ OPTIONS: dict[str, tuple[frozenset[str], dict[str, int]]] = {
     "diff": (frozenset("-u -q -N -w -b".split()), {"-U": 1}),
 }
 FIND_OPTIONS = (frozenset({"-print", "-print0"}), {"-name", "-iname", "-path", "-type", "-maxdepth", "-mindepth"})
+#: A recursive read's tree is walked before it is allowed (v2.10); past either bound, the owner.
+WALK_ENTRIES = 20_000
+WALK_SECONDS = 1.0
 GH_WRITES = {
     "pr": {"create", "comment", "review", "merge", "close", "edit", "reopen", "ready"},
     "issue": {"create", "comment", "close", "edit", "reopen", "delete", "transfer", "lock"},
@@ -156,6 +160,8 @@ class Ask:
     parts: list[list[str]] | None  # a Bash command's simple commands, or None when it cannot be read
     command: str = ""
     tracked: Callable[[Path], bool] = lambda path: False  # whether git tracks a file in the repo
+    why: list[str] = field(default_factory=list)  # what a check found, to tell the owner
+    inodes: set[tuple[int, int]] | None = None  # the secret files' inodes, once looked up
 
     def words(self) -> Iterable[list[str]]:
         return self.parts or []
@@ -248,8 +254,22 @@ def _template(path: str, ask: Ask) -> bool:
     return not os.path.islink(full) and os.path.realpath(full) == full and inside and ask.tracked(Path(full))
 
 
-def is_secret(path: str, ask: Ask) -> bool:
-    """Whether `path`, as written or through every link, is a file that holds secrets."""
+#: The folders under home where the secret table's files live, searched for hard links.
+SECRET_HOMES = (
+    ".netrc",
+    ".git-credentials",
+    ".aws",
+    ".docker",
+    ".config",
+    ".ssh",
+    ".gnupg",
+    ".local/share/keyrings",
+    ".claude",
+)
+
+
+def _named_secret(path: str, ask: Ask) -> bool:
+    """Whether `path`, as written or through every symbolic link, is named as a secret."""
     home = str(ask.place.home) if ask.place else os.path.expanduser("~")
     base = ask.place.repo if ask.place else Path.cwd()
     full = os.path.abspath(os.path.join(base, os.path.expanduser(path)))
@@ -261,6 +281,38 @@ def is_secret(path: str, ask: Ask) -> bool:
         if any(fnmatch.fnmatch(name, pattern) for pattern in SECRET_NAMES) and not _template(path, ask):
             return True
     return False
+
+
+def _secret_inodes(ask: Ask) -> set[tuple[int, int]]:
+    """The (device, inode) of every secret-table file under home, found once per prompt."""
+    if ask.inodes is None:
+        home = ask.place.home if ask.place else Path.home()
+        ask.inodes, folders = set(), [str(home / name) for name in SECRET_HOMES]
+        while folders and len(ask.inodes) < WALK_ENTRIES:
+            top = folders.pop()
+            try:
+                info = os.lstat(top)
+                entries = [e.path for e in os.scandir(top)] if os.path.isdir(top) and not os.path.islink(top) else []
+            except OSError:
+                continue
+            folders.extend(entries)
+            if not entries and _named_secret(top, ask):
+                ask.inodes.add((info.st_dev, info.st_ino))
+    return ask.inodes
+
+
+def is_secret(path: str, ask: Ask) -> bool:
+    """Whether `path` is a file that holds secrets: by its name, through a symbolic link, or as
+    a hard link to one of the secret table's files."""
+    if _named_secret(path, ask):
+        return True
+    base = ask.place.repo if ask.place else Path.cwd()
+    try:
+        info = os.stat(os.path.join(base, os.path.expanduser(path)))
+    except OSError:
+        return False
+    # RULE: a hard link to a secret goes to the owner
+    return info.st_nlink > 1 and (info.st_dev, info.st_ino) in _secret_inodes(ask)
 
 
 def secrets(ask: Ask) -> bool:
@@ -636,6 +688,39 @@ def _find_plain(part: list[str]) -> list[str] | None:
     return starts
 
 
+def _recursive(part: list[str]) -> bool:
+    """Whether a read tool walks a tree: rg and find always, grep with -r, ls with -R."""
+    letter = {"grep": "r", "ls": "R"}.get(part[0])
+    if letter is None:
+        return part[0] in ("rg", "find")
+    return any(w.startswith("-") and not w.startswith("--") and letter in w for w in part[1:])
+
+
+def _walk_clean(start: str, place: Place, ask: Ask) -> bool:
+    """Walk a tree the way grep -r does, never following a link and skipping .git, and say
+    whether it holds no secret. A secret found, or a tree past the bounds, is put in ask.why."""
+    clock = time.monotonic()
+    folders, seen = [os.path.join(place.repo, start)], 0
+    while folders:
+        try:
+            entries = list(os.scandir(folders.pop()))
+        except OSError:
+            continue  # grep -r skips what it cannot open; nothing is read from it
+        for entry in entries:
+            seen += 1
+            # RULE: a recursive read over a tree past the bound goes to the owner
+            if seen > WALK_ENTRIES or time.monotonic() - clock > WALK_SECONDS:
+                ask.why.append(f"{start}: too large to check")
+                return False
+            # RULE: a recursive read over a secret goes to the owner and names it
+            if is_secret(entry.path, ask) and not entry.is_symlink():
+                ask.why.append(os.path.relpath(entry.path, place.repo))
+                return False
+            if entry.is_dir(follow_symlinks=False) and entry.name != ".git":
+                folders.append(entry.path)
+    return True
+
+
 def _gives_pattern(part: list[str]) -> bool:
     """Whether a grep or rg names its pattern with -e, so no plain word is the pattern."""
     flags = part[1 : part.index("--")] if "--" in part else part[1:]
@@ -660,6 +745,8 @@ def _reader_shape(part: list[str], place: Place, ask: Ask) -> bool:
     if paths is None or "-" in paths:
         return False
     inside = all(_inside(p, place.reads(), place.repo) and not is_secret(p, ask) for p in paths or ["."])
+    if inside and _recursive(part):
+        inside = all(_walk_clean(p, place, ask) for p in paths or ["."])
     # RULE: diff takes two regular files only
     if part[0] == "diff":
         return inside and len(paths) == 2 and all(os.path.isfile(os.path.join(place.repo, p)) for p in paths)
@@ -707,7 +794,9 @@ def _file_shape(ask: Ask, place: Place) -> bool:
     if ask.tool == "Glob" and (pattern.startswith("/") or ".." in pattern):
         return False
     if ask.tool in ("Read", "Grep", "Glob"):
-        return bool(paths) and all(_inside(p, place.reads(), place.repo) for p in paths)
+        inside = bool(paths) and all(_inside(p, place.reads(), place.repo) for p in paths)
+        # RULE: the grep tool on a folder walks it first
+        return inside and (ask.tool != "Grep" or all(_walk_clean(p, place, ask) for p in paths))
     return bool(paths) and all(_editable(p, place) for p in paths)
 
 
@@ -781,4 +870,4 @@ def sort(
     # RULE: a command of no allowed shape goes to the owner
     shape = not lines and _shape(ask, read_only)
     # RULE: every prompt goes to the owner while no manager answers
-    return Routing("roy", tuple(lines), shape)
+    return Routing("roy", tuple(lines), shape, ask.why)

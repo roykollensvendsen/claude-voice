@@ -278,7 +278,14 @@ session says about it.
 A secret is found by its realpath, so a link, `~` or `$HOME` doesn't hide it.
 The table covers the usual credential files under the home folder, key files,
 and `.env` files anywhere. A tracked `.env.example` that is a plain file in the
-repo is not secret.
+repo is not secret. A hard link to one of the secret files is caught too, by
+comparing the file's device and inode with theirs.
+
+A read that walks a tree, such as `grep -r`, `rg`, `find`, `ls -R` or the Grep
+tool on a folder, is walked first, the way grep does it: no links followed, and
+`.git` skipped. A secret found there goes to the owner, and the reason names the
+file. So does a tree of over 20 000 entries, or one that takes over a second to
+walk.
 
 Where the data to judge a prompt doesn't exist yet, the answer is the owner.
 That covers a session's own branch and pull request, a plugin's money or
