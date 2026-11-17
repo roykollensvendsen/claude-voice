@@ -734,12 +734,18 @@ def shipped_command(folders: list[Path], env: Mapping[str, str]) -> int:
     return 0
 
 
+#: The terminal itself, which a pipe into stdin can't stand in for.
+TERMINAL = "/dev/tty"
+
+
 def _read_from_terminal(prompt: str) -> str:
-    """One line typed at the terminal itself, never from a pipe into stdin."""
-    with open("/dev/tty", "r+", encoding="utf-8") as tty:
-        tty.write(prompt)
-        tty.flush()
-        return tty.readline()
+    """One line typed at the terminal itself, never from a pipe into stdin. A terminal can't
+    seek, and a file opened "r+" in text mode needs to, so it is opened once each way."""
+    # RULE: the typed answer is read from a real terminal
+    with open(TERMINAL, "w", encoding="utf-8") as out, open(TERMINAL, encoding="utf-8") as typed:
+        out.write(prompt)
+        out.flush()
+        return typed.readline()
 
 
 def _own_programme_repos(env: Mapping[str, str]) -> list[Path]:

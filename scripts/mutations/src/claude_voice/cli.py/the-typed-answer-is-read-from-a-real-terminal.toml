@@ -1,0 +1,5 @@
+[[rule]]
+name = "the typed answer is read from a real terminal"
+file = "src/claude_voice/cli.py"
+find = 'with open\(TERMINAL, "w", encoding="utf-8"\) as out, open\(TERMINAL, encoding="utf-8"\) as typed:'
+replace = 'with open(TERMINAL, "r+", encoding="utf-8") as out, open(TERMINAL, encoding="utf-8") as typed:'
