@@ -1,0 +1,5 @@
+[[rule]]
+name = "an issue that names a personal term is asked about"
+file = "src/claude_voice/session_hook.py"
+find = 'if _names_a_term\(terms, texts, files\):'
+replace = 'if False:'

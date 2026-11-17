@@ -1,0 +1,5 @@
+[[rule]]
+name = "an issue whose body file is neither tracked nor in the scratchpad is asked about"
+file = "src/claude_voice/session_hook.py"
+find = 'if not all\(_body_file_may_be_read\(f, session_id, tmp_root\) for f in files\):'
+replace = 'if False:'

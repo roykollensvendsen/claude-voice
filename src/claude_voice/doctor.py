@@ -228,6 +228,20 @@ def _statusline(state_dir: Path) -> dict[str, Any]:
     )
 
 
+def _session_hook(host: Host) -> dict[str, Any]:
+    """Whether the hook that asks before a recursive remove in a repository starts and answers."""
+    from . import session_hook
+
+    python = host.which("python3")
+    if python is None:
+        return session_hook.self_check([], run=_never_runs)
+    return session_hook.self_check([python, "-I", session_hook.__file__])
+
+
+def _never_runs(*args: Any, **kwargs: Any) -> Any:
+    raise OSError("python3 is not installed")
+
+
 def _role_clone(role: dict[str, Any]) -> tuple[Path | None, dict[str, Any]]:
     from .roles import folder_for
 
@@ -302,6 +316,7 @@ def examine(host: Host, role: dict[str, Any] | None, state_dir: Path = STATE_DIR
         _tailscale(host),
         _tailnet_port(host, port),
         _statusline(state_dir),
+        _session_hook(host),
     ]
     if role is not None:
         folder, clone = _role_clone(role)

@@ -1,0 +1,5 @@
+[[rule]]
+name = "any recursive remove asks however it is spelled"
+file = "src/claude_voice/session_hook.py"
+find = 'if not removes_a_tree\(command\):'
+replace = 'if True:'

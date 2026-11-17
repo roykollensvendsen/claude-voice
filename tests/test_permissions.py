@@ -11,11 +11,11 @@ import json
 import os
 import re
 import shlex
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 import pytest
 
-from claude_voice import permissions
+from claude_voice import permissions, session_hook
 from claude_voice.cli import main
 
 RULES = permissions.Rules(allow=["Bash(git status*)", "Bash(uv run pytest*)"], deny=["Bash(git reset --hard*)"])
@@ -799,8 +799,20 @@ def test_every_other_recursive_remove_still_asks_first():
         "rm -rf src /tmp/claude-1000/x",
         "rm -r /var/tmp/x",
     ):
-        assert decision(rules, command) in ("asked", "refused"), command
-        assert any(_matches(rule, command) for rule in rules.ask + rules.deny), command
+        refused = any(_matches(rule, command) for rule in rules.deny)
+        said = session_hook.decision(
+            {"tool_name": "Bash", "session_id": "0" * 8, "cwd": str(folder), "tool_input": {"command": command}},
+            tmp_root=Path("/tmp/claude-1000"),
+            repos=[],
+            terms=None,
+        )
+        assert refused or said == "ask", command
+
+
+def test_a_remove_or_an_issue_is_no_longer_asked_by_a_rule_since_the_session_hook_asks():
+    rules, _, _ = for_a_folder()
+    for rule in ("Bash(rm -r*)", "Bash(gh issue create*)"):
+        assert rule not in rules.ask and rule in rules.retired_ask, rule
 
 
 def test_applied_settings_have_the_placeholders_filled(tmp_path):

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a hook that does not answer is shown as an error with the fix"
+file = "src/claude_voice/session_hook.py"
+find = 'ok = said == ASK'
+replace = 'ok = True'

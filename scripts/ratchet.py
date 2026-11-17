@@ -71,6 +71,7 @@ LAYERS = {
             "fields",
             "safefile",
             "uvlock",
+            "session_hook",
         ),
         0,
     ),

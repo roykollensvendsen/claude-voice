@@ -1,0 +1,5 @@
+[[rule]]
+name = "every abbreviation of recursive counts as recursive"
+file = "src/claude_voice/session_hook.py"
+find = 'return len\(word\) >= 3 and "--recursive"\.startswith\(word\)'
+replace = 'return word == "--recursive"'

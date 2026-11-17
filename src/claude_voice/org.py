@@ -225,6 +225,15 @@ def git_remotes(folder: str) -> tuple[str, ...]:
         return ()
 
 
+def repositories(programme: Programme | None) -> list[str]:
+    """owner/name of each repository the chart lists as a component's remote. A folder's own
+    git remotes are not counted: a clone may point at someone else's upstream."""
+    if programme is None:
+        return []
+    # RULE: a programmes repositories are only those its chart lists
+    return sorted({remote.lower() for c in programme.components for remote in c.remotes if "/" in remote})
+
+
 def known_folders(root: Path, given: Iterable[Path | str | None]) -> list[Path]:
     """The folders whose org files count: the ones `given` (the bridge's own clone and its
     plugins' folders), then every project folder directly under `root`."""

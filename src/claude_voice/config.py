@@ -9,6 +9,8 @@ runs from, so the file is only needed to change something:
                                                 # at the top, before any [table]; default: none
     profile = "~/.config/claude-voice/profile.toml"  # your own profile over the default one; also at
                                                 # the top; default: none (docs/setup.md)
+    personal_terms_file = "~/.config/your-terms"  # words a session's issue must never hold, one per
+                                                # line; at the top; default: none, so every issue asks
 
     [repos]
     claude_voice = "roykollensvendsen/claude-voice"        # the project, on GitHub
@@ -193,6 +195,7 @@ class Config:
     agent_root: Path = field(default_factory=Path.home)  # where that agent starts sessions
     voice_instructions_file: Path | None = None  # the owner's own rules, added to the voice's instructions
     profile: Path | None = None  # the user's own profile, laid over the default (docs/setup.md)
+    personal_terms_file: Path | None = None  # words an issue a session files must never hold
 
 
 def _repo(value: Any, key: str) -> str:
@@ -230,6 +233,7 @@ def load(path: Path | None = FILE, own_clone: Path | None = None, env: Mapping[s
         *_agent(raw.get("agent"), home),
         _path(raw.get("voice_instructions_file"), home),
         _path(raw.get("profile"), home),
+        _path(raw.get("personal_terms_file"), home),
     )
 
 

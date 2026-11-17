@@ -1,0 +1,5 @@
+[[rule]]
+name = "a recursive remove is let through only inside the sessions own scratchpad"
+file = "src/claude_voice/session_hook.py"
+find = 'if QUOTING\.search\(command\) or CONTROL\.search\(command\) or EXPANDS\.search\(command\):'
+replace = 'if False:'

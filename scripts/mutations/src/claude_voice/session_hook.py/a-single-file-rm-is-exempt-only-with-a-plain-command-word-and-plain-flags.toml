@@ -1,0 +1,5 @@
+[[rule]]
+name = "a single file rm is exempt only with a plain command word and plain flags"
+file = "src/claude_voice/session_hook.py"
+find = 'if word\.rsplit\("/", 1\)\[-1\] != "rm" or BUILT\.search\(word\):'
+replace = 'if False:'
