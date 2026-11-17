@@ -109,6 +109,18 @@ ends with why it exists.
 - **Collect decisions into batches.** A couple of times a day, the manager asks
   a short round of questions, most important first, one at a time.
   Why: the owner is not interrupted all day, and work does not wait long.
+- **The owner decides; the manager does the step.** On the owner's yes the
+  manager runs the step itself. The owner types only where typing is the point:
+  a name typed to approve, a secret, a login, or a command Claude Code refused.
+  What the organisation made, it cleans up itself; a branch the owner made by
+  hand is never touched.
+  Why: every command handed to the owner is work taken off the sessions.
+- **Freedom under responsibility, and speak up when work does not flow.** A
+  session does the side tasks its own job needs without asking, and never works
+  round a refusal. When the same friction comes back, the session tells the
+  manager what stopped it, how often and what it proposes. The manager proposes
+  one change to the owner, with what it saves.
+  Why: a bottleneck nobody names is paid for again every day.
 - **One status list per programme, most important first.** The manager keeps
   it in the parent issue, and no session keeps a second copy in its notes.
   Planned: the voice reading it out. For "where are we on acme?", it would
