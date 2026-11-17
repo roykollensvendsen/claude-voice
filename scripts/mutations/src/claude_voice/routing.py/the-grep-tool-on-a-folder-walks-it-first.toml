@@ -1,0 +1,5 @@
+[[rule]]
+name = "the grep tool on a folder walks it first"
+file = "src/claude_voice/routing.py"
+find = 'return inside and \(ask\.tool != "Grep" or all\(_walk_clean\(p, place, ask\) for p in paths\)\)'
+replace = 'return inside'

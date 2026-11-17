@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -707,3 +708,65 @@ def test_the_secret_files_are_the_same_as_the_shipped_deny_table():
 
     shipped = json_.loads(Path(permissions.__file__).with_name("permissions.json").read_text(encoding="utf-8"))
     assert list(routing.SECRET_FILES) == shipped["secrets"]["files"]
+
+
+# -- v2.10: a recursive read walks its tree first --------------------------------------------
+
+
+@pytest.mark.parametrize("command", ["grep -r x .", "grep -rn x src", "rg x", "find . -name a.py", "ls -R"])
+def test_a_recursive_read_over_a_secret_goes_to_the_owner_and_names_it(place, command):
+    (place.repo / "src" / "deep").mkdir(parents=True, exist_ok=True)
+    (place.repo / "src" / "deep" / ".env").write_text("SECRET=1\n")
+    out = bash(command, place)
+    assert out.shape is False, command
+    assert any(".env" in why for why in out.why), out.why
+
+
+def test_a_recursive_read_over_a_tracked_env_template_goes_through(place):
+    (place.repo / "src" / ".env.example").write_text("SECRET=\n")
+    out = routing.sort("Bash", {"command": "grep -r x src"}, place=place, now=DAY, tracked=lambda path: True)
+    assert out.shape is True
+
+
+def test_rg_with_no_path_walks_the_folder_it_runs_in(place):
+    (place.repo / ".env").write_text("SECRET=1\n")
+    assert bash("rg x", place).shape is False
+    assert bash("cat src/a.py", place).shape is True
+
+
+def test_a_recursive_read_over_a_tree_past_the_bound_goes_to_the_owner(place, monkeypatch):
+    monkeypatch.setattr(routing, "WALK_ENTRIES", 3)
+    for n in range(5):
+        (place.repo / "src" / f"f{n}.py").write_text("")
+    out = bash("grep -r x src", place)
+    assert out.shape is False and any("too large" in why for why in out.why)
+
+
+def test_the_walk_skips_git_and_never_follows_a_link(place, tmp_path):
+    (place.repo / ".git").mkdir(exist_ok=True)
+    (place.repo / ".git" / ".env").write_text("")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / ".env").write_text("SECRET=1\n")
+    (place.repo / "src" / "link").symlink_to(outside)
+    assert bash("grep -r x .", place).shape is True
+
+
+def test_the_grep_tool_on_a_folder_walks_it_first(place):
+    (place.repo / "src" / ".env").write_text("SECRET=1\n")
+    out = routing.sort("Grep", {"pattern": "x", "path": str(place.repo / "src")}, place=place, now=DAY)
+    assert out.shape is False and any(".env" in why for why in out.why)
+    bare = routing.sort("Grep", {"pattern": "x"}, place=place, now=DAY)
+    assert bare.shape is False
+
+
+def test_a_hard_link_to_a_secret_goes_to_the_owner(place, home_secrets):
+    os.link(place.home / ".netrc", place.repo / "notes.txt")
+    assert routing.sort("Read", {"file_path": str(place.repo / "notes.txt")}, place=place, now=DAY).line == 1
+    assert bash("cat notes.txt", place).shape is False
+    assert bash("grep -r x .", place).shape is False
+
+
+def test_a_hard_link_between_plain_files_is_not_secret(place, home_secrets):
+    os.link(place.repo / "src" / "a.py", place.repo / "src" / "same.py")
+    assert bash("cat src/same.py", place).shape is True
