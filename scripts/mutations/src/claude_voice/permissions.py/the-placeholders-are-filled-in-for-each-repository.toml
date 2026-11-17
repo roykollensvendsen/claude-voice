@@ -1,0 +1,5 @@
+[[rule]]
+name = "the placeholders are filled in for each repository"
+file = "src/claude_voice/permissions.py"
+find = 'return replace\($'
+replace = 'return rules if True else replace('

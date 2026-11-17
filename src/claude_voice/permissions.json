@@ -272,6 +272,21 @@
       "git push* +{branch} *"
     ]
   },
+  "what cannot be got back": {
+    "removers": ["rm -r*", "rm -R*", "rm -fr*", "rm --recursive*"],
+    "targets": [
+      "/", "/ *",
+      "~", "~/", "~ *", "~/ *",
+      "$HOME", "$HOME/", "$HOME *",
+      "{home}", "{home}/", "{home} *",
+      "{folder}", "{folder}/", "{folder} *",
+      ".", "./",
+      "*.git", "*.git/", "*.git *", "*.git/*",
+      "~/.claude*", "{home}/.claude*",
+      "~/.local/state*", "{home}/.local/state*",
+      "~/.config*", "{home}/.config*"
+    ]
+  },
   "retired": {
     "allow": [
       "Bash(cp * /tmp/*)",

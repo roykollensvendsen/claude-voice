@@ -88,6 +88,9 @@ def load(table: Path = TABLE) -> Rules:
     deny += _for_each_branch(protected["branches"], protected.get("other pushes", []))
     secrets = raw["secrets"]
     deny += [f"Bash({reader} {path})" for path in secrets["files"] for reader in secrets["readers"]]
+    lost = raw.get("what cannot be got back", {"removers": [], "targets": []})
+    # RULE: removing what cannot be got back is refused
+    deny += [f"Bash({remover} {target})" for remover in lost["removers"] for target in lost["targets"]]
     devices = raw.get("device tools", {"servers": [], "tools": []})
     # RULE: a tool that moves something in the house asks first, by every name it is seen under
     ask += [f"mcp__{server}__{tool}" for server in devices["servers"] for tool in devices["tools"]]
@@ -99,6 +102,27 @@ def load(table: Path = TABLE) -> Rules:
         _unique(retired.get("allow", [])),
         ask=_unique(ask),
         retired_ask=_unique(retired.get("ask", [])),
+    )
+
+
+def for_folder(rules: Rules, folder: Path, home: Path | None = None, uid: int | None = None) -> Rules:
+    """The rules as they are written for one repository: {uid} is the owner's user id, {home}
+    the home folder, {repo} the repository folder's name and {folder} its whole path."""
+    home = home or Path.home()
+    uid = uid if uid is not None else getattr(os, "getuid", lambda: 0)()
+    values = {"{uid}": str(uid), "{home}": str(home), "{repo}": folder.name, "{folder}": str(folder)}
+
+    def filled(found: list[str]) -> list[str]:
+        out = []
+        for rule in found:
+            for key, value in values.items():
+                rule = rule.replace(key, value)
+            out.append(rule)
+        return _unique(out)
+
+    # RULE: the placeholders are filled in for each repository
+    return replace(
+        rules, allow=filled(rules.allow), deny=filled(rules.deny), ask=filled(rules.ask), retired=filled(rules.retired)
     )
 
 
@@ -248,7 +272,7 @@ def apply(
     file = folder / SETTINGS
     before = _read(file)
     try:
-        after = merged(before, rules)
+        after = merged(before, for_folder(rules, folder.resolve()))
     except PermissionsError as exc:
         raise PermissionsError(f"{file}: {exc}, so it was left alone") from exc
     counts = _changes(folder, before, after)
