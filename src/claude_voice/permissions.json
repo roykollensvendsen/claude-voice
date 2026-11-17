@@ -194,6 +194,13 @@
     ]
   },
   "deny": {
+    "stopping processes by name, which ends other sessions' work too": [
+      "Bash(pkill)",
+      "Bash(pkill *)",
+      "Bash(killall)",
+      "Bash(killall *)",
+      "Bash(xargs*kill*)"
+    ],
     "history that cannot be got back": [
       "Bash(git reset --hard*)",
       "Bash(git checkout -- *)",
