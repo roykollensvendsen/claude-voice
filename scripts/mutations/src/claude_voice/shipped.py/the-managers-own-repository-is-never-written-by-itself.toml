@@ -1,0 +1,5 @@
+[[rule]]
+name = "the managers own repository is never written by itself"
+file = "src/claude_voice/shipped.py"
+find = 'if folder == manager:'
+replace = 'if False:'

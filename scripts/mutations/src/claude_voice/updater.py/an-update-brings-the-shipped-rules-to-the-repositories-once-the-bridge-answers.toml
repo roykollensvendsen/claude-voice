@@ -1,0 +1,5 @@
+[[rule]]
+name = "an update brings the shipped rules to the repositories once the bridge answers"
+file = "src/claude_voice/updater.py"
+find = 'log\.step\("rules", True, rules\(after\)\)'
+replace = 'pass'

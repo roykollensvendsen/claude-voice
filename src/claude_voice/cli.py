@@ -180,6 +180,11 @@ def main(
     permission_cmd.add_argument(
         "--accept", action="store_true", help="show one repository's rights files, and accept them by typing its name"
     )
+    permission_cmd.add_argument(
+        "--shipped",
+        action="store_true",
+        help="after an update: write the shipped rules where that only takes rights away, and say what waits",
+    )
     org_cmd = sub.add_parser("org", help="print the org chart, or check its files")
     org_cmd.add_argument("action", nargs="?", choices=["show", "check"], default="show")
     restart_cmd = sub.add_parser("restart", help="restart the bridge's service, noting why for its health answer")
@@ -197,13 +202,7 @@ def main(
         "setup": lambda: setup_command(parsed.check, parsed.json, env, login),
         "repos": lambda: repos_command(parsed.check, env),
         "restart": lambda: restart_command(parsed.why, parsed.dry_run, systemctl),
-        "permissions": lambda: (
-            hook_check_command(parsed.folders, env)
-            if parsed.check
-            else accept_command(parsed.folders, env)
-            if parsed.accept
-            else permissions_command(parsed.folders, parsed.dry_run, env)
-        ),
+        "permissions": lambda: permissions_verb(parsed, env),
         "org": lambda: org_command(parsed.action, env),
         "machines": lambda: machines_command(parsed.action, parsed.name, env),
         "agent": lambda: agent_command(parsed.action, env, parsed.sessions),
@@ -662,6 +661,40 @@ def hook_check_command(folders: list[Path], env: Mapping[str, str]) -> int:
         sys.stdout.write(f"{folder}: {detail}. Fix: run `claude-voice permissions` to write it again.\n")
         code = 1
     return code
+
+
+def permissions_verb(parsed: argparse.Namespace, env: Mapping[str, str]) -> int:
+    if parsed.check:
+        return hook_check_command(parsed.folders, env)
+    if parsed.shipped:
+        return shipped_command(parsed.folders, env)
+    if parsed.accept:
+        return accept_command(parsed.folders, env)
+    return permissions_command(parsed.folders, parsed.dry_run, env)
+
+
+def shipped_command(folders: list[Path], env: Mapping[str, str]) -> int:
+    """Bring the shipped rules to the repositories where that only takes rights away, and say
+    for each what was written, what waits for the owner's accept, and what was left alone."""
+    from . import config as settings
+    from . import org, permissions, roles, shipped
+
+    own = roles.own_clone()
+    if not folders:
+        try:
+            folders = permissions.folders(settings.load(settings.FILE, own_clone=own, env=env))
+        except settings.ConfigError as exc:
+            sys.stderr.write(f"claude-voice: {exc}\n")
+            return 1
+    root = Path(env.get("CLAUDE_VOICE_ROOT", "~/src")).expanduser()
+    chart = org.load(org.known_folders(root, [own, *folders]))
+    backups = permissions.backup_root(Path(env.get("HOME") or Path.home()))
+    # RULE: the shipped rules are recorded under the commit that is installed
+    sha = shipped.installed_commit(own)
+    done = shipped.sync(folders, chart, own, permissions.load(), sha, backup_root=backups)
+    for line in shipped.report(done):
+        sys.stdout.write(line + "\n")
+    return 0
 
 
 def _read_from_terminal(prompt: str) -> str:

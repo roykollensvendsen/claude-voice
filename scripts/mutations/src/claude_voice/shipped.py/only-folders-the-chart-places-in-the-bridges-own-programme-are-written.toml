@@ -1,0 +1,5 @@
+[[rule]]
+name = "only folders the chart places in the bridges own programme are written"
+file = "src/claude_voice/shipped.py"
+find = 'if placed is not own:'
+replace = 'if False:'

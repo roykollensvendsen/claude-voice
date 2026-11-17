@@ -1,0 +1,5 @@
+[[rule]]
+name = "the shipped rules are recorded under the commit that is installed"
+file = "src/claude_voice/cli.py"
+find = 'sha = shipped\.installed_commit\(own\)'
+replace = 'sha = "unknown"'

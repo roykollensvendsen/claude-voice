@@ -1,0 +1,5 @@
+[[rule]]
+name = "a hand edited file is reported and never overwritten"
+file = "src/claude_voice/shipped.py"
+find = 'if accepted\.sha256\(old\) != entry\.get\("sha256"\):'
+replace = 'if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a whole tool or a whole server is a broad rule but one server tool is not"
+file = "src/claude_voice/shipped.py"
+find = 'return not rule\.startswith\("mcp__"\) or rule\.count\("__"\) < 2'
+replace = 'return True'

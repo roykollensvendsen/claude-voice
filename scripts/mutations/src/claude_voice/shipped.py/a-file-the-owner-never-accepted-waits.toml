@@ -1,0 +1,5 @@
+[[rule]]
+name = "a file the owner never accepted waits"
+file = "src/claude_voice/shipped.py"
+find = 'if not isinstance\(entry, dict\) or not file\.exists\(\):'
+replace = 'if False:'
