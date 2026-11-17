@@ -1,0 +1,5 @@
+[[rule]]
+name = "a failed call keeps a plain error class never its message"
+file = "src/claude_voice/calllog.py"
+find = 'return "error", "bridge_failed"'
+replace = 'return "error", str(error)'

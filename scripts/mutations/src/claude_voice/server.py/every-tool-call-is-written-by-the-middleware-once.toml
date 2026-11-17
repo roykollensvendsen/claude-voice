@@ -1,0 +1,5 @@
+[[rule]]
+name = "every tool call is written by the middleware once"
+file = "src/claude_voice/server.py"
+find = 'CALLS\[0\]\.end\(logged, \*calllog\.classify\(\*\*how\), ms\)'
+replace = 'pass'

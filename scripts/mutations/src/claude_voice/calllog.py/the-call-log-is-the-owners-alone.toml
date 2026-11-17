@@ -1,0 +1,5 @@
+[[rule]]
+name = "the call log is the owners alone"
+file = "src/claude_voice/calllog.py"
+find = 'handle = os\.open\(self\.path, os\.O_WRONLY \| os\.O_APPEND \| os\.O_CREAT, 0o600\)'
+replace = 'handle = os.open(self.path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)'

@@ -55,6 +55,15 @@ CREATE TABLE IF NOT EXISTS voice_calls(
   chars INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS voice_calls_ts ON voice_calls(ts);
+-- Tool calls per Oslo day and tool, with counts per duration bucket (calllog.py).
+CREATE TABLE IF NOT EXISTS call_totals(
+  day TEXT NOT NULL,
+  tool TEXT NOT NULL,
+  calls INTEGER NOT NULL,
+  errors INTEGER NOT NULL,
+  buckets TEXT NOT NULL,
+  PRIMARY KEY (day, tool)
+);
 -- Each session's short number, kept while it runs; a released one is free again at once.
 CREATE TABLE IF NOT EXISTS session_numbers(
   session_id TEXT PRIMARY KEY,
@@ -153,6 +162,38 @@ class Store:
     def set_setting(self, key: str, value: Any) -> None:
         with self.db:
             self.db.execute("INSERT OR REPLACE INTO settings VALUES (?, ?, ?)", (key, json.dumps(value), self.clock()))
+
+    def save_call_totals(self, rows: list[tuple[str, str, int, int, list[int]]], flushed_to: str) -> None:
+        """Set each (day, tool)'s counts, and the time they are counted up to, in one transaction."""
+        with self.db:
+            self.db.executemany(
+                "INSERT INTO call_totals(day, tool, calls, errors, buckets) VALUES (?,?,?,?,?) "
+                "ON CONFLICT(day, tool) DO UPDATE SET calls=excluded.calls, errors=excluded.errors, "
+                "buckets=excluded.buckets",
+                [(day, tool, calls, errors, json.dumps(buckets)) for day, tool, calls, errors, buckets in rows],
+            )
+            self.db.execute(
+                "INSERT INTO settings(key, value, updated_at) VALUES ('calls_flushed_to', ?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+                (json.dumps(flushed_to), self.clock()),
+            )
+
+    def call_totals(self, first: str, last: str) -> list[dict[str, Any]]:
+        rows = self.db.execute(
+            "SELECT day, tool, calls, errors, buckets FROM call_totals WHERE day BETWEEN ? AND ? ORDER BY day, tool",
+            (first, last),
+        ).fetchall()
+        return [{**dict(row), "buckets": json.loads(row["buckets"])} for row in rows]
+
+    def call_totals_flushed_to(self) -> str:
+        """When the last flush counted up to, as the call log's lines write a time; empty for never."""
+        value = self.get_setting("calls_flushed_to")
+        return str(value) if value is not None else ""
+
+    def drop_call_totals_before(self, day: str) -> None:
+        with self.db:
+            # RULE: totals older than two years are dropped
+            self.db.execute("DELETE FROM call_totals WHERE day < ?", (day,))
 
     def add_voice_call(self, ts: float, client: str, connection: str, tool: str, chars: int) -> None:
         with self.db:

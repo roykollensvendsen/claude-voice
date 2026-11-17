@@ -1,0 +1,5 @@
+[[rule]]
+name = "old lines and lines beyond the cap are pruned through a rename"
+file = "src/claude_voice/calllog.py"
+find = 'os\.replace\(spare, self\.path\)'
+replace = 'pass'
