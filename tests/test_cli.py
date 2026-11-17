@@ -197,3 +197,27 @@ def test_a_bad_configuration_is_one_line_and_exit_code_one(tmp_path, capsys):
     err = capsys.readouterr().err.strip()
     assert err.startswith("claude-voice: ANTHROPIC_API_KEY is set")
     assert "\n" not in err
+
+
+def test_the_typed_answer_is_read_from_a_real_terminal(monkeypatch):
+    """A terminal can't seek, so it is opened once to read and once to write. The test uses a
+    real pseudo-terminal, not a stand-in, because a stand-in hid exactly this."""
+    import os
+    import sys
+
+    import pytest
+
+    if sys.platform == "win32":
+        pytest.skip("no pseudo-terminals on Windows")
+    import pty
+
+    main_end, terminal_end = pty.openpty()
+    try:
+        monkeypatch.setattr(cli, "TERMINAL", os.ttyname(terminal_end))
+        os.write(main_end, b"accept 3\n")
+        assert cli._read_from_terminal("Type accept 3: ").strip() == "accept 3"
+        shown = os.read(main_end, 1024).decode()
+        assert "Type accept 3: " in shown
+    finally:
+        os.close(main_end)
+        os.close(terminal_end)
