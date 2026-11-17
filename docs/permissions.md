@@ -59,6 +59,31 @@ started itself. Until the bridge runs under a system user of its own, the record
 the owner's file, and a session that can write it could forge it. A forged record can
 only restart sessions sooner; it never widens what is on disk.
 
+### After an update
+
+An update brings the shipped rules to the repositories by itself, once the new
+bridge answers. For each repository it works out what `claude-voice permissions`
+would write, and compares that with the file on disk:
+
+- **A change that only takes rights away is written,** and recorded as accepted
+  from the shipped rules: a new deny or ask rule, or a removed allow rule.
+- **Everything else waits for the owner's accept,** and the update's log says so,
+  with the command to run:
+  - a change that widens rights, or any change outside the rule lists;
+  - a broad new rule, marked `BROAD`, such as `Bash(*)`, a whole tool like `Edit`,
+    or a pattern that starts with `*`, which could lock a session out of its own work;
+  - a file the owner never accepted, or has edited since, even while the new
+    rules are being written: only the exact bytes that were checked are replaced;
+  - the manager's own repository, so a bad rule never cuts off the session that
+    relays the owner's answers.
+- **Only the bridge's own programme is touched.** A folder is written only when
+  the org chart places it in the programme whose file is in the bridge's own clone.
+  A folder in another programme or in none, or a chart that cannot be read, is
+  left exactly as it is.
+
+To run the same step by hand: `claude-voice permissions --shipped`. It records
+the commit the bridge runs from.
+
 Rolling sessions onto accepted rights builds on this record.
 
 ## What it changes, and what it leaves alone

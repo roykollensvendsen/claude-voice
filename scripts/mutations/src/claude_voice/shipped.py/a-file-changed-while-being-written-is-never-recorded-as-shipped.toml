@@ -1,0 +1,5 @@
+[[rule]]
+name = "a file changed while being written is never recorded as shipped"
+file = "src/claude_voice/shipped.py"
+find = 'if not _replace_if_unchanged\(file, folder, old, new, backup_root\):'
+replace = 'if False:'

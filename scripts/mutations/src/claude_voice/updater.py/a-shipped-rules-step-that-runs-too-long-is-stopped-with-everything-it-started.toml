@@ -1,0 +1,5 @@
+[[rule]]
+name = "a shipped rules step that runs too long is stopped with everything it started"
+file = "src/claude_voice/updater.py"
+find = 'os\.killpg\(run\.pid, signal\.SIGKILL\)'
+replace = 'pass'

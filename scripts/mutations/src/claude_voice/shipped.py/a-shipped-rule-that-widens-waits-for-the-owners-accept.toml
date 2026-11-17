@@ -1,0 +1,5 @@
+[[rule]]
+name = "a shipped rule that widens waits for the owners accept"
+file = "src/claude_voice/shipped.py"
+find = 'if widens or wide:'
+replace = 'if False:'

@@ -1,8 +1,10 @@
 """Updating claude-voice: pull, install, test, restart, and roll back if anything fails."""
 
 import json
+import os
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -81,7 +83,7 @@ def test_a_newer_version_is_pulled_tested_and_started(install, tmp_path):
     service = Service()
     outcome, steps = run(clone, tmp_path, service)
     assert outcome["result"] == "updated" and git(clone, "rev-parse", "HEAD") == new
-    assert steps == ["check", "fetch", "pull", "install", "test", "restart", "verify", "done"]
+    assert steps == ["check", "fetch", "pull", "install", "test", "restart", "verify", "rules", "done"]
     assert service.restarts == 1
 
 
@@ -408,3 +410,72 @@ def test_a_test_run_that_runs_out_of_time_keeps_what_it_printed(monkeypatch, tmp
     assert not ok
     assert kept.read_text() == "..F\nFAILED tests/t.py::test_x\nThe tests ran past 900 s and were stopped.\n"
     assert detail.splitlines() == ["FAILED tests/t.py::test_x", "The tests ran past 900 s and were stopped."]
+
+
+def test_an_update_brings_the_shipped_rules_to_the_repositories_once_the_bridge_answers(install, tmp_path):
+    """Rolling restart v2, §8a: new rules that only take rights away reach the repositories."""
+    origin, clone = install
+    new = commit(origin, "b")
+    asked: list[str] = []
+
+    def rules(sha):
+        asked.append(sha)
+        return "garage: written"
+
+    log = tmp_path / "update.json"
+    service = Service()
+    updater.run(
+        clone,
+        log,
+        install=lambda f: (True, ""),
+        tests=lambda f: (True, ""),
+        restart=service.restart,
+        healthy=service.health,
+        rules=rules,
+    )
+    steps = json.loads(log.read_text())["steps"]
+    assert asked == [new]
+    assert [s["step"] for s in steps][-3:] == ["verify", "rules", "done"]
+    assert next(s for s in steps if s["step"] == "rules")["detail"] == "garage: written"
+
+
+def test_an_update_that_is_rolled_back_leaves_the_rules_alone(install, tmp_path):
+    origin, clone = install
+    commit(origin, "b")
+    asked: list[str] = []
+    updater.run(
+        clone,
+        tmp_path / "update.json",
+        install=lambda f: (True, ""),
+        tests=lambda f: (False, "1 failed"),
+        restart=lambda: None,
+        healthy=lambda: True,
+        rules=lambda sha: asked.append(sha) or "",
+    )
+    assert asked == []
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="process groups are POSIX")
+def test_a_shipped_rules_step_that_runs_too_long_is_stopped_with_everything_it_started(tmp_path, monkeypatch):
+    """The step's own uv may start children; on a time-out the whole group goes."""
+    marker = tmp_path / "child.pid"
+    fake = tmp_path / "uv"
+    fake.write_text(f"#!/bin/sh\nsleep 60 &\necho $! > {marker}\nwait\n")
+    fake.chmod(0o755)
+    monkeypatch.setattr(updater.procs, "find", lambda name: str(fake))
+    monkeypatch.setattr(updater, "SHIPPED_SECONDS", 1.0)
+    began = time.monotonic()
+    said = updater.shipped_rules(tmp_path)
+    assert "stopped" in said and time.monotonic() - began < 10
+    child = int(marker.read_text())
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and os.path.exists(f"/proc/{child}") and "Z" not in _state(child):
+        time.sleep(0.1)
+    assert not os.path.exists(f"/proc/{child}") or "Z" in _state(child)
+
+
+def _state(pid):
+    try:
+        return open(f"/proc/{pid}/stat").read().split()[2]
+    except OSError:
+        return "Z"
