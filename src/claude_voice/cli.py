@@ -178,7 +178,10 @@ def main(
     permission_cmd.add_argument("--dry-run", action="store_true", help="say what would be added, and write nothing")
     permission_cmd.add_argument("--check", action="store_true", help="run each repository's session hook once")
     permission_cmd.add_argument(
-        "--accept", action="store_true", help="show one repository's rights files, and accept them by typing its name"
+        "--accept", action="store_true", help="show the repositories' rights files, and accept them by typing once"
+    )
+    permission_cmd.add_argument(
+        "--all", action="store_true", help="with --accept: every repository of the bridge's own programme"
     )
     permission_cmd.add_argument(
         "--shipped",
@@ -669,7 +672,7 @@ def permissions_verb(parsed: argparse.Namespace, env: Mapping[str, str]) -> int:
     if parsed.shipped:
         return shipped_command(parsed.folders, env)
     if parsed.accept:
-        return accept_command(parsed.folders, env)
+        return accept_command(parsed.folders, env, parsed.all)
     return permissions_command(parsed.folders, parsed.dry_run, env)
 
 
@@ -705,39 +708,119 @@ def _read_from_terminal(prompt: str) -> str:
         return tty.readline()
 
 
-def accept_command(folders: list[Path], env: Mapping[str, str]) -> int:
-    """Show what changed in one repository's rights files since the owner last accepted them,
-    the lines that widen a session's rights first, and record them once its name is typed."""
+def _own_programme_repos(env: Mapping[str, str]) -> list[Path]:
+    """The repositories in the settings that the org chart places in the bridge's own
+    programme; none when the chart cannot be read. Never guessed from a folder's name."""
+    from . import config as settings
+    from . import org, permissions, roles
+
+    own = roles.own_clone()
+    folders = permissions.folders(settings.load(settings.FILE, own_clone=own, env=env))
+    root = Path(env.get("CLAUDE_VOICE_ROOT", "~/src")).expanduser()
+    chart = org.load(org.known_folders(root, [own, *folders]))
+    mine = next((p for p in chart.programmes if own and p.repo == own.resolve()), None)
+    # RULE: accept all says so when the chart cannot name the bridges own programme
+    if mine is None:
+        raise settings.ConfigError("the org chart names no programme for the bridge's own clone, so --all finds none")
+    return [f for f in folders if chart.place(str(f.resolve()), ()).programme is mine]
+
+
+def _accept_summary(repo: Path, shown: list[Any]) -> str:
     from . import accepted
 
-    if len(folders) != 1:
-        sys.stderr.write("claude-voice: an accept names one repository: claude-voice permissions --accept <repo>\n")
-        return 1
+    lines = [line for item in shown for line in item.lines]
+    widen = sum(1 for line in lines if line.kind == accepted.WIDENS)
+    files = f"{len(shown)} file{'' if len(shown) == 1 else 's'}"
+    return f"{repo}: {files}, {widen} WIDENS, {len(lines) - widen} narrows"
+
+
+def _accept_folders(folders: list[Path], env: Mapping[str, str], every: bool) -> list[Path] | None:
+    """The repositories to accept, or None after saying why there are none or why not here."""
+    from . import config as settings
+
+    if every:
+        try:
+            folders = _own_programme_repos(env)
+        except settings.ConfigError as exc:
+            sys.stderr.write(f"claude-voice: {exc}\n")
+            return None
+    if not folders:
+        sys.stderr.write("claude-voice: name the repositories to accept, or add --all\n")
+        return None
     if sys.platform == "win32":
         sys.stderr.write("claude-voice: the accept reads a terminal of its own; run it inside WSL\n")
-        return 1
+        return None
     # RULE: an accept is typed in a terminal never piped
     if _refuse_outside_a_terminal("permissions --accept", env):
-        return 1
-    repo = folders[0].resolve()
-    shown = accepted.show(repo)
-    if not shown:
-        sys.stdout.write(f"{repo}: nothing to accept; every rights file is as last accepted.\n")
-        return 0
-    sys.stdout.write(accepted.text(shown))
+        return None
+    return folders
+
+
+def _show_for_accept(found: list[tuple[Path, list[Any]]]) -> None:
+    """One line per repository, then every widening repository's lines in full."""
+    from . import accepted
+
+    for repo, shown in found:
+        sys.stdout.write(_accept_summary(repo, shown) + "\n")
+    for _repo, shown in found:
+        # RULE: every line that widens a sessions rights is shown before the owner types
+        if any(line.kind == accepted.WIDENS for item in shown for line in item.lines):
+            sys.stdout.write(accepted.text(shown))
+
+
+def _typed_yes(found: list[tuple[Path, list[Any]]]) -> bool:
+    """Whether the owner typed the one answer that accepts everything shown."""
+    answer = found[0][0].name if len(found) == 1 else f"accept {len(found)}"
     typed = _read_from_terminal(
-        f"Read the WIDENS lines first. Type {repo.name} to accept these files, anything else to stop: "
+        f"Read the WIDENS lines first. Type {answer} to accept all of this, anything else to stop: "
     )
     # RULE: the owner accepts a repositorys rights by typing its name
-    if typed.strip() != repo.name:
-        sys.stdout.write("Not accepted.\n")
+    return typed.strip() == answer
+
+
+def _record_accept(every_file: list[Any]) -> int:
+    """Record the files shown, unless any of them moved since."""
+    from . import accepted
+
+    # RULE: one file changed after it was shown refuses the whole accept
+    moved = [str(item.path) for item in every_file if not item.path.is_file() or item.path.read_bytes() != item.body]
+    if moved:
+        sys.stderr.write(
+            f"claude-voice: {', '.join(moved)} changed after it was shown; nothing was accepted. Run it again.\n"
+        )
         return 1
     try:
-        accepted.accept(shown)
+        accepted.accept(every_file)
     except accepted.Changed as exc:
         sys.stderr.write(f"claude-voice: {exc}\n")
         return 1
-    sys.stdout.write(f"Accepted {len(shown)} file{'' if len(shown) == 1 else 's'} for {repo.name}.\n")
+    return 0
+
+
+def accept_command(folders: list[Path], env: Mapping[str, str], every: bool = False) -> int:
+    """Show what changed in the repositories' rights files since the owner last accepted them,
+    and record them all once the owner types one answer. Every line that widens a session's
+    rights is shown in full; a repository that only narrows gets one line."""
+    from . import accepted
+
+    chosen = _accept_folders(folders, env, every)
+    if chosen is None:
+        return 1
+    found = [(repo.resolve(), accepted.show(repo.resolve())) for repo in chosen]
+    found = [(repo, shown) for repo, shown in found if shown]
+    if not found:
+        sys.stdout.write("Nothing to accept; every rights file is as last accepted.\n")
+        return 0
+    _show_for_accept(found)
+    if not _typed_yes(found):
+        sys.stdout.write("Not accepted.\n")
+        return 1
+    every_file = [item for _, shown in found for item in shown]
+    if _record_accept(every_file):
+        return 1
+    files = f"{len(every_file)} file{'' if len(every_file) == 1 else 's'}"
+    repos = f"{len(found)} repositor{'y' if len(found) == 1 else 'ies'}"
+    sys.stdout.write(f"Accepted {files} in {repos}.\n")
     return 0
 
 

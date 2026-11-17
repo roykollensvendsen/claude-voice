@@ -47,6 +47,12 @@ ask or deny rule, or any other changed setting, such as a hook. A file never
 accepted before is shown whole, as widening. Then it asks for the repository's
 name, read from the terminal itself, so a pipe cannot answer.
 
+Several repositories can be accepted at once: name them all, or use `--all` for
+every repository the org chart places in the bridge's own programme. It prints one
+line per repository, with how many lines widen and how many narrow. Then it prints
+every widening line in full, and asks once: type `accept <n>`, where n is the number
+of repositories. A repository that only narrows gets its one line.
+
 Only the files it showed are recorded, and only as they were shown. A file that
 changes before the name is typed refuses the accept; run it again and read it
 anew. The record is `accepted.json` in the bridge's state folder, with a private

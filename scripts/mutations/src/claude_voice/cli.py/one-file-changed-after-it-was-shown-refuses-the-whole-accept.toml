@@ -1,0 +1,5 @@
+[[rule]]
+name = "one file changed after it was shown refuses the whole accept"
+file = "src/claude_voice/cli.py"
+find = 'moved = \[str\(item\.path\) for item in every_file'
+replace = 'moved = []  # mutated'

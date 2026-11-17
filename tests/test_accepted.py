@@ -178,10 +178,9 @@ def test_an_accept_is_typed_in_a_terminal_never_piped(tmp_path, state, monkeypat
 
 
 @needs_a_terminal
-def test_an_accept_names_one_repository(tmp_path, state, at_a_terminal, capsys):
-    assert cli.main(["permissions", "--accept", str(tmp_path / "a"), str(tmp_path / "b")], env={}) == 1
+def test_an_accept_needs_a_repository_or_all(tmp_path, state, at_a_terminal, capsys):
     assert cli.main(["permissions", "--accept"], env={}) == 1
-    assert "one repository" in capsys.readouterr().err
+    assert "--all" in capsys.readouterr().err
 
 
 @needs_a_terminal
@@ -190,7 +189,7 @@ def test_a_repository_with_nothing_new_says_so(tmp_path, state, at_a_terminal, m
     repo.mkdir()
     asked = typed(monkeypatch, "voice-repo")
     assert cli.main(["permissions", "--accept", str(repo)], env={}) == 0
-    assert not asked and "nothing to accept" in capsys.readouterr().out
+    assert not asked and "Nothing to accept" in capsys.readouterr().out
 
 
 @needs_a_terminal
@@ -246,3 +245,94 @@ def test_the_accepted_copy_is_the_shown_bytes_exactly(tmp_path, state, monkeypat
     assert (state / "accepted" / accepted.sha256(file.read_bytes())).read_bytes() == file.read_bytes()
     safefile.replace(tmp_path / "plain.txt", "a\nb\n")
     assert (tmp_path / "plain.txt").read_bytes() == b"a\r\nb\r\n"  # text still gets the system's endings
+
+
+# -- several repositories at once ------------------------------------------------------
+
+
+def two_repos(tmp_path: Path) -> tuple[Path, Path]:
+    """One repository that widens, and one that only narrows since it was accepted."""
+    wide, narrow = tmp_path / "garage", tmp_path / "tv"
+    settings(wide, {"permissions": {"allow": ["Bash(curl *)"]}})
+    settings(narrow, {"permissions": {"allow": ["Bash(ls*)"]}})
+    accept_all(narrow)
+    settings(narrow, {"permissions": {"allow": ["Bash(ls*)"], "deny": ["Bash(git clean -f*)"]}})
+    return wide, narrow
+
+
+@needs_a_terminal
+def test_one_typed_answer_accepts_several_repositories(tmp_path, state, at_a_terminal, monkeypatch, capsys):
+    wide, narrow = two_repos(tmp_path)
+    asked = typed(monkeypatch, "accept 2")
+    assert cli.main(["permissions", "--accept", str(wide), str(narrow)], env={}) == 0
+    assert "accept 2" in asked[0]
+    assert accepted.show(wide) == [] and accepted.show(narrow) == []
+    assert "Accepted 2 files in 2 repositories" in capsys.readouterr().out
+
+
+@needs_a_terminal
+def test_every_line_that_widens_a_sessions_rights_is_shown_before_the_owner_types(
+    tmp_path, state, at_a_terminal, monkeypatch, capsys
+):
+    wide, narrow = two_repos(tmp_path)
+    typed(monkeypatch, "no")
+    cli.main(["permissions", "--accept", str(wide), str(narrow)], env={})
+    out = capsys.readouterr().out
+    assert f"{wide.resolve()}: 1 file, " in out and f"{narrow.resolve()}: 1 file, 0 WIDENS, 1 narrows" in out
+    assert "Bash(curl *)" in out  # the widening repository's lines, in full
+    assert "Bash(git clean -f*)" not in out  # the narrowing one gets its one line only
+
+
+@needs_a_terminal
+def test_one_file_changed_after_it_was_shown_refuses_the_whole_accept(
+    tmp_path, state, at_a_terminal, monkeypatch, capsys
+):
+    wide, narrow = two_repos(tmp_path)
+    before = accepted.read_record(accepted.RECORD)
+
+    def read(prompt: str) -> str:
+        settings(narrow, {"permissions": {"allow": ["Bash(*)"]}})
+        return "accept 2"
+
+    monkeypatch.setattr(cli, "_read_from_terminal", read)
+    assert cli.main(["permissions", "--accept", str(wide), str(narrow)], env={}) == 1
+    assert "nothing was accepted" in capsys.readouterr().err
+    assert accepted.read_record(accepted.RECORD) == before
+
+
+@needs_a_terminal
+def test_accept_all_takes_only_the_bridges_own_programmes_repositories(
+    tmp_path, state, at_a_terminal, monkeypatch, capsys
+):
+    from claude_voice import config, org, permissions, roles
+
+    for name, text in (
+        ("cv", '[programme]\ncode = "claude-voice"\n[components.bridge]\nfolders = [".", "../garage"]\n'),
+        ("other", '[programme]\ncode = "org-b"\n[components.main]\nfolders = ["."]\n'),
+    ):
+        (tmp_path / name / org.FILE).parent.mkdir(parents=True)
+        (tmp_path / name / org.FILE).write_text(text, encoding="utf-8")
+    settings(tmp_path / "garage", {"permissions": {"allow": ["Bash(curl *)"]}})
+    settings(tmp_path / "other", {"permissions": {"allow": ["Bash(curl *)"]}})
+    monkeypatch.setattr(roles, "own_clone", lambda: tmp_path / "cv")
+    monkeypatch.setattr(config, "load", lambda *a, **k: None)
+    monkeypatch.setattr(permissions, "folders", lambda cfg: [tmp_path / "garage", tmp_path / "other"])
+    typed(monkeypatch, "garage")
+    env = {"CLAUDE_VOICE_ROOT": str(tmp_path / "nowhere")}
+    assert cli.main(["permissions", "--accept", "--all"], env=env) == 0
+    assert accepted.show(tmp_path / "garage") == []
+    assert accepted.show(tmp_path / "other") != []
+
+
+@needs_a_terminal
+def test_accept_all_says_so_when_the_chart_cannot_name_the_bridges_own_programme(
+    tmp_path, state, at_a_terminal, monkeypatch, capsys
+):
+    from claude_voice import config, permissions, roles
+
+    monkeypatch.setattr(roles, "own_clone", lambda: tmp_path / "cv")
+    monkeypatch.setattr(config, "load", lambda *a, **k: None)
+    monkeypatch.setattr(permissions, "folders", lambda cfg: [tmp_path / "garage"])
+    env = {"CLAUDE_VOICE_ROOT": str(tmp_path / "nowhere")}
+    assert cli.main(["permissions", "--accept", "--all"], env=env) == 1
+    assert "org chart" in capsys.readouterr().err

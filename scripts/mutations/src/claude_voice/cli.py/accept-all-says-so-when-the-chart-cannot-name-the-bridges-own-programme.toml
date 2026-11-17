@@ -1,0 +1,5 @@
+[[rule]]
+name = "accept all says so when the chart cannot name the bridges own programme"
+file = "src/claude_voice/cli.py"
+find = 'if mine is None:'
+replace = 'if False:'
