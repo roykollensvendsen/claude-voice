@@ -166,6 +166,12 @@ but names `main` or `master` is refused too, from the forms under `other pushes`
   so its approval would show publicly in his name. Commenting on a review, or
   asking for changes, is asked instead. An approval sent from a file with
   `gh api --input` cannot be seen in the command, so it is only asked.
+- **Removing what cannot be got back,** with `rm -r`, `-R`, `-fr` or `--recursive`: the
+  root, the home folder by any spelling, the repository itself or `.`, any `.git`, and
+  Claude Code's, the bridge's and the settings folders under home. The table lists the
+  removers and the targets once, and the bridge writes every pair. The home folder and
+  the repository are written as placeholders, `{home}` and `{folder}`, filled in for
+  each repository when the rules are written. Every other recursive remove asks.
 - **A forced push to `main` or `master`,** in every form listed above.
 - **Any other push to `main` or `master`.** That is a push naming the branch
   alone, `HEAD:main`, `feature:refs/heads/main` or `+main`. A change reaches

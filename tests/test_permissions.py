@@ -11,6 +11,7 @@ import json
 import os
 import re
 import shlex
+from pathlib import PurePosixPath
 
 import pytest
 
@@ -314,6 +315,12 @@ def test_everything_refused_before_is_still_refused():
 
 def test_the_shipped_rules_name_no_person_host_or_home_folder():
     text = permissions.TABLE.read_text(encoding="utf-8")
+    # The rules about removing folders name everyone's home and state folders the same way and
+    # no person's, so those exact rules are taken out before looking for anything private.
+    raw = json.loads(text)
+    generic = raw["what cannot be got back"]["targets"]
+    for rule in generic:
+        text = text.replace(json.dumps(rule), "")
     for private in ("/home/", "/users/", "~/", "roykollensvendsen", "192.168.", "100.", ".local/"):
         assert private not in text.lower(), private
 
@@ -734,3 +741,73 @@ def test_with_no_folders_named_and_none_in_the_settings_it_says_how_to_name_them
     env = config_naming(tmp_path, tmp_path / "gone", tmp_path / "gone-too")
     assert main(["permissions"], env=env) == 1
     assert "name the folders" in capsys.readouterr().err
+
+
+# -- removing folders: every recursive remove asks, and what can't be got back is refused --
+
+
+def for_a_folder():
+    """The shipped rules as written for one repository, with its placeholders filled. The paths
+    are fixed POSIX ones, so the rows read the same on every system the suite runs on."""
+    home = PurePosixPath("/home/u")
+    folder = home / "voice-repo"
+    return permissions.for_folder(permissions.load(), folder, home=home, uid=1000), home, folder
+
+
+def test_the_placeholders_are_filled_in_for_each_repository():
+    rules, home, folder = for_a_folder()
+    every = rules.allow + rules.ask + rules.deny
+    assert not [rule for rule in every if any(p in rule for p in ("{uid}", "{home}", "{repo}", "{folder}"))]
+    assert f"Bash(rm -r* {home})" in rules.deny and f"Bash(rm -r* {folder})" in rules.deny
+
+
+def test_removing_what_cannot_be_got_back_is_refused():
+    rules, home, folder = for_a_folder()
+    for command in (
+        "rm -r ~",
+        "rm -rf ~/",
+        "rm -rf /",
+        "rm -rf $HOME",
+        f"rm -rf {home}",
+        f"rm -rf {folder}",
+        f"rm -rf {folder}/",
+        "rm -rf .",
+        "rm -r .git",
+        "rm -rf sub/.git",
+        "rm -R ~/.claude/projects",
+        f"rm --recursive {home}/.config/claude-voice",
+        "rm -fr ~/.local/state/claude-voice",
+    ):
+        assert decision(rules, command) == "refused", command
+
+
+def test_every_other_recursive_remove_still_asks_first():
+    """No recursive remove runs unasked; the deny rules only make some of them a plain no."""
+    rules, home, folder = for_a_folder()
+    for command in (
+        "rm -rf ~/*",
+        "rm -rf ${HOME}",
+        f"rm -rf {home}/*",
+        "rm -rf /home",
+        "rm -rf /*",
+        "rm -rf *",
+        "rm -rf ./*",
+        f"rm -rf {folder}/*",
+        "rm -rf ~/.ssh",
+        "rm -rf /tmp/claude-1000/x",
+        "rm -rf .claude/worktrees/x",
+        "rm -rf src /tmp/claude-1000/x",
+        "rm -r /var/tmp/x",
+    ):
+        assert decision(rules, command) in ("asked", "refused"), command
+        assert any(_matches(rule, command) for rule in rules.ask + rules.deny), command
+
+
+def test_applied_settings_have_the_placeholders_filled(tmp_path):
+    folder = tmp_path / "voice-repo"
+    folder.mkdir()
+    apply(folder, permissions.load())
+    written = read(folder)["permissions"]
+    every = written["allow"] + written["ask"] + written["deny"]
+    assert not [rule for rule in every if "{" in rule and "}" in rule]
+    assert f"Bash(rm -r* {folder.resolve()})" in written["deny"]
