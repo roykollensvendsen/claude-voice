@@ -180,18 +180,30 @@
     "servers": ["claude-voice", "claude_ai_claude-voice"],
     "tools": [
       "garage_request",
-      "garage_confirm",
       "garage_switch",
       "garage_press_button",
       "tv_power_request",
-      "tv_power_confirm",
       "vacuum_start",
       "vacuum_stop",
       "vacuum_pause",
       "vacuum_go_home",
       "vacuum_find",
       "vacuum_clean_rooms",
-      "vacuum_clean_all",
+      "vacuum_clean_all"
+    ],
+    "acting in the owner's name": [
+      "approve",
+      "deny",
+      "answer_question",
+      "plugin_approve_confirm",
+      "developer_mode_confirm",
+      "garage_confirm",
+      "tv_power_confirm",
+      "heatpump_set_confirm",
+      "mister_launch_confirm",
+      "xbox_home_confirm",
+      "xbox_launch_confirm",
+      "xbox_power_confirm",
       "vacuum_confirm"
     ]
   },

@@ -124,6 +124,14 @@ rule. Looking at a device, such as `garage_status` or `vacuum_where`, does not
 ask. A new plugin whose tools move something adds them to `device tools.tools`
 in the same pull request as the plugin.
 
+A tool that carries out the owner's answer is refused outright, under `device
+tools` › `acting in the owner's name`. That covers `approve`, `deny` and
+`answer_question`, and every tool ending in `_confirm`. A session holding the
+connector could otherwise approve its own prompt, or confirm a device action
+nobody said yes to. Only the voice, with the owner speaking, calls these. A new
+plugin with a `_confirm` tool adds it there, and a test reads the bridge's own
+tools to catch one that is missing.
+
 ### Forced pushes to a session's own branch
 
 The owner decided that a session may rebase its own pull-request branch and push

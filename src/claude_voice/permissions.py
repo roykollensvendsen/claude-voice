@@ -94,6 +94,9 @@ def load(table: Path = TABLE) -> Rules:
     devices = raw.get("device tools", {"servers": [], "tools": []})
     # RULE: a tool that moves something in the house asks first, by every name it is seen under
     ask += [f"mcp__{server}__{tool}" for server in devices["servers"] for tool in devices["tools"]]
+    owners = devices.get("acting in the owner's name", [])
+    # RULE: a session can never answer or confirm for the owner through the connector
+    deny += [f"mcp__{server}__{tool}" for server in devices["servers"] for tool in owners]
     _refuse_prefix_rules(allow + ask + deny)
     retired = raw.get("retired", {})
     return Rules(
