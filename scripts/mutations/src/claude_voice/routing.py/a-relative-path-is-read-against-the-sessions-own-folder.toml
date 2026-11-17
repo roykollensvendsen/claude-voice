@@ -1,0 +1,5 @@
+[[rule]]
+name = "a relative path is read against the sessions own folder"
+file = "src/claude_voice/routing.py"
+find = 'return self\.cwd or self\.repo'
+replace = 'return self.repo'

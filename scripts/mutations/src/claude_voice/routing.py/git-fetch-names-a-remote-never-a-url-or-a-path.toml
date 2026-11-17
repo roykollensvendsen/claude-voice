@@ -1,0 +1,5 @@
+[[rule]]
+name = "git fetch names a remote never a url or a path"
+file = "src/claude_voice/routing.py"
+find = 'return all\(NAME\.fullmatch\(w\.lower\(\)\) and "/" not in w for w in plain\[:1\]\) and all\('
+replace = 'return True or all('

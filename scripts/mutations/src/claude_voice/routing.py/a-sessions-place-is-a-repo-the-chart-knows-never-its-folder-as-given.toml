@@ -1,0 +1,5 @@
+[[rule]]
+name = "a sessions place is a repo the chart knows never its folder as given"
+file = "src/claude_voice/routing.py"
+find = 'if found is None or found\[1\]\.resolve\(\) not in \{Path\(k\)\.resolve\(\) for k in known\}:'
+replace = 'if found is None:'

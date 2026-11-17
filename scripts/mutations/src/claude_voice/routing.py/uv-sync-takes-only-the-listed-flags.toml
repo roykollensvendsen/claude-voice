@@ -1,0 +1,5 @@
+[[rule]]
+name = "uv sync takes only the listed flags"
+file = "src/claude_voice/routing.py"
+find = 'return all\(w in UV_SYNC_FLAGS for w in part\[2:\]\)'
+replace = 'return all(w.startswith("-") for w in part[2:])'

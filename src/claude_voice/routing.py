@@ -118,19 +118,56 @@ GH_WRITES = {
 MAIN = frozenset({"main", "master"})
 RC_FILES = (".bashrc", ".bash_profile", ".bash_login", ".profile", ".zshrc", ".zprofile", ".zshenv", ".gitconfig")
 UV_TOOLS = frozenset({"pytest", "ruff", "mypy"})
+#: The flags `uv sync` may take in a shape; any other could change where it installs from.
+UV_SYNC_FLAGS = frozenset({"--locked", "--frozen", "--all-extras", "--dev", "-q", "--quiet"})
+#: Per git subcommand: options that take no value, and options that take one. Anything
+#: else, such as --output, --upload-pack or --exec, is no shape (managers-answer f3).
+GIT_OPTIONS: dict[str, tuple[frozenset[str], dict[str, int]]] = {
+    "status": (frozenset({"-s", "--short", "-b", "--branch", "--porcelain", "--ignored", "-q"}), {}),
+    "log": (
+        frozenset({"--oneline", "--graph", "--stat", "--decorate", "--all", "-p", "--name-only", "--name-status"})
+        | frozenset({"--no-merges", "--reverse", "--first-parent", "--shortstat"})
+        | frozenset(f"-{n}" for n in range(1, 10)),
+        {"-n": 1, "--format": 1, "--pretty": 1, "--since": 1, "--until": 1, "--author": 1, "--grep": 1},
+    ),
+    "diff": (
+        frozenset({"--stat", "--cached", "--staged", "--name-only", "--name-status", "--check", "--shortstat"})
+        | frozenset({"--numstat", "--word-diff", "--no-color", "-q"}),
+        {"-U": 1},
+    ),
+    "show": (frozenset({"--stat", "--name-only", "--name-status", "--oneline", "--no-patch", "-s"}), {"--format": 1}),
+    "fetch": (frozenset({"-q", "--quiet", "--prune", "-p", "--all", "--tags"}), {}),
+    "add": (frozenset({"-A", "--all", "-u", "--update", "-N", "--intent-to-add"}), {}),
+    "commit": (
+        frozenset({"-q", "--quiet", "-a", "--all", "--amend", "--no-edit", "--allow-empty"}),
+        {"-m": 1, "--message": 1, "--fixup": 1},
+    ),
+    "switch": (frozenset({"-q", "--detach"}), {"-c": 1}),
+    "restore": (frozenset({"--staged", "--worktree", "-q"}), {}),
+    "stash": (frozenset({"-q", "-u", "--include-untracked"}), {"-m": 1}),
+    "rebase": (frozenset({"-q", "--autosquash", "--continue", "--abort", "--skip"}), {"--onto": 1}),
+}
 
 
 @dataclass(frozen=True)
 class Place:
-    """Where the asking session works: its repo, its scratchpad, the home folder and the owner's account."""
+    """Where the asking session works: its repo, its scratchpad, the home folder and the owner's
+    account, and the folder it runs in, which relative paths are read against."""
 
     repo: Path
     scratchpad: Path | None
     home: Path
     owner: str
+    cwd: Path | None = None
+    also_reads: tuple[Path, ...] = ()  # a worktree's own repo: read there, never written
+
+    @property
+    def base(self) -> Path:
+        # RULE: a relative path is read against the sessions own folder
+        return self.cwd or self.repo
 
     def reads(self) -> list[str]:
-        roots = [self.repo, self.scratchpad, self.home / ".cache" / "claude-voice" / "tmp"]
+        roots = [self.repo, *self.also_reads, self.scratchpad, self.home / ".cache" / "claude-voice" / "tmp"]
         return [os.path.realpath(root) for root in roots if root is not None]
 
     def writes(self) -> list[str]:
@@ -222,7 +259,7 @@ def _short_flags(flags: list[str]) -> str:
 
 
 def _path_matches(path: str, place: Place | None, patterns: Iterable[str]) -> bool:
-    full = path if place is None or os.path.isabs(path) else os.path.join(place.repo, path)
+    full = path if place is None or os.path.isabs(path) else os.path.join(place.base, path)
     return any(fnmatch.fnmatch(full, pattern) or fnmatch.fnmatch(path, pattern) for pattern in patterns)
 
 
@@ -252,7 +289,7 @@ def _template(path: str, ask: Ask) -> bool:
     """An env template git tracks as a plain file in the repo, whose realpath is itself."""
     if ask.place is None or os.path.basename(path) not in ENV_TEMPLATES:
         return False
-    full = os.path.abspath(os.path.join(ask.place.repo, path))
+    full = os.path.abspath(os.path.join(ask.place.base, path))
     inside = full.startswith(os.path.realpath(ask.place.repo) + os.sep)
     # RULE: a tracked env template is not secret
     return not os.path.islink(full) and os.path.realpath(full) == full and inside and ask.tracked(Path(full))
@@ -283,7 +320,7 @@ SECRET_INODES: dict[str, tuple[float, frozenset[tuple[int, int]] | None]] = {}
 def _named_secret(path: str, ask: Ask) -> bool:
     """Whether `path`, as written or through every symbolic link, is named as a secret."""
     home = str(ask.place.home) if ask.place else os.path.expanduser("~")
-    base = ask.place.repo if ask.place else Path.cwd()
+    base = ask.place.base if ask.place else Path.cwd()
     full = os.path.abspath(os.path.join(base, os.path.expanduser(path)))
     patterns = [*SECRET_FILES, *(f"{home}/{name}" for name in HOME_SECRETS)]
     for seen in {full, os.path.realpath(full)}:
@@ -356,7 +393,7 @@ def is_secret(path: str, ask: Ask) -> bool:
     a hard link to one of the secret table's files."""
     if _named_secret(path, ask):
         return True
-    base = ask.place.repo if ask.place else Path.cwd()
+    base = ask.place.base if ask.place else Path.cwd()
     # RULE: a hard link to a secret goes to the owner
     return _hard_linked(os.path.join(base, os.path.expanduser(path)), ask)
 
@@ -660,9 +697,9 @@ def _inside(path: str, roots: list[str], base: Path) -> bool:
 
 
 def _editable(path: str, place: Place) -> bool:
-    if not _inside(path, place.writes(), place.repo):
+    if not _inside(path, place.writes(), place.base):
         return False
-    rel = Path(os.path.relpath(os.path.realpath(os.path.join(place.repo, path)), os.path.realpath(place.repo)))
+    rel = Path(os.path.relpath(os.path.realpath(os.path.join(place.base, path)), os.path.realpath(place.repo)))
     return ".git" not in rel.parts and rel.parts[:2] != (".github", "workflows")
 
 
@@ -670,11 +707,29 @@ def _git_shape(part: list[str], place: Place) -> bool:
     sub = part[1] if len(part) > 1 else ""
     if sub == "worktree":
         return part[2:3] == ["add"] and all(
-            _inside(w, place.writes(), place.repo) for w in part[3:] if not w.startswith("-")
+            _inside(w, place.writes(), place.base) for w in part[3:] if not w.startswith("-")
         )
-    if sub == "rebase" and any(w == "-x" or w.startswith("--exec") for w in part):
+    if sub not in GIT_SHAPES:
         return False
-    return sub in GIT_SHAPES
+    no_value, with_value = GIT_OPTIONS[sub]
+    # RULE: a git option off its subcommands list is no shape
+    plain = _options(part[1:], no_value, with_value)
+    if plain is None:
+        return False
+    return _git_words_fit(sub, plain, place)
+
+
+def _git_words_fit(sub: str, plain: list[str], place: Place) -> bool:
+    """Whether a git command's plain words are of its shape: a fetch names a remote, and an
+    add or restore names paths the session may write."""
+    if sub == "fetch":
+        # RULE: git fetch names a remote never a url or a path
+        return all(NAME.fullmatch(w.lower()) and "/" not in w for w in plain[:1]) and all(
+            ":" not in w and not w.startswith((".", "/", "~")) for w in plain
+        )
+    if sub in ("add", "restore"):
+        return all(_inside(w, place.writes(), place.base) for w in plain)
+    return True
 
 
 def _options(part: list[str], no_value: frozenset[str], with_value: dict[str, int]) -> list[str] | None:
@@ -746,7 +801,7 @@ def _walk_clean(start: str, place: Place, ask: Ask) -> bool:
     """Walk a tree the way grep -r does, never following a link and skipping .git, and say
     whether it holds no secret. A secret found, or a tree past the bounds, is put in ask.why."""
     clock = time.monotonic()
-    folders, seen = [os.path.join(place.repo, start)], 0
+    folders, seen = [os.path.join(place.base, start)], 0
     while folders:
         try:
             entries = list(os.scandir(folders.pop()))
@@ -790,24 +845,25 @@ def _reader_shape(part: list[str], place: Place, ask: Ask) -> bool:
     paths = _read_paths(part)
     if paths is None or "-" in paths:
         return False
-    inside = all(_inside(p, place.reads(), place.repo) and not is_secret(p, ask) for p in paths or ["."])
+    inside = all(_inside(p, place.reads(), place.base) and not is_secret(p, ask) for p in paths or ["."])
     if inside and _recursive(part):
         inside = all(_walk_clean(p, place, ask) for p in paths or ["."])
     # RULE: diff takes two regular files only
     if part[0] == "diff":
-        return inside and len(paths) == 2 and all(os.path.isfile(os.path.join(place.repo, p)) for p in paths)
+        return inside and len(paths) == 2 and all(os.path.isfile(os.path.join(place.base, p)) for p in paths)
     # RULE: a read outside the areas goes to the owner
     return inside
 
 
 def _uv_shape(part: list[str], place: Place) -> bool:
     if part[1:2] == ["sync"]:
-        return all(w.startswith("-") for w in part[2:])
+        # RULE: uv sync takes only the listed flags
+        return all(w in UV_SYNC_FLAGS for w in part[2:])
     if part[1:2] != ["run"] or len(part) < 3:
         return False
     first = part[2]
     return first in UV_TOOLS or (
-        "/" in first and _inside(first, place.writes(), place.repo) and Path(place.repo, first).is_file()
+        "/" in first and _inside(first, place.writes(), place.base) and Path(place.base, first).is_file()
     )
 
 
@@ -840,7 +896,7 @@ def _file_shape(ask: Ask, place: Place) -> bool:
     if ask.tool == "Glob" and (pattern.startswith("/") or ".." in pattern):
         return False
     if ask.tool in ("Read", "Grep", "Glob"):
-        inside = bool(paths) and all(_inside(p, place.reads(), place.repo) for p in paths)
+        inside = bool(paths) and all(_inside(p, place.reads(), place.base) for p in paths)
         # RULE: the grep tool on a folder walks it first
         return inside and (ask.tool != "Grep" or all(_walk_clean(p, place, ask) for p in paths))
     return bool(paths) and all(_editable(p, place) for p in paths)
@@ -867,6 +923,55 @@ def _shape(ask: Ask, read_only: Iterable[str]) -> bool:
 
 
 # -- sorting ---------------------------------------------------------------------------------
+
+
+def _git_out(folder: str, *args: str) -> str | None:
+    try:
+        found = subprocess.run(["git", "-C", folder, *args], capture_output=True, text=True, timeout=5, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return found.stdout.strip() if found.returncode == 0 and found.stdout.strip() else None
+
+
+def toplevel(cwd: str) -> Path | None:
+    """The top folder of the git checkout `cwd` is in, or None when git doesn't know it."""
+    top = _git_out(cwd, "rev-parse", "--show-toplevel")
+    return Path(top) if top else None
+
+
+def checkout_of(cwd: str) -> tuple[Path, Path] | None:
+    """The checkout `cwd` is in and the repo it belongs to. A plain clone is both. A worktree
+    belongs to the repo holding git's common folder, and only when that repo lists it as its
+    own worktree, so a .git file written to point elsewhere is not taken at its word."""
+    top, common = toplevel(cwd), _git_out(cwd, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    if top is None or common is None:
+        return None
+    main = Path(os.path.realpath(common)).parent
+    if main == Path(os.path.realpath(top)):
+        return top, main
+    listed = _git_out(str(main), "worktree", "list", "--porcelain") or ""
+    own = {os.path.realpath(line[len("worktree ") :]) for line in listed.splitlines() if line.startswith("worktree ")}
+    # RULE: a forged git file gets no place
+    return (top, main) if os.path.realpath(top) in own else None
+
+
+def place_for(
+    cwd: str,
+    known: Iterable[Path],
+    home: Path,
+    owner: str,
+    locate: Callable[[str], tuple[Path, Path] | None] = checkout_of,
+) -> Place | None:
+    """Where a session runs: its checkout, when the repo it belongs to is one the org chart
+    knows. It writes only in its checkout and reads there and in the repo. Anywhere else has
+    no place, so nothing it asks is of a shape (managers-answer f1)."""
+    found = locate(cwd)
+    # RULE: a sessions place is a repo the chart knows never its folder as given
+    if found is None or found[1].resolve() not in {Path(k).resolve() for k in known}:
+        return None
+    top, main = found
+    also = (main,) if main.resolve() != top.resolve() else ()
+    return Place(repo=top, scratchpad=None, home=home, owner=owner, cwd=Path(cwd), also_reads=also)
 
 
 def _git_tracked(path: Path, place: Place | None) -> bool:
