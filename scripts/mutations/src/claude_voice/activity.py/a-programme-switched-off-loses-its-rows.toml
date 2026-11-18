@@ -1,0 +1,5 @@
+[[rule]]
+name = "a programme switched off loses its rows"
+file = "src/claude_voice/activity.py"
+find = 'self\.kept\.forget_orgs\(self\.orgs\)'
+replace = 'pass'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a long call whose cpu stands still is red"
+file = "src/claude_voice/activity.py"
+find = 'if age >= RED_SECONDS and now \- live\.cpu_grew >= STILL_SECONDS:'
+replace = 'if False:'

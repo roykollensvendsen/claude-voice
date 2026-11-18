@@ -1,0 +1,5 @@
+[[rule]]
+name = "rows older than seven days are deleted"
+file = "src/claude_voice/activity.py"
+find = 'self\.db\.execute\("DELETE FROM minutes WHERE minute < \?", \(oldest,\)\)'
+replace = 'pass'

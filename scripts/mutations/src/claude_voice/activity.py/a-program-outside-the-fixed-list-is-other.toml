@@ -1,0 +1,5 @@
+[[rule]]
+name = "a program outside the fixed list is other"
+file = "src/claude_voice/activity.py"
+find = 'return name if name in PROGRAMS else "other"'
+replace = 'return name or "other"'

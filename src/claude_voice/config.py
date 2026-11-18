@@ -196,6 +196,8 @@ class Config:
     voice_instructions_file: Path | None = None  # the owner's own rules, added to the voice's instructions
     profile: Path | None = None  # the user's own profile, laid over the default (docs/setup.md)
     personal_terms_file: Path | None = None  # words an issue a session files must never hold
+    activity_orgs: tuple[str, ...] = ()  # the programmes the activity view reads (docs/activity.md)
+    activity_phone_orgs: tuple[str, ...] = ()  # of those, the ones served beyond this computer
 
 
 def _repo(value: Any, key: str) -> str:
@@ -234,7 +236,25 @@ def load(path: Path | None = FILE, own_clone: Path | None = None, env: Mapping[s
         _path(raw.get("voice_instructions_file"), home),
         _path(raw.get("profile"), home),
         _path(raw.get("personal_terms_file"), home),
+        *_activity(raw.get("activity")),
     )
+
+
+def _codes(raw: dict[str, Any], key: str) -> tuple[str, ...]:
+    value = raw.get(key, [])
+    if not isinstance(value, list) or not all(isinstance(v, str) and v for v in value):
+        raise ConfigError(f"[activity] {key} = {value!r} is not a list of programme codes")
+    return tuple(value)
+
+
+def _activity(raw: Any) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """[activity]: which programmes the activity view reads, and which of them leave this computer."""
+    raw = raw if isinstance(raw, dict) else {}
+    orgs, phone = _codes(raw, "orgs"), _codes(raw, "phone_orgs")
+    # RULE: a phone programme that is not read is refused
+    if not set(phone) <= set(orgs):
+        raise ConfigError(f"[activity] phone_orgs {sorted(set(phone) - set(orgs))} are not in orgs")
+    return orgs, phone
 
 
 def _repos(raw: dict[str, Any]) -> Repos:

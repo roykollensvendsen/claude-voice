@@ -1,0 +1,5 @@
+[[rule]]
+name = "the switch turns itself off when its time ends"
+file = "src/claude_voice/activity.py"
+find = 'if self\.clock\(\) >= until:'
+replace = 'if False:'

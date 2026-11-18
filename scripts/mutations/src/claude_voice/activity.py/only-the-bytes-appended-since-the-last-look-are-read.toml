@@ -1,0 +1,5 @@
+[[rule]]
+name = "only the bytes appended since the last look are read"
+file = "src/claude_voice/activity.py"
+find = 'f\.seek\(offset\)'
+replace = 'f.seek(0)'

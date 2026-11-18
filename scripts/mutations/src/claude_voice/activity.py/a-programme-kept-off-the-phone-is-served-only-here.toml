@@ -1,0 +1,5 @@
+[[rule]]
+name = "a programme kept off the phone is served only here"
+file = "src/claude_voice/activity.py"
+find = 'return self\.orgs if local else self\.phone_orgs'
+replace = 'return self.orgs'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a tool call lasts from its use to its result"
+file = "src/claude_voice/activity.py"
+find = 'if call is not None and counting:'
+replace = 'if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "the activity file is the owners alone"
+file = "src/claude_voice/activity.py"
+find = 'os\.close\(os\.open\(self\.path, os\.O_WRONLY \| os\.O_CREAT, 0o600\)\)'
+replace = 'os.close(os.open(self.path, os.O_WRONLY | os.O_CREAT, 0o644))'
