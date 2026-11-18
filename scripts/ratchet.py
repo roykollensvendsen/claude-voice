@@ -116,6 +116,7 @@ LAYERS = {
     **dict.fromkeys(
         (
             "events",
+            "mailbox",
             "tree",
             "approvals",
             "machines",

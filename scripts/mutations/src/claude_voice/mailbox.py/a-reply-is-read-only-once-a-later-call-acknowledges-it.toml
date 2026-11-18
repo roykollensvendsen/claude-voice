@@ -1,0 +1,5 @@
+[[rule]]
+name = "a reply is read only once a later call acknowledges it"
+file = "src/claude_voice/mailbox.py"
+find = '"UPDATE mailbox SET read_at=\? WHERE read_at IS NULL AND delivered_at IS NOT NULL"'
+replace = '"UPDATE mailbox SET read_at=? WHERE read_at IS NULL"'

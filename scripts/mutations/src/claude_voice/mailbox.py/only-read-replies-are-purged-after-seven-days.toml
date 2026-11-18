@@ -1,0 +1,5 @@
+[[rule]]
+name = "only read replies are purged after seven days"
+file = "src/claude_voice/mailbox.py"
+find = 'self\.db\.execute\("DELETE FROM mailbox WHERE read_at IS NOT NULL AND ts < \?", \(now - KEEP,\)\)'
+replace = 'self.db.execute("DELETE FROM mailbox WHERE ts < ?", (now - KEEP,))'

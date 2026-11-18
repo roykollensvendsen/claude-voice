@@ -1,0 +1,5 @@
+[[rule]]
+name = "after three pushes a reply is counted not pushed"
+file = "src/claude_voice/mailbox.py"
+find = '"SELECT seq, ts, sender, text FROM mailbox WHERE read_at IS NULL AND pushes < \?"'
+replace = '"SELECT seq, ts, sender, text FROM mailbox WHERE read_at IS NULL AND (pushes < ? OR 1)"'

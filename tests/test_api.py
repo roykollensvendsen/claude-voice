@@ -196,6 +196,67 @@ async def test_an_event_published_from_another_thread_reaches_a_waiting_stream_a
     assert waited < 0.5
 
 
+async def listening(streams_before, seconds=10.0):
+    """Until a new stream has taken its starting point and subscribed, for at most `seconds`."""
+    deadline = asyncio.get_running_loop().time() + seconds
+    while len(api.HUB._queues) <= streams_before:
+        assert asyncio.get_running_loop().time() < deadline, "the stream never started"
+        await asyncio.sleep(0.01)
+
+
+def quiet_bridge(tmp_path, root, live, monkeypatch):  # noqa: F811
+    """A bridge whose live stream carries only the polled news, polled often."""
+    from claude_voice import transcripts
+
+    store = Store(tmp_path / "b.db")
+    monkeypatch.setattr(api, "NEWS_SECONDS", 0.05)
+    monkeypatch.setattr(transcripts._courier, "on_reply", None)  # put back after the test
+    server = build_server(
+        SessionManager(store, project_root=root, client_factory=FakeClaude()),
+        oauth=OAuthProvider(store, SECRET, HOST, static_token=SECRET),
+        conversations=lambda **k: [],
+        live_dir=live,
+        update_log=tmp_path / "no-update.json",  # so no update step reaches the stream
+    )
+    return server, build_app(server), transcripts._courier.on_reply
+
+
+async def test_the_phone_pages_stream_shows_each_reply_once(tmp_path, root, live, monkeypatch):  # noqa: F811
+    """The stream reads the feed's copy of a reply, never the mailbox, which offers a reply again
+    until the voice confirms it."""
+    _, app, reply = quiet_bridge(tmp_path, root, live, monkeypatch)
+    async with client(app) as c:
+        streams = len(api.HUB._queues)
+        stream = asyncio.create_task(c.get("/api/v1/events?max_events=2", headers=BEARER))
+        await listening(streams)
+        reply("fuel-mcp", "Diesel is 21.90 today.")
+        await asyncio.sleep(0.3)  # gives the stream polls while that reply stays unread; not needed for the order
+        reply("weather-mcp", "Rain after six.")
+        shown = sse((await asyncio.wait_for(stream, 10)).text)
+    assert [(item["session"], item["kind"]) for _, item in shown] == [("fuel-mcp", "reply"), ("weather-mcp", "reply")]
+
+
+async def test_the_phone_pages_stream_never_marks_a_reply_heard(tmp_path, root, live, monkeypatch):  # noqa: F811
+    """The phone page sees a reply in its stream, and the voice still hears it once afterwards:
+    only the voice's whats_new moves a reply towards read."""
+    from claude_voice import transcripts
+
+    server, app, _ = quiet_bridge(tmp_path, root, live, monkeypatch)
+    async with client(app) as c:
+        streams = len(api.HUB._queues)
+        stream = asyncio.create_task(c.get("/api/v1/events?max_events=1", headers=BEARER))
+        await listening(streams)
+        transcripts._courier.on_reply("fuel-mcp", "Diesel is 21.90 today.")
+        shown = sse((await asyncio.wait_for(stream, 10)).text)
+        again = asyncio.create_task(c.get("/api/v1/events?max_events=1", headers=BEARER))
+        await asyncio.sleep(0.5)  # a second stream polls, with nothing new to show
+        again.cancel()
+    assert [(name, item.get("kind")) for name, item in shown] == [("news", "reply")], shown
+    async with Client(server) as mcp:
+        heard = (await mcp.call_tool("whats_new", {})).structured_content
+    assert [(e["session"], e["kind"]) for e in heard["events"]] == [("fuel-mcp", "reply")]
+
+
 async def test_signing_out_ends_the_cookie(bridge):
     _, app, _, _ = bridge
     async with client(app) as c:
