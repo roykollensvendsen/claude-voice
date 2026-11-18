@@ -206,3 +206,20 @@ def test_a_builder_by_name_only_counts(world):
 def test_a_programme_with_no_builders_is_never_flagged(world):
     text = ORG.replace("builder = true\n", "")
     assert look(world, [], text) == ([], [])
+
+
+def test_a_work_list_that_cannot_be_read_for_a_moment_keeps_the_episode(world, monkeypatch):
+    _, _, clock, _ = world
+    rows = [session("lane-a", since=idle_since(clock, 30)), session("lane-b", since=idle_since(clock, 30))]
+    assert len(look(world, rows)[0]) == 1
+    real = idle.backlog.read
+
+    def broken(state, written):
+        raise PermissionError("busy")
+
+    monkeypatch.setattr(idle.backlog, "read", broken)
+    clock.now += MIN
+    assert look(world, rows) == ([], [])
+    monkeypatch.setattr(idle.backlog, "read", real)
+    clock.now += MIN
+    assert look(world, rows) == ([], [])  # the same episode, not a new one
