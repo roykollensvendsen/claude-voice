@@ -21,7 +21,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from claude_voice import procs
+from claude_voice import procs, safe_git
 from claude_voice.config import PluginSpec
 
 WAITING = Path("~/.local/state/claude-voice/waiting.json")
@@ -146,7 +146,7 @@ def open_prs(repos: dict[str, str], run: Callable[[list[str]], str | None]) -> t
 
 def _git(folder: Path, *args: str) -> str | None:
     try:
-        out = subprocess.run(["git", "-C", str(folder), *args], capture_output=True, text=True, timeout=10, check=False)
+        out = safe_git.run("-C", str(folder), *args, capture_output=True, text=True, timeout=10, check=False)
     except (OSError, subprocess.SubprocessError):
         return None
     return out.stdout.strip() if out.returncode == 0 else None

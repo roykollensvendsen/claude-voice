@@ -1,0 +1,5 @@
+[[rule]]
+name = "git status never looks inside a submodule"
+file = "src/claude_voice/safe_git.py"
+find = 'after = \("--ignore-submodules=all",\) if _subcommand\(args\) == "status" else \(\)'
+replace = 'after = ()'

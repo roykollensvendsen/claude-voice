@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from . import procs
+from . import procs, safe_git
 
 if TYPE_CHECKING:
     from .profiles import Repo
@@ -93,8 +93,8 @@ class Folder:
 def _git(folder: Path, *args: str) -> str | None:
     git = procs.find("git") or "git"
     try:
-        out = subprocess.run(
-            [git, *LOCKLESS, "-C", str(folder), *args], capture_output=True, text=True, timeout=10, check=False
+        out = safe_git.run(
+            *LOCKLESS, "-C", str(folder), *args, git=git, capture_output=True, text=True, timeout=10, check=False
         )
     except (OSError, subprocess.SubprocessError):
         return None

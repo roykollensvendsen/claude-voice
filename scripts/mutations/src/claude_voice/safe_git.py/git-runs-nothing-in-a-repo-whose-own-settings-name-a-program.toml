@@ -1,0 +1,5 @@
+[[rule]]
+name = "git runs nothing in a repo whose own settings name a program"
+file = "src/claude_voice/safe_git.py"
+find = 'if named is not None:'
+replace = 'if False:'

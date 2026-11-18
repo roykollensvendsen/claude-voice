@@ -299,7 +299,9 @@ def test_the_updater_reaches_github_over_https_not_the_owners_ssh_key(monkeypatc
 
     monkeypatch.setattr(updater.subprocess, "run", run)
     updater._git(tmp_path, "fetch", "--quiet")
-    assert seen[0][1:5] == ["-c", "url.https://github.com/.insteadOf=git@github.com:", "-C", str(tmp_path)]
+    fetch = next(words for words in seen if "fetch" in words)  # the first call reads the repo's own settings
+    at = fetch.index("url.https://github.com/.insteadOf=git@github.com:")
+    assert fetch[at - 1] == "-c" and at < fetch.index("-C") < fetch.index("fetch")
 
 
 def test_a_refused_fetch_says_why_and_what_to_do():

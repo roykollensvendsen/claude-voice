@@ -30,6 +30,8 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
+from claude_voice import safe_git
+
 ALLOW, ASK, DENY = "allow", "ask", "deny"
 
 #: Anything that chains, pipes, redirects or substitutes: such a command is never let through.
@@ -192,8 +194,13 @@ def _names_a_term(terms: Path | None, texts: Sequence[str], files: Sequence[Path
 def _tracked(file: Path) -> bool:
     """Whether git tracks this file in the repository around it: never an ignored or loose one."""
     try:
-        out = subprocess.run(
-            ["git", "-C", str(file.parent), "ls-files", "--error-unmatch", "--", file.name],
+        out = safe_git.run(
+            "-C",
+            str(file.parent),
+            "ls-files",
+            "--error-unmatch",
+            "--",
+            file.name,
             capture_output=True,
             timeout=10,
             check=False,

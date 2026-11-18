@@ -18,6 +18,8 @@ import sys
 from collections.abc import Callable
 from typing import Any
 
+from claude_voice import safe_git
+
 SEGMENTS = re.compile(r"&&|\|\||;|\|")
 
 
@@ -76,7 +78,7 @@ def answer(hook_input: dict[str, Any], upstream: str) -> dict[str, Any]:
 
     def git(*args: str) -> str | None:
         try:
-            out = subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, timeout=10, check=True)
+            out = safe_git.run("-C", cwd, *args, capture_output=True, text=True, timeout=10, check=True)
         except (OSError, subprocess.SubprocessError):
             return None
         return out.stdout.strip() or None

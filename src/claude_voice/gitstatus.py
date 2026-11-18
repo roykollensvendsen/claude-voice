@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import procs
+from . import procs, safe_git
 
 CACHE_SECONDS = 45.0
 _cache: dict[str, tuple[float, dict[str, Any] | None]] = {}
@@ -24,7 +24,7 @@ def _git(folder: Path, *args: str) -> str | None:
     if not git:
         return None
     try:
-        out = subprocess.run([git, "-C", str(folder), *args], capture_output=True, text=True, timeout=10, check=False)
+        out = safe_git.run("-C", str(folder), *args, git=git, capture_output=True, text=True, timeout=10, check=False)
     except (OSError, subprocess.SubprocessError):
         return None
     return out.stdout.strip() if out.returncode == 0 else None

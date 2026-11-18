@@ -1,0 +1,5 @@
+[[rule]]
+name = "a git subcommand off the measured list is refused"
+file = "src/claude_voice/safe_git.py"
+find = 'if _subcommand\(args\) not in MEASURED:'
+replace = 'if False:'

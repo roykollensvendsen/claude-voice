@@ -1,0 +1,5 @@
+[[rule]]
+name = "the bridge runs git with fsmonitor and hooks off and no system config"
+file = "src/claude_voice/safe_git.py"
+find = 'return \[git, \*switches, \*args\[:at\], \*after, \*args\[at:\]\]'
+replace = 'return [git, *args[:at], *after, *args[at:]]'
