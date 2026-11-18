@@ -1,0 +1,5 @@
+[[rule]]
+name = "a prompt only the owner may answer is marked for the manager"
+file = "src/claude_voice/stalled.py"
+find = 'to_manager = f.The owner.s: \{line\}. if owners_only\(asked.question\) else line'
+replace = 'to_manager = line'

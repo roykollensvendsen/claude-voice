@@ -1,0 +1,5 @@
+[[rule]]
+name = "a programme that has not said so hears no question text"
+file = "src/claude_voice/stalled.py"
+find = 'to_voice = line if item.text_ok else '
+replace = 'to_voice = line'
