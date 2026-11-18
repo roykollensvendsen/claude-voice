@@ -13,6 +13,7 @@ import hashlib
 import io
 import json
 import os
+import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -201,6 +202,18 @@ def test_a_pack_that_is_not_text_gives_the_stop_line(packs):
     data = b"\xff\xfe not utf-8"
     (packs / "voice" / "rules.md").write_bytes(data)
     assert stopped(emit(packs, own=hashlib.sha256(data).hexdigest()[:12]))
+
+
+def test_the_hook_runs_isolated_from_the_sessions_folder(tmp_path):
+    work = tmp_path / "work"
+    (work / "claude_voice").mkdir(parents=True)
+    (work / "claude_voice" / "__init__.py").write_text("")
+    (work / "claude_voice" / "org_rules.py").write_text('print("PLANTED")\n')
+    argv = [*org_rules.COMMAND, "emit", "voice", "--event", "SessionStart", "--shared-sha", "a" * 12, "--sha", "b" * 12]
+    out = subprocess.run(argv, cwd=work, capture_output=True, text=True, timeout=60, check=False)
+    assert "PLANTED" not in out.stdout
+    assert out.returncode == 0
+    assert stopped(json.loads(out.stdout)["hookSpecificOutput"]["additionalContext"])  # no packs here
 
 
 def test_the_packs_live_in_the_owners_settings_folder():

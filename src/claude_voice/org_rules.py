@@ -39,6 +39,10 @@ EVENTS = ("SessionStart", "SubagentStart")
 #: reach outside the packs folder or name the shared pack.
 NAME = re.compile(r"[a-z0-9][a-z0-9-]*")
 STOP = "ORG RULES {reason}: stop, do no work, and tell your manager in one message"
+#: How a hook runs this module: with the bridge's own Python, never a session's, and
+#: isolated, so nothing in the session's folder or environment is imported in its place.
+# RULE: the hook runs isolated from the sessions folder
+COMMAND = (sys.executable, "-I", "-m", "claude_voice.org_rules")
 
 
 class Refused(Exception):
@@ -118,7 +122,7 @@ class _Parser(argparse.ArgumentParser):
 
 def _parser() -> _Parser:
     # a shortened option is never taken for a whole one: the role file spells each out
-    parser = _Parser(prog="python -m claude_voice.org_rules", add_help=False, allow_abbrev=False)
+    parser = _Parser(prog="python -I -m claude_voice.org_rules", add_help=False, allow_abbrev=False)
     sub = parser.add_subparsers(dest="action", required=True, parser_class=_Parser)
     emit = sub.add_parser("emit", add_help=False, allow_abbrev=False)
     emit.add_argument("org")
