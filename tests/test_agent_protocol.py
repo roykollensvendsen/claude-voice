@@ -197,6 +197,13 @@ def test_a_refusal_says_what_went_wrong_in_a_code_a_hub_can_read():
     assert "`unsupported_version`" in text
 
 
+@pytest.mark.parametrize("code", ["not_kept", "bad_request", "late", "not_run"])
+def test_a_refusal_version_one_has_no_name_for_is_named_for_the_next(code):
+    """Version 1's codes are open, so these may travel today; the next version names them."""
+    validate({"error": "words a person can act on", "code": code}, schema("error"))
+    assert f"`{code}`" in (SCHEMAS / "next-version.md").read_text()
+
+
 def test_a_call_carries_an_id_so_a_repeat_is_never_run_twice():
     meta = schema("caller-meta")
     validate({"claude-voice/caller": "voice", "claude-voice/call_id": "c1example0call0id0"}, meta)
