@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -88,6 +89,97 @@ def parse_pane(text: str) -> Asked | None:
     if not options:
         return None
     return Asked(_join(question), [_join(o) for o in options])
+
+
+OWNERS = re.compile(
+    r"push\b[^\n]*(?:--force(?!-with-lease)\b|\s-f\b)"  # a push that forces
+    r"|push\b[^\n]*\s(?:origin\s+)?(?:main|master)\b"  # straight onto main
+    r"|branch\s+-D\b|push\b[^\n]*\s--delete\b"  # a branch deleted
+    r"|plugins\s+approve\b|machines\s+approve\b"  # what only the owner approves
+    r"|\blogin\b|/login\b|\bsecret\b|\bpassword\b",  # a sign-in or a secret
+    re.I,
+)
+EVERY = 30.0  # seconds between two looks
+NIGHT = (23, 7)  # from this hour until that one, the voice's item waits for the morning
+
+
+def owners_only(text: str) -> bool:
+    """Whether a prompt is one only the owner may answer, so a manager leaves it to him."""
+    return bool(OWNERS.search(text))
+
+
+@dataclass
+class Waiting:
+    """One prompt a session waits on. `read` finds its question; it is called only once the
+    prompt has waited past the limit with the owner away, and once at most."""
+
+    key: str  # the same for as long as it is the same prompt
+    session: str
+    since: float
+    read: Callable[[], Asked | None]
+    held: bool = False  # whether the bridge holds it, so it can be answered by voice
+    text_ok: bool = True  # whether the question's own words may reach the voice
+    manager: bool = True  # whether its programme has a manager to tell
+
+
+def _local_hour(ts: float) -> int:
+    return time.localtime(ts).tm_hour
+
+
+class Watch:
+    """Remembers which prompts were said while the bridge runs, and the voice's held items."""
+
+    def __init__(
+        self, after_min: float = 5, clock: Callable[[], float] | None = None, hour: Callable[[float], int] = _local_hour
+    ) -> None:
+        self.after = after_min * 60
+        self.clock = clock or time.time
+        self.hour = hour
+        self.last: float | None = None
+        self.said: set[str] = set()
+        self.held: dict[str, str] = {}
+
+    def _lines(self, item: Waiting, minutes: int) -> tuple[str, str]:
+        """What the manager hears and what the voice hears."""
+        asked = item.read()
+        if asked is None:
+            line = f"{item.session} has waited {minutes} minutes on a question I can't read; it's in its own window."
+            return line, line
+        line = f"{item.session} has waited {minutes} minutes on a question: {said_question(asked)}"
+        if not item.held:
+            line += " It's in its window." + (" Its manager has been told." if item.manager else "")
+        # RULE: a prompt only the owner may answer is marked for the manager
+        to_manager = f"The owner's: {line}" if owners_only(asked.question) else line
+        # RULE: a programme that has not said so hears no question text
+        to_voice = line if item.text_ok else f"{item.session} has a question waiting."
+        return to_manager, to_voice
+
+    def look(self, waiting: list[Waiting], away: bool) -> tuple[list[tuple[Waiting, str]], list[str]]:
+        """What to tell each prompt's manager now, and what to tell the voice now."""
+        now = self.clock()
+        if self.last is not None and now - self.last < EVERY:
+            return [], []
+        self.last = now
+        present = {w.key for w in waiting}
+        self.said &= present  # a prompt that is gone may come back as a new one
+        self.held = {k: v for k, v in self.held.items() if k in present}
+        managers: list[tuple[Waiting, str]] = []
+        for item in waiting:
+            # RULE: nothing is said while the owner is at the laptop
+            if not away or item.key in self.said or now - item.since < self.after:
+                continue
+            # RULE: a question waiting past the limit with the owner away is said once
+            self.said.add(item.key)
+            to_manager, to_voice = self._lines(item, int((now - item.since) // 60))
+            managers.append((item, to_manager))
+            self.held[item.key] = to_voice
+        start, end = NIGHT
+        hour = self.hour(now)
+        voice: list[str] = []
+        # RULE: the voice hears of a question at night only in the morning
+        if not (hour >= start or hour < end):
+            voice, self.held = list(self.held.values()), {}
+        return managers, voice
 
 
 def said_question(asked: Asked) -> str:
