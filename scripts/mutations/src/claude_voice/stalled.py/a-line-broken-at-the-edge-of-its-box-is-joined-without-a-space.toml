@@ -1,0 +1,5 @@
+[[rule]]
+name = "a line broken at the edge of its box is joined without a space"
+file = "src/claude_voice/stalled.py"
+find = 'out \+= \(" " if out and ended else ""\) \+ text'
+replace = 'out += (" " if out else "") + text'
