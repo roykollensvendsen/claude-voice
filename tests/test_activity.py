@@ -6,6 +6,7 @@ import json
 import os
 import sqlite3
 import stat
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -615,6 +616,29 @@ def test_clearing_empties_the_file(tmp_path, machine, clock):
     act.tick()
     act.clear()
     assert act.series("all", "1h", local=True)["points"] == []
+
+
+def test_a_look_and_a_question_never_run_at_once(tmp_path, machine, clock):
+    machine.session("worker", "voice")
+    act = make(tmp_path, machine, clock)
+    on(act)
+    waited: list[bool] = []
+    questions: list[threading.Thread] = []
+    real = act.proc.sample
+
+    def sample(pids: Any) -> Any:
+        question = threading.Thread(target=act.series, args=("all", "1h", True))
+        question.start()
+        question.join(0.3)
+        waited.append(question.is_alive())  # still waiting for the look to end
+        questions.append(question)
+        return real(pids)
+
+    act.proc.sample = sample  # type: ignore[method-assign]
+    act.tick()
+    questions[0].join(5)
+    assert waited == [True]
+    assert not questions[0].is_alive()
 
 
 # -- which programmes, and where they may be shown -----------------------------------------------------

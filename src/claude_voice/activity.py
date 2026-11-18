@@ -13,16 +13,18 @@ Which programmes are read at all is the owner's choice in the settings file
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import sqlite3
 import sys
+import threading
 import time
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import IO, Any
+from typing import IO, Any, Concatenate
 
 from claude_agent_sdk import project_key_for_directory
 
@@ -464,6 +466,19 @@ class Kept:
 Place = Callable[[dict[str, Any]], "tuple[str, str] | None"]
 
 
+def _one_at_a_time[**P, R](method: Callable[Concatenate[Activity, P], R]) -> Callable[Concatenate[Activity, P], R]:
+    """The bridge looks in one worker thread and answers the page in others; they share
+    the counts in memory and the file, so only one of them runs at a time."""
+
+    @functools.wraps(method)
+    def locked(self: Activity, /, *args: P.args, **kwargs: P.kwargs) -> R:
+        # RULE: a look and a question never run at once
+        with self.lock:
+            return method(self, *args, **kwargs)
+
+    return locked
+
+
 class Activity:
     """The switch, the looks while it is on, and what the page is served."""
 
@@ -483,6 +498,7 @@ class Activity:
         self.orgs, self.phone_orgs = frozenset(orgs), frozenset(phone_orgs) & frozenset(orgs)
         self.projects_dir, self.proc, self.clock = projects_dir, proc or ProcTree(), clock
         self.kept = Kept(path)
+        self.lock = threading.RLock()  # a look calls flush and daily while it holds it
         self.sessions: dict[str, Live] = {}
         self.minutes = Minutes()
         self.since: float | None = None  # when this stretch of recording began
@@ -499,6 +515,7 @@ class Activity:
         until = (self.store.get_setting(SETTING) or {}).get("until")
         return float(until) if isinstance(until, (int, float)) else None
 
+    @_one_at_a_time
     def is_on(self) -> bool:
         until = self._until()
         if until is None:
@@ -509,6 +526,7 @@ class Activity:
             return False
         return True
 
+    @_one_at_a_time
     def switch(self, body: Any) -> None:
         """Turn it on for one of the durations, or off; ValueError says what does not fit."""
         if not isinstance(body, dict) or not isinstance(body.get("on"), bool) or set(body) - {"on", "for"}:
@@ -532,6 +550,7 @@ class Activity:
         if self.kept.exists():
             self.kept.purge(self.clock())
 
+    @_one_at_a_time
     def state(self, local: bool) -> dict[str, Any]:
         on = self.is_on()
         shown = self._shown(local)
@@ -550,6 +569,7 @@ class Activity:
 
     # -- looking ---------------------------------------------------------------------------------
 
+    @_one_at_a_time
     def tick(self) -> None:
         """One look, every ten seconds while on; while off only the daily delete may run."""
         # RULE: activity reads nothing while off
@@ -602,6 +622,7 @@ class Activity:
         live.cpu_ms, live.rss_mb, live.child = seen.cpu_ms, seen.rss_mb, seen.child
         self.minutes.add(now, live, cpu_ms=grew, rss_mb_max=seen.rss_mb)
 
+    @_one_at_a_time
     def flush(self, now: float | None = None) -> None:
         """Write the counts so far, and how long recording has been on."""
         now = self.clock() if now is None else now
@@ -612,6 +633,7 @@ class Activity:
             self.kept.record(self.since, now)
         self.flushed = now
 
+    @_one_at_a_time
     def daily(self) -> None:
         """Rows older than seven days go once a day, on or off; only the file is opened."""
         now = self.clock()
@@ -619,6 +641,7 @@ class Activity:
             self.kept.purge(now)
             self.purged = now
 
+    @_one_at_a_time
     def clear(self) -> None:
         self.minutes.take()
         self.kept.clear()
@@ -650,6 +673,7 @@ class Activity:
             return True
         return any(n == name for n, _, _ in self.kept.sessions(shown))
 
+    @_one_at_a_time
     def series(self, scope: str, window: str, local: bool) -> dict[str, Any] | None:
         """Counts per bucket over a window; None for a scope this caller may not see."""
         if window not in WINDOWS:
@@ -674,6 +698,7 @@ class Activity:
             "points": [{**p, "t": local_iso(p["t"])} for p in points],
         }
 
+    @_one_at_a_time
     def now(self, scope: str, local: bool) -> dict[str, Any] | None:
         """What each session is doing right now, from memory; None while off."""
         if not self.is_on():
