@@ -10,6 +10,14 @@ It can never trap a session:
 - each message holds a turn back at most once, ever, remembered per session;
 - anything unreadable is let through.
 
+A message that asks for nothing holds nothing back:
+- one whose text begins with "(no reply needed)": the sender says so, and only it
+  knows whether it asks for anything; the marker anywhere else does not count;
+- a plain acknowledgement, the whole text being one word from a closed list
+  (thanks, ok, noted, agreed...) with at most one tail from another (waiting,
+  will do, for #31...). Anything more is held as before: a request missed costs
+  more than a turn, so the list stays closed on purpose.
+
 Couriers named claude-voice-msg-* (and the older tmp-*) deliver one message for
 the claude-voice bridge and exit at once, so they cannot receive an answer. The
 answer to them belongs in the session's own reply, which the bridge reads.
@@ -35,6 +43,18 @@ MESSAGE = re.compile(
     r"\n?(?P<text>.*?)</cross-session-message>",
     re.DOTALL,
 )
+NO_REPLY = "(no reply needed)"
+ACK = re.compile(
+    r"(thanks|thank you|ok|okay|ack|noted|agreed|good|👍)[.,!]?"
+    r"( (waiting|will do|on it|done|thanks|noted|for #\d+)[.!]?)?",
+    re.IGNORECASE,
+)
+
+
+def _asks_nothing(text: str) -> bool:
+    """A message marked as needing no reply, or a plain acknowledgement from the closed list."""
+    text = text.strip()
+    return text.startswith(NO_REPLY) or ACK.fullmatch(text) is not None
 
 
 def _texts(entry: dict[str, Any]) -> list[str]:
@@ -104,7 +124,7 @@ def unanswered(entries: list[dict[str, Any]]) -> list[dict[str, str]]:
         for text in _texts(entry):
             for match in MESSAGE.finditer(text):
                 message = {k: match.group(k).strip() for k in ("address", "name", "text")}
-                if _is_courier(message["name"], message["address"]):
+                if _asks_nothing(message["text"]) or _is_courier(message["name"], message["address"]):
                     continue
                 key = hashlib.sha256(json.dumps(message, sort_keys=True).encode()).hexdigest()
                 pending.setdefault(key, {**message, "key": key})
