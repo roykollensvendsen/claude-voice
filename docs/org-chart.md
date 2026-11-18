@@ -132,8 +132,12 @@ builder = true              # this role builds
 The bridge looks every minute. When every builder of a programme has been idle
 that long and at least one item waits, that is one episode, flagged once:
 
-- the programme's manager, the sessions of its `manager` role, gets one message:
-  "All builders in Acme Robots idle 15 min; 3 items waiting, 2 blocked.";
+- the programme's manager, the sessions of the role whose code is `manager`,
+  gets one message: "All builders in Acme Robots idle 15 min; 3 items waiting, 2
+  blocked." A programme with builders and no such role is warned about in
+  `org check`. The message is sent on its own, so a slow courier holds up
+  nothing else; one the courier never tried is sent again the next minute, and
+  one it may have sent is never sent twice;
 - with `idle_report = true`, the voice gets one `whats_new` item of kind
   `idle_builders`: "Acme Robots: all builders idle 15 minutes with 3 items
   waiting, 2 blocked." Between 23.00 and 07.00 the bridge's local time, it is
@@ -141,7 +145,8 @@ that long and at least one item waits, that is one episode, flagged once:
   goes at once, since managers work at night.
 
 The episode ends when a builder turns busy, or nothing waits any more; the next
-one is flagged again. Only the programme's name and the two counts are ever
+one is flagged again. A work list that cannot be read for a moment, such as
+one being written, leaves the episode as it stands. Only the programme's name and the two counts are ever
 sent, never an item's text. The bridge remembers the episodes it flagged while
 it runs, so a restart in the middle of one flags it once more.
 

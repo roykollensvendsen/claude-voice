@@ -376,3 +376,10 @@ def test_the_check_gives_the_idle_warnings_too(tmp_path):
     c = builders_home(tmp_path)
     warnings = org.check(c, running={"acme-robots", "acme-lane", "arm-builder"}, state=tmp_path / "state")
     assert "acme: role arm-builder is a builder by name only; mark it with builder = true" in warnings
+
+
+def test_a_programme_with_builders_and_no_manager_is_warned_about(tmp_path):
+    c = builders_home(tmp_path, BUILDERS.replace("[roles.manager]", "[roles.lead]"))
+    assert "acme: no role with code manager, so nobody is told of idle builders" in org.idle_warnings(
+        c, tmp_path / "state"
+    )

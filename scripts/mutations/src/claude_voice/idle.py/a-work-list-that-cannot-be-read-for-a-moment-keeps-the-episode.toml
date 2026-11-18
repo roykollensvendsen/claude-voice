@@ -1,0 +1,5 @@
+[[rule]]
+name = "a work list that cannot be read for a moment keeps the episode"
+file = "src/claude_voice/idle.py"
+find = 'continue  # the episode stays as it stands'
+replace = 'counts = None'
