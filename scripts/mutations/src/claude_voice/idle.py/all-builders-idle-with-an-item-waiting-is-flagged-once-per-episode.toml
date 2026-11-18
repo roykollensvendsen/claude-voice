@@ -1,0 +1,5 @@
+[[rule]]
+name = "all builders idle with an item waiting is flagged once per episode"
+file = "src/claude_voice/idle.py"
+find = 'if p.code in self.flagged:'
+replace = 'if False:'

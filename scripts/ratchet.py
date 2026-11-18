@@ -138,6 +138,7 @@ LAYERS = {
             "setup",
             "shipped",
             "settings_edit",
+            "idle",
         ),
         2,
     ),
