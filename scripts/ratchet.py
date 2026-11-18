@@ -75,6 +75,7 @@ LAYERS = {
             "owner_rules",
             "uvlock",
             "session_hook",
+            "redact",
         ),
         0,
     ),
