@@ -351,6 +351,29 @@ def test_without_children_lists_no_other_process_is_read(tmp_path, machine, open
     assert others == [str(machine.proc / "uptime")]
 
 
+def test_where_there_is_no_proc_no_process_is_read(tmp_path, machine, clock, monkeypatch):
+    monkeypatch.setattr(activity.sys, "platform", "win32")
+    monkeypatch.delattr(activity.os, "sysconf")
+    path = machine.session("worker", "voice")
+    write(path, prompt(T0), use(T0 + 1, "c1"))
+    act = activity.Activity(
+        Store(tmp_path / "bridge.db"),
+        tmp_path / "activity.db",
+        live=lambda: machine.rows,
+        place=machine.place,
+        orgs=("voice",),
+        projects_dir=machine.projects,
+        clock=clock,
+    )
+    on(act)
+    act.tick()
+    (row,) = act.now("all", local=True)["sessions"]
+    assert row["call"]["kind"] == "run"
+    assert (row["cpu_pct"], row["rss_mb"], row["child"]) == (0.0, 0, None)  # the contract keeps numbers
+    act.switch({"on": False})
+    assert act.state(local=True)["on"] is False
+
+
 def test_the_longest_running_child_is_named_from_the_fixed_list(tmp_path, machine):
     machine.process(4000, 1, "claude")
     machine.process(4001, 4000, "pytest", start=500)
