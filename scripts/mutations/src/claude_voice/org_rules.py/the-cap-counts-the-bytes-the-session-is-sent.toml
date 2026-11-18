@@ -1,0 +1,5 @@
+[[rule]]
+name = "the cap counts the bytes the session is sent"
+file = "src/claude_voice/org_rules.py"
+find = 'size = len\(json\.dumps\(text\)\.encode\(\)\)'
+replace = 'size = len(text)'
