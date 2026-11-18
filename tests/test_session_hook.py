@@ -6,6 +6,7 @@ about, or leaves to Claude Code's own rules."""
 
 from __future__ import annotations
 
+import ast
 import functools
 import json
 import subprocess
@@ -230,6 +231,33 @@ def test_the_session_hook_runs_with_the_standard_library_only(tmp_path):
     here = functools.partial(subprocess.run, cwd=tmp_path)
     said = session_hook.self_check([sys.executable, "-I", "-S", session_hook.__file__], run=here)
     assert said["ok"], said
+
+
+def test_the_session_hook_and_the_files_beside_it_import_only_the_standard_library():
+    """Read from the source, so a new import can't stop the hook again while every test still
+    runs it with the bridge's own Python. A file beside it must keep to the same rule."""
+    folder = Path(session_hook.__file__).parent
+    seen, todo, outside = set(), ["session_hook"], []
+    while todo:
+        name = todo.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        tree = ast.parse((folder / f"{name}.py").read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.level:  # from . import x: a file beside it
+                todo += [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                outside += [f"{name}: {node.module}"] if node.module.split(".")[0] not in STDLIB else []
+            elif isinstance(node, ast.Import):
+                outside += [f"{name}: {a.name}" for a in node.names if a.name.split(".")[0] not in STDLIB]
+            elif isinstance(node, ast.Call) and getattr(node.func, "id", None) == "_beside":
+                todo.append(node.args[0].value)  # loaded by its path: _beside("safe_git")
+    assert seen >= {"session_hook", "safe_git"}
+    assert not outside, f"imports beyond the standard library: {outside}"
+
+
+STDLIB = sys.stdlib_module_names | {"__future__"}
 
 
 @posix_only
