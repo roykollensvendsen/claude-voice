@@ -34,11 +34,27 @@ counted in the totals but get no line.
   `timeout` count as errors.
 
 Days are Oslo days. Today's totals are counted in memory and written at most 30
-seconds apart, and when the bridge stops. After a crash, the bridge counts again
-the lines that ended after the last write, so only polling counts from those
-seconds can be lost.
+seconds apart, and when the bridge stops. The write runs on its own thread, so
+no call waits on the database. After a crash, the bridge counts again the lines
+that ended after the last write, on every day since. Only polling counts from
+those seconds can be lost.
 
 ## What reads it
 
-The health page shows the log through the bridge. The endpoints and the live
-events that page reads come in a later change.
+The health page reads the log through the bridge, signed in like the rest of
+the page's API. A bad day, tool or limit gets a 400.
+
+- `GET /api/v1/calls/totals?from=<day>&to=<day>`: per day and tool, the calls,
+  the errors, and the median and 95th percentile in milliseconds. These are read
+  from the duration buckets, so each is the top of a bucket; over a minute reads
+  as 60,000. `unused` lists the tools offered with no call in that window. With
+  no days given, it covers the last 14, and it covers at most 400.
+- `GET /api/v1/calls/recent?limit=20`: the last calls, newest first, and the
+  calls running now. The limit is 1 to 100.
+- `GET /api/v1/calls/day/<day>/<tool>`: one day's lines for one tool. A polling
+  tool says `counted_only`, since it has no lines.
+
+Each call also sends two events on the page's live stream, `/api/v1/events`:
+`call_start` with `id`, `tool`, `source`, `caller` and `at`, and `call_end` with
+`id`, `tool`, `outcome`, `error_class`, `ms` and `ended_at`. Polling tools send
+none.

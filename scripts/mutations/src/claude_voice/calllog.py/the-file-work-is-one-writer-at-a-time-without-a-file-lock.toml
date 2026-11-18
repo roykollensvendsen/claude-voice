@@ -1,0 +1,5 @@
+[[rule]]
+name = "the file work is one writer at a time without a file lock"
+file = "src/claude_voice/calllog.py"
+find = 'with self\._file:'
+replace = 'with contextlib.nullcontext():'

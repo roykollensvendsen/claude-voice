@@ -1,0 +1,5 @@
+[[rule]]
+name = "a tool the bridge does not offer is refused"
+file = "src/claude_voice/calllog.py"
+find = 'if tool not in offered and not lines:'
+replace = 'if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a span of more than 400 days is refused"
+file = "src/claude_voice/calllog.py"
+find = 'if \(date\.fromisoformat\(last\) - date\.fromisoformat\(first\)\)\.days > SPAN_DAYS:'
+replace = 'if False:'

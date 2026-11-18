@@ -1,0 +1,5 @@
+[[rule]]
+name = "the recent calls limit is a whole number from 1 to 100"
+file = "src/claude_voice/api.py"
+find = 'if not raw\.isdigit\(\) or not 1 <= int\(raw\) <= 100:'
+replace = 'if not raw.isdigit():'

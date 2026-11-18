@@ -1,0 +1,5 @@
+[[rule]]
+name = "the totals are written off the calling thread"
+file = "src/claude_voice/calllog.py"
+find = 'self\.later\(self\.flush\)'
+replace = 'self.flush()'

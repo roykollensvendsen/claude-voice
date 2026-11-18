@@ -1,0 +1,5 @@
+[[rule]]
+name = "a call counted while a flush copies is in the database or recovered"
+file = "src/claude_voice/calllog.py"
+find = 'now = self\.clock\(\)  # the time the copy is good to'
+replace = 'now = self.clock() + 1'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a day that is not a real date as YYYY-MM-DD is refused"
+file = "src/claude_voice/calllog.py"
+find = 'if not DAY\.fullmatch\(text\):'
+replace = 'if False:'

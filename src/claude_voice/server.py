@@ -2472,6 +2472,8 @@ def build_server(
             book=prompt_book,
             away=lambda app_open: PRESENCE[0].away(app_open=app_open),
             route=_router(route, across),
+            calls=lambda: CALLS[0] if CALLS else None,
+            offered=lambda: sorted(mcp._tool_manager._tools),
         ).routes(mcp)
 
     mcp.prompt_book = prompt_book  # type: ignore[attr-defined]  # for tests
@@ -2569,7 +2571,7 @@ def serve_forever(cfg: Config) -> None:
     app = build_app(server, cfg.public_hosts, ui_origins=cfg.ui_origins, ui_dir=cfg.ui_dir)
     configure_logging(cfg.db.parent / LOG_FILE)
     envfile.warn(log)
-    calls = calllog.CallLog(config.STATE_DIR / calllog.FILE, store)
+    calls = calllog.CallLog(config.STATE_DIR / calllog.FILE, store, publish=api.HUB.publish)
     try:
         calls.start_up()
         CALLS[:] = [calls]

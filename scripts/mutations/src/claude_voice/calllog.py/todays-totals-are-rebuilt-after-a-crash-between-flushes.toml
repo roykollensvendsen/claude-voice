@@ -1,5 +1,5 @@
 [[rule]]
 name = "todays totals are rebuilt after a crash between flushes"
 file = "src/claude_voice/calllog.py"
-find = 'if ended > flushed_to and oslo_day\(_ts\(ended\)\) == today:'
+find = 'if ended > flushed_to:'
 replace = 'if False:'
