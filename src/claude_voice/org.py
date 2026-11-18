@@ -18,12 +18,13 @@ from dataclasses import dataclass, field
 from pathlib import Path, PureWindowsPath
 from typing import Any
 
-from . import config, renames
+from . import backlog, config, renames
 
 FILE = Path(".claude/org.toml")
 CODE = re.compile(r"[a-z][a-z0-9-]{0,31}")
 KINDS = ("facts", "proposals", "decisions", "quality")  # what may be sent to a role
 LAST = 1_000_000  # the place of a programme that gives no order
+IDLE_AFTER_MIN = 15  # how long every builder is idle before it is flagged, unless the file says
 
 Remotes = Callable[[str], Iterable[str]]
 
@@ -54,9 +55,19 @@ class Role:
     sessions: tuple[str, ...] = ()
     component: str | None = None
     send_here: tuple[str, ...] = ()
+    builder: bool | None = None  # as the file gives it; None when it says nothing
 
     def words(self) -> set[str]:
         return _words(self.code, self.name, ())
+
+    @property
+    def by_name(self) -> bool:
+        """Whether only its code makes it a builder: the file does not say."""
+        return self.builder is None and "builder" in self.code
+
+    def builds(self) -> bool:
+        # RULE: a role with no builder key is a builder when its code says so
+        return self.builder is True or self.by_name
 
 
 @dataclass(frozen=True)
@@ -68,9 +79,15 @@ class Programme:
     repo: Path = Path()
     components: tuple[Component, ...] = ()
     roles: tuple[Role, ...] = ()
+    backlog: str = ""  # the work list, a file in the state folder; "" when none is named
+    idle_after_min: int = IDLE_AFTER_MIN
+    idle_report: bool = False  # whether the voice hears of idle builders, not only the manager
 
     def words(self) -> set[str]:
         return _words(self.code, self.name, self.aliases)
+
+    def builders(self) -> tuple[Role, ...]:
+        return tuple(r for r in self.roles if r.builds())
 
     def component(self, code: str | None) -> Component | None:
         return next((c for c in self.components if c.code == code), None)
@@ -168,7 +185,16 @@ def _role(code: str, body: dict[str, Any], where: str) -> Role:
         _list(body, "sessions"),
         str(component) if component else None,
         _list(body, "send_here"),
+        body["builder"] if isinstance(body.get("builder"), bool) else None,
     )
+
+
+def _minutes(head: dict[str, Any], where: str, problems: list[str]) -> int:
+    value = head.get("idle_after_min", IDLE_AFTER_MIN)
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    problems.append(f"{where}: idle_after_min {value!r} is not a whole number of minutes; 15 counts")
+    return IDLE_AFTER_MIN
 
 
 def _tables(raw: dict[str, Any], key: str) -> list[tuple[str, dict[str, Any]]]:
@@ -211,6 +237,9 @@ def read(repo: Path, problems: list[str]) -> Programme | None:
         repo,
         tuple(_component(k, v, repo, code, problems) for k, v in _tables(raw, "components")),
         tuple(_role(k, v, code) for k, v in _tables(raw, "roles")),
+        _text(head, "backlog"),
+        _minutes(head, code, problems),
+        head.get("idle_report") is True,
     )
 
 
@@ -370,7 +399,28 @@ def _role_warnings(p: Programme, role: Role, running: set[str]) -> list[str]:
     return out
 
 
-def check(chart: Chart, running: set[str]) -> list[str]:
+def idle_warnings(chart: Chart, state: Path) -> list[str]:
+    """What keeps idle builders from being flagged as the owner meant: a builder known only by
+    its name, a programme with builders and no work list, or a list outside `state`."""
+    out = []
+    for p in chart.programmes:
+        out += [
+            f"{p.code}: role {r.code} is a builder by name only; mark it with builder = true"
+            for r in p.roles
+            if r.by_name
+        ]
+        if not p.backlog:
+            if p.builders():
+                out.append(f"{p.code}: no backlog named, so its idle builders are never flagged")
+            continue
+        try:
+            backlog.path(state, p.backlog)
+        except backlog.Outside as exc:
+            out.append(f"{p.code}: {exc}")
+    return out
+
+
+def check(chart: Chart, running: set[str], state: Path | None = None) -> list[str]:
     """What is wrong with the chart: the files' problems, then each programme's warnings."""
     out = list(chart.problems)
     for p in chart.programmes:
@@ -380,7 +430,7 @@ def check(chart: Chart, running: set[str]) -> list[str]:
                     out.append(f"{p.code}: component {c.code}: folder {text} does not exist")
         for role in p.roles:
             out += _role_warnings(p, role, running)
-    return out
+    return out + idle_warnings(chart, state or config.STATE_DIR.expanduser())
 
 
 def _holders(

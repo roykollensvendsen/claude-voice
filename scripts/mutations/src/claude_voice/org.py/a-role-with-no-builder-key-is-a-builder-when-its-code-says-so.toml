@@ -1,0 +1,5 @@
+[[rule]]
+name = "a role with no builder key is a builder when its code says so"
+file = "src/claude_voice/org.py"
+find = 'return self.builder is True or self.by_name'
+replace = 'return self.builder is True'
