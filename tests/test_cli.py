@@ -206,19 +206,25 @@ def test_the_typed_answer_is_read_from_a_real_terminal(monkeypatch):
     real pseudo-terminal, not a stand-in, because a stand-in hid exactly this."""
     import os
     import sys
+    import time
 
     import pytest
 
     if sys.platform == "win32":
         pytest.skip("no pseudo-terminals on Windows")
     import pty
+    import select
 
     main_end, terminal_end = pty.openpty()
     try:
         monkeypatch.setattr(cli, "TERMINAL", os.ttyname(terminal_end))
         os.write(main_end, b"accept 3\n")
         assert cli._read_from_terminal("Type accept 3: ").strip() == "accept 3"
-        shown = os.read(main_end, 1024).decode()
+        # The terminal echoes the answer as soon as it is written, so one read can return the
+        # echo alone; read until the prompt shows, for at most five seconds.
+        shown, until = "", time.monotonic() + 5
+        while "Type accept 3: " not in shown and select.select([main_end], [], [], max(0, until - time.monotonic()))[0]:
+            shown += os.read(main_end, 1024).decode()
         assert "Type accept 3: " in shown
     finally:
         os.close(main_end)
