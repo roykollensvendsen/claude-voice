@@ -82,6 +82,7 @@ class Programme:
     backlog: str = ""  # the work list, a file in the state folder; "" when none is named
     idle_after_min: int = IDLE_AFTER_MIN
     idle_report: bool = False  # whether the voice hears of idle builders, not only the manager
+    stalled_prompt_text: bool = False  # whether a waiting question's own words may reach the voice
 
     def words(self) -> set[str]:
         return _words(self.code, self.name, self.aliases)
@@ -240,6 +241,7 @@ def read(repo: Path, problems: list[str]) -> Programme | None:
         _text(head, "backlog"),
         _minutes(head, code, problems),
         head.get("idle_report") is True,
+        head.get("stalled_prompt_text") is True,
     )
 
 

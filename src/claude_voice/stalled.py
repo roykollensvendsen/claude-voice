@@ -35,6 +35,11 @@ class Asked:
     options: list[str] = field(default_factory=list)
 
 
+def same(asked: Asked) -> Asked:
+    """`asked` itself: the reading of a question already in hand."""
+    return asked
+
+
 def read_pane(pane: str, run: Callable[[list[str]], str]) -> str:
     """The text of tmux pane `pane`, wrapped lines joined. Only read: nothing is typed."""
     # RULE: a pane is read with its wrapped lines joined
