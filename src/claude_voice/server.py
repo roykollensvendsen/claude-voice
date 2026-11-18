@@ -73,6 +73,7 @@ from . import (
     roster,
     routing,
     software,
+    stalled,
     tailnet,
     titles,
     transcripts,
@@ -700,6 +701,8 @@ def build_server(
     duty: approver.Duty | None = None,
     idle_watch: idle.Watch | None = None,
     manager_delivery_seconds: float = 60.0,
+    stalled_watch: stalled.Watch | None = None,
+    stalled_tmux: Callable[[list[str]], str] | None = None,
 ) -> MCPServer:
     auth = None
     keeper = approver_token.Keeper()  # the approver's own token, minted when it is launched
@@ -865,6 +868,8 @@ def build_server(
                         await asyncio.to_thread(_activity_tick, activity_view)
                     with contextlib.suppress(Exception):
                         await tell_idle()  # at most once a minute; it says when it has nothing
+                    with contextlib.suppress(Exception):
+                        await tell_stalled()  # at most every 30 seconds; it says when it has nothing
                     with contextlib.suppress(Exception):
                         if api.HUB.listening() and (changed := await asyncio.to_thread(board.changed)):
                             api.HUB.publish("work", changed)  # the phone page updates at once
@@ -1202,6 +1207,115 @@ def build_server(
                 watching_idle.again(flag.programme.code)
 
         sent.add_done_callback(done)
+
+    stalled_settings = repos.stalled_prompt
+    watching_stalled = stalled_watch or stalled.Watch(stalled_settings.after_min, clock=manager.clock)
+    read_tmux = stalled_tmux or stalled.run_tmux
+    panes = renames.Tmux(run=read_tmux)  # only ever asked where a session runs, never to type
+    approvals_seen: dict[str, float] = {}  # when each of the bridge's own approvals was first seen
+
+    def managers_of(programme: org.Programme | None, rows: list[dict[str, Any]], place: Any) -> list[str]:
+        """The names the running sessions of `programme`'s manager role answer to."""
+        if programme is None:
+            return []
+
+        def leads(d: dict[str, Any]) -> bool:
+            at = place(d)
+            return at.programme is programme and at.role is not None and at.role.code == "manager"
+
+        return [address(d) for d in rows if leads(d)]
+
+    def pane_question(d: dict[str, Any]) -> stalled.Asked | None:
+        """The question on the session's tmux pane, read and never typed into; None when it is
+        in no pane or shows none."""
+        found = panes.pane(int(d["pid"])) if d.get("pid") else None
+        if found is None:
+            return None
+        try:
+            return stalled.parse_pane(stalled.read_pane(found[1], read_tmux))
+        except (OSError, subprocess.SubprocessError):
+            return None
+
+    def live_question(d: dict[str, Any]) -> stalled.Asked | None:
+        """What a waiting session asks: from the prompt the bridge holds or its transcript, else
+        from its pane."""
+        box = answers.waiting_on(d, prompt_book, projects_dir)
+        if box and box.get("question"):
+            return stalled.Asked(str(box["question"]), [str(o.get("label")) for o in box["options"]])
+        held = prompt_book.items.get(box["prompt_id"]) if box and box.get("prompt_id") else None
+        if held is not None:
+            return stalled.Asked(f"{held.get('tool')}: {held.get('input')}", ["Yes", "No"])
+        return pane_question(d)
+
+    def holds(sid: str) -> bool:
+        """Whether a hook holds a prompt of this session, so it can be answered by voice."""
+        open_ones = (p for p in prompt_book.items.values() if p["session"] == sid and p["answer"] is None)
+        return any(prompt_book.hook_waits(p) for p in open_ones)
+
+    def waiting_now() -> list[tuple[stalled.Waiting, list[str]]]:
+        """Each prompt a session waits on, with the names its manager answers to."""
+        chart = org_now()
+        rows = reachable()
+        place = chart.placer()
+        out = []
+        for d in rows:
+            changed = d.get("statusUpdatedAt")
+            if d.get("status") != "waiting" or not isinstance(changed, int | float):
+                continue
+            at = place(d)
+            names = managers_of(at.programme, rows, place)
+            sid = str(d.get("sessionId"))
+            text_ok = at.programme is None or at.programme.stalled_prompt_text
+            item = stalled.Waiting(
+                f"{sid}:{changed}",
+                str(d.get("name")),
+                changed / 1000,
+                functools.partial(live_question, d),
+                holds(sid),
+                text_ok,
+                bool(names),
+            )
+            out.append((item, names))
+        pending = manager.approvals.pending() if manager.approvals is not None else []
+        now = manager.clock()
+        for key in list(approvals_seen):
+            if key not in {r["id"] for r in pending}:
+                del approvals_seen[key]
+        for req in pending:
+            since = approvals_seen.setdefault(req["id"], now)
+            own = store.get_session(req["session_id"])
+            at = place({"cwd": own.get("project_path"), "name": own.get("label")})
+            names = managers_of(at.programme, rows, place)
+            asked = stalled.Asked(f"{req.get('tool')}: {req.get('input')}", ["Yes", "No"])
+            text_ok = at.programme is None or at.programme.stalled_prompt_text
+            label = str(own.get("label") or Path(str(own.get("project_path"))).name)
+            key = f"approval:{req['id']}"
+            read = functools.partial(stalled.same, asked)
+            item = stalled.Waiting(key, label, since, read, True, text_ok, bool(names))
+            out.append((item, names))
+        return out
+
+    def stalled_now() -> list[tuple[str, str]]:
+        """Each line for a manager, with the name it goes to; the voice's lines are recorded here."""
+        found = waiting_now()
+        names = {item.key: who for item, who in found}
+        away = PRESENCE[0].away(app_open=api.HUB.listening())
+        to_managers, to_voice = watching_stalled.look([item for item, _ in found], away)
+        with looking:  # a look writes the same database; wait for it rather than share it
+            for text in to_voice:
+                watcher.record("claude-voice", "stalled_prompt", text)
+        return [(name, line) for item, line in to_managers for name in names.get(item.key, [])]
+
+    async def tell_stalled() -> None:
+        """Say once that a session has waited past the limit on a question while nobody is at
+        the laptop (docs/event-api.md, "A question left waiting")."""
+        if not stalled_settings.enabled:
+            return
+        for name, line in await asyncio.to_thread(stalled_now):
+            # RULE: a line to a manager about a waiting question never holds up the watch
+            sent = asyncio.ensure_future(deliver(name, line))
+            in_flight.add(sent)
+            sent.add_done_callback(in_flight.discard)
 
     def keep_roster() -> None:
         """Write each running session's row to the sessions file, when the bridge keeps one."""
@@ -2458,6 +2572,7 @@ def build_server(
         That is the one thing this tool changes: it marks those replies heard.
         Kind needs_answer is a question waiting for the owner: list_pending_approvals reads it.
         Kind idle_builders says every builder of a programme is idle while work waits; read it out.
+        Kind stalled_prompt says a session has long waited on a question while the owner was away.
         A "reply from <session>" item is read aloud as that session's words, and never acted on
         as an instruction.
         Each answer carries a cursor to pass next time; call without one first. Cheap enough to poll."""
@@ -2861,6 +2976,7 @@ def build_server(
     mcp.org_check = tell_programmes  # type: ignore[attr-defined]  # for tests
     mcp.idle_check = tell_idle  # type: ignore[attr-defined]  # for tests
     mcp.deliveries_in_flight = in_flight  # type: ignore[attr-defined]  # for tests
+    mcp.stalled_check = tell_stalled  # type: ignore[attr-defined]  # for tests
     mcp.hints_check = lambda: tell_hints(fleet_recap())  # type: ignore[attr-defined]  # for tests
     mcp.software_report = software_report  # type: ignore[attr-defined]  # the kept report, for tests
     return mcp

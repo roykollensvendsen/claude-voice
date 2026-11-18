@@ -1,0 +1,5 @@
+[[rule]]
+name = "a wait for a stalled prompt that is not a positive number is refused"
+file = "src/claude_voice/config.py"
+find = 'if isinstance\(after, bool\) or not isinstance\(after, \(int, float\)\) or after <= 0:'
+replace = 'if False:'

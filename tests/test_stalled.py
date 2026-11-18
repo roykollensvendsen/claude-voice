@@ -1,6 +1,8 @@
 """When a question left waiting is said, to whom, and how often."""
 
-from claude_voice import stalled
+import pytest
+
+from claude_voice import config, org, stalled
 
 MIN = 60.0
 
@@ -140,3 +142,32 @@ def test_only_the_owners_prompts_are_marked():
     assert stalled.owners_only("gh auth login")
     assert not stalled.owners_only("uv run pytest -q")
     assert not stalled.owners_only("git push --force-with-lease origin feat/x")
+
+
+# -- the settings, and what a programme lets the voice hear -------------------------------
+
+
+def test_a_question_is_said_after_5_minutes_unless_the_settings_say_otherwise(tmp_path):
+    default = config.load(tmp_path / "none.toml", env={"HOME": str(tmp_path)}).stalled_prompt
+    assert (default.enabled, default.after_min) == (True, 5)
+    f = tmp_path / "c.toml"
+    f.write_text("[stalled_prompt]\nenabled = false\nafter_min = 10\n")
+    chosen = config.load(f, env={"HOME": str(tmp_path)}).stalled_prompt
+    assert (chosen.enabled, chosen.after_min) == (False, 10)
+
+
+def test_a_wait_for_a_stalled_prompt_that_is_not_a_positive_number_is_refused(tmp_path):
+    f = tmp_path / "c.toml"
+    for body in ('after_min = "soon"', "after_min = 0", 'enabled = "yes"'):
+        f.write_text(f"[stalled_prompt]\n{body}\n")
+        with pytest.raises(config.ConfigError, match="stalled_prompt"):
+            config.load(f, env={"HOME": str(tmp_path)})
+
+
+def test_a_programme_lets_the_voice_hear_the_question_only_when_it_says_so(tmp_path):
+    (tmp_path / "a" / ".claude").mkdir(parents=True)
+    (tmp_path / "a" / ".claude" / "org.toml").write_text('[programme]\ncode = "a"\nstalled_prompt_text = true\n')
+    (tmp_path / "b" / ".claude").mkdir(parents=True)
+    (tmp_path / "b" / ".claude" / "org.toml").write_text('[programme]\ncode = "b"\n')
+    chart = org.load([tmp_path / "a", tmp_path / "b"])
+    assert [p.stalled_prompt_text for p in chart.programmes] == [True, False]
