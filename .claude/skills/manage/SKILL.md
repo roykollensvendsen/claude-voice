@@ -68,5 +68,5 @@ that reports friction is doing its job; answer it with a change, not a reminder.
 
 ## A new plugin
 
-Follow "Bringing a new plugin into the team" in the `write-plugin` skill, then
+Follow the `plugin` skill's [manager.md](../plugin/manager.md), then
 add the plugin to docs/organisation.md's list and to your overview.
