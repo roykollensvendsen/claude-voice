@@ -1,0 +1,5 @@
+[[rule]]
+name = "a cursor confirms only the replies its own answer carried"
+file = "src/claude_voice/mailbox.py"
+find = '"carried = \?"'
+replace = '"delivered_at IS NOT NULL AND seq <= (SELECT MAX(seq) FROM mailbox WHERE carried = ?)"'
