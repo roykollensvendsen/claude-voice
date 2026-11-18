@@ -261,10 +261,11 @@ but names `main` or `master` is refused too, from the forms under `other pushes`
 | `~/.config/ntfy/`, `~/.local/share/ntfy/`, `~/.local/state/ntfy/` | the push server's settings, cache and user list |
 | `~/.local/state/messages-mcp/sent.jsonl` | the record of messages sent |
 
-Three of those files decide what the messages plugin may do. `door.toml` lists
+Four of those files decide what the messages plugin may do. `door.toml` lists
 who may reach it, and `send.toml` sets how long a message waits before it goes.
-The push server's `server.yml` keeps everyone out who isn't on its user list.
-No session may write any of them, with any tool or command. Only the owner
+`matrix-login.json` holds the token that sends as the owner, and the server it
+goes to. The push server's `server.yml` keeps everyone out who isn't on its user
+list. No session may write any of them, with any tool or command. Only the owner
 changes them.
 
 - **Settings and secrets, read broadly with `sed`.** `sed -n` is refused for

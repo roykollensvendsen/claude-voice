@@ -292,6 +292,16 @@ def test_no_session_can_change_who_may_be_messaged_or_the_undo_delay():
         assert any(rule.startswith("Bash(tee") and f".config/{path}" in rule for rule in rules.deny), path
 
 
+def test_no_session_can_point_the_message_bridges_login_at_another_server():
+    """matrix-login.json holds a token that sends as the owner, and the server it goes to;
+    a session that could rewrite it could send that token anywhere."""
+    rules = permissions.load()
+    path = ".config/messages-mcp/matrix-login.json"
+    for tool in ("Edit", "Write"):
+        assert f"{tool}(~/{path})" in rules.deny, tool
+    assert any(rule.startswith("Bash(tee") and path in rule for rule in rules.deny)
+
+
 def test_the_copy_into_tmp_the_old_installer_allowed_is_retired():
     rules = permissions.load()
     assert "Bash(cp * /tmp/*)" in rules.retired
