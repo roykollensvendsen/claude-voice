@@ -162,40 +162,22 @@ class ProcTree:
                 continue
         return found
 
-    def _parents(self, skip: frozenset[int]) -> dict[int, list[int]]:
-        """Every process by its parent, from a scan of /proc, leaving out `skip` and what
-        runs under it; only for a kernel without children lists."""
-        under: dict[int, list[int]] = {}
-        for entry in os.scandir(self.root):
-            if entry.name.isdigit() and int(entry.name) not in skip:
-                stat = self._stat(int(entry.name))
-                if stat is not None:
-                    under.setdefault(int(stat[1][1]), []).append(int(entry.name))
-        for pid in skip:
-            under.pop(pid, None)
-        return under
-
     def _uptime(self) -> float:
         with _open(self.root / "uptime") as f:
             return float(f.read().split()[0])
 
-    def sample(self, pids: Iterable[int], skip: Iterable[int] = ()) -> dict[int, Seen]:
-        """Each pid's own numbers summed with those of every process under it. The pids in
-        `skip`, sessions that are not read, are never opened."""
+    def sample(self, pids: Iterable[int]) -> dict[int, Seen]:
+        """Each pid's own numbers summed with those of every process under it. On a kernel
+        that keeps no lists of children, only the pid's own: finding them would mean reading
+        every process on the machine, those of programmes that are not read among them."""
         wanted = list(pids)
         if not wanted:
             return {}
         uptime = self._uptime()
-        scanned: dict[int, list[int]] | None = None
 
         def children(pid: int) -> list[int]:
-            nonlocal scanned
-            listed = self._listed(pid)
-            if listed is not None:
-                return listed
-            if scanned is None:
-                scanned = self._parents(frozenset(skip))
-            return scanned.get(pid, [])
+            # RULE: without children lists no other process is read
+            return self._listed(pid) or []
 
         out = {}
         for pid in wanted:
@@ -570,16 +552,15 @@ class Activity:
         self.looked = now
         if self.since is None:
             self.since = now
-        rows, skip = {}, set()
+        rows = {}
         for row in self.live():
             placed = self.place(row)
             # RULE: a programme not switched on is never read
             if placed is None or placed[0] not in self.orgs:
-                skip.add(int(row.get("pid") or 0))
                 continue
             rows[str(row.get("name") or row.get("sessionId"))] = (row, placed)
         self.sessions = {n: self.sessions.get(n) or Live(n, *p, int(r["pid"])) for n, (r, p) in rows.items()}
-        seen = self.proc.sample((s.pid for s in self.sessions.values()), skip=skip)
+        seen = self.proc.sample(s.pid for s in self.sessions.values())
         for name, (row, _) in rows.items():
             self._look(self.sessions[name], row, seen.get(self.sessions[name].pid), now)
         if now - self.flushed >= FLUSH_SECONDS:

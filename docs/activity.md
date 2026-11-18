@@ -61,9 +61,10 @@ session's CPU, children included, has not grown for 2 minutes. A command's
 output reaches the transcript only when it ends, so the CPU is what tells a
 long test run from a hung one.
 
-Where the kernel keeps no list of each process's children, the bridge finds
-them by reading the first line of every process's `stat`. It skips the sessions
-it does not read, and keeps nothing about any process outside a read session.
+Where the kernel keeps no list of each process's children, the bridge counts only
+the session's own process, and `child` is `null`. Finding the children there would
+mean reading every process on the computer, including those of programmes that are
+not read. So a red there can also mean a child that still works.
 
 ## The endpoints
 
