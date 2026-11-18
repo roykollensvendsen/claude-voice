@@ -1,0 +1,5 @@
+[[rule]]
+name = "an item with no taken or done line under it waits"
+file = "src/claude_voice/backlog.py"
+find = 'open_items = \[m for m in marks if not m & \{"taken", "done"\}\]'
+replace = 'open_items = list(marks)'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "the voice hears of idle builders at night only in the morning"
+file = "src/claude_voice/idle.py"
+find = 'if not self._night\(now\):'
+replace = 'if True:'

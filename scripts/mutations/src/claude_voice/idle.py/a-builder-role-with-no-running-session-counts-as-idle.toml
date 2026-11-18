@@ -1,0 +1,5 @@
+[[rule]]
+name = "a builder role with no running session counts as idle"
+file = "src/claude_voice/idle.py"
+find = 'return all\(all\(_idle_long\(d, since\) for d in holders\(role\)\) for role in builders\)'
+replace = 'return all(bool(holders(role)) and all(_idle_long(d, since) for d in holders(role)) for role in builders)'
