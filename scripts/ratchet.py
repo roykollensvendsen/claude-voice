@@ -117,6 +117,7 @@ LAYERS = {
             "boxed",
             "approver_token",
             "decisions",
+            "backlog",
         ),
         1,
     ),  # parts, each about one thing

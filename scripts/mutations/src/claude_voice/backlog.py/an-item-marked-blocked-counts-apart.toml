@@ -1,0 +1,5 @@
+[[rule]]
+name = "an item marked blocked counts apart"
+file = "src/claude_voice/backlog.py"
+find = 'blocked = sum\(1 for m in open_items if "blocked" in m\)'
+replace = 'blocked = 0'
