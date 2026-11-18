@@ -16,6 +16,7 @@ from __future__ import annotations
 import functools
 import json
 import os
+import re
 import sqlite3
 import sys
 import threading
@@ -32,6 +33,7 @@ __all__ = ["Activity", "ProcTree", "kind_of", "local_iso", "program_of", "projec
 
 FILE = "activity.db"
 SETTING = "activity"  # in the bridge's own store: when the switch turns itself off
+PLAIN_ID = re.compile(r"[A-Za-z0-9_-]+")  # a session id names its transcript file
 PROJECTS_DIR = Path("~/.claude/projects").expanduser()
 INTERVAL = 10.0  # seconds between looks while on
 FLUSH_SECONDS = 600.0  # minute rows go to disk this often, and whenever they are asked for
@@ -584,6 +586,9 @@ class Activity:
             self.since = now
         rows = {}
         for row in self.live():
+            # RULE: a session row that is not plain is skipped
+            if not (str(row.get("pid") or "").isdigit() and PLAIN_ID.fullmatch(str(row.get("sessionId") or ""))):
+                continue  # no process to read, or an id that could reach outside the transcripts
             placed = self.place(row)
             # RULE: a programme not switched on is never read
             if placed is None or placed[0] not in self.orgs:

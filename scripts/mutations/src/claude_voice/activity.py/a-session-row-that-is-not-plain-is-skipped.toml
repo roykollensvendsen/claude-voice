@@ -1,0 +1,5 @@
+[[rule]]
+name = "a session row that is not plain is skipped"
+file = "src/claude_voice/activity.py"
+find = 'if not \(str\(row\.get\("pid"\) or ""\)\.isdigit\(\) and PLAIN_ID\.fullmatch\(str\(row\.get\("sessionId"\) or ""\)\)\):'
+replace = 'if False:'
