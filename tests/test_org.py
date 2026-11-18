@@ -295,3 +295,84 @@ def test_the_org_view_flags_a_role_with_no_running_session(home):
     assert quality["component"] == {"id": "arm", "name": "Robot arm"} and quality["running"] is False
     assert out["unfilled"] == ["quality"]
     assert out["components"][0] == {"id": "arm", "name": "Robot arm", "aliases": ["the arm"]}
+
+
+# -- builders and the work list ---------------------------------------------------------
+
+BUILDERS = """
+[programme]
+code = "acme"
+name = "Acme Robots"
+backlog = "acme-queue.md"
+idle_after_min = 20
+idle_report = true
+
+[roles.manager]
+name = "Manager"
+sessions = ["acme-robots"]
+
+[roles.lane]
+name = "Lane"
+sessions = ["acme-lane"]
+builder = true
+
+[roles.arm-builder]
+name = "Arm builder"
+sessions = ["arm-builder"]
+
+[roles.quality-builder]
+name = "Not one"
+builder = false
+"""
+
+
+def builders_home(tmp_path, text=BUILDERS):
+    (tmp_path / "acme" / ".claude").mkdir(parents=True)
+    (tmp_path / "acme" / ".claude" / "org.toml").write_text(text)
+    (tmp_path / "state").mkdir()
+    return org.load([tmp_path / "acme"])
+
+
+def test_a_programme_names_its_builders_and_its_work_list(tmp_path):
+    p = builders_home(tmp_path).programme("acme")
+    assert [r.code for r in p.builders()] == ["lane", "arm-builder"]
+    assert (p.backlog, p.idle_after_min, p.idle_report) == ("acme-queue.md", 20, True)
+
+
+def test_a_role_with_no_builder_key_is_a_builder_when_its_code_says_so(tmp_path):
+    roles = {r.code: r.builds() for r in builders_home(tmp_path).programme("acme").roles}
+    assert roles == {"manager": False, "lane": True, "arm-builder": True, "quality-builder": False}
+
+
+def test_a_programme_without_the_keys_waits_15_minutes_and_tells_only_its_manager(tmp_path):
+    p = builders_home(tmp_path, SHOP).programme("shop")
+    assert (p.builders(), p.backlog, p.idle_after_min, p.idle_report) == ((), "", 15, False)
+
+
+def test_a_builder_by_name_only_is_warned_about(tmp_path):
+    c = builders_home(tmp_path)
+    warnings = org.idle_warnings(c, tmp_path / "state")
+    assert warnings == ["acme: role arm-builder is a builder by name only; mark it with builder = true"]
+
+
+def test_a_programme_with_builders_and_no_backlog_is_warned_about(tmp_path):
+    c = builders_home(tmp_path, BUILDERS.replace('backlog = "acme-queue.md"\n', ""))
+    assert "acme: no backlog named, so its idle builders are never flagged" in org.idle_warnings(c, tmp_path / "state")
+
+
+def test_a_backlog_outside_the_state_folder_is_warned_about(tmp_path):
+    c = builders_home(tmp_path, BUILDERS.replace("acme-queue.md", "../elsewhere.md"))
+    warnings = org.idle_warnings(c, tmp_path / "state")
+    assert any(w.startswith("acme: backlog '../elsewhere.md' is outside the state folder") for w in warnings)
+
+
+def test_a_wait_that_is_not_a_whole_number_of_minutes_is_a_problem(tmp_path):
+    c = builders_home(tmp_path, BUILDERS.replace("idle_after_min = 20", 'idle_after_min = "soon"'))
+    assert c.programme("acme").idle_after_min == 15
+    assert any("idle_after_min" in p for p in c.problems)
+
+
+def test_the_check_gives_the_idle_warnings_too(tmp_path):
+    c = builders_home(tmp_path)
+    warnings = org.check(c, running={"acme-robots", "acme-lane", "arm-builder"}, state=tmp_path / "state")
+    assert "acme: role arm-builder is a builder by name only; mark it with builder = true" in warnings
