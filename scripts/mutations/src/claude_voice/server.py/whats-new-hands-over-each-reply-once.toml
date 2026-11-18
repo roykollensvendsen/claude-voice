@@ -1,0 +1,5 @@
+[[rule]]
+name = "whats_new hands over each reply once"
+file = "src/claude_voice/server.py"
+find = 'items = \[e for e in news\["events"\] if e\["kind"\] != "reply"\]'
+replace = 'items = news["events"]'

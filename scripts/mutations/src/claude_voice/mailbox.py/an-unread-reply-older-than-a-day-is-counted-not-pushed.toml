@@ -1,0 +1,5 @@
+[[rule]]
+name = "an unread reply older than a day is counted not pushed"
+file = "src/claude_voice/mailbox.py"
+find = '" AND ts >= \? ORDER BY seq DESC LIMIT \?",'
+replace = '" AND (ts >= ? OR 1) ORDER BY seq DESC LIMIT ?",'

@@ -98,7 +98,8 @@ the bridge says which are missing, with the exact fix, through its
 | `list_projects` | the folders Claude was used in lately, or any folder found by a word from its name |
 | `create_session`, `send_task` | start Claude on a task; it answers at once and works in the background |
 | `session_recap` | where one session stands, short enough to read aloud |
-| `whats_new` | only what happened since you last asked: finished, failed, waiting for you, or a reply a session sent back to a message |
+| `whats_new` | only what happened since you last asked: finished, failed, waiting for you, or a reply a session sent back to a message; a reply comes back on every call, even the first, until a later call confirms it was read out |
+| `list_replies` | the replies not yet confirmed heard, older ones too, for when `whats_new` says some wait |
 | `fleet_recap` | every session in one call, each with a line on what it is doing |
 | `get_active_session`, `set_active_session` | the session the owner talks to, chosen on the companion page or by voice |
 | `check_dependencies` | which dependencies are missing for full use of the bridge, and the exact fix for each |
