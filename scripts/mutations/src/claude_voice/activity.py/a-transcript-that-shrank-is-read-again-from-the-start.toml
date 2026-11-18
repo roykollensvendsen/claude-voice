@@ -1,0 +1,5 @@
+[[rule]]
+name = "a transcript that shrank is read again from the start"
+file = "src/claude_voice/activity.py"
+find = 'if inode != info\.st_ino or info\.st_size < offset:'
+replace = 'if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "activity reads nothing while off"
+file = "src/claude_voice/activity.py"
+find = 'if not self\.is_on\(\):  # only the daily delete'
+replace = 'if False:'

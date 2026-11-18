@@ -1,0 +1,5 @@
+[[rule]]
+name = "a programme not switched on is never read"
+file = "src/claude_voice/activity.py"
+find = 'if placed is None or placed\[0\] not in self\.orgs:'
+replace = 'if placed is None:'

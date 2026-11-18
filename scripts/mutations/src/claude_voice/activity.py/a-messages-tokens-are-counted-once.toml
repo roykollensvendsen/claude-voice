@@ -1,0 +1,5 @@
+[[rule]]
+name = "a messages tokens are counted once"
+file = "src/claude_voice/activity.py"
+find = 'now_in, now_out = max\(before_in, t_in\), max\(before_out, t_out\)'
+replace = 'now_in, now_out = before_in + t_in, before_out + t_out'

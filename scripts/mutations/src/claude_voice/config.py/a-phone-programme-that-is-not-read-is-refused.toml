@@ -1,0 +1,5 @@
+[[rule]]
+name = "a phone programme that is not read is refused"
+file = "src/claude_voice/config.py"
+find = 'if not set\(phone\) <= set\(orgs\):'
+replace = 'if False:'

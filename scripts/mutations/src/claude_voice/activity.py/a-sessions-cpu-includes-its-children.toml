@@ -1,0 +1,5 @@
+[[rule]]
+name = "a sessions cpu includes its children"
+file = "src/claude_voice/activity.py"
+find = 'ticks = sum\(int\(f\[11\]\) \+ int\(f\[12\]\) for _, f in tree\.values\(\)\)'
+replace = 'ticks = sum(int(f[11]) + int(f[12]) for p, (_, f) in tree.items() if p == pid)'
