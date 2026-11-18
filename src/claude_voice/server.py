@@ -606,6 +606,7 @@ def build_server(
     org_folders: list[Path] | None = None,
     sessions_file: Path | None = None,
     idle_watch: idle.Watch | None = None,
+    manager_delivery_seconds: float = 60.0,
 ) -> MCPServer:
     auth = None
     if oauth is not None:
@@ -1020,13 +1021,22 @@ def build_server(
     def tell_manager(flag: idle.Flag, name: str) -> None:
         """Send one manager the flag on a task of its own, so a courier that hangs holds up
         nothing else; a message the courier never tried is tried again next minute."""
-        sent = asyncio.ensure_future(deliver(name, flag.to_manager()))
+
+        async def bounded() -> dict[str, Any]:
+            try:
+                # RULE: a delivery to a manager gives up after its time
+                return await asyncio.wait_for(deliver(name, flag.to_manager()), manager_delivery_seconds)
+            except TimeoutError:  # it may still arrive, so it is not sent again
+                return {"delivered": None, "detail": "no answer in time; it may have arrived"}
+
+        sent = asyncio.ensure_future(bounded())
         in_flight.add(sent)
 
         def done(task: asyncio.Future[Any]) -> None:
             in_flight.discard(task)
             out = task.result() if not task.cancelled() and task.exception() is None else {}
-            log.info("idle builders in %s told to %s: %s", flag.programme.code, name, out.get("delivered"))
+            said = out.get("detail") if out.get("delivered") is None else out.get("delivered")
+            log.info("idle builders in %s told to %s: %s", flag.programme.code, name, said)
             # RULE: a message the courier never tried is sent again next minute
             if not out.get("delivered") and out.get("attempted") is False:
                 watching_idle.again(flag.programme.code)
@@ -2536,6 +2546,7 @@ def build_server(
     mcp.fleet = across  # type: ignore[attr-defined]  # the other machines, for tests and the CLI
     mcp.org_check = tell_programmes  # type: ignore[attr-defined]  # for tests
     mcp.idle_check = tell_idle  # type: ignore[attr-defined]  # for tests
+    mcp.deliveries_in_flight = in_flight  # type: ignore[attr-defined]  # for tests
     mcp.hints_check = lambda: tell_hints(fleet_recap())  # type: ignore[attr-defined]  # for tests
     mcp.software_report = software_report  # type: ignore[attr-defined]  # the kept report, for tests
     return mcp
