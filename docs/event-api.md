@@ -449,6 +449,56 @@ the session through that wait and no other way. It closes, with `how` saying why
 The bridge looks every five seconds. It closes a prompt once no hook has waited on it
 for thirty seconds, so a killed hook's prompt is gone within about a minute and a half.
 
+## A question left waiting
+
+A session that waits on a question or a permission prompt while nobody is at the
+laptop can sit there for hours. The bridge says so, once per prompt.
+
+- **Waiting** means Claude Code shows the session as `waiting`, or the bridge holds
+  a pending approval for one of its own sessions, for more than
+  `stalled_prompt_after_min` minutes: 5 unless `[stalled_prompt]` in the settings
+  says otherwise. `enabled = false` there turns it off.
+- **Nobody is at the laptop** by the same rule the phone's prompts use: the screen is
+  locked, there has been no keyboard or mouse for five minutes, the app is open, or
+  the voice called in the last ten minutes. When the owner is there, the box is in
+  front of him, and nothing is said.
+- **The question** comes from the prompt the bridge holds, with its options, and can
+  then be answered by voice as usual. Otherwise, for a session in tmux, the bridge
+  reads its pane (`tmux capture-pane -p -J`): it joins the lines of Claude Code's
+  prompt box and takes the question and the numbered options. It only reads the
+  pane, and never types into it. Otherwise it says it cannot read the question.
+- **Everything sent is masked first, then cut** to 200 characters, so a cut never
+  leaves half a secret showing. Masked as `[hidden]`: token shapes (`ghp_` and its
+  kin, `github_pat_`, `sk-`, `xox?-`, `AKIA`, a private key block); the value after
+  `Bearer `, `Basic `, `Authorization:`, and after `key`, `token`, `secret`,
+  `password`, `passwd`, `api_key`, `apikey` or `auth` with `=` or `:`; a shell
+  variable whose name holds KEY, TOKEN, SECRET, PASS or AUTH; every URL query value;
+  and a URL's `user:pass@`. Pane text is quoted with its quote marks neutralised,
+  and never acted on.
+
+What is said, once per prompt, and again only for a new prompt or a different
+question:
+
+- the voice gets one `whats_new` item of kind `stalled_prompt`: "fix-gripper has
+  waited 6 minutes on a question: 'Run the tests?'. Options: 1 Yes, 2 No." When
+  the bridge does not hold the prompt, it ends "It's in its window. Its manager has
+  been told." Between 23.00 and 07.00 the bridge's local time, the item is held,
+  and comes at 07.00 if the session still waits on it;
+- the manager of the session's programme, the sessions of the role whose code is
+  `manager`, gets the same line at once, marked "the owner's" when the prompt is
+  one only the owner may answer: a push that forces, a branch deleted, a plugin
+  approved, a sign-in, or a secret. It answers only through the paths it already
+  has, never by typing into a pane.
+
+A programme names whether the question's own words may reach the voice:
+`stalled_prompt_text = true` under `[programme]` in its org file. Without it the
+voice hears only "<session> has a question waiting", and the manager still gets
+the whole line. A session in no programme is the owner's own, and the voice hears
+the question.
+
+The bridge looks every 30 seconds. It reads a pane only once a session has waited
+past the limit, and once per prompt.
+
 ## Roles
 
 A role is a background session started for a set purpose. The built-in one,
