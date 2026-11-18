@@ -641,6 +641,22 @@ def test_a_look_and_a_question_never_run_at_once(tmp_path, machine, clock):
     assert not questions[0].is_alive()
 
 
+def test_a_session_row_that_is_not_plain_is_skipped(tmp_path, machine, clock, opened):
+    good = machine.session("worker", "voice", pid=4000)
+    write(good, use(T0 + 1, "c1"))
+    machine.session("nopid", "voice", pid=4100)
+    del machine.rows[-1]["pid"]
+    outside = machine.session("escape", "voice", pid=4200)
+    machine.rows[-1]["sessionId"] = "../../outside"
+    act = make(tmp_path, machine, clock)
+    on(act)
+    act.tick()
+    assert str(good) in opened
+    assert not any("outside" in p for p in opened)
+    assert outside.exists()
+    assert [s["name"] for s in act.now("all", local=True)["sessions"]] == ["worker"]
+
+
 # -- which programmes, and where they may be shown -----------------------------------------------------
 
 
