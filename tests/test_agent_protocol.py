@@ -169,6 +169,13 @@ def test_a_plugin_that_reads_which_apps_are_used_says_so():
     assert "`usage`" in DOC.read_text()
 
 
+def test_a_plugin_that_reads_or_sends_text_messages_says_so():
+    """Version 1 already carries the name, since `uses` is open; the next version names it."""
+    data = {"name": "sms", "tools": ["sms_since"], "uses": ["messages"]}
+    validate(data, schema("plugin"))
+    assert "`messages`" in (SCHEMAS / "next-version.md").read_text()
+
+
 # A later version may add fields and values. A receiver of an older one ignores what it
 # does not know, so a newer phone or hub never breaks an older one.
 
