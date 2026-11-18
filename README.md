@@ -472,7 +472,8 @@ them as soon as you open it in this folder; type `/` to see them by name.
 
 | Skill | When it is used | What it does |
 | --- | --- | --- |
-| `write-plugin` | Making a local tool reachable by voice | Writes or wires up a plugin, and adds, approves or changes one |
+| `plugin` | Making, joining, reviewing or backfilling a voice plugin | Builds a plugin from the template, brings it into the team, and checks it against numbered rules |
+| `write-plugin` | A session that still has the old name loaded | Points to `plugin`; removed in the next release |
 | `code-quality` | A measure on the code-health page is amber or red | Measures it locally, fixes the worst one test-first and lands the fix |
 | `write-commit` | Every commit and every pull request description | Writes the message for a reader who has never seen the project |
 | `review-contribution` | A pull request comes from outside the project | Reviews it, runs its code only in a sandbox, merges it and thanks the author |

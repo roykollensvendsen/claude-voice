@@ -5,14 +5,14 @@
 ```toml
 [plugins.garage]
 command = "uv"
-args = ["run", "garage-door-mcp", "--secrets-file", "firmware/secrets.yaml", "--host", "192.168.0.46"]
+args = ["run", "garage-door-mcp", "--secrets-file", "firmware/secrets.yaml", "--host", "192.0.2.46"]
 cwd = "~/garage-door"
 tools = ["garage_status", "garage_request", "garage_confirm"]
 timeout = 30
 ```
 
 - The owner chose these three. `garage_press_button` and `garage_switch` exist
-  in the plugin but are left out on his say.
+  in the plugin but are left out on the owner's say.
 - For a first try, swap the args for `["run", "garage-door-mcp", "--simulate"]`:
   no key, no hardware, and every answer says it is simulated.
 - garage-door's instructions say `garage_confirm` comes only after the owner's
