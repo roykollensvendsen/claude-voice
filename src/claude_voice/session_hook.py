@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import importlib.util
 import json
 import os
 import re
@@ -28,9 +29,27 @@ import subprocess
 import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
-from claude_voice import safe_git
+
+def _beside(name: str) -> ModuleType:
+    """A module of the bridge's that sits beside this file and uses the standard library only,
+    loaded by its path: run as a script, this file has no package to import from."""
+    spec = importlib.util.spec_from_file_location(f"_session_hook_{name}", Path(__file__).with_name(f"{name}.py"))
+    if spec is None or spec.loader is None:
+        raise ImportError(f"{name}.py is not beside the session hook")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+# Claude Code runs this file with the system's python3, where the bridge's package isn't installed.
+# RULE: the session hook runs with the standard library only
+if __package__:
+    from . import safe_git
+else:
+    safe_git = _beside("safe_git")
 
 ALLOW, ASK, DENY = "allow", "ask", "deny"
 
