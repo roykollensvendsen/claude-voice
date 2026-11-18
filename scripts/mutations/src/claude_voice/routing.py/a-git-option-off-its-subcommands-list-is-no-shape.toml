@@ -1,0 +1,5 @@
+[[rule]]
+name = "a git option off its subcommands list is no shape"
+file = "src/claude_voice/routing.py"
+find = 'plain = _options\(part\[1:\], no_value, with_value\)'
+replace = 'plain = [w for w in part[2:] if not w.startswith("-")]'

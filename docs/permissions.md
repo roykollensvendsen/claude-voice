@@ -359,6 +359,19 @@ tool on a folder, is walked first, the way grep does it: no links followed, and
 file. So does a tree of over 20 000 entries, or one that takes over a second to
 walk.
 
+A session's place is the git checkout it runs in, and only when the repo it
+belongs to is one the org chart knows. A worktree, inside the repo or not,
+belongs to the repo that holds git's common folder, and only when that repo
+lists it as its own worktree. So a `.git` file written to point at a known repo
+counts for nothing. A worktree reads in its own checkout and in its repo, and
+writes only in its own checkout. A session anywhere else gets no shape at all.
+Relative paths are read against the folder the session runs in.
+
+Each git subcommand of a shape takes only the options on its own list. So
+`--output`, `--upload-pack` and `--exec` are no shape, and `git fetch` names a
+remote, never a URL or a path. `uv sync` takes only `--locked`, `--frozen`,
+`--all-extras`, `--dev` and `-q`.
+
 Where the data to judge a prompt doesn't exist yet, the answer is the owner.
 That covers a session's own branch and pull request, a plugin's money or
 read-only mark, and its scratchpad. Each such case has a test, so the change

@@ -353,22 +353,30 @@ def note_voice_call(ctx: Any, tool: str, trace: str | None, result: Any) -> None
         usage.record(VOICE_STORE[0], client, str(connection), tool, _result_chars(result))
 
 
-def route_prompt(tool: str, given: Any, cwd: str, machines: list[str]) -> dict[str, Any]:
+def chart_repos(chart: org.Chart) -> list[Path]:
+    """Every repo the org chart knows: each programme's own, and its components' folders."""
+    return [f for p in chart.programmes for f in (p.repo, *(x for c in p.components for x in c.folders))]
+
+
+def route_prompt(tool: str, given: Any, cwd: str, machines: list[str], known: list[Path]) -> dict[str, Any]:
     """How an approval is sorted: the fixed-list lines it matches, and whether a manager could
     one day answer it. Every one goes to the owner until managers answer (managers-answer v2)."""
     owner = config.Repos().claude_voice.split("/")[0]
-    place = routing.Place(repo=Path(cwd), scratchpad=None, home=Path.home(), owner=owner) if cwd else None
+    place = routing.place_for(cwd, known, Path.home(), owner) if cwd else None
     found = routing.sort(tool, given, place=place, now=datetime.now(UTC), machines=machines)
     return {"to": found.to, "line": found.line, "lines": list(found.lines), "shape": found.shape}
 
 
 def _router(
-    given: Callable[[str, Any, str], dict[str, Any]] | None, across: fleet.Fleet
+    given: Callable[[str, Any, str], dict[str, Any]] | None, across: fleet.Fleet, chart: Callable[[], org.Chart]
 ) -> Callable[[str, Any, str], dict[str, Any]]:
-    """The sorting a test hands in, or route_prompt with the paired machines' names."""
+    """The sorting a test hands in, or route_prompt with the paired machines' names and the
+    repos the org chart knows."""
     if given is not None:
         return given
-    return lambda tool, inp, cwd: route_prompt(tool, inp, cwd, [m.machine.name for m in across.machines])
+    return lambda tool, inp, cwd: route_prompt(
+        tool, inp, cwd, [m.machine.name for m in across.machines], chart_repos(chart())
+    )
 
 
 def _trace_of(params: dict[str, Any]) -> str | None:
@@ -2446,7 +2454,7 @@ def build_server(
             org=org_page,
             book=prompt_book,
             away=lambda app_open: PRESENCE[0].away(app_open=app_open),
-            route=_router(route, across),
+            route=_router(route, across, org_now),
         ).routes(mcp)
 
     mcp.prompt_book = prompt_book  # type: ignore[attr-defined]  # for tests

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a forged git file gets no place"
+file = "src/claude_voice/routing.py"
+find = 'return \(top, main\) if os\.path\.realpath\(top\) in own else None'
+replace = 'return top, main'

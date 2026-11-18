@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -676,7 +677,16 @@ def test_the_hook_sends_the_sessions_folder_with_an_approval():
     assert phone_hook._prompt(hook_input, "")["cwd"] == "/work/repo"
 
 
-async def test_an_opened_approval_records_how_it_was_sorted_and_still_goes_to_the_owner(tmp_path, place):
+@pytest.fixture
+def charted(place):
+    """The session's repo as a git checkout the org chart knows."""
+    subprocess.run(["git", "init", "-q", str(place.repo)], check=True)
+    (place.repo / ".claude" / "org.toml").write_text('[programme]\ncode = "acme"\nname = "Acme"\n')
+    return place
+
+
+async def test_an_opened_approval_records_how_it_was_sorted_and_still_goes_to_the_owner(tmp_path, charted):
+    place = charted
     import httpx
     from fakes import FakeClaude
 
@@ -691,7 +701,10 @@ async def test_an_opened_approval_records_how_it_was_sorted_and_still_goes_to_th
     store = Store(tmp_path / "b.db")
     oauth = OAuthProvider(store, secret, "http://127.0.0.1:8811", static_token=secret)
     manager = SessionManager(store, project_root=tmp_path / "home", client_factory=FakeClaude())
-    app = build_app(build_server(manager, oauth=oauth, conversations=lambda **k: [], live_dir=tmp_path / "live"))
+    server = build_server(
+        manager, oauth=oauth, conversations=lambda **k: [], live_dir=tmp_path / "live", org_folders=[place.repo]
+    )
+    app = build_app(server)
     body = {"session_id": "s1", "kind": "approval", "tool": "Bash", "cwd": str(place.repo)}
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8811") as c:
         await c.post("/api/v1/prompts", json={**body, "input": {"command": "git push -f origin x"}}, headers=bearer)
@@ -870,3 +883,153 @@ async def test_sorting_a_prompt_never_holds_up_the_bridge(tmp_path):
                 break
             await asyncio.sleep(0.05)
     assert listed[0]["routed"]["to"] == "roy"
+
+
+# -- before step 2: where the session is, and the options of its commands (f1-f4) -----------
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git diff --output=/tmp/x",
+        "git diff --output /tmp/x",
+        "git log --output=x",
+        "git show -o x HEAD",
+        "git fetch --upload-pack=sh origin",
+        "git fetch --upload-pack sh origin",
+        "git commit --template=/etc/passwd",
+        "git status --no-such-option",
+        "git stash push --pathspec-from-file=/etc/x",
+    ],
+)
+def test_a_git_option_off_its_subcommands_list_is_no_shape(place, command):
+    assert bash(command, place).shape is False, command
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git fetch https://example.invalid/x.git",
+        "git fetch ../elsewhere",
+        "git fetch /tmp/elsewhere main",
+        "git fetch ext::sh",
+        "git fetch origin refs/x:refs/y",
+    ],
+)
+def test_git_fetch_names_a_remote_never_a_url_or_a_path(place, command):
+    assert bash(command, place).shape is False, command
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "uv sync --python /tmp/x",
+        "uv sync --index-url https://example.invalid",
+        "uv sync --directory /tmp",
+        "uv sync -x",
+    ],
+)
+def test_uv_sync_takes_only_the_listed_flags(place, command):
+    assert bash(command, place).shape is False, command
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git log --oneline -n 5 --graph",
+        "git log --format=%H -1",
+        "git diff --stat --cached",
+        "git show --stat HEAD",
+        "git fetch -q --prune origin",
+        "git fetch origin main",
+        "git commit -q -m message",
+        "git commit --amend --no-edit",
+        "git switch -c feat/new",
+        "git restore --staged src/a.py",
+        "git stash list",
+        "git rebase -q --autosquash origin/main",
+        "uv sync --locked",
+        "uv sync --frozen --all-extras --dev",
+    ],
+)
+def test_the_listed_git_and_uv_options_stay_a_shape(place, command):
+    out = bash(command, place)
+    assert (out.shape, out.line) == (True, None), command
+
+
+def test_a_relative_path_is_read_against_the_sessions_own_folder(place):
+    inner = routing.Place(
+        repo=place.repo, scratchpad=place.scratchpad, home=place.home, owner=place.owner, cwd=place.repo / "src"
+    )
+    assert bash("cat a.py", inner).shape is True
+    assert bash("cat ../src/a.py", inner).shape is True  # from src, still in the repo
+    assert bash("cat ../../outside.txt", inner).shape is False
+    assert routing.sort("Read", {"file_path": "a.py"}, place=inner, now=DAY).shape is True
+
+
+def test_a_sessions_place_is_a_repo_the_chart_knows_never_its_folder_as_given(place):
+    tops = {str(place.repo / "src"): (place.repo, place.repo)}
+    found = routing.place_for(str(place.repo / "src"), [place.repo], place.home, "o", locate=tops.get)
+    assert found is not None and found.repo == place.repo and found.cwd == place.repo / "src"
+    assert routing.place_for(str(place.repo / "src"), [], place.home, "o", locate=tops.get) is None
+    assert routing.place_for("/somewhere/else", [place.repo], place.home, "o", locate=tops.get) is None
+
+
+def _git(*args):
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", *args], check=True, capture_output=True
+    )
+
+
+@pytest.fixture
+def known_repo(tmp_path):
+    repo = tmp_path / "known"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "a.py").write_text("x = 1\n")
+    _git("init", "-q", str(repo))
+    _git("-C", str(repo), "add", ".")
+    _git("-C", str(repo), "commit", "-q", "-m", "first")
+    return repo
+
+
+def test_a_worktree_outside_its_repo_belongs_to_that_repo_and_writes_only_in_itself(tmp_path, known_repo):
+    tree = tmp_path / "elsewhere" / "wt"
+    _git("-C", str(known_repo), "worktree", "add", "-q", str(tree))
+    found = routing.place_for(str(tree / "src"), [known_repo], tmp_path / "home", "o")
+    assert found is not None and found.repo.resolve() == tree.resolve()
+    assert os.path.realpath(known_repo) in found.reads() and found.writes() == [os.path.realpath(tree)]
+    assert bash(f"cat {known_repo.as_posix()}/src/a.py", found).shape is True
+    assert bash(f"cp src/a.py {known_repo.as_posix()}/src/b.py", found).shape is False
+    assert routing.place_for(str(tree), [], tmp_path / "home", "o") is None
+
+
+def test_a_forged_git_file_gets_no_place(tmp_path, known_repo):
+    other = tmp_path / "other"
+    _git("init", "-q", str(other))
+    forged = tmp_path / "forged"
+    forged.mkdir()
+    (forged / ".git").write_text(f"gitdir: {known_repo}/.git\n")  # claims the known repo's history
+    assert routing.place_for(str(forged), [known_repo], tmp_path / "home", "o") is None
+    pointing = tmp_path / "pointing"
+    pointing.mkdir()
+    (pointing / ".git").write_text(f"gitdir: {other}/.git\n")  # a repo the chart doesn't know
+    assert routing.place_for(str(pointing), [known_repo], tmp_path / "home", "o") is None
+
+
+def test_a_folder_git_does_not_know_has_no_place(tmp_path):
+    assert routing.toplevel(str(tmp_path)) is None
+
+
+def test_the_bridge_sorts_a_session_outside_every_known_repo_as_no_shape(tmp_path):
+    from claude_voice import org, server
+
+    repo = tmp_path / "known"
+    (repo / "src").mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    chart = org.Chart(programmes=[org.Programme(code="k", name="Known", repo=repo)])
+    assert server.chart_repos(chart) == [repo]
+    inside = server.route_prompt("Bash", {"command": "git status"}, str(repo / "src"), [], server.chart_repos(chart))
+    assert inside["shape"] is True
+    elsewhere = tmp_path / "other"
+    subprocess.run(["git", "init", "-q", str(elsewhere)], check=True)
+    assert server.route_prompt("Bash", {"command": "git status"}, str(elsewhere), [], [repo])["shape"] is False
