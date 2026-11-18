@@ -1,0 +1,5 @@
+[[rule]]
+name = "an unexpected error still says stop and exits 0"
+file = "src/claude_voice/org_rules.py"
+find = 'except Exception as exc:  # a crash is silent'
+replace = 'except Refused as exc:  # a crash is silent'

@@ -51,12 +51,15 @@ That happens when:
 
 - a pack is missing, or is not plain text;
 - a pack's sha is not the one the role file recorded, so it changed without an install;
-- the two packs together are over 9 000 bytes as sent, which counts each escaped
-  character the way the session receives it. Above about 10 000 characters a session sees
+- the two packs together are over 9 000 bytes in the hook's printed output, where each
+  character outside plain ASCII is escaped to six bytes. The session itself sees the
+  decoded text, so this errs on the safe side. Above about 10 000 characters a session sees
   only a short preview of a hook's context, so the end of the rules would be lost;
+- a pack is not a plain file: a folder, or a pipe, which is refused without waiting;
 - a pack's file or its organisation's folder is a link;
 - the organisation's name is not lower-case letters, digits and dashes, or is `_shared`;
-- the hook's own command is wrong.
+- the hook's own command is wrong;
+- anything else fails inside the hook. The line then names the error.
 
 A `rules.md` in the session's folder or its repository is never read.
 

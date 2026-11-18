@@ -125,7 +125,8 @@ def test_hooks_and_config_of_any_clone_are_refused(rules, name):
 @pytest.mark.parametrize(
     "name",
     # literal_gh.py runs before every shell call of every session, as the owner (gh-literal-deny v1.1);
-    # org_rules.py is run by every role's start hook, as the owner (org-rules install plan, f2)
+    # org_rules.py, and the package's __init__.py it imports, run in every role's start hook,
+    # as the owner (org-rules install plan, f2)
     [
         ".githooks/pre-commit",
         ".npmrc",
@@ -134,6 +135,7 @@ def test_hooks_and_config_of_any_clone_are_refused(rules, name):
         ".envrc",
         "src/claude_voice/literal_gh.py",
         "src/claude_voice/org_rules.py",
+        "src/claude_voice/__init__.py",
     ],
 )
 def test_what_runs_from_the_owners_own_checkout_is_refused_there_but_not_in_a_worktree(rules, name):

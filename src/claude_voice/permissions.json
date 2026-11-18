@@ -307,7 +307,7 @@
     "any clone": [".git/hooks/**", ".git/config", ".claude/settings.json", ".claude/settings.local.json"],
     "own checkout": [
       ".githooks/**", ".npmrc", "uv.toml", "pip.conf", ".envrc", "src/claude_voice/literal_gh.py",
-      "src/claude_voice/org_rules.py"
+      "src/claude_voice/org_rules.py", "src/claude_voice/__init__.py"
     ],
     "writers": [
       "tee {path}", "tee * {path}", "cp * {path}", "mv * {path}", "install * {path}", "ln * {path}",

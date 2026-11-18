@@ -14,6 +14,7 @@ import io
 import json
 import os
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -164,6 +165,42 @@ def test_a_wrong_hook_command_still_says_stop_and_exits_0(packs, argv):
     code, said = run(packs, *argv)
     assert code == 0
     assert stopped(said["hookSpecificOutput"]["additionalContext"])
+
+
+def test_an_unexpected_error_still_says_stop_and_exits_0(packs, monkeypatch):
+    def broken(root: Path, org: str) -> bytes:
+        raise RuntimeError("a bug")
+
+    monkeypatch.setattr(org_rules, "_read", broken)
+    context = emit(packs)
+    assert stopped(context) and "RuntimeError" in context
+
+
+def test_only_a_plain_file_is_read_as_a_pack(packs):
+    (packs / "voice" / "rules.md").unlink()
+    (packs / "voice" / "rules.md").mkdir()  # opens on Linux, then fails to read
+    context = emit(packs)
+    assert stopped(context) and ("not a plain file" in context or sys.platform == "win32")
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="no named pipes here")
+def test_a_pipe_in_place_of_a_pack_is_refused_without_waiting(packs):
+    fifo = packs / "voice" / "rules.md"
+    fifo.unlink()
+    os.mkfifo(fifo)  # opened plainly to read, it waits for a writer that never comes
+    told: list[str] = []
+    reader = threading.Thread(target=lambda: told.append(emit(packs)), daemon=True)
+    reader.start()
+    reader.join(10)
+    if reader.is_alive():  # let the stuck reader go before failing
+        os.close(os.open(fifo, os.O_WRONLY | os.O_NONBLOCK))
+    assert told and stopped(told[0])
+
+
+def test_a_pack_that_is_not_text_gives_the_stop_line(packs):
+    data = b"\xff\xfe not utf-8"
+    (packs / "voice" / "rules.md").write_bytes(data)
+    assert stopped(emit(packs, own=hashlib.sha256(data).hexdigest()[:12]))
 
 
 def test_the_packs_live_in_the_owners_settings_folder():
