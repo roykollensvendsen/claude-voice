@@ -68,6 +68,7 @@ class Programme:
     repo: Path = Path()
     components: tuple[Component, ...] = ()
     roles: tuple[Role, ...] = ()
+    stalled_prompt_text: bool = False  # whether a waiting question's own words may reach the voice
 
     def words(self) -> set[str]:
         return _words(self.code, self.name, self.aliases)
@@ -211,6 +212,7 @@ def read(repo: Path, problems: list[str]) -> Programme | None:
         repo,
         tuple(_component(k, v, repo, code, problems) for k, v in _tables(raw, "components")),
         tuple(_role(k, v, code) for k, v in _tables(raw, "roles")),
+        head.get("stalled_prompt_text") is True,
     )
 
 
