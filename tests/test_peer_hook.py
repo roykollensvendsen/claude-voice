@@ -143,3 +143,32 @@ def test_the_configured_courier_name_is_ignored_even_after_the_courier_is_gone(t
     out = io.StringIO()
     hook.main(io.StringIO(json.dumps({"session_id": "s", "transcript_path": str(transcript)})), out)
     assert out.getvalue().strip() == ""
+
+
+def test_a_message_marked_no_reply_needed_is_never_held(tmp_path, state):
+    marked = peer("claude-voice-work", "(no reply needed) Noted, the build waits for #349.")
+    assert run(tmp_path, [marked], monkeypatch=state) is None
+
+
+def test_the_marker_counts_only_at_the_start(tmp_path, state):
+    inside = peer("claude-voice-work", "Please re-stamp #31. (no reply needed)")
+    assert run(tmp_path, [inside], monkeypatch=state)["decision"] == "block"
+
+
+@pytest.mark.parametrize("text", ["Thanks.", "ok, waiting", "thanks, will do", "noted for #31", "Agreed!", "👍"])
+def test_a_plain_acknowledgement_is_not_held(tmp_path, state, text):
+    assert run(tmp_path, [peer("quality-claude-voice", text)], monkeypatch=state) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "ok, can you re-stamp #31?",
+        "Agreed. Please re-stamp #31 when it lands",
+        "ok merge #348 now",
+        "noted. push the fix",
+        "thanks, waiting, done",
+    ],
+)
+def test_an_acknowledgement_with_a_request_is_held(tmp_path, state, text):
+    assert run(tmp_path, [peer("quality-claude-voice", text)], monkeypatch=state)["decision"] == "block"
