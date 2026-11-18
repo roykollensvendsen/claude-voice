@@ -93,16 +93,16 @@ def bridge(tmp_path, pids):
     return make_bridge(tmp_path, pids, Delivered())
 
 
-def make_bridge(tmp_path, pids, deliver):
+def make_bridge(tmp_path, pids, deliver, org_text=ORG, waiting_for="permission prompt"):
     root = tmp_path / "src"
     (root / "acme" / ".claude").mkdir(parents=True)
-    (root / "acme" / ".claude" / "org.toml").write_text(ORG)
+    (root / "acme" / ".claude" / "org.toml").write_text(org_text)
     live = tmp_path / "live"
     live.mkdir()
     waits = {"acme-boss": ("idle", NOW), "fix-gripper": ("waiting", NOW - 6 * 60)}
     for pid, (name, (status, since)) in zip(pids, waits.items(), strict=True):
         record = {"pid": pid, "sessionId": f"{name}-id", "cwd": str(root / "acme"), "name": name}
-        record |= {"status": status, "statusUpdatedAt": since * 1000, "waitingFor": "permission prompt"}
+        record |= {"status": status, "statusUpdatedAt": since * 1000, "waitingFor": waiting_for}
         (live / f"{pid}.json").write_text(json.dumps(record))
     clock = Clock()
     tmux = FakeTmux(pids)
@@ -117,6 +117,7 @@ def make_bridge(tmp_path, pids, deliver):
         presence=Presence(desktop=lambda: Desktop(locked=True, idle_seconds=None)),
         stalled_watch=stalled.Watch(5, clock=clock, hour=lambda t: 12),
         stalled_tmux=tmux,
+        manager_delivery_seconds=0.05,
     )
     return server, deliver, tmux, clock
 
@@ -169,3 +170,34 @@ async def test_a_line_to_a_manager_about_a_waiting_question_never_holds_up_the_w
 
     server, _, _, _ = make_bridge(tmp_path, pids, Stuck())
     await asyncio.wait_for(server.stalled_check(), 5)
+
+
+async def test_a_delivery_about_a_waiting_question_gives_up_after_its_time(tmp_path, pids):
+    import asyncio
+
+    server, _, _, _ = make_bridge(tmp_path, pids, Stuck())
+    await server.stalled_check()
+    await asyncio.sleep(0.3)
+    assert server.deliveries_in_flight == set()
+
+
+async def test_a_held_question_is_answerable_by_voice_when_its_text_is_not_said(tmp_path, pids):
+    import asyncio
+
+    deliver = Delivered()
+    quiet = ORG.replace("stalled_prompt_text = true\n", "")
+    server, _, _, _ = make_bridge(tmp_path, pids, deliver, org_text=quiet, waiting_for="input needed")
+    options = [{"label": "Red", "description": ""}, {"label": "Blue", "description": ""}]
+    question = {"text": "Which colour?", "header": "Colour", "options": options, "multi": False}
+    prompt = {"id": "q1", "session": "fix-gripper-id", "kind": "question", "answer": None}
+    prompt |= {"done": asyncio.Event(), "asked_at": "2026-11-18T12:00:00+00:00", "question": question}
+    server.prompt_book.add(prompt)
+    prompt["hook"]["waiting"] = 1  # a hook waits on it
+    cursor = (await call(server, "whats_new"))["cursor"]
+    await server.stalled_check()
+    await let_deliveries_finish()
+    news = (await call(server, "whats_new", cursor=cursor))["events"]
+    assert [e["text"] for e in news if e["kind"] == "stalled_prompt"] == ["fix-gripper has a question waiting."]
+    assert "Which colour?" in deliver.sent[0][1] and "It's in its window" not in deliver.sent[0][1]
+    asked = (await call(server, "list_pending_approvals"))["questions"]
+    assert [(q["id"], [o["label"] for o in q["options"]]) for q in asked] == [("q1", ["Red", "Blue"])]

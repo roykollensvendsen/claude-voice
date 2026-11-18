@@ -1,0 +1,5 @@
+[[rule]]
+name = "a delivery about a waiting question gives up after its time"
+file = "src/claude_voice/server.py"
+find = 'out = await asyncio.wait_for\(deliver\(name, line\), manager_delivery_seconds\)'
+replace = 'out = await deliver(name, line)'
