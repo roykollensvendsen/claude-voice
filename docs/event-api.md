@@ -461,6 +461,11 @@ as pinned cards above the sessions.
 | `GET /api/v1/roles` | `{"roles": [{"name", "title", "description", "session": {"name", "id", "status"} or null}]}`; `session` is the running session last started for the role |
 | `POST /api/v1/roles/{name}/start` | with `{"task": "what to change"}` or `{}`: starts a session for the role and answers `{"role", "name", "claude_session_id", "status"}`. `404` for an unknown role, `502` when Claude Code could not start it. A change: with the cookie it needs an allowed `Origin` |
 
+## The activity view
+
+Where sessions wait, use tokens or get stuck, off until the owner switches it on.
+Its endpoints are in [activity.md](activity.md).
+
 ## The org chart
 
 Which programme, component and role each session belongs to, read from each

@@ -268,6 +268,7 @@ class EventApi:
         book: prompts.Book | None = None,
         away: Callable[[bool], bool] | None = None,
         route: Callable[[str, Any, str], dict[str, Any]] | None = None,
+        activity: Any = None,
     ) -> None:
         self.store = store
         self.login_secret = login_secret
@@ -302,6 +303,7 @@ class EventApi:
         # Who may answer an approval (routing.sort), recorded on it; every one still goes to the owner.
         self.route = route
         self._sorting: set[asyncio.Task[None]] = set()  # kept, so a running sort is not collected
+        self.activity = activity  # where sessions wait or get stuck: activity.Activity, off by default
 
     def routes(self, mcp: Any) -> None:
         route = mcp.custom_route
@@ -334,6 +336,10 @@ class EventApi:
         route("/api/v1/roles/{role}/start", methods=["POST"])(self.role_start)
         route("/api/v1/org", methods=["GET"])(self.org_chart)
         route("/api/v1/org/{programme}", methods=["GET"])(self.org_chart)
+        route("/api/v1/activity", methods=["GET", "POST"])(self.activity_switch)
+        route("/api/v1/activity/clear", methods=["POST"])(self.activity_clear)
+        route("/api/v1/activity/series", methods=["GET"])(self.activity_series)
+        route("/api/v1/activity/now", methods=["GET"])(self.activity_now)
 
     # -- who is asking ---------------------------------------------------------------
 
@@ -770,6 +776,68 @@ class EventApi:
         if found is None:
             return JSONResponse({"error": f"no programme {wanted!r}"}, 404)
         return JSONResponse(found, headers={"Cache-Control": "no-store"})
+
+    # -- the activity view (docs/activity.md) ---------------------------------------------
+
+    async def _activity_refused(self, request: Request, change: bool = False) -> Response | None:
+        if change:
+            refused = await self._change_allowed(request)
+            if refused:
+                return refused
+        elif not await self._allowed(request):
+            return JSONResponse({"error": "sign in first"}, 401)
+        if self.activity is None:
+            return JSONResponse({"error": "not available"}, 404)
+        return None
+
+    async def activity_switch(self, request: Request) -> Response:
+        """Whether the activity view is on, and until when; POST switches it."""
+        refused = await self._activity_refused(request, change=request.method == "POST")
+        if refused:
+            return refused
+        if request.method == "POST":
+            try:
+                body = await request.json()
+            except ValueError:
+                body = None
+            try:
+                await asyncio.to_thread(self.activity.switch, body)
+            except ValueError as exc:
+                return JSONResponse({"error": str(exc)}, 400)
+        out = await asyncio.to_thread(self.activity.state, from_here(request.scope))
+        return JSONResponse(out, headers={"Cache-Control": "no-store"})
+
+    async def activity_clear(self, request: Request) -> Response:
+        refused = await self._activity_refused(request, change=True)
+        if refused:
+            return refused
+        await asyncio.to_thread(self.activity.clear)
+        return JSONResponse({"cleared": True})
+
+    async def activity_series(self, request: Request) -> Response:
+        """Counts per bucket over a window, for one session, one programme or all."""
+        refused = await self._activity_refused(request)
+        if refused:
+            return refused
+        scope, window = request.query_params.get("scope", "all"), request.query_params.get("window", "1h")
+        try:
+            out = await asyncio.to_thread(self.activity.series, scope, window, from_here(request.scope))
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, 400)
+        if out is None:  # unknown and not allowed look the same
+            return JSONResponse({"error": "no such scope"}, 404)
+        return JSONResponse(out, headers={"Cache-Control": "no-store"})
+
+    async def activity_now(self, request: Request) -> Response:
+        """What each session is doing now; 404 while the view is off."""
+        refused = await self._activity_refused(request)
+        if refused:
+            return refused
+        scope = request.query_params.get("scope", "all")
+        out = await asyncio.to_thread(self.activity.now, scope, from_here(request.scope))
+        if out is None:
+            return JSONResponse({"error": "the activity view is off, or no such scope"}, 404)
+        return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
     # -- the live stream -------------------------------------------------------------
 

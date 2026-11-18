@@ -36,6 +36,7 @@ from pydantic import AnyHttpUrl, BeforeValidator
 from starlette.types import ASGIApp
 
 from . import (
+    activity,
     answers,
     api,
     calllog,
@@ -596,6 +597,7 @@ def build_server(
     find_program: Callable[[str], str | None] = procs.find,
     desktop_env: Mapping[str, str] | None = None,
     ci_status: Callable[..., dict[str, Any] | None] = software.latest_run,
+    activity_file: Path | None = None,  # where the activity view keeps its counts; None: no view
     kept_levels: Callable[..., list[dict[str, Any]]] = software.kept_levels,
     kept_mutations: Callable[..., dict[str, Any] | None] = software.kept_mutations,
     main_head: Callable[..., str | None] = software.head,
@@ -742,6 +744,9 @@ def build_server(
                     with contextlib.suppress(Exception):
                         sweep_prompts()  # whether or not anyone has the page open
                     with contextlib.suppress(Exception):
+                        if activity_view is not None:  # off, it reads nothing but the daily delete
+                            await asyncio.to_thread(activity_view.tick)
+                    with contextlib.suppress(Exception):
                         if api.HUB.listening() and (changed := await asyncio.to_thread(board.changed)):
                             api.HUB.publish("work", changed)  # the phone page updates at once
                     await asyncio.sleep(watch_interval)
@@ -757,6 +762,9 @@ def build_server(
         finally:
             if task:
                 task.cancel()
+            if activity_view is not None and activity_view.is_on():
+                with contextlib.suppress(Exception):
+                    activity_view.flush()  # the minutes counted since the last write
             if stop_software:
                 stop_software()
 
@@ -979,6 +987,28 @@ def build_server(
         chart = org.load(org.known_folders(manager.root, given))
         org_kept[:] = [manager.clock(), chart]
         return chart
+
+    def activity_place(row: dict[str, Any]) -> tuple[str, str] | None:
+        """A running session's programme and role, for the activity view; None outside every chart."""
+        place = org_now().placer()(row)
+        if place.programme is None:
+            return None
+        part = place.role or place.component
+        return place.programme.code, part.code if part else ""
+
+    activity_view = (
+        None
+        if activity_file is None
+        else activity.Activity(
+            manager.store,
+            activity_file,
+            live=lambda: live_sessions(),  # defined further down
+            place=activity_place,
+            orgs=repos.activity_orgs,
+            phone_orgs=repos.activity_phone_orgs,
+            projects_dir=projects_dir,
+        )
+    )
 
     def keep_roster() -> None:
         """Write each running session's row to the sessions file, when the bridge keeps one."""
@@ -2472,6 +2502,7 @@ def build_server(
             book=prompt_book,
             away=lambda app_open: PRESENCE[0].away(app_open=app_open),
             route=_router(route, across),
+            activity=activity_view,
         ).routes(mcp)
 
     mcp.prompt_book = prompt_book  # type: ignore[attr-defined]  # for tests
@@ -2565,6 +2596,7 @@ def serve_forever(cfg: Config) -> None:
         ui_origins=cfg.ui_origins,
         bridge_port=cfg.port,
         sessions_file=roster.FILE.expanduser(),
+        activity_file=config.STATE_DIR.expanduser() / activity.FILE,
     )
     app = build_app(server, cfg.public_hosts, ui_origins=cfg.ui_origins, ui_dir=cfg.ui_dir)
     configure_logging(cfg.db.parent / LOG_FILE)
