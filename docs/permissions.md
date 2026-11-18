@@ -400,6 +400,17 @@ forms. The session hook refuses them in every form, including `git -c` and
 value it lets through is `git config core.hooksPath .githooks`, the setup line
 in CONTRIBUTING.
 
+The bridge runs git itself too, in folders a session can write to: to sort a
+prompt, for the live view's git status, for the work cards, in the session hook
+and in the updater. Every such git runs with `core.fsmonitor` and hooks switched
+off, and reads no system-wide settings file. In a repository whose own settings
+name a program anyway, such as a filter or diff driver, git is skipped. The log
+says which repository and which setting, and the live view shows no git status
+for it. A test fails if a module runs git any other way.
+
+That check runs just before git does, so a session that changes its settings in
+between is not caught. It is a known limit until sessions run as their own user.
+
 These paths are written the POSIX way, so they don't cover a session running on
 native Windows yet. The session hook's git checks are tested on Windows too.
 

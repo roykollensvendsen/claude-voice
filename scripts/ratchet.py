@@ -54,6 +54,8 @@ NEW_MODULE_CEILING = 15  # the most tangled function a new module may have
 BLOCK = 6  # lines in a row that count as a copied block
 # Each module's layer: a module may use, when it loads, only modules in the layers below it.
 LAYERS = {
+    # below the foundations: how the bridge runs git, which some of them use
+    "safe_git": -1,
     # foundations
     **dict.fromkeys(
         (

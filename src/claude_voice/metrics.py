@@ -83,9 +83,13 @@ def version() -> str:
     import subprocess
     from pathlib import Path
 
+    from claude_voice import safe_git
+
     try:
-        out = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
+        out = safe_git.run(
+            "rev-parse",
+            "--short",
+            "HEAD",
             cwd=Path(__file__).resolve().parent,
             capture_output=True,
             text=True,

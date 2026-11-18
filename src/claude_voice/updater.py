@@ -35,7 +35,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import procs, restarts, safefile
+from . import procs, restarts, safe_git, safefile
 from .config import STATE_DIR
 
 LOG = Path("~/.local/state/claude-voice/update.json")
@@ -56,14 +56,17 @@ def _now() -> str:
 # updater's own git commands read GitHub's ssh addresses over HTTPS: a public repository needs
 # no key at all. Only these commands; the owner's remotes and terminals keep using ssh.
 OVER_HTTPS = ("-c", "url.https://github.com/.insteadOf=git@github.com:")
+#: Every other way of reaching a remote is switched off, so no remote the clone's own settings
+#: name can make the updater start a program (ssh, or a remote helper). A local clone stays allowed.
+HTTPS_ONLY = ("-c", "protocol.allow=never", "-c", "protocol.https.allow=always", "-c", "protocol.file.allow=always")
 
 
 def _git(repo: Path, *args: str) -> tuple[bool, str]:
     git = procs.find("git") or "git"
     try:
         # RULE: the updater reaches github over https not the owners ssh key
-        command = [git, *OVER_HTTPS, "-C", str(repo), *args]
-        out = subprocess.run(command, capture_output=True, text=True, timeout=120, check=False)
+        leading = (*OVER_HTTPS, *HTTPS_ONLY, "-C", str(repo))
+        out = safe_git.run(*leading, *args, git=git, capture_output=True, text=True, timeout=120, check=False)
     except (OSError, subprocess.SubprocessError) as exc:
         return False, str(exc)
     return out.returncode == 0, (out.stdout or out.stderr).strip()

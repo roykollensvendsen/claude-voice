@@ -23,6 +23,8 @@ from logging import getLogger
 from pathlib import Path
 from typing import Any
 
+from claude_voice import safe_git
+
 UNIT = "claude-voice"
 REASON_FILE = "restart-reason.json"
 COUNT_FILE = "restarts"  # systemd's NRestarts as last seen
@@ -204,7 +206,7 @@ def _uptime() -> float | None:
 def _git(*args: str) -> str | None:
     here = Path(__file__).resolve().parent  # the bridge's own checkout
     try:
-        out = subprocess.run(["git", *args], cwd=here, capture_output=True, text=True, timeout=5, check=True)
+        out = safe_git.run(*args, cwd=here, capture_output=True, text=True, timeout=5, check=True)
     except (OSError, subprocess.SubprocessError):
         return None
     return out.stdout.strip() or None

@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import procs
+from . import procs, safe_git
 
 TREND = 30  # points of history per measure
 FILE = "quality.json"
@@ -43,7 +43,7 @@ def _now() -> str:
 def _git(repo: Path, *args: str) -> str | None:
     git = procs.find("git") or "git"
     try:
-        out = subprocess.run([git, "-C", str(repo), *args], capture_output=True, text=True, timeout=30, check=False)
+        out = safe_git.run("-C", str(repo), *args, git=git, capture_output=True, text=True, timeout=30, check=False)
     except (OSError, subprocess.SubprocessError):
         return None
     return out.stdout if out.returncode == 0 else None

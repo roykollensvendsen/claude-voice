@@ -36,7 +36,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from . import session_hook
+from . import safe_git, session_hook
 
 log = logging.getLogger(__name__)
 
@@ -874,8 +874,13 @@ def _git_tracked(path: Path, place: Place | None) -> bool:
     if place is None:
         return False
     try:
-        found = subprocess.run(
-            ["git", "-C", str(place.repo), "ls-files", "--error-unmatch", "--", str(path)],
+        found = safe_git.run(
+            "-C",
+            str(place.repo),
+            "ls-files",
+            "--error-unmatch",
+            "--",
+            str(path),
             capture_output=True,
             timeout=5,
             check=False,

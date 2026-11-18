@@ -272,12 +272,12 @@ def _sessions(raw: dict[str, Any]) -> Sessions:
 
 
 def _remotes(folder: Path) -> list[str]:
-    from . import procs
+    from . import procs, safe_git
 
     git = procs.find("git") or "git"
     try:
-        out = subprocess.run(
-            [git, "-C", str(folder), "remote", "-v"], capture_output=True, text=True, timeout=10, check=False
+        out = safe_git.run(
+            "-C", str(folder), "remote", "-v", git=git, capture_output=True, text=True, timeout=10, check=False
         )
     except (OSError, subprocess.SubprocessError):
         return []

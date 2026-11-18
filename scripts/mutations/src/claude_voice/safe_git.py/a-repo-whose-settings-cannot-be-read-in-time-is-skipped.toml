@@ -1,0 +1,5 @@
+[[rule]]
+name = "a repo whose settings cannot be read in time is skipped"
+file = "src/claude_voice/safe_git.py"
+find = 'return "its settings could not be read in time"'
+replace = 'return None'

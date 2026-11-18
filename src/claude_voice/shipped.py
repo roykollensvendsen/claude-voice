@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from . import accepted, permissions
+from . import accepted, permissions, safe_git
 
 if TYPE_CHECKING:
     from . import org
@@ -172,8 +172,8 @@ def installed_commit(own_clone: Path | None) -> str:
     if own_clone is None:
         return "unknown"
     try:
-        out = subprocess.run(
-            ["git", "-C", str(own_clone), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=10, check=False
+        out = safe_git.run(
+            "-C", str(own_clone), "rev-parse", "HEAD", capture_output=True, text=True, timeout=10, check=False
         )
     except (OSError, subprocess.SubprocessError):
         return "unknown"
