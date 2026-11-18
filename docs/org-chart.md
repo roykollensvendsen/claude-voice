@@ -93,6 +93,58 @@ send_here = ["quality", "facts"]
 These org roles are not the bridge's start roles (`roles.toml`, such as
 `contribute`), which say how to start a new session for a task.
 
+## Idle builders
+
+A programme can ask the bridge to say when all its builders sit idle while its
+work list still has work for them. Four optional keys turn it on:
+
+```toml
+[programme]
+code = "acme"
+backlog = "acme-queue.md"   # the work list, a file in ~/.local/state/claude-voice/
+idle_after_min = 15         # how long every builder has been idle first; 15 when left out
+idle_report = true          # the voice hears it too; only the manager does when left out
+
+[roles.builder]
+name = "Builder"
+sessions = ["acme-builder"]
+builder = true              # this role builds
+```
+
+- **A builder** is a role with `builder = true`. A role with no `builder` key whose
+  code contains `builder` counts too, and `org check` warns "builder by name; mark
+  it". `builder = false` is never one.
+- **Idle** means Claude Code shows the session as `idle`, and has for at least
+  `idle_after_min` minutes. A session that is `busy`, runs a command of its own
+  (`shell`) or waits on a permission prompt (`waiting`) is not idle: the last is
+  waiting on someone, and the approvals already say so. A builder role with no
+  running session counts as idle.
+- **The work list** is a Markdown file the manager keeps, in the form the night
+  queue uses. Each item is a list line at the left margin. A line indented under
+  it says what became of it: `lane1: taken 23:55`, `done: ...` or
+  `blocked: why`. An item with no taken or done line waits; a blocked one is
+  counted apart. Only a file inside the state folder is read: a name that is
+  absolute, holds `..` or passes a symlink is refused, never opened, and
+  `org check` warns "backlog outside the state folder". A programme with
+  builders and no `backlog` is never flagged, and `org check` warns "no backlog
+  named".
+
+The bridge looks every minute. When every builder of a programme has been idle
+that long and at least one item waits, that is one episode, flagged once:
+
+- the programme's manager, the sessions of its `manager` role, gets one message:
+  "All builders in Acme Robots idle 15 min; 3 items waiting, 2 blocked.";
+- with `idle_report = true`, the voice gets one `whats_new` item of kind
+  `idle_builders`: "Acme Robots: all builders idle 15 minutes with 3 items
+  waiting, 2 blocked." Between 23.00 and 07.00 the bridge's local time, it is
+  held, and comes at 07.00 if the episode still runs then. The manager's message
+  goes at once, since managers work at night.
+
+The episode ends when a builder turns busy, or nothing waits any more; the next
+one is flagged again. Only the programme's name and the two counts are ever
+sent, never an item's text. The bridge remembers the episodes it flagged while
+it runs, so a restart in the middle of one flags it once more.
+
 ## Which files the bridge reads
 
 Only files in folders it already knows: its own clone, the plugin folders in its
