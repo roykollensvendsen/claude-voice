@@ -1,5 +1,6 @@
 """Idle builders in the bridge: the manager's message, the voice's news, the chart's warnings."""
 
+import asyncio
 import json
 import subprocess
 import sys
@@ -63,31 +64,45 @@ def pids():
 
 
 @pytest.fixture
-def bridge(tmp_path, pids):
-    root = tmp_path / "src"
-    (root / "acme" / ".claude").mkdir(parents=True)
-    (root / "acme" / ".claude" / "org.toml").write_text(ORG)
-    state = tmp_path / "state"
-    state.mkdir()
-    (state / "queue.md").write_text("1. one\n2. two\n   blocked: no key\n")
-    live = tmp_path / "live"
-    live.mkdir()
-    since = (NOW - 30 * 60) * 1000
-    for pid, name in zip(pids, ("acme-boss", "lane-a"), strict=True):
-        record = {"pid": pid, "sessionId": f"{name}-id", "cwd": str(root / "acme"), "name": name}
-        (live / f"{pid}.json").write_text(json.dumps({**record, "status": "idle", "statusUpdatedAt": since}))
-    clock = Clock()
+def bridge_with(tmp_path, pids):
+    """A bridge whose courier is `deliver`, in a world of its own each time; and its clock."""
+    made = []
+
+    def make(deliver):
+        here = tmp_path / str(len(made))
+        made.append(here)
+        root = here / "src"
+        (root / "acme" / ".claude").mkdir(parents=True)
+        (root / "acme" / ".claude" / "org.toml").write_text(ORG)
+        state = here / "state"
+        state.mkdir()
+        (state / "queue.md").write_text("1. one\n2. two\n   blocked: no key\n")
+        live = here / "live"
+        live.mkdir()
+        since = (NOW - 30 * 60) * 1000
+        for pid, name in zip(pids, ("acme-boss", "lane-a"), strict=True):
+            record = {"pid": pid, "sessionId": f"{name}-id", "cwd": str(root / "acme"), "name": name}
+            (live / f"{pid}.json").write_text(json.dumps({**record, "status": "idle", "statusUpdatedAt": since}))
+        clock = Clock()
+        m = SessionManager(Store(here / "b.db"), project_root=root, client_factory=FakeClaude(), clock=clock)
+        server = build_server(
+            m,
+            conversations=lambda **k: [],
+            live_dir=live,
+            read_transcript=lambda s, d: [],
+            deliver=deliver,
+            org_folders=[],
+            idle_watch=idle.Watch(state, clock=clock, hour=lambda t: 12),
+        )
+        return server, clock
+
+    return make
+
+
+@pytest.fixture
+def bridge(bridge_with):
     deliver = Delivered()
-    m = SessionManager(Store(tmp_path / "b.db"), project_root=root, client_factory=FakeClaude(), clock=clock)
-    server = build_server(
-        m,
-        conversations=lambda **k: [],
-        live_dir=live,
-        read_transcript=lambda s, d: [],
-        deliver=deliver,
-        org_folders=[],
-        idle_watch=idle.Watch(state, clock=clock, hour=lambda t: 12),
-    )
+    server, _ = bridge_with(deliver)
     return server, deliver
 
 
@@ -106,6 +121,62 @@ async def test_the_manager_and_the_voice_hear_once_that_every_builder_is_idle(br
     assert [(e["kind"], e["text"]) for e in news if e["kind"] == "idle_builders"] == [
         ("idle_builders", "Acme Robots: all builders idle 15 minutes with 1 item waiting, 1 blocked.")
     ]
+
+
+class Stuck:
+    """A courier that takes the message and never answers."""
+
+    def __init__(self):
+        self.sent = []
+
+    async def __call__(self, name, text):
+        self.sent.append((name, text))
+        await asyncio.Event().wait()
+
+
+class Answers:
+    def __init__(self, out):
+        self.out, self.sent = out, []
+
+    async def __call__(self, name, text):
+        self.sent.append((name, text))
+        return self.out
+
+
+async def let_deliveries_finish():
+    for _ in range(5):
+        await asyncio.sleep(0)
+
+
+async def test_a_delivery_to_a_manager_never_holds_up_the_watch(bridge_with):
+    stuck = Stuck()
+    server, clock = bridge_with(stuck)
+    await asyncio.wait_for(server.idle_check(), 5)
+    await let_deliveries_finish()
+    assert [name for name, _ in stuck.sent] == ["acme-boss"]
+
+
+async def test_a_message_the_courier_never_tried_is_sent_again_next_minute(bridge_with):
+    courier = Answers({"delivered": False, "detail": "no courier", "attempted": False})
+    server, clock = bridge_with(courier)
+    await server.idle_check()
+    await let_deliveries_finish()
+    clock.now += 60
+    await server.idle_check()
+    await let_deliveries_finish()
+    assert len(courier.sent) == 2
+
+
+async def test_a_message_the_courier_may_have_sent_is_never_sent_twice(bridge_with):
+    for out in ({"delivered": False, "detail": "half way", "attempted": True}, {"delivered": False, "detail": "?"}):
+        courier = Answers(out)
+        server, clock = bridge_with(courier)
+        await server.idle_check()
+        await let_deliveries_finish()
+        clock.now += 60
+        await server.idle_check()
+        await let_deliveries_finish()
+        assert len(courier.sent) == 1
 
 
 async def test_the_org_chart_warns_about_a_builder_known_by_name_only(bridge):

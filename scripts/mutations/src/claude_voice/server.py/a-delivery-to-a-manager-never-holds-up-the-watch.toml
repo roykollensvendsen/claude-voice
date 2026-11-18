@@ -1,0 +1,5 @@
+[[rule]]
+name = "a delivery to a manager never holds up the watch"
+file = "src/claude_voice/server.py"
+find = '    tell_manager\(flag, name\)$'
+replace = 'await deliver(name, flag.to_manager())'

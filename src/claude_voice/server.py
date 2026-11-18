@@ -1169,8 +1169,24 @@ def build_server(
             if not names:
                 log.info("all builders in %s idle; no manager is running to tell", flag.programme.code)
             for name in names:
-                out = await deliver(name, flag.to_manager())
-                log.info("idle builders in %s told to %s: %s", flag.programme.code, name, out.get("delivered"))
+                # RULE: a delivery to a manager never holds up the watch
+                tell_manager(flag, name)
+
+    def tell_manager(flag: idle.Flag, name: str) -> None:
+        """Send one manager the flag on a task of its own, so a courier that hangs holds up
+        nothing else; a message the courier never tried is tried again next minute."""
+        sent = asyncio.ensure_future(deliver(name, flag.to_manager()))
+        in_flight.add(sent)
+
+        def done(task: asyncio.Future[Any]) -> None:
+            in_flight.discard(task)
+            out = task.result() if not task.cancelled() and task.exception() is None else {}
+            log.info("idle builders in %s told to %s: %s", flag.programme.code, name, out.get("delivered"))
+            # RULE: a message the courier never tried is sent again next minute
+            if not out.get("delivered") and out.get("attempted") is False:
+                watching_idle.again(flag.programme.code)
+
+        sent.add_done_callback(done)
 
     def keep_roster() -> None:
         """Write each running session's row to the sessions file, when the bridge keeps one."""
