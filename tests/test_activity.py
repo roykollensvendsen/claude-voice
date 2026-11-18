@@ -6,6 +6,7 @@ import json
 import os
 import sqlite3
 import stat
+import sys
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
@@ -348,13 +349,13 @@ def test_without_children_lists_no_other_process_is_read(tmp_path, machine, open
     assert seen[4000].cpu_ms == 1000  # its children are unknown here, so only its own
     assert seen[4000].child is None
     own = str(machine.proc / "4000")
-    others = [p for p in opened if p.startswith(str(machine.proc) + "/") and not p.startswith(own)]
+    others = [p for p in opened if p.startswith(str(machine.proc) + os.sep) and not p.startswith(own)]
     assert others == [str(machine.proc / "uptime")]
 
 
 def test_where_there_is_no_proc_no_process_is_read(tmp_path, machine, clock, monkeypatch):
     monkeypatch.setattr(activity.sys, "platform", "win32")
-    monkeypatch.delattr(activity.os, "sysconf")
+    monkeypatch.delattr(activity.os, "sysconf", raising=False)  # Windows has none to remove
     path = machine.session("worker", "voice")
     write(path, prompt(T0), use(T0 + 1, "c1"))
     act = activity.Activity(
@@ -451,6 +452,7 @@ def test_no_text_from_a_transcript_is_kept(tmp_path, machine, clock):
         assert planted.encode() not in stored
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows keeps no owner-only mode bits")
 def test_the_activity_file_is_the_owners_alone(tmp_path, machine, clock):
     machine.session("worker", "voice")
     act = make(tmp_path, machine, clock)
