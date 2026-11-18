@@ -1,0 +1,5 @@
+[[rule]]
+name = "the session hook runs with the standard library only"
+file = "src/claude_voice/session_hook.py"
+find = '^if __package__:$'
+replace = 'if True:'

@@ -6,6 +6,7 @@ about, or leaves to Claude Code's own rules."""
 
 from __future__ import annotations
 
+import functools
 import json
 import subprocess
 import sys
@@ -220,6 +221,15 @@ def test_a_hook_that_cannot_decide_asks(tmp_root, monkeypatch):
         ]
         == "ask"
     )
+
+
+@posix_only
+def test_the_session_hook_runs_with_the_standard_library_only(tmp_path):
+    """Claude Code starts the hook with the system's python3, where the bridge's package isn't
+    installed. -S leaves out every installed package, as that python3 has none of ours."""
+    here = functools.partial(subprocess.run, cwd=tmp_path)
+    said = session_hook.self_check([sys.executable, "-I", "-S", session_hook.__file__], run=here)
+    assert said["ok"], said
 
 
 @posix_only
