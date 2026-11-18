@@ -409,6 +409,8 @@ def idle_warnings(chart: Chart, state: Path) -> list[str]:
             for r in p.roles
             if r.by_name
         ]
+        if p.builders() and not any(r.code == "manager" for r in p.roles):
+            out.append(f"{p.code}: no role with code manager, so nobody is told of idle builders")
         if not p.backlog:
             if p.builders():
                 out.append(f"{p.code}: no backlog named, so its idle builders are never flagged")

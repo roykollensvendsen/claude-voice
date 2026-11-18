@@ -91,12 +91,13 @@ class Watch:
         return all(all(_idle_long(d, since) for d in holders(role)) for role in builders)
 
     def _waiting(self, p: Programme) -> backlog.Counts | None:
-        """The work list's counts when an item waits for a builder; None otherwise."""
+        """The work list's counts when an item waits for a builder; None otherwise. Raises
+        OSError when the list cannot be read just now."""
         if not p.backlog:
             return None
         try:
             counts = backlog.read(self.state, p.backlog)
-        except (backlog.Outside, OSError):
+        except backlog.Outside:
             return None  # org check says why
         return counts if counts.waiting else None
 
@@ -111,7 +112,11 @@ class Watch:
         managers: list[Flag] = []
         voice: list[Flag] = []
         for p in chart.programmes:
-            counts = self._waiting(p) if self._all_idle(p, rows, place) else None
+            try:
+                counts = self._waiting(p) if self._all_idle(p, rows, place) else None
+            except OSError:
+                # RULE: a work list that cannot be read for a moment keeps the episode
+                continue  # the episode stays as it stands
             if counts is None:
                 # RULE: an episode ends when a builder works or nothing waits
                 self.flagged.discard(p.code)
