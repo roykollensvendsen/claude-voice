@@ -1,0 +1,5 @@
+[[rule]]
+name = "a builder waiting on a prompt is not idle"
+file = "src/claude_voice/idle.py"
+find = 'if row.get\("status"\) != "idle":'
+replace = 'if row.get("status") not in ("idle", "waiting"):'

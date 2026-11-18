@@ -1,0 +1,5 @@
+[[rule]]
+name = "an episode ends when a builder works or nothing waits"
+file = "src/claude_voice/idle.py"
+find = 'self.flagged.discard\(p.code\)'
+replace = 'pass'
