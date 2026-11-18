@@ -1,0 +1,5 @@
+[[rule]]
+name = "a pack that does not match its sha gives the stop line"
+file = "src/claude_voice/org_rules.py"
+find = 'if sha\(data\) != want:'
+replace = 'if False:'

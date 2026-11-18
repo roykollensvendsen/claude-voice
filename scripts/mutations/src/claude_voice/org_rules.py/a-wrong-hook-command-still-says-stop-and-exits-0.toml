@@ -1,0 +1,5 @@
+[[rule]]
+name = "a wrong hook command still says stop and exits 0"
+file = "src/claude_voice/org_rules.py"
+find = 'raise Refused\(f"the hook.s command is wrong \(\{message\}\)"\)'
+replace = 'super().error(message)'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a linked rules file is refused"
+file = "src/claude_voice/org_rules.py"
+find = 'fd = os\.open\(path, os\.O_RDONLY \| getattr\(os, "O_NOFOLLOW", 0\)\)'
+replace = 'fd = os.open(path, os.O_RDONLY)'

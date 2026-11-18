@@ -1,0 +1,5 @@
+[[rule]]
+name = "only a plain organisation name is read"
+file = "src/claude_voice/org_rules.py"
+find = 'if not NAME\.fullmatch\(org\):'
+replace = 'if not org:'
