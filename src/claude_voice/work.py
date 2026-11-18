@@ -59,6 +59,7 @@ def waiting(path: Path | None = None) -> list[dict[str, Any]]:
                 "since": _text(item.get("since")) or _now(),
                 "repo": _text(item.get("repo")),
                 "session": _text(item.get("session")),
+                "prompt": _text(item.get("prompt")),  # the phone prompt it answers, for the page to hide
             }
         )
     return items
@@ -100,6 +101,7 @@ def login_item(expires: datetime | None, now: datetime) -> dict[str, Any] | None
         "since": (expires - LOGIN_WARNING).isoformat(timespec="seconds"),  # stable, so the page changes only once
         "repo": None,
         "session": None,
+        "prompt": None,
     }
 
 
