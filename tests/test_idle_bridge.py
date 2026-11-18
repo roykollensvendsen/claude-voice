@@ -93,6 +93,7 @@ def bridge_with(tmp_path, pids):
             deliver=deliver,
             org_folders=[],
             idle_watch=idle.Watch(state, clock=clock, hour=lambda t: 12),
+            manager_delivery_seconds=0.05,
         )
         return server, clock
 
@@ -154,6 +155,18 @@ async def test_a_delivery_to_a_manager_never_holds_up_the_watch(bridge_with):
     await asyncio.wait_for(server.idle_check(), 5)
     await let_deliveries_finish()
     assert [name for name, _ in stuck.sent] == ["acme-boss"]
+
+
+async def test_a_delivery_to_a_manager_gives_up_after_its_time(bridge_with):
+    stuck = Stuck()
+    server, clock = bridge_with(stuck)
+    await server.idle_check()
+    await asyncio.sleep(0.3)
+    assert server.deliveries_in_flight == set()
+    clock.now += 60
+    await server.idle_check()
+    await asyncio.sleep(0.3)
+    assert len(stuck.sent) == 1  # it may have arrived, so it is never sent twice
 
 
 async def test_a_message_the_courier_never_tried_is_sent_again_next_minute(bridge_with):
