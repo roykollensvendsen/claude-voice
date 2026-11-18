@@ -22,6 +22,30 @@ until the owner approves version 2.
   ADR-CVM-009). Version 2 should allow that as a second way to meet the
   machine check, and say what the hub must do: pair from the address it will
   call from, and expect "pair again" after it moves.
+  `agent_info` should say which check the machine makes, `tailscale-whois` or
+  `pinned-address`, so the owner sees it when approving. A pinned address is
+  the weaker check, so the key stays required on every request.
+- **Refusal codes version 1 has no name for.** Version 1's `code` is open,
+  so an agent may send them today, but a hub reads them only as "a refusal".
+  Version 2 should name them, so a hub can say what to do:
+  - `not_kept`, with `500`, from `POST /pair`: the code was right, but the
+    machine could not save the pairing. The hub says to free space on the
+    machine and pair again. It was never paired, and no key was given.
+  - `bad_request`, with `400`, from `POST /pair`: the body was not a pairing
+    request. It does not count as a wrong code.
+  - `late`, inside MCP: the call started, but ran past the agent's limit. It
+    may still finish, and its `call_id` stays kept, so sending it again gets
+    `duplicate_call`. The hub says it may have happened, as for a timeout.
+  - `not_run`, inside MCP: the agent was too busy to start the call within its
+    limit, so it never reached the plugin. Its `call_id` is freed, so the hub
+    may send the same call again, and it runs.
+- **Five wrong pairing codes are a nuisance, not a breach.** Someone on the
+  tailnet can end the pairing window by sending five wrong codes, and the
+  owner then shows a new code. A guess cannot succeed: a code has 31 to the
+  power of 8 values and lasts ten minutes. Version 2 should say so, so no one
+  reads the limit as a guard against guessing.
+- **The owner, not a name.** The text of `confirms` in `plugin.json`, and the
+  rest of the protocol's words, say "the owner" where they now name a person.
 - **Not wanted for now: a yes from the phone's own screen.** The owner chose a
   spoken yes only for location triggers on 2026-11-15, so this waits for the
   owner to ask again. Version 1 lets only the voice confirm
