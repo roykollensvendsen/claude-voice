@@ -119,6 +119,7 @@ LAYERS = {
             "approver_token",
             "decisions",
             "backlog",
+            "stalled",
         ),
         1,
     ),  # parts, each about one thing

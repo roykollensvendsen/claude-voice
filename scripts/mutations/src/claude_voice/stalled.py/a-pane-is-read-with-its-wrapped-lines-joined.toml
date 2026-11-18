@@ -1,0 +1,5 @@
+[[rule]]
+name = "a pane is read with its wrapped lines joined"
+file = "src/claude_voice/stalled.py"
+find = 'return run\(\["tmux", "capture-pane", "-p", "-J", "-t", pane\]\)'
+replace = 'return run(["tmux", "capture-pane", "-p", "-t", pane])'
