@@ -169,6 +169,14 @@ async def test_starting_the_contribute_role_runs_a_guarded_session_in_the_users_
     assert stopped["status"] == "stopped"  # the bridge may stop what it started
 
 
+async def test_a_started_role_may_not_write_the_rule_packs(tmp_path, world):
+    ready_clone(world)
+    starter = Starter(world[2])
+    async with Client(bridge(tmp_path, world, starter)) as c:
+        await c.call_tool("start_role", {"role": "contribute"})
+    assert "Edit(~/.config/claude-voice/orgs/**)" in json.loads(starter.calls[0]["settings"])["permissions"]["deny"]
+
+
 async def test_an_unknown_role_is_refused(tmp_path, world):
     async with Client(bridge(tmp_path, world, Starter(world[2]))) as c:
         bad = await c.call_tool("start_role", {"role": "nobody"})

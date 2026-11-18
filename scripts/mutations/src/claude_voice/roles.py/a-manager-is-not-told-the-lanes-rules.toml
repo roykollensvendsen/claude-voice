@@ -1,0 +1,5 @@
+[[rule]]
+name = "a manager is not told the lanes rules"
+file = "src/claude_voice/roles.py"
+find = 'if pinned is not None and not role\.get\("manager"\):'
+replace = 'if pinned is not None:'
