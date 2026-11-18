@@ -79,6 +79,7 @@ LAYERS = {
             "literal_gh",
             "org_rules",
             "access",
+            "redact",
         ),
         0,
     ),

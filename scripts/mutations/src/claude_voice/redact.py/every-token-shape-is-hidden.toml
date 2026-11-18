@@ -1,0 +1,5 @@
+[[rule]]
+name = "every token shape is hidden"
+file = "src/claude_voice/redact.py"
+find = 'text = TOKENS.sub\(HIDDEN, text\)'
+replace = 'text = text'
