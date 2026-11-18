@@ -607,6 +607,7 @@ def build_server(
     sessions_file: Path | None = None,
     stalled_watch: stalled.Watch | None = None,
     stalled_tmux: Callable[[list[str]], str] | None = None,
+    manager_delivery_seconds: float = 60.0,
 ) -> MCPServer:
     auth = None
     if oauth is not None:
@@ -1090,9 +1091,20 @@ def build_server(
             return
         for name, line in await asyncio.to_thread(stalled_now):
             # RULE: a line to a manager about a waiting question never holds up the watch
-            sent = asyncio.ensure_future(deliver(name, line))
+            sent = asyncio.ensure_future(tell_one(name, line))
             in_flight.add(sent)
             sent.add_done_callback(in_flight.discard)
+
+    async def tell_one(name: str, line: str) -> None:
+        """Send one manager one line, giving up after a while: it may still arrive, so it is
+        never sent again."""
+        try:
+            # RULE: a delivery about a waiting question gives up after its time
+            out = await asyncio.wait_for(deliver(name, line), manager_delivery_seconds)
+        except TimeoutError:
+            log.info("a waiting question told to %s: no answer in time; it may have arrived", name)
+            return
+        log.info("a waiting question told to %s: %s", name, out.get("delivered"))
 
     def keep_roster() -> None:
         """Write each running session's row to the sessions file, when the bridge keeps one."""
@@ -2595,6 +2607,7 @@ def build_server(
     mcp.fleet = across  # type: ignore[attr-defined]  # the other machines, for tests and the CLI
     mcp.org_check = tell_programmes  # type: ignore[attr-defined]  # for tests
     mcp.stalled_check = tell_stalled  # type: ignore[attr-defined]  # for tests
+    mcp.deliveries_in_flight = in_flight  # type: ignore[attr-defined]  # for tests
     mcp.hints_check = lambda: tell_hints(fleet_recap())  # type: ignore[attr-defined]  # for tests
     mcp.software_report = software_report  # type: ignore[attr-defined]  # the kept report, for tests
     return mcp
