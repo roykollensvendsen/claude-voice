@@ -171,3 +171,13 @@ def test_a_programme_lets_the_voice_hear_the_question_only_when_it_says_so(tmp_p
     (tmp_path / "b" / ".claude" / "org.toml").write_text('[programme]\ncode = "b"\n')
     chart = org.load([tmp_path / "a", tmp_path / "b"])
     assert [p.stalled_prompt_text for p in chart.programmes] == [True, False]
+
+
+def test_an_approval_input_is_masked_before_it_is_said():
+    watch, clock = make()
+    token = "ghp_" + "Z9y8X7w6V5u4T3s2R1q0P9o8N7m6L5k4J3i2"
+    asked = stalled.Asked(f"Bash: curl -H 'Authorization: Bearer {token}' https://x.test/?code=abc", ["Yes", "No"])
+    item, _ = waiting(clock, 6, asked=asked)
+    managers, voice = watch.look([item], away=True)
+    for line in (managers[0][1], voice[0]):
+        assert token not in line and "abc" not in line and "[hidden]" in line

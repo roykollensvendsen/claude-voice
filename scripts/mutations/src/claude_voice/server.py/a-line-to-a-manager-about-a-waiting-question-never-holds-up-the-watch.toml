@@ -1,5 +1,5 @@
 [[rule]]
 name = "a line to a manager about a waiting question never holds up the watch"
 file = "src/claude_voice/server.py"
-find = 'sent = asyncio.ensure_future\(deliver\(name, line\)\)'
+find = 'sent = asyncio.ensure_future\(tell_one\(name, line\)\)'
 replace = 'await deliver(name, line); sent = asyncio.ensure_future(asyncio.sleep(0))'
