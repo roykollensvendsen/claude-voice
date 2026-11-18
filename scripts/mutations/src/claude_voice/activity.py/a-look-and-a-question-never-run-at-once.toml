@@ -1,0 +1,5 @@
+[[rule]]
+name = "a look and a question never run at once"
+file = "src/claude_voice/activity.py"
+find = 'with self\.lock:'
+replace = 'if True:'
