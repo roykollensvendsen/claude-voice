@@ -69,6 +69,10 @@ class Watch:
         self.flagged: set[str] = set()
         self.held: dict[str, Flag] = {}
 
+    def again(self, code: str) -> None:
+        """Flag programme `code`'s episode once more at the next look: its message never left."""
+        self.flagged.discard(code)
+
     def _night(self, now: float) -> bool:
         start, end = NIGHT
         hour = self.hour(now)
