@@ -270,6 +270,14 @@ SECRET_HOMES = (
     ".gnupg",
     ".local/share/keyrings",
     ".claude/.credentials.json",
+    ".config/messages-mcp",
+    ".config/ntfy",
+    ".local/share/mautrix-meta",
+    ".local/share/synapse",
+    ".local/share/sms-bridge",
+    ".local/share/ntfy",
+    ".local/state/ntfy",
+    ".local/state/messages-mcp/sent.jsonl",
 )
 #: Names directly in ~/.config that the table names; each one found is searched too.
 CONFIG_SECRETS = ("*key*", "*token*", "*secret*", "*credential*", "dreame*", "tv-mcp*")

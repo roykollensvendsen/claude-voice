@@ -301,6 +301,7 @@
       ".config/claude-voice/config.toml", ".config/claude-voice/roles.toml",
       ".config/claude-voice/machines/**", ".config/claude-voice/plugins/**",
       ".config/gh/config.yml",
+      ".config/messages-mcp/door.toml", ".config/messages-mcp/send.toml", ".config/ntfy/server.yml",
       ".config/uv/**", ".config/pip/**", ".pip/**", ".npmrc",
       ".vimrc", ".config/nvim/**", ".emacs", ".emacs.d/**"
     ],
@@ -365,7 +366,15 @@
       "*.config/tv-mcp*",
       "*secrets.yaml*",
       "*.config/gh/hosts.yml*",
-      "*.claude/.credentials.json*"
+      "*.claude/.credentials.json*",
+      "*.config/messages-mcp/*",
+      "*.config/ntfy/*",
+      "*.local/share/mautrix-meta/*",
+      "*.local/share/synapse/*",
+      "*.local/share/sms-bridge/*",
+      "*.local/share/ntfy/*",
+      "*.local/state/ntfy/*",
+      "*.local/state/messages-mcp/sent.jsonl*"
     ]
   }
 }
