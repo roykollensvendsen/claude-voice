@@ -17,7 +17,7 @@ import sys
 import threading
 import time
 import weakref
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -556,6 +556,35 @@ def _reply_turns(
     return new, start
 
 
+def _activity_view(
+    path: Path | None,
+    store: Store,
+    live: Callable[[], list[dict[str, Any]]],
+    place: activity.Place,
+    orgs: tuple[Iterable[str], Iterable[str]],
+    projects_dir: Path,
+) -> activity.Activity | None:
+    """The activity view, or None when the bridge keeps no file for it (as in most tests).
+    `orgs` is the programmes read, then those that may also be shown on the phone."""
+    if path is None:
+        return None
+    return activity.Activity(
+        store, path, live=live, place=place, orgs=orgs[0], phone_orgs=orgs[1], projects_dir=projects_dir
+    )
+
+
+def _activity_tick(view: activity.Activity | None) -> None:
+    """One look; while the view is off it reads nothing but its daily delete."""
+    if view is not None:
+        view.tick()
+
+
+def _activity_flush(view: activity.Activity | None) -> None:
+    """At shutdown, write the minutes counted since the last write."""
+    if view is not None and view.is_on():
+        view.flush()
+
+
 def build_server(
     manager: SessionManager,
     oauth: OAuthProvider | None = None,
@@ -744,8 +773,7 @@ def build_server(
                     with contextlib.suppress(Exception):
                         sweep_prompts()  # whether or not anyone has the page open
                     with contextlib.suppress(Exception):
-                        if activity_view is not None:  # off, it reads nothing but the daily delete
-                            await asyncio.to_thread(activity_view.tick)
+                        await asyncio.to_thread(_activity_tick, activity_view)
                     with contextlib.suppress(Exception):
                         if api.HUB.listening() and (changed := await asyncio.to_thread(board.changed)):
                             api.HUB.publish("work", changed)  # the phone page updates at once
@@ -762,9 +790,8 @@ def build_server(
         finally:
             if task:
                 task.cancel()
-            if activity_view is not None and activity_view.is_on():
-                with contextlib.suppress(Exception):
-                    activity_view.flush()  # the minutes counted since the last write
+            with contextlib.suppress(Exception):
+                _activity_flush(activity_view)
             if stop_software:
                 stop_software()
 
@@ -996,18 +1023,13 @@ def build_server(
         part = place.role or place.component
         return place.programme.code, part.code if part else ""
 
-    activity_view = (
-        None
-        if activity_file is None
-        else activity.Activity(
-            manager.store,
-            activity_file,
-            live=lambda: live_sessions(),  # defined further down
-            place=activity_place,
-            orgs=repos.activity_orgs,
-            phone_orgs=repos.activity_phone_orgs,
-            projects_dir=projects_dir,
-        )
+    activity_view = _activity_view(
+        activity_file,
+        manager.store,
+        live=lambda: live_sessions(),  # defined further down
+        place=activity_place,
+        orgs=(repos.activity_orgs, repos.activity_phone_orgs),
+        projects_dir=projects_dir,
     )
 
     def keep_roster() -> None:

@@ -584,6 +584,17 @@ class Activity:
         self.looked = now
         if self.since is None:
             self.since = now
+        rows = self._readable()
+        self.sessions = {n: self.sessions.get(n) or Live(n, *p, int(r["pid"])) for n, (r, p) in rows.items()}
+        seen = self.proc.sample(s.pid for s in self.sessions.values())
+        for name, (row, _) in rows.items():
+            self._look(self.sessions[name], row, seen.get(self.sessions[name].pid), now)
+        if now - self.flushed >= FLUSH_SECONDS:
+            self.flush(now)
+        self.daily()
+
+    def _readable(self) -> dict[str, tuple[dict[str, Any], tuple[str, str]]]:
+        """The running sessions this view may read, by name, each with its programme and role."""
         rows = {}
         for row in self.live():
             # RULE: a session row that is not plain is skipped
@@ -594,13 +605,7 @@ class Activity:
             if placed is None or placed[0] not in self.orgs:
                 continue
             rows[str(row.get("name") or row.get("sessionId"))] = (row, placed)
-        self.sessions = {n: self.sessions.get(n) or Live(n, *p, int(r["pid"])) for n, (r, p) in rows.items()}
-        seen = self.proc.sample(s.pid for s in self.sessions.values())
-        for name, (row, _) in rows.items():
-            self._look(self.sessions[name], row, seen.get(self.sessions[name].pid), now)
-        if now - self.flushed >= FLUSH_SECONDS:
-            self.flush(now)
-        self.daily()
+        return rows
 
     def _look(self, live: Live, row: dict[str, Any], seen: Seen | None, now: float) -> None:
         since = self.since or now
