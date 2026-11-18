@@ -1,0 +1,5 @@
+[[rule]]
+name = "a question waiting past the limit with the owner away is said once"
+file = "src/claude_voice/stalled.py"
+find = '''self.said.add\(item.key\)'''
+replace = '''pass'''

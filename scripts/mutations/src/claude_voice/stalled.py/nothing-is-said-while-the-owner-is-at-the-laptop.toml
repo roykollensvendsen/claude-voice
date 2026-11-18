@@ -1,0 +1,5 @@
+[[rule]]
+name = "nothing is said while the owner is at the laptop"
+file = "src/claude_voice/stalled.py"
+find = '''if not away or item.key in self.said or now - item.since < self.after:'''
+replace = '''if item.key in self.said or now - item.since < self.after:'''

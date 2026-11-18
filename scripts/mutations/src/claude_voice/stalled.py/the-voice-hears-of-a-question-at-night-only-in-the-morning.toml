@@ -1,0 +1,5 @@
+[[rule]]
+name = "the voice hears of a question at night only in the morning"
+file = "src/claude_voice/stalled.py"
+find = '''if not \(hour >= start or hour < end\):'''
+replace = '''if True:'''
