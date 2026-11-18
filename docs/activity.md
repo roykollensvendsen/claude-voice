@@ -46,7 +46,8 @@ Numbers and kinds only, never what was said, asked or answered:
   inside tool calls that ended that minute; `cpu_ms`, the CPU the session and
   every process under it used; `rss_mb_max`; and the seconds busy, idle and
   waiting. Also the stretches of time the view was on, so a gap is drawn as "not
-  recording", never as zero.
+  recording", never as zero. SQLite gives its passing journal file the database
+  file's own permissions, so that too is the owner's alone.
 - **In memory only**: each session's running tool call, its kind, the tool's name
   and, for a command, the program it runs, cut to a fixed list (git, gh, python,
   pytest, uv, make, cargo, npm, docker; anything else is "other"). The memory is
