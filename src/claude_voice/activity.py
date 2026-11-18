@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import sys
 import time
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
@@ -131,8 +132,17 @@ class ProcTree:
 
     def __init__(self, root: Path = Path("/proc"), hz: int | None = None, page_kb: int | None = None) -> None:
         self.root = root
-        self.hz = hz or os.sysconf("SC_CLK_TCK")
-        self.page_kb = page_kb or os.sysconf("SC_PAGE_SIZE") // 1024
+        self.hz, self.page_kb = hz or 0, page_kb or 0  # asked of the kernel at the first look
+
+    def _units(self) -> bool:
+        """The kernel's clock rate and page size; False where there is no /proc to read."""
+        if not (self.hz and self.page_kb):
+            # RULE: where there is no proc no process is read
+            if sys.platform == "win32" or not self.root.is_dir():
+                return False
+            self.hz = self.hz or os.sysconf("SC_CLK_TCK")
+            self.page_kb = self.page_kb or os.sysconf("SC_PAGE_SIZE") // 1024
+        return True
 
     def _stat(self, pid: int) -> tuple[str, list[str]] | None:
         try:
@@ -171,7 +181,7 @@ class ProcTree:
         that keeps no lists of children, only the pid's own: finding them would mean reading
         every process on the machine, those of programmes that are not read among them."""
         wanted = list(pids)
-        if not wanted:
+        if not wanted or not self._units():
             return {}
         uptime = self._uptime()
 

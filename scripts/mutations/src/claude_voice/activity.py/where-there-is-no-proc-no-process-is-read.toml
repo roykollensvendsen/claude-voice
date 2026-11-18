@@ -1,0 +1,5 @@
+[[rule]]
+name = "where there is no proc no process is read"
+file = "src/claude_voice/activity.py"
+find = 'if sys\.platform == "win32" or not self\.root\.is_dir\(\):'
+replace = 'if False:'
