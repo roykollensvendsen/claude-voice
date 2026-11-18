@@ -2,8 +2,9 @@
 
 A session answers the voice by messaging the courier, the bridge's own helper. Each answer is
 put here, in the bridge's database. Every voice call that can carry it returns it until a later
-call confirms the voice heard it: a whats_new whose cursor reaches past it, or one that names
-it in `ack`. Returning it is not enough, since a connection can drop before it is read aloud.
+call confirms the voice heard it: a whats_new passing back the cursor of the answer that last
+carried it, or one that names it in `ack`. Returning it is not enough, since a connection can
+drop before it is read aloud, and a cursor proves only that its own answer arrived.
 
 After three returns with no confirmation, or after a day, a reply is no longer pushed, only
 counted, and the voice is told to list it. Read replies are removed after seven days; an unread
@@ -27,8 +28,10 @@ CREATE TABLE IF NOT EXISTS mailbox(
   text TEXT NOT NULL,
   delivered_at REAL,
   pushes INTEGER NOT NULL DEFAULT 0,
+  carried INTEGER,
   read_at REAL
 );
+CREATE TABLE IF NOT EXISTS mailbox_answers(id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL);
 """
 PUSHES = 3  # returns with no confirmation before a reply is only counted
 FRESH = 24 * 3600.0  # after a day unread, a reply is only counted
@@ -64,8 +67,9 @@ class Mailbox:
             )
         return cur.lastrowid or 0
 
-    def push(self) -> list[dict[str, Any]]:
-        """The unread replies still to be pushed, newest last, each counted as one more push."""
+    def push(self) -> tuple[int, list[dict[str, Any]]]:
+        """The unread replies still to be pushed, newest last, each counted as one more push,
+        with this answer's number (0 when it carries none) for its cursor to confirm."""
         now = self.clock()
         rows = self.db.execute(
             # RULE: after three pushes a reply is counted not pushed
@@ -74,11 +78,17 @@ class Mailbox:
             " AND ts >= ? ORDER BY seq DESC LIMIT ?",
             (PUSHES, now - FRESH, PER_ANSWER),
         ).fetchall()[::-1]
+        if not rows:
+            return 0, []
         with self.db:
+            # Numbers are never reused, so an old cursor can never confirm a newer answer's replies.
+            answer = self.db.execute("INSERT INTO mailbox_answers(ts) VALUES(?)", (now,)).lastrowid or 0
+            self.db.execute("DELETE FROM mailbox_answers WHERE id < ?", (answer,))
             self.db.executemany(
-                "UPDATE mailbox SET delivered_at=?, pushes=pushes+1 WHERE seq=?", [(now, r[0]) for r in rows]
+                "UPDATE mailbox SET delivered_at=?, pushes=pushes+1, carried=? WHERE seq=?",
+                [(now, answer, r[0]) for r in rows],
             )
-        return [_shown(r, now) for r in rows]
+        return answer, [_shown(r, now) for r in rows]
 
     def unread(self) -> list[dict[str, Any]]:
         """Every unread reply, the held ones too, oldest first; they count as returned, not pushed."""
@@ -91,15 +101,18 @@ class Mailbox:
         return [_shown(r, now) for r in rows]
 
     def ack(self, upto: int | None = None, seqs: Iterable[int] = ()) -> None:
-        """Mark read the returned replies up to `upto`, and those named in `seqs`."""
+        """Mark read the replies answer `upto` carried last, and the returned ones named in `seqs`.
+        A cursor coming back proves only that its own answer arrived."""
         named = [int(s) for s in seqs]
         marks = ",".join("?" * len(named)) or "NULL"
         with self.db:
             self.db.execute(
+                "UPDATE mailbox SET read_at=? WHERE read_at IS NULL AND ("
+                # RULE: a cursor confirms only the replies its own answer carried
+                "carried = ?"
                 # RULE: a reply is read only once a later call acknowledges it
-                "UPDATE mailbox SET read_at=? WHERE read_at IS NULL AND delivered_at IS NOT NULL"
-                f" AND (seq <= ? OR seq IN ({marks}))",
-                (self.clock(), -1 if upto is None else upto, *named),
+                f" OR (delivered_at IS NOT NULL AND seq IN ({marks})))",
+                (self.clock(), upto, *named),
             )
 
     def held(self) -> dict[str, int]:
