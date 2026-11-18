@@ -45,6 +45,15 @@ def test_the_owners_list_is_read_as_the_manager_wrote_it_and_a_broken_item_is_le
     assert items[1]["repo"] == "dreame-mcp" and items[1]["command"] is None and items[1]["since"]
 
 
+def test_an_item_keeps_the_prompt_it_answers_as_the_manager_wrote_it(tmp_path):
+    path = write_waiting(
+        tmp_path / "waiting.json",
+        [{"id": "a", "text": "Approve the push?", "prompt": "p-3f2a9c"}, {"id": "b", "text": "No prompt."}],
+    )
+    items = work.waiting(path)
+    assert [i["prompt"] for i in items] == ["p-3f2a9c", None]
+
+
 def test_a_missing_or_unreadable_list_is_an_empty_one(tmp_path):
     assert work.waiting(tmp_path / "nothing.json") == []
     (tmp_path / "broken.json").write_text("{not json", encoding="utf-8")
