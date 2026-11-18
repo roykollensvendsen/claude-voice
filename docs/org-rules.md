@@ -18,11 +18,12 @@ shared pack's own header says so.
 
 ## The hook
 
-A role's settings run this, with the bridge's own Python, never a session's:
+A role's settings run this, with the bridge's own Python, never a session's. `-I` runs
+it isolated, so nothing in the session's folder or environment is imported:
 
 <!-- not run: a start hook runs it, with the shas of packs the owner has installed -->
 ```text
-python -m claude_voice.org_rules emit <org> --event SessionStart --shared-sha <12> --sha <12>
+python -I -m claude_voice.org_rules emit <org> --event SessionStart --shared-sha <12> --sha <12>
 ```
 
 `--event` is `SessionStart` or `SubagentStart`. The two shas are the first twelve hex

@@ -1,0 +1,5 @@
+[[rule]]
+name = "the hook runs isolated from the sessions folder"
+file = "src/claude_voice/org_rules.py"
+find = 'COMMAND = \(sys\.executable, "-I", "-m", "claude_voice\.org_rules"\)'
+replace = 'COMMAND = (sys.executable, "-m", "claude_voice.org_rules")'
