@@ -337,16 +337,18 @@ def test_a_sessions_cpu_includes_its_children(tmp_path, machine):
     assert seen.child == ("other", 100000)  # bash started first; its name is not on the list
 
 
-def test_without_children_lists_a_scan_finds_the_children_and_skips_unread_sessions(tmp_path, machine, opened):
+def test_without_children_lists_no_other_process_is_read(tmp_path, machine, opened):
     machine.listed = False
     machine.process(4000, 1, "claude", cpu=100, rss_pages=256)
     machine.process(4001, 4000, "git", cpu=50, rss_pages=256)
     machine.process(6000, 1, "claude", cpu=1, rss_pages=256)
     machine.process(6001, 6000, "make", cpu=1, rss_pages=256)
-    seen = activity.ProcTree(machine.proc, hz=100, page_kb=4).sample([4000], skip=[6000])
-    assert seen[4000].cpu_ms == 1500
-    assert seen[4000].child == ("git", 100000)
-    assert not any(p.startswith(str(machine.proc / "6000")) for p in opened)
+    seen = activity.ProcTree(machine.proc, hz=100, page_kb=4).sample([4000])
+    assert seen[4000].cpu_ms == 1000  # its children are unknown here, so only its own
+    assert seen[4000].child is None
+    own = str(machine.proc / "4000")
+    others = [p for p in opened if p.startswith(str(machine.proc) + "/") and not p.startswith(own)]
+    assert others == [str(machine.proc / "uptime")]
 
 
 def test_the_longest_running_child_is_named_from_the_fixed_list(tmp_path, machine):

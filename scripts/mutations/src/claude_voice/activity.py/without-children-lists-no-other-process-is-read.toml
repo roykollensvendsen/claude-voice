@@ -1,0 +1,5 @@
+[[rule]]
+name = "without children lists no other process is read"
+file = "src/claude_voice/activity.py"
+find = 'return self\._listed\(pid\) or \[\]'
+replace = 'return self._listed(pid) or [int(e.name) for e in os.scandir(self.root) if e.name.isdigit() and e.name != str(pid)]'
