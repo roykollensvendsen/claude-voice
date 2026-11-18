@@ -1,0 +1,5 @@
+[[rule]]
+name = "a backlog is read only inside the state folder"
+file = "src/claude_voice/backlog.py"
+find = 'return safefile.inside\(state, written\)'
+replace = 'return state / written'
