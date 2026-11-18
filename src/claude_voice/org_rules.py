@@ -21,6 +21,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import sys
 from pathlib import Path
 from typing import IO, Any, NoReturn
@@ -55,14 +56,26 @@ def _read(root: Path, org: str) -> bytes:
     # RULE: a linked rules file is refused
     if path.parent.is_symlink():
         raise Refused(f"{org}'s pack folder is a link")
+    # RULE: a pipe in place of a pack is refused without waiting
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     try:
-        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        fd = os.open(path, flags)
     except FileNotFoundError:
         raise Refused(f"{org}'s pack is missing at {path}") from None
     except OSError as exc:
         raise Refused(f"{org}'s pack could not be read ({exc.strerror})") from None
-    with os.fdopen(fd, "rb") as f:
-        return f.read()
+    try:
+        # RULE: only a plain file is read as a pack
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise Refused(f"{org}'s pack at {path} is not a plain file")
+        data = b""
+        while chunk := os.read(fd, 1 << 16):
+            data += chunk
+        return data
+    except OSError as exc:
+        raise Refused(f"{org}'s pack could not be read ({exc.strerror})") from None
+    finally:
+        os.close(fd)
 
 
 def _pack(root: Path, org: str, want: str) -> str:
@@ -104,9 +117,10 @@ class _Parser(argparse.ArgumentParser):
 
 
 def _parser() -> _Parser:
-    parser = _Parser(prog="python -m claude_voice.org_rules", add_help=False)
+    # a shortened option is never taken for a whole one: the role file spells each out
+    parser = _Parser(prog="python -m claude_voice.org_rules", add_help=False, allow_abbrev=False)
     sub = parser.add_subparsers(dest="action", required=True, parser_class=_Parser)
-    emit = sub.add_parser("emit", add_help=False)
+    emit = sub.add_parser("emit", add_help=False, allow_abbrev=False)
     emit.add_argument("org")
     emit.add_argument("--event", required=True)
     emit.add_argument("--shared-sha", required=True)
@@ -131,6 +145,9 @@ def main(
         text = context(args.org, args.shared_sha, args.sha, root)
     except Refused as why:
         text = STOP.format(reason=why)
+    # RULE: an unexpected error still says stop and exits 0
+    except Exception as exc:  # a crash is silent to the session, so it would start without rules
+        text = STOP.format(reason=f"the hook failed ({type(exc).__name__}: {exc})")
     # RULE: a wrong hook command still says stop and exits 0
     stdout.write(json.dumps(_said(event, text)) + "\n")
     return 0
