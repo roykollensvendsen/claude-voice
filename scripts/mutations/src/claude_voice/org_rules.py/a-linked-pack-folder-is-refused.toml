@@ -1,0 +1,5 @@
+[[rule]]
+name = "a linked pack folder is refused"
+file = "src/claude_voice/org_rules.py"
+find = 'if path\.parent\.is_symlink\(\):'
+replace = 'if False:'

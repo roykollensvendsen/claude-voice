@@ -1,5 +1,5 @@
 [[rule]]
 name = "a pipe in place of a pack is refused without waiting"
 file = "src/claude_voice/org_rules.py"
-find = ' \| getattr\(os, "O_NONBLOCK", 0\)'
-replace = ''
+find = 'no_wait = getattr\(os, "O_NONBLOCK", 0\)'
+replace = 'no_wait = 0'

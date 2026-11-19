@@ -1,11 +1,5 @@
 [[rule]]
 name = "a linked rules file is refused"
 file = "src/claude_voice/org_rules.py"
-find = 'flags = os\.O_RDONLY \| getattr\(os, "O_NOFOLLOW", 0\) \| '
-replace = 'flags = os.O_RDONLY | '
-
-[[rule]]
-name = "a linked rules file is refused"
-file = "src/claude_voice/org_rules.py"
-find = 'if path\.parent\.is_symlink\(\):'
-replace = 'if False:'
+find = 'no_link = getattr\(os, "O_NOFOLLOW", 0\)'
+replace = 'no_link = 0'
