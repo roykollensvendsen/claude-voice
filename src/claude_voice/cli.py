@@ -570,7 +570,8 @@ def agent_command(action: str, env: Mapping[str, str], sessions: bool = False) -
     pairing = agent.Pairing(home / ".config/claude-voice/agent")
     machine = socket.gethostname().split(".")[0]
     if action == "install":
-        command = [sys.executable, "-m", "claude_voice.cli", "agent"]
+        # RULE: the agent runs isolated from the folder systemd starts it in
+        command = [sys.executable, "-I", "-m", "claude_voice.cli", "agent"]
         return agent.install(home, command, sessions, run=_systemctl, login=claude_code_login, machine=machine)
     if action == "pair":
         code = pairing.start()

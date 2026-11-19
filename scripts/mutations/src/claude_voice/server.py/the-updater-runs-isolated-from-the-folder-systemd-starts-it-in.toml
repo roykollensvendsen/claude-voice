@@ -1,0 +1,5 @@
+[[rule]]
+name = "the updater runs isolated from the folder systemd starts it in"
+file = "src/claude_voice/server.py"
+find = 'return \[python, "-I", "-m", "claude_voice\.updater"'
+replace = 'return [python, "-m", "claude_voice.updater", "--repo", str(folder), "--log", str(log), "--port", str(port)]'

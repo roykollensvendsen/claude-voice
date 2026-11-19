@@ -589,6 +589,12 @@ def _activity_flush(view: activity.Activity | None) -> None:
         view.flush()
 
 
+def updater_command(python: str, folder: Path, log: Path, port: int) -> list[str]:
+    """How the updater is started, outside the bridge's own service."""
+    # RULE: the updater runs isolated from the folder systemd starts it in
+    return [python, "-I", "-m", "claude_voice.updater", "--repo", str(folder), "--log", str(log), "--port", str(port)]
+
+
 def build_server(
     manager: SessionManager,
     oauth: OAuthProvider | None = None,
@@ -1445,8 +1451,8 @@ def build_server(
         if not systemd_run:
             raise RuntimeError("Updating needs systemd-run, to run outside the bridge's own service.")
         unit = f"claude-voice-update-{int(time.time())}"
-        command = [systemd_run, "--user", "--collect", "--quiet", f"--unit={unit}", sys.executable]
-        command += ["-m", "claude_voice.updater", "--repo", str(folder), "--log", str(log), "--port", str(bridge_port)]
+        command = [systemd_run, "--user", "--collect", "--quiet", f"--unit={unit}"]
+        command += updater_command(sys.executable, folder, log, bridge_port)
         subprocess.run(command, check=True, capture_output=True, timeout=30)
 
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))

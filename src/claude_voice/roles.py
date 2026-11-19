@@ -66,7 +66,8 @@ def guard_settings(role: dict[str, Any]) -> str | None:
     upstream = str(role.get("upstream") or "")
     if not role.get("guard") or not upstream:
         return None
-    command = f"{shlex.quote(sys.executable)} -m claude_voice.guard --upstream {shlex.quote(upstream)}"
+    # RULE: the push guard runs isolated from the sessions folder
+    command = f"{shlex.quote(sys.executable)} -I -m claude_voice.guard --upstream {shlex.quote(upstream)}"
     return json.dumps(
         {"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": command}]}]}}
     )
