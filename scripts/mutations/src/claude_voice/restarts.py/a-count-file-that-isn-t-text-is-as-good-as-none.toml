@@ -1,0 +1,5 @@
+[[rule]]
+name = "a count file that isn't text is as good as none"
+file = "src/claude_voice/restarts.py"
+find = 'except \(OSError, UnicodeDecodeError\):'
+replace = 'except OSError:'

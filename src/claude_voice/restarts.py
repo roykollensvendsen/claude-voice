@@ -98,7 +98,8 @@ def decide(planned: dict[str, Any] | None, now: float, restarted: bool, uptime: 
 def _read(path: Path) -> str | None:
     try:
         return path.read_text(encoding="utf-8").strip() or None
-    except (OSError, UnicodeDecodeError):  # a file that isn't text is as good as none
+    # RULE: a count file that isn't text is as good as none
+    except (OSError, UnicodeDecodeError):
         return None
 
 

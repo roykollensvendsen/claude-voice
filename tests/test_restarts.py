@@ -76,9 +76,13 @@ def test_a_kept_restart_count_that_is_not_a_plain_number_is_ignored(tmp_path):
     """'²' counts as a digit to Python but is no number int() reads; a bad file must not stop the start."""
     assert info(tmp_path, total=4, seen="²")["reason"] == "unplanned"
     assert (tmp_path / restarts.COUNT_FILE).read_text(encoding="utf-8") == "4"
-    # The same '²' as Windows writes it by default, which is not UTF-8 at all.
+
+
+def test_a_count_file_that_isn_t_text_is_as_good_as_none(tmp_path):
+    """The same '²' as Windows writes it by default, which is not UTF-8 at all."""
     (tmp_path / restarts.COUNT_FILE).write_bytes(b"\xb2")
     assert info(tmp_path, total=5, seen=None)["reason"] == "unplanned"
+    assert (tmp_path / restarts.COUNT_FILE).read_text(encoding="utf-8") == "5"
 
 
 def test_a_stale_reason_file_does_not_hide_a_crash(tmp_path):
