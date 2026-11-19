@@ -31,7 +31,7 @@ def written(state, seconds_ago, **body):
 
 def info(state, *, total=3, seen=3, up=3600.0, git=None, env=SYSTEMD):
     if seen is not None:
-        (state / restarts.COUNT_FILE).write_text(str(seen))
+        (state / restarts.COUNT_FILE).write_text(str(seen), encoding="utf-8")
     return restarts.restart_info(
         state, environ=env, nrestarts=lambda: total, uptime=lambda: up, git=git or Git(), now=lambda: NOW
     )
@@ -75,7 +75,10 @@ def test_a_restart_by_systemd_with_no_reason_file_is_a_crash(tmp_path):
 def test_a_kept_restart_count_that_is_not_a_plain_number_is_ignored(tmp_path):
     """'²' counts as a digit to Python but is no number int() reads; a bad file must not stop the start."""
     assert info(tmp_path, total=4, seen="²")["reason"] == "unplanned"
-    assert (tmp_path / restarts.COUNT_FILE).read_text() == "4"
+    assert (tmp_path / restarts.COUNT_FILE).read_text(encoding="utf-8") == "4"
+    # The same '²' as Windows writes it by default, which is not UTF-8 at all.
+    (tmp_path / restarts.COUNT_FILE).write_bytes(b"\xb2")
+    assert info(tmp_path, total=5, seen=None)["reason"] == "unplanned"
 
 
 def test_a_stale_reason_file_does_not_hide_a_crash(tmp_path):
