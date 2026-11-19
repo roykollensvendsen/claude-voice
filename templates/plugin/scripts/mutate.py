@@ -335,6 +335,7 @@ def mutate_one(rule: dict, here: pathlib.Path, lost: list[str]) -> Result | None
     text = path.read_text(encoding="utf-8")
     mutated = switched_off(text, rule)
     why = broken(rule["file"], mutated)
+    # RULE: a row that breaks the code fails the run and is named
     if why:
         print(f"BROKEN   {rule['name']}: the replacement is not valid code ({why})")
         return None
@@ -371,8 +372,8 @@ def summarise(results: list[Result], lost: list[str], bad_rows: list[str], args:
         print("CHANGED WHILE MUTATED, so left as they are:", ", ".join(sorted(set(lost))))
         print("Edit the tree while this runs and the result is not about your code.")
     if args.write:
-        args.write.write_text(report(results, survived, lucky), encoding="utf-8")
-    publish(args.json, results)
+        args.write.write_text(report(results, survived, lucky, bad_rows), encoding="utf-8")
+    publish(args.json, results, bad_rows)
     return 1 if survived or lucky or lost or bad_rows else 0
 
 
@@ -416,26 +417,28 @@ def figures(results: list[Result]) -> dict[str, Any]:
     return {"killed": sum(rule["own_test_red"] for rule in rules), "total": len(rules), "rules": rules}
 
 
-def publish(to: pathlib.Path | None, results: list[Result]) -> None:
+def publish(to: pathlib.Path | None, results: list[Result], bad_rows: list[str]) -> None:
     """Give the run to the checks: its figures to `to`, its table to the run's summary page."""
     if to:
         to.write_text(json.dumps(figures(results), indent=2) + "\n", encoding="utf-8")
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with pathlib.Path(summary).open("a", encoding="utf-8") as page:
-            page.write(report(results, *_weak(results)))
+            page.write(report(results, *_weak(results), bad_rows))
 
 
-def report(results: list[Result], survived: list[str], lucky: list[str]) -> str:
-    """Render the run as the evidence page."""
+def report(results: list[Result], survived: list[str], lucky: list[str], bad_rows: list[str]) -> str:
+    """Render the run as the evidence page, broken rows included: a reviewer reads the page."""
     rows = "\n".join(
         f"| {name} | {count} | `{own}` | {'yes' if by_own else 'NO'} |" for name, _, count, own, by_own in results
     )
     proven = len(results) - len(survived) - len(lucky)
     verdict = (
         f"**Result: {proven} of {len(results)} rules turned off the test that names them.**"
-        + (" None survived." if not survived else f" Survived: {', '.join(survived)}.")
+        + (" None survived." if not (survived or bad_rows) else "")
+        + ("" if not survived else f" Survived: {', '.join(survived)}.")
         + ("" if not lucky else f" Killed only by other tests: {', '.join(lucky)}.")
+        + ("" if not bad_rows else f" Broken rows, so nothing was tested: {', '.join(bad_rows)}.")
     )
     return f"""# Every rule, turned off in turn
 

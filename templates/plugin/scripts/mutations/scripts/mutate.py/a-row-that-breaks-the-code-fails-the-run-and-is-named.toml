@@ -1,0 +1,5 @@
+[[rule]]
+name = "a row that breaks the code fails the run and is named"
+file = "scripts/mutate.py"
+find = '^    if why:$'
+replace = 'if False:'
