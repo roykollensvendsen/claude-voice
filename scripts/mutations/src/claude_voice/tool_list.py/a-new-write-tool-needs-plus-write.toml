@@ -1,0 +1,5 @@
+[[rule]]
+name = "a new write tool needs plus write"
+file = "src/claude_voice/tool_list.py"
+find = 'return any\(not entry\.get\("read_only"\) for _, entry in self\.new\)'
+replace = 'return False'

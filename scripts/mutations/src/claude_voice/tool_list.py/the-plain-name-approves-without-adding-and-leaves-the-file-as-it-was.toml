@@ -1,0 +1,5 @@
+[[rule]]
+name = "the plain name approves without adding and leaves the file as it was"
+file = "src/claude_voice/tool_list.py"
+find = 'if words == \[name\]:'
+replace = 'if False:'

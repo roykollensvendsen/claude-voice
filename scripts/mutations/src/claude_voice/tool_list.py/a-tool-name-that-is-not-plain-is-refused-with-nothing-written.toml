@@ -1,0 +1,5 @@
+[[rule]]
+name = "a tool name that is not plain is refused with nothing written"
+file = "src/claude_voice/tool_list.py"
+find = 'if bad:'
+replace = 'if False:'

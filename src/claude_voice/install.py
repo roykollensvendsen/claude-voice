@@ -14,6 +14,7 @@ The typed approval at the end is plugins approve's own, made by the command line
 
 from __future__ import annotations
 
+import contextlib
 import copy
 import difflib
 import tomllib
@@ -282,7 +283,19 @@ class Run:
         source = self.shown(self.plan.folder / manifests.FILE)
         self.step(f"Read the manifest: {source} ({found.name}, {len(found.tools)} tools).")
 
+    def locked(self, path: Path) -> Any:
+        """The settings file's lock, which approve's tools-list write takes too. A dry run
+        writes nothing, and a missing folder holds nothing to race with, so neither locks."""
+        if self.dry or not path.parent.exists():
+            return contextlib.nullcontext()
+        # RULE: plugins install writes the settings file under the same lock
+        return safefile.locked(path)
+
     def bridge_step(self) -> None:
+        with self.locked(self.plan.bridge):
+            self._bridge_step()
+
+    def _bridge_step(self) -> None:
         path, found = self.plan.bridge, self.plan.manifest
         old = path.read_text(encoding="utf-8") if path.exists() else None
         self.step(f"Bridge config: {self.shown(path)}")

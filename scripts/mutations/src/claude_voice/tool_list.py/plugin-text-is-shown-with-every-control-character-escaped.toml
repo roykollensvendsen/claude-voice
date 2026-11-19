@@ -1,0 +1,5 @@
+[[rule]]
+name = "plugin text is shown with every control character escaped"
+file = "src/claude_voice/tool_list.py"
+find = 'return _CONTROL\.sub\('
+replace = 'return text'

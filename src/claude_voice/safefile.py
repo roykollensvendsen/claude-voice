@@ -15,6 +15,7 @@ import shlex
 import stat
 import sys
 import tempfile
+from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
 
@@ -60,9 +61,29 @@ def _owned(path: Path) -> bool:
     return path.stat().st_uid == os.getuid()
 
 
-def replace(path: Path, text: str | bytes) -> None:
-    """Write `text` as the whole of `path`, owner-only, or leave the old file as it was.
-    Bytes are written exactly as they are, with no line endings changed on Windows."""
+@contextlib.contextmanager
+def locked(path: Path) -> Iterator[None]:
+    """Hold the lock every writer of `path` takes, so two writers take turns instead of one
+    losing the other's change. The lock is on the folder that holds the file it really writes,
+    which leaves no lock file behind. Windows has no flock; there it holds nothing."""
+    if sys.platform == "win32":
+        yield
+        return
+    import fcntl
+
+    fd = os.open(target(path).parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        # RULE: a second writer waits for the lock
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)
+
+
+def replace(path: Path, text: str | bytes, mode: int = 0o600) -> None:
+    """Write `text` as the whole of `path`, owner-only unless `mode` says otherwise, or leave the
+    old file as it was. Bytes are written exactly as they are, with no line endings changed on
+    Windows."""
     real = target(path)
     fd, spare = tempfile.mkstemp(dir=real.parent, prefix=f".{real.name}.", suffix=".tmp")
     try:
@@ -70,7 +91,7 @@ def replace(path: Path, text: str | bytes) -> None:
             text = text if isinstance(text, bytes) else text.replace("\n", os.linesep).encode("utf-8")
             if sys.platform != "win32":  # Windows has no owner-only mode to set
                 # RULE: a written file is readable by its owner alone
-                os.fchmod(f.fileno(), 0o600)
+                os.fchmod(f.fileno(), mode)
             f.write(text)
             f.flush()
             os.fsync(f.fileno())

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a wrong count is refused and the screen is shown again"
+file = "src/claude_voice/tool_list.py"
+find = 'return "add" if " "\.join\(words\) == found\.answer\(name\) else "wrong"'
+replace = 'return "add"'

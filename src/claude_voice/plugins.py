@@ -270,10 +270,11 @@ class Plugin:
         # RULE: a first listing waits as long as the plugins own time limit
         return max(LIST_SECONDS, self.spec.timeout)
 
-    def listing(self) -> dict[str, dict[str, Any]]:
+    def listing(self, everything: bool = False) -> dict[str, dict[str, Any]]:
         """The allowed tools as the plugin describes them, read once at start in a thread of
         its own, so the voice sees each tool's real description and arguments. When the
-        plugin gave no answer, `unlisted` says why."""
+        plugin gave no answer, `unlisted` says why. With `everything`, the tools not allowed
+        too, for the owner to see when approving; nothing of that reaches the voice."""
         found: dict[str, dict[str, Any]] = {}
         limit = self.list_seconds()
         self.unlisted = self.refused = None
@@ -282,7 +283,8 @@ class Plugin:
             async with self.open() as client:
                 rules = getattr(client, "instructions", None) or None
                 for tool in (await client.list_tools()).tools:
-                    if tool.name in self.spec.tools:
+                    # RULE: a new tool is not offered to the voice before it is approved
+                    if everything or tool.name in self.spec.tools:
                         marks = getattr(tool, "annotations", None)
                         found[tool.name] = {
                             "description": tool.description or "",

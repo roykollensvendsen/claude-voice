@@ -216,11 +216,17 @@ def _path(value: Any, home: str) -> Path | None:
     return Path(text)
 
 
+def settings_file(env: Mapping[str, str], path: Path | None = FILE) -> Path | None:
+    """The settings file this environment reads: CLAUDE_VOICE_CONFIG, or else `path`."""
+    home = env.get("HOME") or str(Path.home())
+    return _path(env.get("CLAUDE_VOICE_CONFIG"), home) or (_path(str(path), home) if path else None)
+
+
 def load(path: Path | None = FILE, own_clone: Path | None = None, env: Mapping[str, str] = os.environ) -> Config:
     """The settings: the file laid over the defaults."""
     home = env.get("HOME") or str(Path.home())
     raw: dict[str, Any] = {}
-    file = _path(env.get("CLAUDE_VOICE_CONFIG"), home) or (_path(str(path), home) if path else None)
+    file = settings_file(env, path)
     if file is not None and file.is_file():
         with file.open("rb") as f:
             raw = tomllib.load(f)

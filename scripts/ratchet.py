@@ -93,6 +93,7 @@ LAYERS = {
             "software",
             "work",
             "plugins",
+            "tool_list",
             "plugin_venv",
             "accepted",
             "detail",

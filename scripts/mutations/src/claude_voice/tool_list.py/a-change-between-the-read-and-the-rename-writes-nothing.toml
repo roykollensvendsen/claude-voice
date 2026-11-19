@@ -1,0 +1,5 @@
+[[rule]]
+name = "a change between the read and the rename writes nothing"
+file = "src/claude_voice/tool_list.py"
+find = 'if hashlib\.sha256\(real\.read_bytes\(\)\)\.digest\(\) != hashlib\.sha256\(before\)\.digest\(\):'
+replace = 'if False:'

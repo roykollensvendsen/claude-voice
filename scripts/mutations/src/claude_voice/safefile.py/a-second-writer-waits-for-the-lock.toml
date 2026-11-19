@@ -1,0 +1,5 @@
+[[rule]]
+name = "a second writer waits for the lock"
+file = "src/claude_voice/safefile.py"
+find = 'fcntl\.flock\(fd, fcntl\.LOCK_EX\)'
+replace = 'pass'

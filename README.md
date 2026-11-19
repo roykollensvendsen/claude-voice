@@ -543,6 +543,16 @@ Once a plugin is approved, three things can happen to it
   plugin's checkout is clean and level with the branch it follows (`branch`). Any
   file git does not know about counts as unclean, a backup included, so keep such
   files out of the plugin's folder or list them in its `.git/info/exclude`.
+- **A tool the plugin offers that is not in your list yet.** `claude-voice plugins approve
+  garage` starts the plugin first and shows each new tool in full. You see what it takes,
+  every word the voice will read, and whether it says it only reads or CAN CHANGE THINGS.
+  Control characters in the plugin's text are shown escaped, and a tool whose name or
+  description holds one is refused. Type `garage +1` to add one new tool and approve, or
+  `garage +1 +write` when a new tool can change things. The plain name approves without
+  adding, so a habit never widens what the voice can call. A tool gone from the plugin is
+  dropped from the list. Only the plugin's `tools` list changes, your comments are kept, and
+  the file is backed up first; the last five backups stay. If the file changes while you
+  read, nothing is written. Adding a tool is always typed, never by voice.
 - **A new plugin, or a new command or folder.** Always typed, as above.
 
 To take an approval back, run `claude-voice plugins revoke garage`. A running bridge

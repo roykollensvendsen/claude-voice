@@ -384,17 +384,42 @@ def _list_plugins(specs: list[PluginSpec]) -> int:
 
 
 def _show_approved(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> None:
-    """What the owner just approved: each tool's inputs and every word the voice reads."""
+    """What the owner just approved: each tool's inputs and every word the voice reads, with
+    the plugin's control characters escaped."""
     from . import plugins
+    from .tool_list import shown
 
     for tool in spec.tools:
         found = listing.get(tool)
-        sys.stdout.write(f"  {tool} takes: {plugins.takes(found['schema'])}\n" if found else f"  {tool}: not in it\n")
+        line = f"  {tool} takes: {shown(plugins.takes(found['schema']))}\n" if found else f"  {tool}: not in it\n"
+        sys.stdout.write(line)
         if found and found.get("description"):
-            sys.stdout.write(f"    the voice reads: {found['description']}\n")
+            sys.stdout.write(f"    the voice reads: {shown(found['description'])}\n")
     rules = plugins.instructions(listing)
     if rules:
-        sys.stdout.write(f"  {spec.name}'s rules for the voice: {rules}\n")
+        sys.stdout.write(f"  {spec.name}'s rules for the voice: {shown(rules)}\n")
+
+
+def _show_offer(spec: PluginSpec, found: Any, full: dict[str, dict[str, Any]]) -> None:
+    """The tools approving would add or remove, each new one in full, and the line to type."""
+    from . import plugins
+    from .tool_list import shown
+
+    for tool, entry in found.new:
+        sys.stdout.write(f"  NEW TOOL {plugins.exposed_name(spec.name, tool)}\n")
+        sys.stdout.write(f"    takes: {shown(plugins.takes(entry.get('schema')))}\n")
+        sys.stdout.write(f"    the voice reads: {shown(str(entry.get('description') or ''))}\n")
+        sys.stdout.write("    says it only reads\n" if entry.get("read_only") else "    CAN CHANGE THINGS\n")
+    for tool, why in found.refused:
+        sys.stdout.write(f"  refused, not offered: {shown(tool)}: {why}\n")
+        sys.stdout.write(f"    it says: {shown(str(full[tool].get('description') or ''))}\n")
+    for tool in found.gone:
+        sys.stdout.write(f"  {tool}: gone from the plugin, will be removed\n")
+    if found.new:
+        sys.stdout.write(
+            f"Type {found.answer(spec.name)} to add these {len(found.new)} tools and approve, "
+            f"or {spec.name} to approve without them.\n"
+        )
 
 
 def plugins_command(action: str, name: str | None, env: Mapping[str, str], options: Any = None) -> int:
@@ -421,7 +446,7 @@ def plugins_command(action: str, name: str | None, env: Mapping[str, str], optio
     if chosen is None:
         sys.stderr.write(f"claude-voice: no plugin {name!r} in the settings file\n")
         return 1
-    return _approve(chosen)
+    return _approve(chosen, env)
 
 
 def install_command(name: str | None, options: Any, env: Mapping[str, str]) -> int:
@@ -466,7 +491,7 @@ def _install_approval(plan: Any, outcome: Any, dry_run: bool, env: Mapping[str, 
         _say(f"{number}. Approve {name}: already approved.")
         return 0
     _say(f"{number}. Approve {name}:")
-    code = _approve(spec)
+    code = _approve(spec, env)
     if code == 0:
         outcome.changes.append(install.Change("approved", name, f"claude-voice plugins revoke {name}"))
     return code
@@ -489,14 +514,18 @@ def _revoke(name: str | None) -> int:
     return 0
 
 
-def _approve(spec: PluginSpec) -> int:
-    """Show what the plugin runs and approve it when the owner types its name."""
+def _approve(spec: PluginSpec, env: Mapping[str, str] | None = None) -> int:
+    """Show what the plugin runs and approve it when the owner types its name. A plugin whose
+    command and folder the owner approved before is started first, so its new tools can be
+    shown and added; a new one starts only after its name is typed."""
     from . import plugins
 
     sys.stdout.write(
         f"Plugin {spec.name}\n  runs: {' '.join([spec.command, *spec.args])}\n  in:   {spec.cwd}\n"
         f"  the voice may call: {', '.join(spec.tools)}\n"
     )
+    if plugins.known_place(spec):
+        return _approve_known(spec, os.environ if env is None else env)
     try:
         # RULE: the approval prompt says the plugin starts after its name is typed
         typed = input(
@@ -513,6 +542,80 @@ def _approve(spec: PluginSpec) -> int:
     if not listing:
         sys.stdout.write(f"{spec.name} did not start, so nothing was approved. Check its command and folder.\n")
         return 1
+    plugins.approve(spec, listing)
+    _show_approved(spec, listing)
+    sys.stdout.write(f"Approved. A running bridge offers {spec.name}'s tools within a few seconds.\n")
+    return 0
+
+
+def _approve_known(spec: PluginSpec, env: Mapping[str, str]) -> int:
+    """Approve a plugin started before: show its new and gone tools, and take the owner's line."""
+    from . import plugins, tool_list
+
+    full = plugins.Plugin(spec, plugins.CLIENT).listing(everything=True)
+    if not full:
+        sys.stdout.write(f"{spec.name} did not start, so nothing was approved. Check its command and folder.\n")
+        return 1
+    found = tool_list.offer(spec, full)
+    verdict = _owner_line(spec, found, full)
+    if verdict == "stop":
+        sys.stdout.write("Not approved.\n")
+        return 1
+    adding = verdict == "add"
+    # RULE: adding tools from a pipe is refused
+    if adding and not _terminal(env):
+        sys.stdout.write(
+            "Not approved: adding tools needs your own answer in a terminal; nothing was written. "
+            f"Run it in a terminal: {invocation.command()} plugins approve {spec.name}\n"
+        )
+        return 1
+    return _approve_with(spec, full, found, adding, env)
+
+
+def _owner_line(spec: PluginSpec, found: Any, full: dict[str, dict[str, Any]]) -> str:
+    """Ask until the owner's line matches the screen or stops it; a wrong count shows it again."""
+    from . import tool_list
+
+    while True:
+        _show_offer(spec, found, full)
+        try:
+            typed = input(f"Type {spec.name} to approve it, anything else to stop: " if not found.new else "> ")
+        except EOFError:  # run with nothing to read from, such as from inside another program
+            sys.stdout.write("\nNot approved: no answer was typed. Run it in a terminal.\n")
+            return "stop"
+        verdict = tool_list.judge(typed, spec.name, found)
+        if verdict != "wrong":
+            return verdict
+        sys.stdout.write(
+            f"{tool_list.shown(typed.strip())} does not match: nothing was written. "
+            f"Type {found.answer(spec.name) or spec.name} exactly, or anything else to stop.\n"
+        )
+
+
+def _approve_with(
+    spec: PluginSpec, full: dict[str, dict[str, Any]], found: Any, adding: bool, env: Mapping[str, str]
+) -> int:
+    """Write the changed tools list, if any, then approve the plugin as it now stands."""
+    import dataclasses
+
+    from . import config as settings
+    from . import plugins, safefile, tool_list
+
+    # RULE: a tool gone from the plugin is shown and dropped
+    tools = [t for t in spec.tools if t not in found.gone] + ([t for t, _ in found.new] if adding else [])
+    if not tools:
+        sys.stdout.write(
+            f"Not approved: none of {spec.name}'s listed tools is offered any more; nothing was written.\n"
+        )
+        return 1
+    if tools != spec.tools:
+        try:
+            tool_list.write_tools(settings.settings_file(env) or settings.FILE.expanduser(), spec.name, tools)
+        except (tool_list.Changed, tool_list.Mismatch, safefile.Unsafe, OSError) as exc:
+            sys.stdout.write(f"Not approved: {exc}\n")
+            return 1
+        spec = dataclasses.replace(spec, tools=tools)
+    listing = {tool: entry for tool, entry in full.items() if tool in spec.tools}
     plugins.approve(spec, listing)
     _show_approved(spec, listing)
     sys.stdout.write(f"Approved. A running bridge offers {spec.name}'s tools within a few seconds.\n")

@@ -1,0 +1,5 @@
+[[rule]]
+name = "adding tools from a pipe is refused"
+file = "src/claude_voice/cli.py"
+find = 'if adding and not _terminal\(env\):'
+replace = 'if False:'

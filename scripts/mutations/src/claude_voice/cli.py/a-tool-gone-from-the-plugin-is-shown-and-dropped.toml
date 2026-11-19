@@ -1,0 +1,5 @@
+[[rule]]
+name = "a tool gone from the plugin is shown and dropped"
+file = "src/claude_voice/cli.py"
+find = 'tools = \[t for t in spec\.tools if t not in found\.gone\] \+'
+replace = 'tools = list(spec.tools) + ([t for t, _ in found.new] if adding else [])'

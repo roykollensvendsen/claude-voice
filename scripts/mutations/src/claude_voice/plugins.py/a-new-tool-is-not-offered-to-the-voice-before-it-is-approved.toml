@@ -1,0 +1,5 @@
+[[rule]]
+name = "a new tool is not offered to the voice before it is approved"
+file = "src/claude_voice/plugins.py"
+find = 'if everything or tool\.name in self\.spec\.tools:'
+replace = 'if True:'

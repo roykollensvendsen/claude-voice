@@ -1,0 +1,5 @@
+[[rule]]
+name = "the settings file keeps its mode"
+file = "src/claude_voice/tool_list.py"
+find = 'return stat\.S_IMODE\(real\.stat\(\)\.st_mode\)'
+replace = 'return 0o600'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "plugins install writes the settings file under the same lock"
+file = "src/claude_voice/install.py"
+find = 'return safefile\.locked\(path\)'
+replace = 'return contextlib.nullcontext()'

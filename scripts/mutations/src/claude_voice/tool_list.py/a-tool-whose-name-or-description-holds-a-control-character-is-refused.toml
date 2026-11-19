@@ -1,0 +1,5 @@
+[[rule]]
+name = "a tool whose name or description holds a control character is refused"
+file = "src/claude_voice/tool_list.py"
+find = 'if not PLAIN\.fullmatch\(tool\):'
+replace = 'if False:'

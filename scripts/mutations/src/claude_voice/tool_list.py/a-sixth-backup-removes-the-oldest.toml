@@ -1,0 +1,5 @@
+[[rule]]
+name = "a sixth backup removes the oldest"
+file = "src/claude_voice/tool_list.py"
+find = 'for old in backups\[:-KEEP_BACKUPS\]:'
+replace = 'for old in []:'

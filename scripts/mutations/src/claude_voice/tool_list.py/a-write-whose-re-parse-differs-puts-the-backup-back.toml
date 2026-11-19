@@ -1,0 +1,5 @@
+[[rule]]
+name = "a write whose re parse differs puts the backup back"
+file = "src/claude_voice/tool_list.py"
+find = 'if written != expected:'
+replace = 'if False:'
