@@ -305,7 +305,7 @@
       ".vimrc", ".config/nvim/**", ".emacs", ".emacs.d/**"
     ],
     "any clone": [".git/hooks/**", ".git/config", ".claude/settings.json", ".claude/settings.local.json"],
-    "own checkout": [".githooks/**", ".npmrc", "uv.toml", "pip.conf", ".envrc"],
+    "own checkout": [".githooks/**", ".npmrc", "uv.toml", "pip.conf", ".envrc", "src/claude_voice/literal_gh.py"],
     "writers": [
       "tee {path}", "tee * {path}", "cp * {path}", "mv * {path}", "install * {path}", "ln * {path}",
       "rsync * {path}", "sed -i * {path}", "dd *of={path}", "dd *of={path} *", "truncate * {path}",

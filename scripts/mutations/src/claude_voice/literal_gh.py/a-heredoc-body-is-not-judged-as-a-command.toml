@@ -1,0 +1,5 @@
+[[rule]]
+name = "a heredoc body is not judged as a command"
+file = "src/claude_voice/literal_gh.py"
+find = '^\s*if waiting:$'
+replace = 'if False:'

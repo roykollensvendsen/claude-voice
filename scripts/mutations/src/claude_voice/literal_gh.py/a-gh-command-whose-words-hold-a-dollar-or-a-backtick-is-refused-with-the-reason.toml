@@ -1,0 +1,5 @@
+[[rule]]
+name = "a gh command whose words hold a dollar or a backtick is refused with the reason"
+file = "src/claude_voice/literal_gh.py"
+find = 'return any\(words\[0\] == "gh" and _spelled\(words\[1:\]\) for words in commands\)'
+replace = 'return False'

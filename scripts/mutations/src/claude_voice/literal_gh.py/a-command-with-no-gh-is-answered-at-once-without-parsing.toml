@@ -1,0 +1,5 @@
+[[rule]]
+name = "a command with no gh is answered at once without parsing"
+file = "src/claude_voice/literal_gh.py"
+find = 'if "gh" not in command:'
+replace = 'if False:'
