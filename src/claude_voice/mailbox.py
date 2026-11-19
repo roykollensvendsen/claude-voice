@@ -20,6 +20,8 @@ from typing import Any
 
 from .transcripts import clip
 
+# CREATE TABLE IF NOT EXISTS leaves a table that is already there as it was. A column added
+# here later reaches an existing bridge.db only through its own ALTER TABLE, run once at open.
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS mailbox(
   seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,16 +69,19 @@ class Mailbox:
             )
         return cur.lastrowid or 0
 
-    def push(self) -> tuple[int, list[dict[str, Any]]]:
+    def push(self, sender: str | None = None) -> tuple[int, list[dict[str, Any]]]:
         """The unread replies still to be pushed, newest last, each counted as one more push,
-        with this answer's number (0 when it carries none) for its cursor to confirm."""
+        with this answer's number (0 when it carries none) for its cursor to confirm.
+        With `sender`, only that session's."""
         now = self.clock()
         rows = self.db.execute(
             # RULE: after three pushes a reply is counted not pushed
             "SELECT seq, ts, sender, text FROM mailbox WHERE read_at IS NULL AND pushes < ?"
+            # RULE: a session's replies can be pushed alone
+            " AND (? IS NULL OR sender = ?)"
             # RULE: an unread reply older than a day is counted not pushed
             " AND ts >= ? ORDER BY seq DESC LIMIT ?",
-            (PUSHES, now - FRESH, PER_ANSWER),
+            (PUSHES, sender, sender, now - FRESH, PER_ANSWER),
         ).fetchall()[::-1]
         if not rows:
             return 0, []
