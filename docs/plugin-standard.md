@@ -27,9 +27,13 @@ new or changed tool, as [voice-feedback.md](voice-feedback.md) describes.
    own `timeout` in its `[plugins.<name>]` settings, 30 seconds unless set
    otherwise. The bridge cuts a call off there. The voice app waits longer than
    that, a minute or two for the bridge's own tools, so it is not the limit.
-   Every tool's longest path stays inside the timeout. Work that takes longer
-   keeps running and is said to be on its way. A plugin that needs more asks for
-   a higher `timeout` in its join notes. A test adds up each tool's real waits.
+   The typed Claude app still drops a call after about 30 seconds. So a
+   timeout above 30 serves the voice only, and the "on its way" answer comes
+   within about 30 seconds. Every tool's longest path stays inside the timeout.
+   Work that takes longer keeps running and is said to be on its way. A plugin
+   that needs more asks for a higher `timeout` in its join notes. A test adds up
+   each tool's real waits. Each client's own budget is in the
+   [README](../README.md), under `[budgets]`.
 4. **Something to say, and what to do next.** Every answer has a `say` text,
    read aloud as it is, and one result field that a program can read (`success`
    or `outcome`, chosen once per plugin and documented). When it fails, `say`
