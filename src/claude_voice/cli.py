@@ -550,8 +550,16 @@ def _approve(spec: PluginSpec, env: Mapping[str, str] | None = None) -> int:
 
 def _approve_known(spec: PluginSpec, env: Mapping[str, str]) -> int:
     """Approve a plugin started before: show its new and gone tools, and take the owner's line."""
-    from . import plugins, tool_list
+    from . import config as settings
+    from . import plugins, safefile, tool_list
 
+    path = settings.settings_file(env) or settings.FILE.expanduser()
+    try:
+        # The list is changed from the file as it is now; a change before the write stops it.
+        seen = safefile.target(path).read_bytes()
+    except (safefile.Unsafe, OSError) as exc:
+        sys.stdout.write(f"Not approved: the settings file could not be read: {exc}\n")
+        return 1
     full = plugins.Plugin(spec, plugins.CLIENT).listing(everything=True)
     if not full:
         sys.stdout.write(f"{spec.name} did not start, so nothing was approved. Check its command and folder.\n")
@@ -569,7 +577,7 @@ def _approve_known(spec: PluginSpec, env: Mapping[str, str]) -> int:
             f"Run it in a terminal: {invocation.command()} plugins approve {spec.name}\n"
         )
         return 1
-    return _approve_with(spec, full, found, adding, env)
+    return _approve_with(spec, full, found, adding, (path, seen))
 
 
 def _owner_line(spec: PluginSpec, found: Any, full: dict[str, dict[str, Any]]) -> str:
@@ -593,12 +601,12 @@ def _owner_line(spec: PluginSpec, found: Any, full: dict[str, dict[str, Any]]) -
 
 
 def _approve_with(
-    spec: PluginSpec, full: dict[str, dict[str, Any]], found: Any, adding: bool, env: Mapping[str, str]
+    spec: PluginSpec, full: dict[str, dict[str, Any]], found: Any, adding: bool, file: tuple[Path, bytes]
 ) -> int:
-    """Write the changed tools list, if any, then approve the plugin as it now stands."""
+    """Write the changed tools list, if any, then approve the plugin as it now stands. `file` is
+    the settings file and its bytes as they were when the screen was built."""
     import dataclasses
 
-    from . import config as settings
     from . import plugins, safefile, tool_list
 
     # RULE: a tool gone from the plugin is shown and dropped
@@ -610,7 +618,7 @@ def _approve_with(
         return 1
     if tools != spec.tools:
         try:
-            tool_list.write_tools(settings.settings_file(env) or settings.FILE.expanduser(), spec.name, tools)
+            tool_list.write_tools(file[0], spec.name, tools, seen=file[1])
         except (tool_list.Changed, tool_list.Mismatch, safefile.Unsafe, OSError) as exc:
             sys.stdout.write(f"Not approved: {exc}\n")
             return 1

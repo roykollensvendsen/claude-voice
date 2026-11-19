@@ -100,7 +100,7 @@ def judge(typed: str, name: str, found: Offer) -> str:
     """What the owner's line means: "plain", "add", "wrong" (a count or mark that does not
     match the screen) or "stop"."""
     words = typed.split()
-    # RULE: the plain name approves without adding and leaves the file as it was
+    # RULE: the plain name approves and adds nothing
     if words == [name]:
         return "plain"
     if len(words) < 2 or words[0] != name or not words[1].startswith("+"):
@@ -109,9 +109,12 @@ def judge(typed: str, name: str, found: Offer) -> str:
     return "add" if " ".join(words) == found.answer(name) else "wrong"
 
 
-def write_tools(path: Path, plugin: str, tools: list[str], now: datetime | None = None) -> None:
+def write_tools(
+    path: Path, plugin: str, tools: list[str], seen: bytes | None = None, now: datetime | None = None
+) -> None:
     """Set `[plugins.<plugin>].tools` to `tools` in the settings file at `path`, keeping every
-    comment and everything else, behind a backup; raise Changed or Mismatch otherwise."""
+    comment and everything else, behind a backup; raise Changed or Mismatch otherwise. `seen` is
+    the file as it was when `tools` was worked out from it; a file that differs is not written."""
     bad = [tool for tool in tools if not PLAIN.fullmatch(tool)]
     # RULE: a tool name that is not plain is refused with nothing written
     if bad:
@@ -119,6 +122,9 @@ def write_tools(path: Path, plugin: str, tools: list[str], now: datetime | None 
     real = safefile.target(path)  # a symlinked file is written at its target; the link stays
     with safefile.locked(real):
         before = real.read_bytes()
+        # RULE: a change while the owner reads the screen writes nothing
+        if seen is not None and before != seen:
+            raise Changed(f"{real} changed while approving; nothing was written; run it again")
         text = _with_tools(before, plugin, tools)
         # RULE: a change between the read and the rename writes nothing
         if hashlib.sha256(real.read_bytes()).digest() != hashlib.sha256(before).digest():

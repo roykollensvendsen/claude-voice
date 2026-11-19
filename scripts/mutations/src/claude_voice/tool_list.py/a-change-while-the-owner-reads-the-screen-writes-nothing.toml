@@ -1,0 +1,5 @@
+[[rule]]
+name = "a change while the owner reads the screen writes nothing"
+file = "src/claude_voice/tool_list.py"
+find = 'if seen is not None and before != seen:'
+replace = 'if False:'

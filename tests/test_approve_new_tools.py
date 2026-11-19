@@ -115,7 +115,7 @@ def test_a_new_tool_is_shown_in_full_and_added_by_its_count(owner, monkeypatch, 
     assert plugins.approved(spec)
 
 
-def test_the_plain_name_approves_without_adding_and_leaves_the_file_as_it_was(owner, monkeypatch, capsys):
+def test_the_plain_name_approves_and_adds_nothing(owner, monkeypatch, capsys):
     settings, env = owner
     serve(monkeypatch)
     answer(monkeypatch, "garage")
@@ -295,6 +295,25 @@ def test_a_change_between_the_read_and_the_rename_writes_nothing(owner, monkeypa
     with pytest.raises(tool_list.Changed, match="changed while approving; nothing was written; run it again"):
         tool_list.write_tools(settings, "garage", ["garage_status", "garage_hours"])
     assert settings.read_text() == SETTINGS + "\n# an editor saved this\n"
+
+
+def test_a_change_while_the_owner_reads_the_screen_writes_nothing(owner, monkeypatch, capsys):
+    """The list written comes from the file as it was when the screen was built, so a change made
+    while the owner reads it, by hand or by install, must stop the write, not be overwritten."""
+    settings, env = owner
+    serve(monkeypatch)
+    edited = SETTINGS.replace("# the tools the voice may call", "# edited by hand meanwhile")
+    approvals = plugins.APPROVALS.read_bytes()
+
+    def typed_line(prompt=""):
+        settings.write_text(edited)
+        return "garage +1"
+
+    monkeypatch.setattr("builtins.input", typed_line)
+    assert approve(env) == 1
+    assert "changed while approving; nothing was written; run it again" in capsys.readouterr().out
+    assert settings.read_text() == edited
+    assert plugins.APPROVALS.read_bytes() == approvals
 
 
 def test_a_second_writer_waits_for_the_lock(owner):
