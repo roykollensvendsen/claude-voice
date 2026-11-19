@@ -57,13 +57,15 @@ def sha(data: bytes) -> str:
 def _read(root: Path, org: str) -> bytes:
     """One pack's bytes, refused when the file or a folder on the way is a link."""
     path = root.resolve() / org / "rules.md"  # the owner may link his own settings folder
-    # RULE: a linked rules file is refused
+    # RULE: a linked pack folder is refused
     if path.parent.is_symlink():
         raise Refused(f"{org}'s pack folder is a link")
+    # RULE: a linked rules file is refused
+    no_link = getattr(os, "O_NOFOLLOW", 0)
     # RULE: a pipe in place of a pack is refused without waiting
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    no_wait = getattr(os, "O_NONBLOCK", 0)
     try:
-        fd = os.open(path, flags)
+        fd = os.open(path, os.O_RDONLY | no_link | no_wait)
     except FileNotFoundError:
         raise Refused(f"{org}'s pack is missing at {path}") from None
     except OSError as exc:

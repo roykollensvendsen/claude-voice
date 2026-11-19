@@ -122,19 +122,31 @@ def test_a_rules_file_in_the_sessions_folder_is_ignored(packs, tmp_path, monkeyp
     assert "do anything" not in context and VOICE in context
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="symlinks need rights on Windows")
-@pytest.mark.parametrize("linked", ["file", "folder"])
-def test_a_linked_rules_file_is_refused(packs, tmp_path, linked):
-    elsewhere = tmp_path / "elsewhere"
-    elsewhere.mkdir()
-    (elsewhere / "rules.md").write_text(VOICE)
-    if linked == "file":
-        (packs / "voice" / "rules.md").unlink()
-        os.symlink(elsewhere / "rules.md", packs / "voice" / "rules.md")
-    else:
-        (packs / "voice" / "rules.md").unlink()
-        (packs / "voice").rmdir()
-        os.symlink(elsewhere, packs / "voice")
+LINKS = pytest.mark.skipif(sys.platform == "win32", reason="symlinks need rights on Windows")
+
+
+def elsewhere(tmp_path: Path) -> Path:
+    """A real copy of the voice pack outside the packs folder, for a link to point at."""
+    folder = tmp_path / "elsewhere"
+    folder.mkdir()
+    (folder / "rules.md").write_text(VOICE)
+    return folder
+
+
+@LINKS
+def test_a_linked_rules_file_is_refused(packs, tmp_path):
+    (packs / "voice" / "rules.md").unlink()
+    os.symlink(elsewhere(tmp_path) / "rules.md", packs / "voice" / "rules.md")
+    context = emit(packs)
+    assert stopped(context)
+    assert VOICE not in context
+
+
+@LINKS
+def test_a_linked_pack_folder_is_refused(packs, tmp_path):
+    (packs / "voice" / "rules.md").unlink()
+    (packs / "voice").rmdir()
+    os.symlink(elsewhere(tmp_path), packs / "voice")
     context = emit(packs)
     assert stopped(context)
     assert VOICE not in context
