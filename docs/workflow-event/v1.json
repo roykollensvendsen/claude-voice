@@ -42,8 +42,8 @@
       "description": "What sort of friction it is."
     },
     "blocker": {
-      "enum": ["roy", "review", "ci", "permission", "session", "outside", "none"],
-      "description": "Who or what it waits on."
+      "enum": ["roy", "owner", "review", "ci", "permission", "session", "outside", "none"],
+      "description": "Who or what it waits on. owner is the owner; roy is its old name, still written by older bridges and kept in old lines, and read as owner."
     },
     "state": {
       "enum": ["open", "closed", "point"],

@@ -18,7 +18,10 @@ from typing import Any
 
 VERSION = 1
 KINDS = ("conflict", "permission", "flaky", "slow", "waiting", "stall", "other")
-BLOCKERS = ("roy", "review", "ci", "permission", "session", "outside", "none")
+BLOCKERS = ("roy", "owner", "review", "ci", "permission", "session", "outside", "none")
+#: Old names a stored line may still hold, and what they are read as. Kept for good: a log
+#: keeps its lines for as long as they exist.
+OLD_BLOCKERS = {"roy": "owner"}
 STATES = ("open", "closed", "point")
 #: The longest `line` kept, the same limit the bridge's notes have.
 LINE_CHARS = 120
@@ -148,6 +151,8 @@ def _from_v1(body: dict[str, Any]) -> Event:
     if set(body) - {"closed_late"} != set(FIELDS) or not isinstance(late, bool):
         raise EventError("the fields are not version 1's")
     simple = {k: body[k] for k in FIELDS[2:] if k not in ("started", "duration_s")}
+    # RULE: a stored blocker of an old name is read as its new name
+    simple["blocker"] = OLD_BLOCKERS.get(simple["blocker"], simple["blocker"])
     read = Event(at=_time(body["at"]), started=_time(body["started"]), closed_late=late, **simple)
     if body["duration_s"] != read.duration_s:
         raise EventError("the duration does not match its times")

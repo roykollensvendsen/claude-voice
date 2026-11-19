@@ -1,0 +1,5 @@
+[[rule]]
+name = "a stored blocker of an old name is read as its new name"
+file = "src/claude_voice/workflow/core/event.py"
+find = 'simple\["blocker"\] = OLD_BLOCKERS\.get\(simple\["blocker"\], simple\["blocker"\]\)'
+replace = 'simple["blocker"] = simple["blocker"]'

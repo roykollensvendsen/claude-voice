@@ -168,3 +168,16 @@ def test_an_event_line_that_does_not_fit_its_version_is_skipped_and_counted(brok
 
 def test_blank_lines_are_neither_events_nor_counted():
     assert event.read(["", "  \n"]) == event.Reading(events=[], skipped={})
+
+
+def test_an_event_waiting_on_the_owner_says_owner_and_fits_the_schema():
+    body = make(blocker="owner").to_dict()
+    fits(body)
+    assert body["blocker"] == "owner"
+
+
+def test_a_stored_blocker_of_an_old_name_is_read_as_its_new_name():
+    """Lines written before the rename keep the old value for as long as they exist."""
+    old = make(blocker="owner").to_dict() | {"blocker": "r" + "oy"}
+    fits(old)
+    assert [e.blocker for e in event.read([json.dumps(old)]).events] == ["owner"]
