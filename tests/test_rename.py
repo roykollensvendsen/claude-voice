@@ -168,5 +168,5 @@ async def test_renaming_an_unknown_session_is_refused(tmp_path, root, live):
 async def test_a_name_set_in_claude_code_afterwards_wins(tmp_path, root, live):
     async with Client(server(tmp_path, root, live)) as c:
         await call(c, "rename_session", session="math-quest", new_name="mq")
-        write(live, os.getpid(), "mq-id", "typed-by-roy", root)
-        assert await names(c) == ["typed-by-roy"]
+        write(live, os.getpid(), "mq-id", "typed-by-hand", root)
+        assert await names(c) == ["typed-by-hand"]

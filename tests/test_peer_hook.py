@@ -116,11 +116,11 @@ def test_a_courier_known_by_its_folder_is_ignored_whatever_its_name(tmp_path, st
     sessions = tmp_path / "sessions"
     sessions.mkdir()
     (sessions / "4242.json").write_text(
-        json.dumps({"pid": 4242, "cwd": "/tmp/claude-voice-msg-abc", "name": "Roy via stemmen"})
+        json.dumps({"pid": 4242, "cwd": "/tmp/claude-voice-msg-abc", "name": "Owner via stemmen"})
     )
     hook = _hook()
     state.setattr(hook, "SESSIONS_DIR", sessions)
-    entry = peer("Roy via stemmen", "hva skjer?", address="uds:/run/user/1000/cc-socks/4242.sock")
+    entry = peer("Owner via stemmen", "hva skjer?", address="uds:/run/user/1000/cc-socks/4242.sock")
     transcript = tmp_path / "t.jsonl"
     transcript.write_text(json.dumps(entry) + "\n")
     state.setattr(hook, "STATE_DIR", tmp_path / "state")
@@ -132,13 +132,13 @@ def test_a_courier_known_by_its_folder_is_ignored_whatever_its_name(tmp_path, st
 def test_the_configured_courier_name_is_ignored_even_after_the_courier_is_gone(tmp_path, state):
     state.delenv("CLAUDE_VOICE_COURIER_NAME", raising=False)  # the hook reads the environment before the file
     env = tmp_path / "env"
-    env.write_text("CLAUDE_VOICE_TOKEN=secret\nCLAUDE_VOICE_COURIER_NAME=Roy via stemmen\n")
+    env.write_text("CLAUDE_VOICE_TOKEN=secret\nCLAUDE_VOICE_COURIER_NAME=Owner via stemmen\n")
     hook = _hook()
     state.setattr(hook, "ENV_FILE", env)
     state.setattr(hook, "SESSIONS_DIR", tmp_path / "no-such-dir")  # the courier's process is gone
     state.setattr(hook, "STATE_DIR", tmp_path / "state")
     transcript = tmp_path / "t.jsonl"
-    entry = peer("Roy via stemmen", "hva skjer?", address="uds:/run/user/1000/cc-socks/999.sock")
+    entry = peer("Owner via stemmen", "hva skjer?", address="uds:/run/user/1000/cc-socks/999.sock")
     transcript.write_text(json.dumps(entry) + "\n")
     out = io.StringIO()
     hook.main(io.StringIO(json.dumps({"session_id": "s", "transcript_path": str(transcript)})), out)

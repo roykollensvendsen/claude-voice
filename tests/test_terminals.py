@@ -109,7 +109,7 @@ def test_a_tmux_session_with_no_terminal_attached_opens_one_attached_to_it():
 
 
 def test_a_tmux_session_whose_attached_terminal_is_not_found_gets_a_terminal_of_its_own():
-    t, _, spawned = desk(Windows([term(1, "roy@laptop:~")]), attached={"garage": ["/dev/pts/3"]})
+    t, _, spawned = desk(Windows([term(1, "owner@laptop:~")]), attached={"garage": ["/dev/pts/3"]})
     assert t.focus(LIVE, pane=("garage", "%4")) == (200, {"done": "attached"})
     assert spawned == [["gnome-terminal", "--", "tmux", "attach-session", "-t", "=garage"]]
 
@@ -167,7 +167,7 @@ def test_a_session_name_is_read_out_of_the_title_claude_code_gives_its_terminal(
     assert terminals.title_name("✳ garage-door") == "garage-door"
     assert terminals.title_name("◐ claude-voice-work") == "claude-voice-work"
     assert terminals.title_name("garage-door") == "garage-door"
-    assert terminals.title_name("roy@laptop: ~") == "roy@laptop: ~"
+    assert terminals.title_name("owner@laptop: ~") == "owner@laptop: ~"
 
 
 # -- the GNOME Shell extension, through busctl ------------------------------------------

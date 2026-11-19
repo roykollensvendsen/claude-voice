@@ -237,9 +237,9 @@ async def test_the_message_is_framed_as_something_to_carry_not_to_obey():
 
 async def test_the_courier_carries_a_name_the_receiver_can_read():
     factory = Factory([ok("hi")], [ok("hi")])
-    named = Courier(client_factory=factory, name="Roy via stemmen")
+    named = Courier(client_factory=factory, name="Owner via stemmen")
     await named.deliver("billing", "hi")
-    assert factory.clients[0].options.extra_args == {"name": "Roy via stemmen"}
+    assert factory.clients[0].options.extra_args == {"name": "Owner via stemmen"}
     await named.close()
     default = Courier(client_factory=factory)
     await default.deliver("billing", "hi")
@@ -269,10 +269,10 @@ async def test_whatever_the_courier_writes_exactly_our_text_goes_to_exactly_our_
     paraphrased = [sent_text("billing [4849b2]", "only the quoted part"), done("DELIVERED")]
     factory = Factory([paraphrased])
     courier = Courier(client_factory=factory)
-    out = await courier.deliver("billing", "Frame. Roy sier: «only the quoted part»")
+    out = await courier.deliver("billing", "Frame. Eieren sier: «only the quoted part»")
     assert out["delivered"] is True
     assert factory.clients[0].executed == [
-        ("SendMessage", {"to": "billing", "message": "Frame. Roy sier: «only the quoted part»"})
+        ("SendMessage", {"to": "billing", "message": "Frame. Eieren sier: «only the quoted part»"})
     ]
     await courier.close()
 
@@ -327,7 +327,7 @@ async def test_a_send_claude_code_refuses_is_reported_as_refused_and_not_tried_a
 
 
 async def test_the_couriers_own_words_never_reach_the_caller():
-    factory = Factory([ok("hi")], [[done("Hei Roy! I'll connect you to Hermes.")], [done("Sure thing.")]])
+    factory = Factory([ok("hi")], [[done("Hei! I'll connect you to Hermes.")], [done("Sure thing.")]])
     courier = Courier(client_factory=factory)
     delivered = await courier.deliver("billing", "hi")
     assert "DELIVERED" not in str(delivered)

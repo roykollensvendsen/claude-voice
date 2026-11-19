@@ -36,7 +36,7 @@ def test_peer_messages_that_arrive_mid_turn_are_kept_and_other_meta_entries_are_
         {
             "type": "user",
             "isMeta": True,
-            "origin": {"kind": "peer", "name": "Roy via stemmen"},
+            "origin": {"kind": "peer", "name": "Owner via stemmen"},
             "message": {"role": "user", "content": "Another Claude session sent a message:\nWhich folder?"},
         },
         {"type": "assistant", "isSidechain": True, "message": {"content": [{"type": "text", "text": "subagent"}]}},
