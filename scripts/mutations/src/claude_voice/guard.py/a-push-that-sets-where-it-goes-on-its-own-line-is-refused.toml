@@ -1,5 +1,0 @@
-[[rule]]
-name = "a push that sets where it goes on its own line is refused"
-file = "src/claude_voice/guard.py"
-find = '^\s*if any\(key.lower\(\).startswith\(\("remote.", "url."\)\) for key in push.settings\):'
-replace = '        if False:'

@@ -44,7 +44,7 @@ def test_a_contribute_session_never_pushes_to_the_upstream_repository(command):
     assert reason and UPSTREAM in reason
 
 
-@pytest.mark.parametrize("command", ["git push fork feature", "git status", "echo git push is a phrase", "ls"])
+@pytest.mark.parametrize("command", ["git push fork feature", "git status", "echo 'git push is a phrase'", "ls"])
 def test_a_push_to_the_users_own_fork_or_no_push_at_all_is_let_through(command):
     urls = {"origin": f"https://github.com/{UPSTREAM}", "fork": "git@github.com:someone/claude-voice.git"}
     assert guard.refusal(command, UPSTREAM, remote_url=remotes(urls), default_remote=lambda: "fork") is None
@@ -84,10 +84,27 @@ def judged(command):
         f"git -c url.{UP_URL}.insteadOf=git@github.com:someone/claude-voice.git push origin feature",
         f"git -c url.{UP_URL}.pushInsteadOf=git@github.com: push origin feature",
         "git --config-env=remote.origin.url=WHERE push origin feature",
+        "git --config-env remote.origin.url=WHERE push origin feature",
+        "git -c include.path=/tmp/x.cfg push origin feature",
+        "git -c includeIf.gitdir:/.path=/tmp/x.cfg push origin feature",
+        "git -c user.name=x push origin feature",
+        "export GIT_CONFIG_COUNT=1; git push origin feature",
+        "GIT_DIR=/x/.git git push origin feature",
     ],
 )
-def test_a_push_that_sets_where_it_goes_on_its_own_line_is_refused(command):
+def test_a_push_that_sets_any_setting_on_its_own_line_is_refused(command):
     assert judged(command)
+
+
+def test_a_setting_file_named_on_the_line_cannot_turn_a_push_upstream(tmp_path):
+    fork = tmp_path / "fork"
+    subprocess.run(["git", "init", "-q", str(fork)], check=True)
+    subprocess.run(["git", "-C", str(fork), "remote", "add", "origin", FORK_URLS["origin"]], check=True)
+    included = tmp_path / "x.cfg"
+    included.write_text(f'[remote "origin"]\n\tpushurl = {UP_URL}\n')
+    hook_input = {"tool_name": "Bash", "cwd": str(fork),
+                  "tool_input": {"command": f"git -c include.path={included} push origin feature"}}  # fmt: skip
+    assert guard.answer(hook_input, UPSTREAM)["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
 @pytest.mark.parametrize("command", [f"git push --repo={UP_URL} feature", f"git push --repo {UP_URL} feature"])
@@ -147,7 +164,51 @@ def test_a_push_is_judged_in_the_folder_it_names(tmp_path):
 def test_a_plain_push_to_the_fork_still_goes_through():
     assert judged("git push origin feature") is None
     assert judged("git -C /x push -u origin feature") is None
-    assert judged("echo git push is a phrase") is None
+    assert judged('echo "git push is a phrase"') is None
+    assert judged("grep -n 'git push' notes.md") is None
+    assert judged('git commit -m "push the guard further"') is None
+    assert judged("git status") is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["true & git push UP feature", "echo a\ngit push UP feature", "echo $(git push UP feature)",
+     "echo `git push UP feature`", 'echo "$(git push UP feature)"', "(git push UP feature)",
+     "if true; then git push UP feature; fi", "{ git push UP feature; }", "! git push UP feature",
+     "find . -exec git push UP feature ;"],
+)  # fmt: skip
+def test_a_push_hidden_in_shell_structure_is_refused(command):
+    assert judged(command.replace("UP", UP_URL))
+
+
+def aliased(command, aliases):
+    return guard.refusal(
+        command, UPSTREAM, remote_url=remotes(FORK_URLS), default_remote=lambda: "origin", alias=aliases.get
+    )
+
+
+def test_a_git_alias_is_judged_by_what_it_runs():
+    assert aliased(f"git p {UP_URL} feature", {"p": "push"})
+    assert aliased("git p feature", {"p": f"push {UP_URL}"})
+    assert aliased(f"git q {UP_URL} feature", {"q": "p", "p": "push"})
+    assert aliased("git s", {"s": "!git push origin feature"})
+    assert aliased("git s", {"s": "-c remote.origin.url=x push"})
+    assert aliased("git -c alias.p=push p up feature", {})
+    assert aliased("git p origin feature", {"p": "push"}) is None
+    assert aliased("git st", {"st": "status -sb"}) is None
+    assert aliased("git lfs pull", {}) is None
+
+
+def test_an_alias_in_the_clone_is_read_where_the_push_runs(tmp_path):
+    fork = tmp_path / "fork"
+    subprocess.run(["git", "init", "-q", str(fork)], check=True)
+    subprocess.run(["git", "-C", str(fork), "remote", "add", "origin", FORK_URLS["origin"]], check=True)
+    subprocess.run(["git", "-C", str(fork), "remote", "add", "up", UP_URL], check=True)
+    subprocess.run(["git", "-C", str(fork), "config", "alias.p", "push"], check=True)
+    hook_input = {"tool_name": "Bash", "cwd": str(fork), "tool_input": {"command": "git p up feature"}}
+    assert guard.answer(hook_input, UPSTREAM)["hookSpecificOutput"]["permissionDecision"] == "deny"
+    allowed = {**hook_input, "tool_input": {"command": "git p origin feature"}}
+    assert guard.answer(allowed, UPSTREAM) == {}
 
 
 @pytest.mark.parametrize(

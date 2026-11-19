@@ -1,0 +1,5 @@
+[[rule]]
+name = "a push that sets any setting on its own line is refused"
+file = "src/claude_voice/guard.py"
+find = '^\s*if push.settings or "GIT_" in command:'
+replace = '        if False:'
