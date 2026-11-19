@@ -67,6 +67,75 @@ def test_a_push_whose_address_cannot_be_read_is_refused():
     assert guard.refusal(fork, UPSTREAM, remote_url=lambda name: None, default_remote=lambda: "o") is None
 
 
+FORK_URLS = {"origin": "git@github.com:someone/claude-voice.git"}
+UP_URL = f"https://github.com/{UPSTREAM}"
+
+
+def judged(command):
+    return guard.refusal(command, UPSTREAM, remote_url=remotes(FORK_URLS), default_remote=lambda: "origin")
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        f"git -c remote.origin.url={UP_URL} push origin feature",
+        f"git -c remote.origin.pushurl={UP_URL} push origin feature",
+        f"git -c Remote.Origin.PushURL={UP_URL} push origin feature",
+        f"git -c url.{UP_URL}.insteadOf=git@github.com:someone/claude-voice.git push origin feature",
+        f"git -c url.{UP_URL}.pushInsteadOf=git@github.com: push origin feature",
+        "git --config-env=remote.origin.url=WHERE push origin feature",
+    ],
+)
+def test_a_push_that_sets_where_it_goes_on_its_own_line_is_refused(command):
+    assert judged(command)
+
+
+@pytest.mark.parametrize("command", [f"git push --repo={UP_URL} feature", f"git push --repo {UP_URL} feature"])
+def test_a_push_names_its_target_by_repo_too(command):
+    assert judged(command)
+    assert judged(command.replace(UP_URL, "https://github.com/someone/claude-voice")) is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["git push -o fork origin feature", "git push --push-option fork origin feature",
+     "git push --receive-pack fork origin feature", "git push --exec fork origin feature"],
+)  # fmt: skip
+def test_an_option_value_is_not_read_as_the_target(command):
+    urls = {"origin": UP_URL, "fork": "git@github.com:someone/claude-voice.git"}
+    assert guard.refusal(command, UPSTREAM, remote_url=remotes(urls), default_remote=lambda: "fork")
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["A=1 git push origin feature", "env git push origin feature", "command git push origin feature",
+     "/usr/bin/git push origin feature", "nice -n 5 git push origin feature", "timeout 10s git push origin f",
+     "bash -c 'git push origin feature'", 'sh -c "git push"'],
+)  # fmt: skip
+def test_a_push_not_started_by_git_itself_is_refused(command):
+    assert judged(command)
+
+
+def test_a_plain_push_to_the_fork_still_goes_through():
+    assert judged("git push origin feature") is None
+    assert judged("git -C /x push -u origin feature") is None
+    assert judged("echo git push is a phrase") is None
+
+
+@pytest.mark.parametrize(
+    "key, value",
+    [("remote.origin.pushurl", UP_URL),
+     ("url.https://github.com/roykollensvendsen/.pushInsteadOf", "git@github.com:someone/"),
+     ("url.https://github.com/roykollensvendsen/.insteadOf", "git@github.com:someone/")],
+)  # fmt: skip
+def test_the_guard_judges_the_address_git_would_push_to(tmp_path, key, value):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "remote", "add", "origin", FORK_URLS["origin"]], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "config", key, value], check=True)
+    hook_input = {"tool_name": "Bash", "tool_input": {"command": "git push origin feature"}, "cwd": str(tmp_path)}
+    assert guard.answer(hook_input, UPSTREAM)["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
 def test_the_guard_refuses_a_push_in_a_clone_whose_settings_it_does_not_read(tmp_path):
     """safe_git reads nothing in such a clone, so the guard cannot tell where a push goes."""
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)

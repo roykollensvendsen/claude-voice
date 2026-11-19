@@ -1,0 +1,5 @@
+[[rule]]
+name = "an option value is not read as the target"
+file = "src/claude_voice/guard.py"
+find = '^\s*if word in VALUED:'
+replace = '        if False:'
