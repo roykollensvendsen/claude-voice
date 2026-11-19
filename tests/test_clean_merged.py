@@ -51,7 +51,9 @@ def repo(tmp_path):
     _git(repo, "checkout", "-q", "-b", "feat/open", "main")
     _commit(repo, "open.txt")
     _git(repo, "checkout", "-q", "main")
+    _commit(repo, "meanwhile.txt")  # main moved on, so the pick below is a new commit
     _git(repo, "cherry-pick", "feat/done")  # a rebase merge: same change, new commit
+    assert _git(repo, "rev-parse", "main~0") != _git(repo, "rev-parse", "feat/done")
     return repo
 
 
@@ -78,6 +80,23 @@ def test_a_branch_whose_every_commit_is_on_the_base_is_deleted(cleaner, repo, ne
     assert "delete branch feat/done" in capsys.readouterr().out
 
 
+def test_git_branch_d_refuses_a_rebase_merged_branch(repo):
+    """Why the script deletes with a compare-and-delete, not `git branch -d`: a rebase merge puts
+    new commits on main, so the branch is never an ancestor of it, and -d refuses every one."""
+    refused = subprocess.run(["git", "branch", "-d", "feat/done"], cwd=repo, capture_output=True, text=True)
+    assert refused.returncode != 0 and "not fully merged" in refused.stderr
+
+
+def test_a_branch_that_moved_since_it_was_judged_is_not_deleted(cleaner, repo):
+    judged = _git(repo, "rev-parse", "feat/done").strip()
+    _git(repo, "checkout", "-q", "feat/done")
+    _commit(repo, "later.txt")
+    _git(repo, "checkout", "-q", "main")
+    with pytest.raises(subprocess.CalledProcessError):
+        cleaner.delete_branch(repo, "feat/done", judged)
+    assert "feat/done" in _branches(repo)
+
+
 def test_a_branch_with_a_commit_not_on_the_base_is_kept(cleaner, repo, never, capsys):
     _run(cleaner, repo, never, "--apply")
     assert "feat/open" in _branches(repo)
@@ -87,7 +106,8 @@ def test_a_branch_with_a_commit_not_on_the_base_is_kept(cleaner, repo, never, ca
 def test_without_apply_nothing_is_changed(cleaner, repo, never, capsys):
     assert _run(cleaner, repo, never) == 0
     assert "feat/done" in _branches(repo)
-    assert "would delete branch feat/done" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "would delete branch feat/done at " in out and ": every change on it is on main" in out
 
 
 def test_the_base_branch_is_never_touched(cleaner, repo, never):
