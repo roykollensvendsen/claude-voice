@@ -464,7 +464,7 @@ laptop can sit there for hours. The bridge says so, once per prompt.
 - **Nobody is at the laptop** by the same rule the phone's prompts use: the screen is
   locked, there has been no keyboard or mouse for five minutes, the app is open, or
   the voice called in the last ten minutes. When the owner is there, the box is in
-  front of him, and nothing is said.
+  front of the owner, and nothing is said.
 - **The question** comes from the prompt the bridge holds, with its options, and can
   then be answered by voice as usual. Otherwise, for a session in tmux, the bridge
   reads its pane (`tmux capture-pane -p -J`): it joins the lines of Claude Code's

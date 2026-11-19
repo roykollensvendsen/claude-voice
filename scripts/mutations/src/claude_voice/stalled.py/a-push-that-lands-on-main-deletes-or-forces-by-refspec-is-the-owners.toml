@@ -1,0 +1,5 @@
+[[rule]]
+name = "a push that lands on main deletes or forces by refspec is the owners"
+file = "src/claude_voice/stalled.py"
+find = '^\s*r"\|push\\b\[\^\\n\]\*\\s\\S\*:\(\?:refs/heads/\)\?\(\?:main\|master\)\\b"'
+replace = '    r"|(?!x)x"'
