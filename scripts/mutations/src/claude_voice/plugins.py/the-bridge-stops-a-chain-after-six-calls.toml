@@ -1,0 +1,5 @@
+[[rule]]
+name = "the bridge stops a chain after six calls"
+file = "src/claude_voice/plugins.py"
+find = 'if hop \+ 1 >= HOPS:'
+replace = 'if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "the plugin never sees the bridges hop count"
+file = "src/claude_voice/plugins.py"
+find = 'hop = rest\.pop\(HOP, 0\)'
+replace = 'hop = rest.get(HOP, 0)'

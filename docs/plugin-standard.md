@@ -38,6 +38,18 @@ new or changed tool, as [voice-feedback.md](voice-feedback.md) describes.
    read aloud as it is, and one result field that a program can read (`success`
    or `outcome`, chosen once per plugin and documented). When it fails, `say`
    tells the user what to do next, never a bare "failed".
+
+   4a. **Following something up without asking.** An answer may carry
+   `next: {"tool": "<name>", "args": {...}}` when the plugin wants the voice to
+   look again at once, for example while a door is still moving. The voice makes
+   that call straight away without asking the owner, says each answer's `say`,
+   and stops when an answer has no `next`. The tool `next` names must be one of
+   the same plugin's tools marked read-only (rule 9). The bridge refuses any
+   other, and refuses an unknown tool. A plugin bounds its own chain from a
+   record it keeps on its side, such as the time of the press, never from the
+   arguments the voice sends back. The bridge also stops a chain after six calls,
+   whatever the plugin says. Use it only to follow up on something already
+   happening, never to start an action. The test is named after the rule.
 5. **Say what actually happened.** After an action, read the device's state back
    and say that: "Started. The vacuum is cleaning", or "I sent the start; the
    vacuum says it is docked". Never "OK".

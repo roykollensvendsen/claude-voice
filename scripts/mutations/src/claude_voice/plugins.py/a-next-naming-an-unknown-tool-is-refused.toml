@@ -1,0 +1,5 @@
+[[rule]]
+name = "a next naming an unknown tool is refused"
+file = "src/claude_voice/plugins.py"
+find = 'if tool is None or tool not in listing:'
+replace = 'if False:'
