@@ -822,12 +822,17 @@ def build_server(
         if plugins_behind and not plugins_started:
             plugins_started.append(True)
             starting = asyncio.create_task(start_plugins())
+            starting.add_done_callback(start_ended)
         try:
             yield {}
         finally:
             if task:
                 task.cancel()
             if starting and not starting.done():
+                # A check already under way runs on in its thread until its own time limit.
+                # It starts the plugin only to list its tools and stops it again, and nothing is
+                # offered after the cancel, so no plugin process is left running. In the service
+                # this happens only as the bridge stops; tests open a new start for each client.
                 starting.cancel()
                 plugins_started.clear()  # the next start tries again
             with contextlib.suppress(Exception):
@@ -1137,6 +1142,16 @@ def build_server(
         plugins_behind, lambda: plugins.start_approved(mcp, repos.plugins, plugin_approvals, plugin_client, commit_of)
     )
     plugins_started: list[bool] = []
+    plugin_failures: list[dict[str, Any]] = []  # shown by health beside the plugins offered
+
+    async def offer_checked(spec: config.PluginSpec, found: plugins.Checked | BaseException) -> None:
+        """Offer one checked plugin's tools; raise what went wrong, in its check or here."""
+        if isinstance(found, BaseException):
+            raise found
+        plugin, listing, _ = found
+        if plugin is not None:
+            plugins.present(mcp, plugin, listing, await asyncio.to_thread(commit_of, spec.cwd))
+            active_plugins.append(plugin)
 
     async def start_plugins() -> None:
         """Start every approved plugin behind the listening bridge, and offer each one's tools
@@ -1148,15 +1163,21 @@ def build_server(
 
         # RULE: the plugins start side by side
         checked = await asyncio.gather(*map(check, specs), return_exceptions=True)
-        for spec, found in zip(specs, checked, strict=True):
-            if isinstance(found, BaseException):
-                log.info("plugin %s could not be started: %s", spec.name, found)
-                continue
-            plugin, listing, _ = found
-            if plugin is not None:
-                plugins.present(mcp, plugin, listing, await asyncio.to_thread(commit_of, spec.cwd))
-                active_plugins.append(plugin)
-        await tools_changed()
+        try:
+            for spec, found in zip(specs, checked, strict=True):
+                try:
+                    await offer_checked(spec, found)
+                except Exception as exc:
+                    # RULE: a plugin that cannot be offered never stops the others
+                    log.warning("plugin %s could not be offered: %s", spec.name, exc)
+                    plugin_failures.append({"name": spec.name, "state": "could not be offered", "why": str(exc)})
+        finally:
+            await tools_changed()
+
+    def start_ended(task: asyncio.Task[None]) -> None:
+        """Log a plugin start that failed as a whole, so it never disappears unseen."""
+        if not task.cancelled() and (failed := task.exception()) is not None:
+            log.error("the plugins could not be started: %s", failed)
 
     developer_mode = devmode.DeveloperMode()
     desk = plugin_desk.Desk(
@@ -2305,7 +2326,7 @@ def build_server(
         courier = transcripts.shared_courier()
         offered = [p.status() for p in active_plugins]
         return {
-            "plugins": offered,
+            "plugins": offered + plugin_failures,
             "developer_mode": developer_mode.state(),
             "now": {
                 "up_since": started_at,
