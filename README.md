@@ -470,7 +470,11 @@ A skill is a set of written steps that Claude Code follows for one kind of
 task. These come with the clone, in `skills/`, and Claude Code offers them as
 soon as you open it in this folder; type `/` to see them by name. Each folder in
 `.claude/skills/` is a link to its source in `skills/`, so a change to a skill is
-made in `skills/` like any other file. On Windows, clone with `core.symlinks` on.
+made in `skills/` like any other file. On Windows, clone inside WSL, where
+sessions run anyway. A clone on plain Windows needs Developer Mode on, then
+`git config core.symlinks true` and `git checkout -- .claude/skills`; without
+that, git writes a small file in place of each link and Claude Code finds no
+skills. The doctor (`check_dependencies`) names any skill that is not a link.
 A clone from before this change gets the links when it pulls. If git refuses
 because a skill folder holds a file of yours, git names the folder; move your
 file out and pull again.

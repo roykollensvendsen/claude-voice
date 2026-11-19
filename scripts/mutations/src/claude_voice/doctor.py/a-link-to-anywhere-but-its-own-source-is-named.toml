@@ -1,0 +1,5 @@
+[[rule]]
+name = "a link to anywhere but its own source is named"
+file = "src/claude_voice/doctor.py"
+find = 'return entry\.resolve\(\) == source\.resolve\(\)'
+replace = 'return True'
