@@ -142,7 +142,8 @@ Template: `scripts/no_session_links.py` has `Co-Authored-By`
 Never set `tmp_path_retention_policy = "none"` or `tmp_path_retention_count = 0`. Never remove
 anything under `pytest-of-*`. A test refuses either setting in `pyproject.toml` and the conftest.
 The conftest imports nothing that calls `gettempdir()` at module level. No module in `src/`
-keeps a temporary path as a module constant.
+keeps a temporary path as a module constant; the static check in `tests/test_temp_files.py`
+refuses one.
 
 Proof: a test checks that `tmp_path`, `tempfile.gettempdir()` and a subprocess's `$TMPDIR` all
 lie under the run's root. Subprocess tests in a scratch project show three things. A leaked file
@@ -150,6 +151,7 @@ fails the run. A killed run's folder is swept at the next start. A subprocess le
 
 Template: `tests/conftest.py` has `pytest.ExitCode.TESTS_FAILED`
 Template: `pyproject.toml` has `tmp_path_retention_policy = "failed"`
+Template: `tests/test_temp_files.py` has `HERE = tempfile.gettempdir()`
 
 ## How a run cleans up after itself
 
