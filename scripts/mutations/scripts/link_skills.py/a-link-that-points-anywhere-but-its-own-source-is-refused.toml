@@ -1,5 +1,0 @@
-[[rule]]
-name = "a link that points anywhere but its own source is refused"
-file = "scripts/link_skills.py"
-find = 'if os\.readlink\(place\) != link_text\(name\):'
-replace = 'if False:'

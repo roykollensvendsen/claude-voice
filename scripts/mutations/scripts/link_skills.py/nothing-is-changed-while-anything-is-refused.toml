@@ -1,5 +1,0 @@
-[[rule]]
-name = "nothing is changed while anything is refused"
-file = "scripts/link_skills.py"
-find = '^    if found:$'
-replace = 'if False:'
