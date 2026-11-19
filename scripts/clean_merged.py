@@ -12,16 +12,21 @@ A branch is deleted only when all of these hold:
   worktree-..., or it is the branch of a worktree under .claude/worktrees/ that goes too;
 - it is not the base, and not on the never-touch list
   (~/.config/claude-voice/never-touch-branches.txt, one name per line, # for comments);
-- every commit of its own carries a Claude Co-Authored-By line, so none was made by hand;
+- it has commits of its own, unless it goes with its worktree: a branch with none shows
+  nothing of who made it;
+- every commit of its own carries a Claude Co-Authored-By line, so none was made by hand.
+  That line also marks a branch the owner made with Claude's help; once merged, nothing on
+  it is lost, and the never-touch list keeps any he wants kept;
 - every commit of its own is on the base, by `git cherry`, which sees a rebase merge;
 - it is checked out in no worktree that stays.
 
-A worktree is removed only when it lies under <repo>/.claude/worktrees/, its branch (or its
-detached commit) is merged as above, `git status` shows nothing uncommitted, and no running
-program has its working folder inside it. Removal uses plain `git worktree remove`, which
-refuses anything changed. A branch is deleted only if it still points at the commit that was
-judged. Only local branches and worktrees are touched, never a branch on GitHub. A missing never-touch list stops the
-script before it looks at anything. Standard library only.
+A worktree is removed only when it lies under <repo>/.claude/worktrees/, its folder exists,
+its branch (or its detached commit) is merged as above, `git status` shows nothing
+uncommitted, and no running program has its working folder inside it. Removal uses plain
+`git worktree remove`, which refuses anything changed but deletes ignored files; each such
+line names them. A branch is deleted only if it still points at the commit that was judged.
+Only local branches and worktrees are touched, never a branch on GitHub. A missing
+never-touch list stops the script before it looks at anything. Standard library only.
 """
 
 from __future__ import annotations
@@ -124,6 +129,9 @@ def plan(
         # RULE: a branch on the never-touch list is kept
         if branch in never:
             return "on the never-touch list"
+        # RULE: a branch with no commits of its own is kept
+        if not own_worktree and not int(_git(repo, "rev-list", "--count", f"{base}..{branch}")):
+            return "no commits of its own, so nothing shows who made it"
         # RULE: a branch with a commit made by hand is kept
         if made_by_hand(repo, base, branch):
             return "a commit on it was made by hand"
@@ -143,6 +151,9 @@ def plan(
         reason = None
         if not _inside(tree.path.resolve(), home.resolve()):
             reason = "not under .claude/worktrees"
+        # RULE: a worktree whose folder is gone is named and skipped
+        elif not tree.path.is_dir():
+            reason = "its folder is gone; run git worktree prune"
         elif tree.locked:
             reason = "it is locked"
         elif tree.branch:
@@ -201,7 +212,7 @@ def main(argv: list[str] | None = None, cwds: Callable[[], Iterable[pathlib.Path
     verb = "" if args.apply else "would "
     merged = f"merged: every change on it is on {args.base}, nothing uncommitted, no program in it"
     for path in gone:
-        print(f"{verb}remove worktree {path}: {merged}")
+        print(f"{verb}remove worktree {path}: {merged}{ignored_note(path)}")
         if args.apply:
             _git(args.repo, "worktree", "remove", str(path))
     for branch, judged in branches:
@@ -209,6 +220,13 @@ def main(argv: list[str] | None = None, cwds: Callable[[], Iterable[pathlib.Path
         if args.apply:
             delete_branch(args.repo, branch, judged)
     return 0
+
+
+def ignored_note(path: pathlib.Path) -> str:
+    """The ignored files `git worktree remove` deletes without asking, named so a reader sees them."""
+    lines = _git(path, "status", "--ignored", "--porcelain").splitlines()
+    ignored = [line[3:] for line in lines if line.startswith("!! ")]
+    return f"; takes ignored {', '.join(ignored)}" if ignored else ""
 
 
 def delete_branch(repo: pathlib.Path, branch: str, judged: str) -> None:

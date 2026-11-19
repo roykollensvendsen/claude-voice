@@ -1,0 +1,5 @@
+[[rule]]
+name = "a branch with no commits of its own is kept"
+file = "scripts/clean_merged.py"
+find = 'if not own_worktree and not int\(_git\(repo, "rev-list", "--count", f"\{base\}\.\.\{branch\}"\)\):'
+replace = 'if False:'

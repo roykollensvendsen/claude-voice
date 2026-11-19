@@ -1,0 +1,5 @@
+[[rule]]
+name = "a worktree whose folder is gone is named and skipped"
+file = "scripts/clean_merged.py"
+find = 'elif not tree\.path\.is_dir\(\):'
+replace = 'elif False:'

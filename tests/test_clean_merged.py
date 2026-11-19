@@ -142,6 +142,39 @@ def test_a_branch_with_a_commit_made_by_hand_is_kept(cleaner, repo, never, capsy
     assert "keep branch fix/by-hand: a commit on it was made by hand" in capsys.readouterr().out
 
 
+def test_a_branch_with_no_commits_of_its_own_is_kept(cleaner, repo, never, capsys):
+    """Nothing on it shows who made it: the owner may have made it a minute ago."""
+    _git(repo, "branch", "feat/new", "main")
+    _run(cleaner, repo, never, "--apply")
+    assert "feat/new" in _branches(repo)
+    assert "keep branch feat/new: no commits of its own, so nothing shows who made it" in capsys.readouterr().out
+
+
+def test_a_worktree_branch_with_no_commits_of_its_own_goes_with_its_worktree(cleaner, repo, never):
+    _git(repo, "branch", "worktree-agent-2", "main")
+    place = _worktree(repo, "agent-2", "worktree-agent-2")
+    _run(cleaner, repo, never, "--apply")
+    assert not place.exists() and "worktree-agent-2" not in _branches(repo)
+
+
+def test_a_worktree_whose_folder_is_gone_is_named_and_skipped(cleaner, repo, never, capsys):
+    place = _worktree(repo, "gone", "feat/done")
+    for f in sorted(place.rglob("*"), reverse=True):
+        f.unlink() if f.is_file() or f.is_symlink() else f.rmdir()
+    place.rmdir()
+    assert _run(cleaner, repo, never, "--apply") == 0
+    assert "its folder is gone; run git worktree prune" in capsys.readouterr().out
+
+
+def test_the_ignored_files_a_worktree_removal_takes_are_named(cleaner, repo, never, capsys):
+    (repo / ".git/info").mkdir(exist_ok=True)
+    (repo / ".git/info/exclude").write_text(".env\n")  # every worktree reads this one
+    place = _worktree(repo, "done", "feat/done")
+    (place / ".env").write_text("SECRET=1\n")
+    _run(cleaner, repo, never)
+    assert f"would remove worktree {place}" in (out := capsys.readouterr().out) and "takes ignored .env" in out
+
+
 def test_a_missing_never_touch_list_stops_everything(cleaner, repo, tmp_path, capsys):
     gone = tmp_path / "nowhere.txt"
     assert _run(cleaner, repo, gone, "--apply") == 2
