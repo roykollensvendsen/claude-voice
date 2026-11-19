@@ -471,6 +471,9 @@ task. These come with the clone, in `skills/`, and Claude Code offers them as
 soon as you open it in this folder; type `/` to see them by name. Each folder in
 `.claude/skills/` is a link to its source in `skills/`, so a change to a skill is
 made in `skills/` like any other file. On Windows, clone with `core.symlinks` on.
+A clone from before this change gets the links when it pulls. If git refuses
+because a skill folder holds a file of yours, run
+`uv run python scripts/link_skills.py --check`; it names that file.
 
 | Skill | When it is used | What it does |
 | --- | --- | --- |
