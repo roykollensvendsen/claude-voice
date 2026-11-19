@@ -288,18 +288,27 @@ SKILL_LINKS_FIX = (
 )
 
 
+def _links_to_source(entry: Path, source: Path) -> bool:
+    if not entry.is_symlink():
+        return False
+    # RULE: a link to anywhere but its own source is named
+    return entry.resolve() == source.resolve()
+
+
 def skill_links(folder: Path) -> dict[str, Any]:
     """Whether each skill in `folder`'s .claude/skills/ is a link to its source in skills/.
 
     Where git cannot make a link (Windows without Developer Mode), it writes a small file
-    holding the path instead, and Claude Code finds no skill there."""
+    holding the path instead, and Claude Code finds no skill there. Only the skills with a
+    source in skills/ are judged; anything else in .claude/skills/ is the user's own."""
     place = folder / ".claude" / "skills"
     try:
-        entries = sorted(place.iterdir()) if place.is_dir() else []
+        # RULE: only a skill with a source in skills is judged
+        names = sorted(p.parent.name for p in (folder / "skills").glob("*/SKILL.md"))
     except OSError:
-        entries = []
+        names = []
     # RULE: a skill that is not a link is named with the way to fix it
-    wrong = [entry.name for entry in entries if not entry.is_symlink()]
+    wrong = [name for name in names if not _links_to_source(place / name, folder / "skills" / name)]
     return check(
         "skill_links",
         "The clone's skills are links",

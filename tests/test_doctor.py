@@ -131,10 +131,32 @@ def test_a_skill_that_is_not_a_link_is_named_with_the_way_to_fix_it(tmp_path):
 
 def test_a_skill_copied_in_as_a_folder_is_named_too(tmp_path):
     host, clone, state = healthy(tmp_path)
+    (clone / "skills/copied").mkdir(parents=True)
+    (clone / "skills/copied/SKILL.md").write_text("# copied\n")
     (clone / ".claude/skills/copied").mkdir(parents=True)
     (clone / ".claude/skills/copied/SKILL.md").write_text("# an old copy\n")
     links = by_id(doctor.examine(host, {"folder": str(clone)}, state_dir=state, port=8811))["skill_links"]
     assert links["ok"] is False and "copied" in links["detail"]
+
+
+def test_only_a_skill_with_a_source_in_skills_is_judged(tmp_path):
+    """A skill of the user's own in .claude/skills/, with no source in skills/, is theirs to keep."""
+    host, clone, state = healthy(tmp_path)
+    _skill(clone, "good", as_link=True)
+    (clone / ".claude/skills/mine").mkdir(parents=True)
+    (clone / ".claude/skills/mine/SKILL.md").write_text("# my own skill\n")
+    links = by_id(doctor.examine(host, {"folder": str(clone)}, state_dir=state, port=8811))["skill_links"]
+    assert links["ok"] is True, links["detail"]
+
+
+def test_a_link_to_anywhere_but_its_own_source_is_named(tmp_path):
+    host, clone, state = healthy(tmp_path)
+    _skill(clone, "good", as_link=True)
+    (clone / "skills/astray").mkdir(parents=True)
+    (clone / "skills/astray/SKILL.md").write_text("# astray\n")
+    (clone / ".claude/skills/astray").symlink_to("../../skills/good", target_is_directory=True)
+    links = by_id(doctor.examine(host, {"folder": str(clone)}, state_dir=state, port=8811))["skill_links"]
+    assert links["ok"] is False and "astray" in links["detail"] and "good" not in links["detail"]
 
 
 def test_skills_that_are_links_pass(tmp_path):

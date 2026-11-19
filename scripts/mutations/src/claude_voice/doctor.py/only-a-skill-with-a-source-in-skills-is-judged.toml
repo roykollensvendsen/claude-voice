@@ -1,0 +1,5 @@
+[[rule]]
+name = "only a skill with a source in skills is judged"
+file = "src/claude_voice/doctor.py"
+find = 'names = sorted\(p\.parent\.name for p in \(folder / "skills"\)\.glob\("\*/SKILL\.md"\)\)'
+replace = 'names = sorted(p.name for p in place.iterdir())'
