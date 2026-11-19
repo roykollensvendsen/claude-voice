@@ -166,13 +166,41 @@ def test_a_worktree_whose_folder_is_gone_is_named_and_skipped(cleaner, repo, nev
     assert "its folder is gone; run git worktree prune" in capsys.readouterr().out
 
 
-def test_the_ignored_files_a_worktree_removal_takes_are_named(cleaner, repo, never, capsys):
+def _ignore(repo, *patterns):
     (repo / ".git/info").mkdir(exist_ok=True)
-    (repo / ".git/info/exclude").write_text(".env\n")  # every worktree reads this one
+    (repo / ".git/info/exclude").write_text("".join(f"{p}\n" for p in patterns))  # every worktree reads it
+
+
+def test_the_ignored_caches_a_worktree_removal_takes_are_named(cleaner, repo, never, capsys):
+    _ignore(repo, ".venv/", "__pycache__/")
     place = _worktree(repo, "done", "feat/done")
-    (place / ".env").write_text("SECRET=1\n")
+    (place / ".venv").mkdir()
+    (place / ".venv/pyvenv.cfg").write_text("home = /usr\n")
     _run(cleaner, repo, never)
-    assert f"would remove worktree {place}" in (out := capsys.readouterr().out) and "takes ignored .env" in out
+    assert f"would remove worktree {place}" in (out := capsys.readouterr().out) and "takes ignored .venv/" in out
+
+
+def test_a_worktree_holding_ignored_files_that_are_not_caches_is_kept(cleaner, repo, never, capsys):
+    """`git worktree remove` deletes ignored files without asking; only a cache can be made again."""
+    _ignore(repo, "CLAUDE.local.md", ".venv/")
+    place = _worktree(repo, "done", "feat/done")
+    (place / "CLAUDE.local.md").write_text("the owner's own notes\n")
+    (place / ".venv").mkdir()
+    (place / ".venv/pyvenv.cfg").write_text("home = /usr\n")
+    _run(cleaner, repo, never, "--apply")
+    assert (place / "CLAUDE.local.md").exists() and "feat/done" in _branches(repo)
+    out = capsys.readouterr().out
+    assert f"keep worktree {place}: it holds ignored files that are not caches: CLAUDE.local.md" in out
+
+
+def test_a_worktree_a_program_started_working_in_is_kept(cleaner, repo, never, capsys):
+    place = _worktree(repo, "done", "feat/done")
+    looks = iter([[], [place]])  # nobody in it when planned; somebody by the time it would go
+    cleaner.main(
+        ["--repo", str(repo), "--base", "main", "--never-touch", str(never), "--apply"], cwds=lambda: next(looks)
+    )
+    assert place.exists() and "feat/done" in _branches(repo)
+    assert f"keep worktree {place}: a program started working in it" in capsys.readouterr().out
 
 
 def test_a_missing_never_touch_list_stops_everything(cleaner, repo, tmp_path, capsys):

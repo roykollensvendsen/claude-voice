@@ -22,16 +22,18 @@ A branch is deleted only when all of these hold:
 
 A worktree is removed only when it lies under <repo>/.claude/worktrees/, its folder exists,
 its branch (or its detached commit) is merged as above, `git status` shows nothing
-uncommitted, and no running program has its working folder inside it. Removal uses plain
-`git worktree remove`, which refuses anything changed but deletes ignored files; each such
-line names them. A branch is deleted only if it still points at the commit that was judged.
-Only local branches and worktrees are touched, never a branch on GitHub. A missing
+uncommitted, no ignored file in it is anything but a cache a tool makes again (CACHES), and
+no running program has its working folder inside it, looked at again just before removal.
+Removal uses plain `git worktree remove`, which refuses anything changed but deletes ignored
+files; each removal line names the caches it takes. A branch is deleted only if it still
+points at the commit that was judged. Only local branches and worktrees are touched, never a branch on GitHub. A missing
 never-touch list stops the script before it looks at anything. Standard library only.
 """
 
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import os
 import pathlib
 import re
@@ -43,6 +45,11 @@ from dataclasses import dataclass
 NEVER_TOUCH = pathlib.Path("~/.config/claude-voice/never-touch-branches.txt").expanduser()
 TYPES = "feat|fix|docs|chore|ci|test|refactor|perf|build|style|revert"
 ORGANISATION_NAME = re.compile(rf"^(?:(?:{TYPES})/.+|worktree-.+)$")
+# Ignored folders a tool makes again by itself; any other ignored file keeps its worktree.
+CACHES = frozenset(
+    {".venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules", ".hypothesis"}
+    | {"build", "dist"}
+)
 CLAUDE_TRAILER = re.compile(r"^Co-Authored-By: Claude\b", re.MULTILINE | re.IGNORECASE)
 
 
@@ -163,6 +170,9 @@ def plan(
         # RULE: a worktree holding work not committed is kept
         if reason is None and _git(tree.path, "status", "--porcelain", "--untracked-files=all").strip():
             reason = "it holds work not committed"
+        # RULE: a worktree holding ignored files that are not caches is kept
+        if reason is None and (precious := [p for p in ignored(tree.path) if not is_cache(p)]):
+            reason = f"it holds ignored files that are not caches: {', '.join(precious)}"
         # RULE: a worktree a program is working in is kept
         if reason is None and any(_inside(cwd, tree.path.resolve()) for cwd in cwds):
             reason = "a program is working in it"
@@ -211,22 +221,38 @@ def main(argv: list[str] | None = None, cwds: Callable[[], Iterable[pathlib.Path
         print(line)
     verb = "" if args.apply else "would "
     merged = f"merged: every change on it is on {args.base}, nothing uncommitted, no program in it"
+    entered: set[pathlib.Path] = set()
     for path in gone:
-        print(f"{verb}remove worktree {path}: {merged}{ignored_note(path)}")
+        # RULE: a worktree a program started working in is kept
+        if args.apply and any(_inside(cwd.resolve(), path.resolve()) for cwd in cwds()):
+            print(f"keep worktree {path}: a program started working in it")
+            entered.add(path)
+            continue
+        caches = ignored(path)
+        print(f"{verb}remove worktree {path}: {merged}" + (f"; takes ignored {', '.join(caches)}" if caches else ""))
         if args.apply:
             _git(args.repo, "worktree", "remove", str(path))
+    held = {tree.branch for tree in worktrees(args.repo) if tree.path in entered}
     for branch, judged in branches:
+        if branch in held:
+            print(f"keep branch {branch}: checked out in a worktree that stays")
+            continue
         print(f"{verb}delete branch {branch} at {judged[:12]}: every change on it is on {args.base}")
         if args.apply:
             delete_branch(args.repo, branch, judged)
     return 0
 
 
-def ignored_note(path: pathlib.Path) -> str:
-    """The ignored files `git worktree remove` deletes without asking, named so a reader sees them."""
-    lines = _git(path, "status", "--ignored", "--porcelain").splitlines()
-    ignored = [line[3:] for line in lines if line.startswith("!! ")]
-    return f"; takes ignored {', '.join(ignored)}" if ignored else ""
+def ignored(path: pathlib.Path) -> list[str]:
+    """The ignored files and folders in a worktree, which `git worktree remove` deletes without asking."""
+    lines = _git(path, "status", "--porcelain", "--ignored=matching").splitlines()
+    return [line[3:] for line in lines if line.startswith("!! ")]
+
+
+def is_cache(entry: str) -> bool:
+    """Whether an ignored entry is something a tool makes again by itself."""
+    name = pathlib.PurePosixPath(entry.rstrip("/")).name
+    return name in CACHES or fnmatch.fnmatch(name, "*.egg-info") or fnmatch.fnmatch(name, ".coverage*")
 
 
 def delete_branch(repo: pathlib.Path, branch: str, judged: str) -> None:

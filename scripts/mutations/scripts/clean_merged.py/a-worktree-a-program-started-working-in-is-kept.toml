@@ -1,0 +1,5 @@
+[[rule]]
+name = "a worktree a program started working in is kept"
+file = "scripts/clean_merged.py"
+find = 'if args\.apply and any\(_inside\(cwd\.resolve\(\), path\.resolve\(\)\) for cwd in cwds\(\)\):'
+replace = 'if False:'
