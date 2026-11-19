@@ -1,0 +1,5 @@
+[[rule]]
+name = "the plugins start side by side"
+file = "src/claude_voice/server.py"
+find = 'checked = await asyncio\.gather\(\*map\(check, specs\), return_exceptions=True\)'
+replace = 'checked = [await check(s) for s in specs]'
