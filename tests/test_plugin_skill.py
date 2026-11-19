@@ -49,6 +49,18 @@ V8_POINTS = (
     [f"cleanup {n}" for n in range(1, 10)] + [f"hang {n}" for n in range(1, 8)] + [f"docs {n}" for n in range(1, 4)]
 )
 
+#: The old skill's checklist, which the owner approved item by item. Each item a rule must keep,
+#: by a phrase its rule states.
+OWNER_APPROVED = {
+    "a security review before the first approval": "security review",
+    "a route that acts without a login or an origin check": "origin check",
+    "a restart lets a running call finish": "running call finish",
+    "upstream work is public": "upstream work is public",
+    "a security finding in others' code is held unpushed": "held unpushed",
+    "an undocumented limit is measured once, dated": "measured once",
+    "one live try on the real device": "live try",
+}
+
 
 def _text(name: str) -> str:
     return (SKILL / name).read_text(encoding="utf-8")
@@ -129,6 +141,20 @@ def test_the_rules_open_with_every_v8_point_and_its_rule():
     assert sorted(rows) == sorted(V8_POINTS), f"the v8 table maps {sorted(rows)}"
     for point, cited in rows.items():
         assert all(r in rules for r in cited.split(", ")), point
+
+
+def test_every_item_of_the_owner_approved_checklist_keeps_a_rule_and_a_review_row():
+    """The move must not drop what the owner approved; each item is a rule, and review checks it."""
+    rules = _rules()
+    review = _text("review.md")
+    lost = []
+    for item, phrase in OWNER_APPROVED.items():
+        holding = [number for number, body in rules.items() if phrase in " ".join(body.split()).lower()]
+        if not holding:
+            lost.append(f"{item}: no rule says {phrase!r}")
+        elif not any(re.search(rf"\| {number}\b", review) for number in holding):
+            lost.append(f"{item}: review.md has no row for {holding}")
+    assert lost == [], "; ".join(lost)
 
 
 def test_the_rules_name_the_design_they_came_from():
