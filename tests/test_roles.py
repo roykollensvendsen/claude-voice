@@ -61,6 +61,23 @@ def test_the_guard_answers_claude_code_as_a_pre_tool_use_hook(tmp_path):
     assert guard.answer({"tool_name": "Read", "tool_input": {}, "cwd": str(tmp_path)}, UPSTREAM) == {}
 
 
+def test_a_push_whose_address_cannot_be_read_is_refused():
+    assert guard.refusal("git push origin feature", UPSTREAM, remote_url=lambda name: None, default_remote=lambda: "o")
+    fork = "git push https://github.com/someone/claude-voice feature"
+    assert guard.refusal(fork, UPSTREAM, remote_url=lambda name: None, default_remote=lambda: "o") is None
+
+
+def test_the_guard_refuses_a_push_in_a_clone_whose_settings_it_does_not_read(tmp_path):
+    """safe_git reads nothing in such a clone, so the guard cannot tell where a push goes."""
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "remote", "add", "origin", f"https://github.com/{UPSTREAM}"], check=True
+    )
+    subprocess.run(["git", "-C", str(tmp_path), "config", "core.pager", "cat"], check=True)
+    hook_input = {"tool_name": "Bash", "tool_input": {"command": "git push origin feature"}, "cwd": str(tmp_path)}
+    assert guard.answer(hook_input, UPSTREAM)["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
 # -- the roles themselves ----------------------------------------------------------------
 
 
