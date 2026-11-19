@@ -16,7 +16,7 @@ A branch is deleted only when all of these hold:
   nothing of who made it;
 - every commit of its own carries a Claude Co-Authored-By line, so none was made by hand.
   That line also marks a branch the owner made with Claude's help; once merged, nothing on
-  it is lost, and the never-touch list keeps any he wants kept;
+  it is lost, and the never-touch list keeps any the owner wants kept;
 - every commit of its own is on the base, by `git cherry`, which sees a rebase merge;
 - it is checked out in no worktree that stays.
 
@@ -42,7 +42,11 @@ import sys
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
-NEVER_TOUCH = pathlib.Path("~/.config/claude-voice/never-touch-branches.txt").expanduser()
+# The never-touch list has one reader, in the package; this loads it from the checkout, so the
+# script still runs with a bare python3 and the standard library.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
+from claude_voice.never_touch import NEVER_TOUCH, never_touch  # noqa: E402
+
 TYPES = "feat|fix|docs|chore|ci|test|refactor|perf|build|style|revert"
 ORGANISATION_NAME = re.compile(rf"^(?:(?:{TYPES})/.+|worktree-.+)$")
 # Ignored folders a tool makes again by itself; any other ignored file keeps its worktree.
@@ -69,11 +73,6 @@ def _git(repo: pathlib.Path, *args: str) -> str:
         text=True,
         check=True,
     ).stdout
-
-
-def never_touch(path: pathlib.Path) -> set[str]:
-    lines = path.read_text(encoding="utf-8").splitlines()
-    return {line.strip() for line in lines if line.strip() and not line.strip().startswith("#")}
 
 
 def worktrees(repo: pathlib.Path) -> list[Worktree]:
