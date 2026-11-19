@@ -220,6 +220,16 @@ def _ours(hook: dict[str, Any]) -> bool:
     return words[-2:] == ["-m", "claude_voice.phone_hook"]
 
 
+def _without_ours(matchers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """An event's matcher groups with every phone hook line taken out, and any group left empty.
+
+    An earlier phone hook line, from another venv or an older version, gives way to the new one.
+    """
+    # RULE: installing the hook again replaces an older phone hook line
+    kept = [{**m, "hooks": [h for h in m.get("hooks", []) if not _ours(h)]} for m in matchers]
+    return [m for m in kept if m["hooks"]]
+
+
 def install(settings: Path, python: str) -> None:
     """Add the hook to a Claude Code settings file, keeping every other setting and hook.
     Running it again changes nothing; the file as it was is kept beside it as .bak."""
@@ -231,10 +241,7 @@ def install(settings: Path, python: str) -> None:
         settings.with_name(settings.name + ".bak").write_text(settings.read_text())
     hooks = current.setdefault("hooks", {})
     for event, entries in settings_entries(python).items():
-        # An earlier phone hook line, from another venv or an older version, gives way to this one.
-        # RULE: installing the hook again replaces an older phone hook line
-        kept = [{**m, "hooks": [h for h in m.get("hooks", []) if not _ours(h)]} for m in hooks.get(event, [])]
-        hooks[event] = [m for m in kept if m["hooks"]] + entries
+        hooks[event] = _without_ours(hooks.get(event, [])) + entries
     settings.parent.mkdir(parents=True, exist_ok=True)
     settings.write_text(json.dumps(current, indent=2) + "\n")
 

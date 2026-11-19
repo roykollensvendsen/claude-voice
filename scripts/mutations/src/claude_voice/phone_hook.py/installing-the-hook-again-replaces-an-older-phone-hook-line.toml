@@ -1,5 +1,5 @@
 [[rule]]
 name = "installing the hook again replaces an older phone hook line"
 file = "src/claude_voice/phone_hook.py"
-find = 'kept = \[\{\*\*m, "hooks": \[h for h in m\.get\("hooks", \[\]\) if not _ours\(h\)\]\} for m in hooks\.get\(event, \[\]\)\]'
-replace = 'kept = list(hooks.get(event, []))'
+find = 'kept = \[\{\*\*m, "hooks": \[h for h in m\.get\("hooks", \[\]\) if not _ours\(h\)\]\} for m in matchers\]'
+replace = 'kept = list(matchers)'
