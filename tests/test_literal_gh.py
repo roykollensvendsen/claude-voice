@@ -85,8 +85,10 @@ def test_a_tool_other_than_the_shell_is_let_through():
 
 
 def _run(stdin: str) -> subprocess.CompletedProcess:
+    """The hook as the owner's settings start it: the one file, by its absolute path, with
+    -I -S, so neither the package's __init__.py nor any installed package runs first."""
     return subprocess.run(  # noqa: S603
-        [sys.executable, "-I", "-m", "claude_voice.literal_gh"],
+        [sys.executable, "-I", "-S", str(Path(literal_gh.__file__).resolve())],
         input=stdin,
         capture_output=True,
         text=True,

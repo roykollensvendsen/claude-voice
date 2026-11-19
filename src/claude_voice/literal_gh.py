@@ -1,7 +1,8 @@
 """A hook that refuses a gh command spelled with `$` or a backtick, and says why.
 
 Claude Code runs it before every shell command of every session (a PreToolUse hook), as
-``python -I -m claude_voice.literal_gh`` with the hook input on stdin. The owner's settings
+``python -I -S /absolute/path/to/literal_gh.py`` with the hook input on stdin: the one file,
+so neither the package's __init__.py nor any installed package runs as the owner first. The owner's settings
 deny these commands anyway; that deny is the floor. This hook only adds the reason, so a
 session can retry with literal values at once instead of handing the command on.
 
