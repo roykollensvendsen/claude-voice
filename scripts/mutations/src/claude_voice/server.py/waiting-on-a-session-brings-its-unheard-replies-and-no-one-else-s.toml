@@ -1,5 +1,5 @@
 [[rule]]
 name = "waiting on a session brings its unheard replies and no one else's"
 file = "src/claude_voice/server.py"
-find = 'return with_replies\(waited\(status, target, start, max_chars, blocked, ended=now is None\), target\["name"\]\)'
+find = 'return with_replies\(waited\(status, target, start, max_chars, blocked, ended=now is None\), target\["name"\], ack\)'
 replace = 'return waited(status, target, start, max_chars, blocked, ended=now is None)'

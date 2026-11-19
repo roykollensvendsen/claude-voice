@@ -1,5 +1,5 @@
 [[rule]]
 name = "asking a session brings its unheard replies"
 file = "src/claude_voice/server.py"
-find = 'return with_replies\(answer, target\["name"\]\)'
+find = 'return with_replies\(answer, target\["name"\], ack\)'
 replace = 'return answer'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "an ack on a session tool marks its replies heard"
+file = "src/claude_voice/server.py"
+find = '^\s*replies\.ack\(seqs=ack or \(\)\)$'
+replace = 'pass'

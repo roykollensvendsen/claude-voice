@@ -86,6 +86,78 @@ async def test_a_recap_brings_the_session_s_unheard_replies(tmp_path, root, live
     assert senders(out["replies"]) == ["billing-ab"]
 
 
+async def test_an_ack_on_a_session_tool_marks_its_replies_heard(tmp_path, root, live, courier):
+    """A voice that loops on wait_for_session confirms in the call it is already making."""
+    target = Target(live, str(root / "billing"))
+    async with Client(bridge(tmp_path, root, live, target, None)) as c:
+        transcripts._courier.on_reply("billing-ab", "The export is fixed.")
+        first = await call(c, "wait_for_session", session="billing-ab", wait_seconds=1)
+        again = await call(
+            c, "wait_for_session", session="billing-ab", wait_seconds=1, ack=[first["replies"][0]["reply_id"]]
+        )
+        news = await call(c, "whats_new")
+    assert "replies" not in again
+    assert "billing-ab" not in senders(news["events"])
+
+
+@pytest.mark.parametrize("tool", ["ask_active_session", "session_recap"])
+async def test_the_other_session_tools_take_an_ack_too(tmp_path, root, live, courier, tool):
+    target = Target(live, str(root / "billing"))
+
+    async def deliver(name, text):
+        target.says("On it.")
+        return {"delivered": True, "detail": "DELIVERED"}
+
+    async with Client(bridge(tmp_path, root, live, target, deliver)) as c:
+        made = await call(c, "create_session", project="billing", label="billing-ab")
+        transcripts._courier.on_reply("billing-ab", "The export is fixed.")
+        first = await call(c, "wait_for_session", session="billing-ab", wait_seconds=1)
+        ack = [first["replies"][0]["reply_id"]]
+        if tool == "ask_active_session":
+            await call(c, tool, session="billing-ab", message="And the import?", wait_seconds=1, ack=ack)
+        else:
+            await call(c, tool, session_id=made["id"], ack=ack)
+        news = await call(c, "whats_new")
+    assert "billing-ab" not in senders(news["events"])
+
+
+async def test_an_ack_with_an_unknown_or_read_id_is_ignored(tmp_path, root, live, courier):
+    target = Target(live, str(root / "billing"))
+    async with Client(bridge(tmp_path, root, live, target, None)) as c:
+        transcripts._courier.on_reply("billing-ab", "The export is fixed.")
+        out = await call(c, "wait_for_session", session="billing-ab", wait_seconds=1, ack=[9999])
+        heard = out["replies"][0]["reply_id"]
+        await call(c, "wait_for_session", session="billing-ab", wait_seconds=1, ack=[heard])
+        transcripts._courier.on_reply("billing-ab", "And the import too.")
+        again = await call(c, "wait_for_session", session="billing-ab", wait_seconds=1, ack=[heard])
+    assert senders(out["replies"]) == ["billing-ab"]
+    assert [r["text"] for r in again["replies"]] == ["Reply from billing-ab: And the import too."]
+
+
+async def test_an_ack_marks_only_the_replies_it_names(tmp_path, root, live, courier):
+    """Another session's reply stays unheard unless its own id is given."""
+    target = Target(live, str(root / "billing"))
+    async with Client(bridge(tmp_path, root, live, target, None)) as c:
+        transcripts._courier.on_reply("billing-ab", "The export is fixed.")
+        transcripts._courier.on_reply("fuel-mcp", "Diesel is 21.90 today.")
+        seen = await call(c, "whats_new")
+        billing = [e["reply_id"] for e in seen["events"] if e["session"] == "billing-ab"]
+        await call(c, "wait_for_session", session="billing-ab", wait_seconds=1, ack=billing)
+        news = await call(c, "whats_new")
+    assert senders(news["events"]) == ["fuel-mcp"]
+
+
+async def test_a_reply_from_a_session_under_an_older_name_still_reaches_whats_new(tmp_path, root, live, courier):
+    """The session tools match the reply's sender by name; whats_new still hands over the rest."""
+    target = Target(live, str(root / "billing"))
+    async with Client(bridge(tmp_path, root, live, target, None)) as c:
+        transcripts._courier.on_reply("billing-old", "The export is fixed.")
+        out = await call(c, "wait_for_session", session="billing-ab", wait_seconds=1)
+        news = await call(c, "whats_new")
+    assert "replies" not in out
+    assert senders(news["events"]) == ["billing-old"]
+
+
 async def test_without_unheard_replies_the_answer_has_no_replies_field(tmp_path, root, live, courier):
     target = Target(live, str(root / "billing"))
     async with Client(bridge(tmp_path, root, live, target, None)) as c:

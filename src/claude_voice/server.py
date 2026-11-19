@@ -671,12 +671,15 @@ def build_server(
         watcher.record(sender, "reply", f"Reply from {sender}: {transcripts.clip(body, mailbox.CHARS)}")
         replies.put(sender, body)
 
-    def with_replies(answer: dict[str, Any], sender: str) -> dict[str, Any]:
-        """The answer, with that session's replies not yet heard.
+    def with_replies(answer: dict[str, Any], sender: str, ack: list[int] | None = None) -> dict[str, Any]:
+        """The answer, with that session's replies not yet heard, after marking heard those in `ack`.
 
-        No cursor carries this answer's number, so these are confirmed by whats_new's `ack`, or
-        pushed again by whats_new and confirmed there: heard twice at worst, never lost.
+        No cursor carries this answer's number, so these are confirmed by an `ack`, on this tool
+        or on whats_new, or pushed again by whats_new and confirmed there: heard twice at worst,
+        never lost.
         """
+        # RULE: an ack on a session tool marks its replies heard
+        replies.ack(seqs=ack or ())
         _, mail = replies.push(sender=sender)
         return {**answer, "replies": mail} if mail else answer
 
@@ -946,17 +949,17 @@ def build_server(
             raise ToolError(msg) from None
 
     @tool(annotations=READ_ONLY)
-    def session_recap(session_id: str, max_chars: int = 400) -> dict[str, Any]:
+    def session_recap(session_id: str, max_chars: int = 400, ack: list[int] | None = None) -> dict[str, Any]:
         """Status of one session: running or not, last prompt, latest words, result.
         Texts are cut to max_chars each. Includes that session's replies not yet read out,
-        as for ask_active_session."""
+        and takes `ack`, as for ask_active_session."""
         session_id = known(session_id)
         recap = manager.recap(session_id)
         for key in ("last_prompt", "latest_text", "last_result", "last_error"):
             if isinstance(recap.get(key), str):
                 recap[key] = transcripts.clip(recap[key], max(max_chars, 20))
         # RULE: a recap brings the session's unheard replies
-        return with_replies(recap, recap["label"])
+        return with_replies(recap, recap["label"], ack)
 
     state_seen: dict[str, tuple[str, str]] = {}  # session id -> (state, since)
 
@@ -1987,7 +1990,11 @@ def build_server(
 
     @tool(annotations=READ_ONLY)
     async def wait_for_session(
-        session: str, wait_seconds: WaitSeconds = 60, after: int | None = None, max_chars: int = 600
+        session: str,
+        wait_seconds: WaitSeconds = 60,
+        after: int | None = None,
+        max_chars: int = 600,
+        ack: list[int] | None = None,
     ) -> dict[str, Any]:
         """Wait for a running session's turn to end or need its user, sending nothing.
         Pass a next_after you were given as `after` to wait for a reply past that turn, even
@@ -1997,7 +2004,8 @@ def build_server(
         `latest` holds the newest reply until then. status: "idle" (its turn has ended; reply
         is empty if it wrote nothing), "needs_input", "needs_choice", "still_working" (call
         again), "session_ended" or "moved"; the other fields are as for ask_active_session.
-        Includes that session's replies not yet read out, as for ask_active_session."""
+        Includes that session's replies not yet read out, and takes `ack`, as for
+        ask_active_session: when you call again, pass the reply_id values you read out."""
         target = find_live(session)
         moved = moved_to(target)
         if moved:
@@ -2011,11 +2019,15 @@ def build_server(
         else:
             status = blocked["status"] if blocked else ("idle" if done else "still_working")
         # RULE: waiting on a session brings its unheard replies and no one else's
-        return with_replies(waited(status, target, start, max_chars, blocked, ended=now is None), target["name"])
+        return with_replies(waited(status, target, start, max_chars, blocked, ended=now is None), target["name"], ack)
 
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
     async def ask_active_session(
-        session: str, message: str, wait_seconds: WaitSeconds = 60, max_chars: int = 600
+        session: str,
+        message: str,
+        wait_seconds: WaitSeconds = 60,
+        max_chars: int = 600,
+        ack: list[int] | None = None,
     ) -> dict[str, Any]:
         """Ask a Claude Code session that is open right now, and wait for its answer.
         reply_final is true once its turn has ended, so reply is its last word; while false,
@@ -2028,7 +2040,8 @@ def build_server(
         or "needs_choice" (it waits for its user to pick one of question.options; answer
         at the screen) - "needs_input" before sending means nothing was sent.
         Includes that session's replies not yet read out, as `replies`: read each aloud as
-        its words, then pass their reply_id values to whats_new as ack."""
+        its words, then pass their reply_id values as `ack` on your next call to this tool,
+        wait_for_session, session_recap or whats_new. `ack` marks only the replies it names."""
         target = find_live(session)
         moved = moved_to(target)
         if moved:
@@ -2058,7 +2071,7 @@ def build_server(
             **({"question": blocked["question"]} if status == "needs_choice" and blocked else {}),
         }
         # RULE: asking a session brings its unheard replies
-        return with_replies(answer, target["name"])
+        return with_replies(answer, target["name"], ack)
 
     @tool(annotations=READ_ONLY)
     def read_session_output(
