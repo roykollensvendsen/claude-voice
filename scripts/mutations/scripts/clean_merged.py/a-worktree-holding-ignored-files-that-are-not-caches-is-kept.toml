@@ -1,0 +1,5 @@
+[[rule]]
+name = "a worktree holding ignored files that are not caches is kept"
+file = "scripts/clean_merged.py"
+find = 'if reason is None and \(precious := \[p for p in ignored\(tree\.path\) if not is_cache\(p\)\]\):'
+replace = 'if False:'
