@@ -27,7 +27,7 @@ class Recorder:
 
 
 def laptop_bridge(tmp_path):
-    """The bridge on Lukas's laptop, with one session running there."""
+    """The bridge on a second laptop, with one session running there."""
     root, live = tmp_path / "home", tmp_path / "live"
     (root / "minecraft-mod").mkdir(parents=True)
     live.mkdir()
@@ -53,16 +53,16 @@ async def tool_names(server):
 
 async def test_an_agent_offers_sessions_only_when_its_settings_say_so(tmp_path):
     pairing = agent.Pairing(tmp_path / "agent")
-    without = agent.build_agent("hjemme", pairing)
+    without = agent.build_agent("laptop-host", pairing)
     assert await tool_names(without) == {"agent_info"}
     bridge, _ = laptop_bridge(tmp_path)
-    with_sessions = agent.build_agent("hjemme", pairing, bridge=bridge)
+    with_sessions = agent.build_agent("laptop-host", pairing, bridge=bridge)
     assert "list_active_sessions" in await tool_names(with_sessions)
 
 
 async def test_an_agent_offers_only_the_session_tools_on_its_list(tmp_path):
     bridge, _ = laptop_bridge(tmp_path)
-    offered = await tool_names(agent.build_agent("hjemme", agent.Pairing(tmp_path / "agent"), bridge=bridge))
+    offered = await tool_names(agent.build_agent("laptop-host", agent.Pairing(tmp_path / "agent"), bridge=bridge))
     assert offered == {*agent.SESSION_TOOLS, "agent_info"}
     assert not {"update_bridge", "health", "request_access", "hand_to_desktop"} & offered
 
@@ -74,10 +74,10 @@ async def test_the_hub_lists_and_messages_a_session_on_the_other_machine(tmp_pat
     async with laptop:
         await approve(laptop, folder)
         server, _ = hub(laptop, folder)
-        listed = await call(server, "lukas-laptop_list_active_sessions")
-        sent = await call(server, "lukas-laptop_message_active_session", session="mod", message="hei fra pappa")
+        listed = await call(server, "laptop-a_list_active_sessions")
+        sent = await call(server, "laptop-a_message_active_session", session="mod", message="hello from the hub")
     assert [s["name"] for s in listed.structured_content["sessions"]] == ["mod"]
-    assert not sent.is_error and deliver.sent == [("mod", "hei fra pappa")]
+    assert not sent.is_error and deliver.sent == [("mod", "hello from the hub")]
 
 
 def test_the_agent_settings_say_whether_sessions_are_offered(tmp_path):

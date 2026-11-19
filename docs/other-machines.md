@@ -7,11 +7,11 @@ the private network between your own devices. Why it works this way is in
 [ADR-CV-006](../decisions/ADR-CV-006-other-machines-through-the-laptop.md).
 
 When it is set up, the voice gets that machine's tools with its name in front:
-`lukas-laptop_list_active_sessions`, `lukas-laptop_start_active_session` and so on.
+`laptop-a_list_active_sessions`, `laptop-a_start_active_session` and so on.
 
 Its sessions are also in the hub's own lists, `list_active_sessions` and
-`fleet_recap`, named with the machine in front: `lukas-laptop/hub-test`. The
-session tools take that name, so "message lukas-laptop/hub-test" reaches it. The
+`fleet_recap`, named with the machine in front: `laptop-a/hub-test`. The
+session tools take that name, so "message laptop-a/hub-test" reaches it. The
 hub's lists give it a short number from the hub's own pool, and the session tools
 take that number too, `set_active_session` included. The machine's own tools leave
 its numbers out, because they come from a pool of its own. The
@@ -63,8 +63,8 @@ nobody is, `sudo loginctl enable-linger $USER`.
 The name is yours to choose:
 
 ```toml
-[machines.lukas-laptop]
-address = "100.86.231.118"
+[machines.laptop-a]
+address = "100.64.0.2"
 ```
 
 **3. Pair.** On the other machine, show a code. It works once, for ten minutes:
@@ -78,7 +78,7 @@ On the hub, approve it: type the code, look at what it offers, type its name.
 
 <!-- not run: it asks for typed input -->
 ```
-claude-voice machines approve lukas-laptop
+claude-voice machines approve laptop-a
 ```
 
 **4. Restart the bridge** on the hub, and reconnect claude-voice in the Claude

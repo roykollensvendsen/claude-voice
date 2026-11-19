@@ -17,8 +17,8 @@ from claude_voice.config import PluginSpec
 HUB = "100.66.86.99"
 HUB_NODE = "nHUBstable"
 OTHER = "100.79.48.77"  # the phone: on the tailnet, never paired
-NODES = {HUB: (HUB_NODE, "precision7530-arch-roy"), OTHER: ("nPHONEstable", "roy-sin-xcover7-pro")}
-HERE = "100.86.231.118"
+NODES = {HUB: (HUB_NODE, "hub-host"), OTHER: ("nPHONEstable", "phone-a")}
+HERE = "100.64.0.2"
 
 
 def private(path):
@@ -50,7 +50,7 @@ def pairing(tmp_path, clock):
 
 def app(pairing, specs=(), approvals=None, client=None):
     server = agent.build_agent(
-        "hjemme", pairing, specs=list(specs), plugin_approvals=approvals, plugin_client=client, address=HERE
+        "laptop-host", pairing, specs=list(specs), plugin_approvals=approvals, plugin_client=client, address=HERE
     )
     return agent.build_agent_app(server, pairing, whois=whois, address=HERE)
 
@@ -87,7 +87,7 @@ async def tools(application, key, caller=HUB):
 
 
 def test_the_agent_listens_on_its_tailnet_address_only():
-    assert agent.listen_address(lambda: "100.86.231.118\n") == "100.86.231.118"
+    assert agent.listen_address(lambda: "100.64.0.2\n") == "100.64.0.2"
     for answer in ("", "0.0.0.0", "192.168.10.198", "not an address"):
         with pytest.raises(agent.AgentError, match="tailscale up"):
             agent.listen_address(lambda answer=answer: answer)
@@ -115,7 +115,7 @@ async def test_the_paired_hub_gets_a_key_that_reaches_the_agent(pairing):
     key = await paired(pairing, application)
     listed, info = await tools(application, key)
     assert "agent_info" in listed
-    assert info["machine"] == "hjemme" and info["hub"] == "precision7530-arch-roy"
+    assert info["machine"] == "laptop-host" and info["hub"] == "hub-host"
 
 
 async def test_a_pairing_code_works_once_for_ten_minutes(pairing, clock):
@@ -157,7 +157,7 @@ async def test_pairing_again_replaces_the_old_hub(pairing):
     new = await paired(pairing, application)
     async with http(application, key=old) as h:
         assert (await h.post("/mcp", json={})).status_code == 401
-    assert (await tools(application, new))[1]["machine"] == "hjemme"
+    assert (await tools(application, new))[1]["machine"] == "laptop-host"
 
 
 # -- every call -----------------------------------------------------------------
@@ -257,7 +257,7 @@ class Machine:
     """A machine being set up: what Tailscale says, whether Claude Code is signed in, and
     every command run on it."""
 
-    def __init__(self, tmp_path, address="100.86.231.118\n", signed_in=True):
+    def __init__(self, tmp_path, address="100.64.0.2\n", signed_in=True):
         self.home, self.address, self.signed_in, self.ran, self.said = tmp_path, address, signed_in, [], []
 
     def install(self, sessions=False):
@@ -269,7 +269,7 @@ class Machine:
             address_of=lambda: self.address,
             login=lambda: (self.signed_in, "Claude Code is signed in" if self.signed_in else "not signed in"),
             say=self.said.append,
-            machine="hjemme",
+            machine="laptop-host",
         )
 
     @property
@@ -287,8 +287,8 @@ def test_agent_install_writes_a_user_service_and_says_what_to_run_on_the_hub(tmp
     assert "ExecStart=/venv/bin/python -m claude_voice.cli agent" in m.unit.read_text()
     assert ["systemctl", "--user", "enable", "--now", "claude-voice-agent.service"] in m.ran
     told = "\n".join(m.said)
-    assert '[machines.hjemme]\naddress = "100.86.231.118"' in told
-    assert "claude-voice agent pair" in told and "claude-voice machines approve hjemme" in told
+    assert '[machines.laptop-host]\naddress = "100.64.0.2"' in told
+    assert "claude-voice agent pair" in told and "claude-voice machines approve laptop-host" in told
     assert not m.settings.exists()
 
 
