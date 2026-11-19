@@ -616,6 +616,7 @@ def build_server(
     trust_folder: Callable[[Path], None] = transcripts.trust_folder,
     plugin_approvals: Path | None = None,
     plugin_client: Callable[[Any], Any] | None = None,
+    plugins_behind: bool = False,
     machine_folder: Path = machines.FOLDER,
     machine_http: machines.Http = machines.http_client,
     machine_whois: machines.Whois = tailnet.whois,
@@ -817,11 +818,18 @@ def build_server(
             warming.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
         # The software report is built on a thread of its own, so the bridge listens at once.
         stop_software = software_report.start() if watch_interval else None
+        starting = None
+        if plugins_behind and not plugins_started:
+            plugins_started.append(True)
+            starting = asyncio.create_task(start_plugins())
         try:
             yield {}
         finally:
             if task:
                 task.cancel()
+            if starting and not starting.done():
+                starting.cancel()
+                plugins_started.clear()  # the next start tries again
             with contextlib.suppress(Exception):
                 _activity_flush(activity_view)
             if stop_software:
@@ -1125,7 +1133,34 @@ def build_server(
             api.HUB.publish("programme_hints", {"programme_hints": now})
         hints_seen[:] = [now]
 
-    active_plugins = plugins.start_approved(mcp, repos.plugins, plugin_approvals, plugin_client, commit_of)
+    # Ten plugins started one after another took over a minute under load, before the bridge
+    # listened, so an update's check that the bridge answers gave up and rolled the update back.
+    # RULE: a slow plugin never delays the bridge listening
+    active_plugins = (
+        [] if plugins_behind else plugins.start_approved(mcp, repos.plugins, plugin_approvals, plugin_client, commit_of)
+    )
+    plugins_started: list[bool] = []
+
+    async def start_plugins() -> None:
+        """Start every approved plugin behind the listening bridge, and offer each one's tools
+        once it is checked; the voice hears that the tool list changed."""
+        specs = list(repos.plugins)
+
+        def check(spec: config.PluginSpec) -> Awaitable[plugins.Checked]:
+            return asyncio.to_thread(plugins.check_one, spec, plugin_approvals, plugin_client)
+
+        # RULE: the plugins start side by side
+        checked = await asyncio.gather(*map(check, specs), return_exceptions=True)
+        for spec, found in zip(specs, checked, strict=True):
+            if isinstance(found, BaseException):
+                log.info("plugin %s could not be started: %s", spec.name, found)
+                continue
+            plugin, listing, _ = found
+            if plugin is not None:
+                plugins.present(mcp, plugin, listing, await asyncio.to_thread(commit_of, spec.cwd))
+                active_plugins.append(plugin)
+        await tools_changed()
+
     developer_mode = devmode.DeveloperMode()
     desk = plugin_desk.Desk(
         mcp,
@@ -2693,6 +2728,7 @@ def serve_forever(cfg: Config) -> None:
         bridge_port=cfg.port,
         sessions_file=roster.FILE.expanduser(),
         activity_file=config.STATE_DIR.expanduser() / activity.FILE,
+        plugins_behind=True,
     )
     app = build_app(server, cfg.public_hosts, ui_origins=cfg.ui_origins, ui_dir=cfg.ui_dir)
     configure_logging(cfg.db.parent / LOG_FILE)
