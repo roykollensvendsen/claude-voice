@@ -1,0 +1,5 @@
+[[rule]]
+name = "a slow plugin never delays the bridge listening"
+file = "src/claude_voice/plugins.py"
+find = '^\s*if behind:$'
+replace = 'if False:'

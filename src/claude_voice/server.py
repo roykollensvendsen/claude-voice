@@ -1133,11 +1133,8 @@ def build_server(
             api.HUB.publish("programme_hints", {"programme_hints": now})
         hints_seen[:] = [now]
 
-    # Ten plugins started one after another took over a minute under load, before the bridge
-    # listened, so an update's check that the bridge answers gave up and rolled the update back.
-    # RULE: a slow plugin never delays the bridge listening
-    active_plugins = (
-        [] if plugins_behind else plugins.start_approved(mcp, repos.plugins, plugin_approvals, plugin_client, commit_of)
+    active_plugins = plugins.started_before_listening(
+        plugins_behind, lambda: plugins.start_approved(mcp, repos.plugins, plugin_approvals, plugin_client, commit_of)
     )
     plugins_started: list[bool] = []
 

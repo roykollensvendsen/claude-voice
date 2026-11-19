@@ -594,3 +594,13 @@ def start_approved(
         if plugin is not None:
             started.append(plugin)
     return started
+
+
+def started_before_listening(behind: bool, start: Callable[[], list[Plugin]]) -> list[Plugin]:
+    """The plugins `start` starts before the bridge listens: none when they start behind it."""
+    # Ten plugins started one after another took over a minute under load, before the bridge
+    # listened, so an update's check that the bridge answers gave up and rolled the update back.
+    # RULE: a slow plugin never delays the bridge listening
+    if behind:
+        return []
+    return start()
