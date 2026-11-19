@@ -218,8 +218,15 @@ def test_the_typed_answer_is_read_from_a_real_terminal(monkeypatch):
         monkeypatch.setattr(cli, "TERMINAL", os.ttyname(terminal_end))
         os.write(main_end, b"accept 3\n")
         assert cli._read_from_terminal("Type accept 3: ").strip() == "accept 3"
-        shown = os.read(main_end, 1024).decode()
-        assert "Type accept 3: " in shown
+        # The terminal echoes the typed line as well, and one read can return the echo alone,
+        # with the prompt still to come. So read until the prompt shows, or five seconds pass.
+        import select
+        import time
+
+        shown, deadline = "", time.monotonic() + 5
+        while "Type accept 3: " not in shown and select.select([main_end], [], [], deadline - time.monotonic())[0]:
+            shown += os.read(main_end, 1024).decode()
+        assert "Type accept 3: " in shown, shown
     finally:
         os.close(main_end)
         os.close(terminal_end)
