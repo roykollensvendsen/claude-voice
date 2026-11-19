@@ -106,6 +106,44 @@ def test_the_tailnet_port_must_be_one_funnel_does_not_serve(tmp_path):
     assert serve["ok"] is False and "tailscale serve --bg" in serve["fix"]
 
 
+def _skill(clone, name, *, as_link):
+    (clone / "skills" / name).mkdir(parents=True)
+    (clone / "skills" / name / "SKILL.md").write_text(f"# {name}\n")
+    place = clone / ".claude/skills" / name
+    place.parent.mkdir(parents=True, exist_ok=True)
+    if as_link:
+        place.symlink_to(f"../../skills/{name}", target_is_directory=True)
+    else:
+        place.write_text(f"../../skills/{name}")  # what git writes where it can't make a link
+
+
+def test_a_skill_that_is_not_a_link_is_named_with_the_way_to_fix_it(tmp_path):
+    """Where git can't make links, it writes a small file holding the path instead."""
+    host, clone, state = healthy(tmp_path)
+    _skill(clone, "good", as_link=True)
+    _skill(clone, "flat", as_link=False)
+    links = by_id(doctor.examine(host, {"folder": str(clone)}, state_dir=state, port=8811))["skill_links"]
+    assert links["ok"] is False and not links["required"]
+    assert "flat" in links["detail"] and "good" not in links["detail"]
+    assert "WSL" in links["fix"]
+    assert "git config core.symlinks true" in links["fix"] and "git checkout -- .claude/skills" in links["fix"]
+
+
+def test_a_skill_copied_in_as_a_folder_is_named_too(tmp_path):
+    host, clone, state = healthy(tmp_path)
+    (clone / ".claude/skills/copied").mkdir(parents=True)
+    (clone / ".claude/skills/copied/SKILL.md").write_text("# an old copy\n")
+    links = by_id(doctor.examine(host, {"folder": str(clone)}, state_dir=state, port=8811))["skill_links"]
+    assert links["ok"] is False and "copied" in links["detail"]
+
+
+def test_skills_that_are_links_pass(tmp_path):
+    host, clone, state = healthy(tmp_path)
+    _skill(clone, "good", as_link=True)
+    links = by_id(doctor.examine(host, {"folder": str(clone)}, state_dir=state, port=8811))["skill_links"]
+    assert links["ok"] is True and links["fix"] == ""
+
+
 @pytest.mark.parametrize("missing", ["git", "gh", "uv"])
 def test_a_contribute_session_does_not_start_while_a_tool_it_needs_is_missing(tmp_path, missing):
     host, clone, state = healthy(tmp_path)

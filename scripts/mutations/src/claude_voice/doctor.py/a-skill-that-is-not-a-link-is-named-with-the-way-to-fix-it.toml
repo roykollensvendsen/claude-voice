@@ -1,0 +1,5 @@
+[[rule]]
+name = "a skill that is not a link is named with the way to fix it"
+file = "src/claude_voice/doctor.py"
+find = 'wrong = \[entry\.name for entry in entries if not entry\.is_symlink\(\)\]'
+replace = 'wrong = []'

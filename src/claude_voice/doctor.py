@@ -282,6 +282,34 @@ def _role_trust(host: Host, folder: Path) -> dict[str, Any]:
     )
 
 
+SKILL_LINKS_FIX = (
+    "Clone inside WSL; on Windows, sessions run there. Or turn on Windows Developer Mode, then run "
+    "`git config core.symlinks true` and `git checkout -- .claude/skills` in the clone"
+)
+
+
+def skill_links(folder: Path) -> dict[str, Any]:
+    """Whether each skill in `folder`'s .claude/skills/ is a link to its source in skills/.
+
+    Where git cannot make a link (Windows without Developer Mode), it writes a small file
+    holding the path instead, and Claude Code finds no skill there."""
+    place = folder / ".claude" / "skills"
+    try:
+        entries = sorted(place.iterdir()) if place.is_dir() else []
+    except OSError:
+        entries = []
+    # RULE: a skill that is not a link is named with the way to fix it
+    wrong = [entry.name for entry in entries if not entry.is_symlink()]
+    return check(
+        "skill_links",
+        "The clone's skills are links",
+        not wrong,
+        f"every skill in {place} is a link to its source" if not wrong else f"not links in {place}: {', '.join(wrong)}",
+        affects="the skills Claude Code offers in the clone",
+        fix=SKILL_LINKS_FIX,
+    )
+
+
 def examine(host: Host, role: dict[str, Any] | None, state_dir: Path = STATE_DIR, port: int = 8811) -> dict[str, Any]:
     """Every check, the required ones first."""
     signed_in, detail = host.login()
@@ -323,6 +351,7 @@ def examine(host: Host, role: dict[str, Any] | None, state_dir: Path = STATE_DIR
         checks.append({**clone, "required": False})
         if folder is not None:
             checks.append({**_role_trust(host, folder), "required": False})
+            checks.append(skill_links(folder))
     return {
         "ready": all(c["ok"] for c in checks if c["required"]),
         "checked_at": datetime.now(UTC).isoformat(timespec="seconds"),

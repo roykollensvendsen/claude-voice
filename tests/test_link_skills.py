@@ -30,3 +30,12 @@ def test_every_installed_skill_is_a_committed_relative_link_to_its_source():
         if mode != "120000" or target != f"../../skills/{name}":
             wrong.append(f"{name} ({mode} -> {target!r})")
     assert wrong == [], "commit these as links to ../../skills/<name>: " + ", ".join(wrong)
+
+
+def test_this_checkout_has_its_skills_as_links_on_disk():
+    """A checkout where git could not make links (Windows without Developer Mode) holds plain
+    files instead, and Claude Code finds no skills. The doctor's check says how to fix it."""
+    from claude_voice import doctor
+
+    links = doctor.skill_links(ROOT)
+    assert links["ok"], f"{links['detail']}. {links['fix']}"
