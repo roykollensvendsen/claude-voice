@@ -41,7 +41,11 @@ def test_a_check_measures_only_this_checkout_s_own_code(tmp_path):
     assert str(here / "src") in said
 
 
-def test_a_checkout_whose_code_cannot_be_imported_is_refused(tmp_path):
+def test_a_checkout_whose_code_cannot_be_imported_is_refused(tmp_path, monkeypatch):
+    """Asked for a package nothing installs: `uv sync` installs this one, so it imports from anywhere."""
+    missing = "no_package_installs_this"
+    monkeypatch.setattr(own_code, "ASK", own_code.ASK.replace(own_code.MODULE, missing))
+    monkeypatch.setattr(own_code, "MODULE", missing)
     with pytest.raises(SystemExit, match="cannot import"):
         own_code.require(tmp_path, sys.executable, dict(os.environ))
 

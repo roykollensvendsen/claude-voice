@@ -223,6 +223,23 @@ def test_a_rendered_plugin_passes_its_own_gates(checkout, gate):
 
 @linux_only
 @pytest.mark.template
+def test_a_rendered_plugin_s_suite_holds_with_its_own_package_installed(checkout):
+    """`uv sync` installs a real copy's package, so it imports from any folder; here a path
+    to its src/ plays that install, offline. Its suite must pass that way too."""
+    repo, env = checkout
+    done = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_own_code.py"],
+        cwd=repo,
+        env={**env, "PYTHONPATH": str(repo / "src")},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == 0, done.stdout[-4000:] + done.stderr[-4000:]
+
+
+@linux_only
+@pytest.mark.template
 def test_a_rendered_plugin_proves_every_rule_it_marks(checkout):
     """Its mutation run switches each rule off and the test named after it goes red; no limit on time."""
     done = _run(checkout, "scripts/mutate.py")
