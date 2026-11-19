@@ -9,6 +9,7 @@ rows out of one shared scripts/mutations.toml is read too. Run it from the
 repository root:
 
     uv run python scripts/mutate.py [--write evidence/tests/rule-mutations.md] [--json mutations.json]
+    uv run python scripts/mutate.py --only src/claude_voice/roles.py   # one file's rules, before a push
 
 `--json` writes the run's figures, rule by rule, for the checks to keep with
 main's run; in a check, the readable table also goes to the run's summary page.
@@ -106,6 +107,26 @@ def all_rows(table: pathlib.Path = TABLE, folder: pathlib.Path = ROWS) -> list[d
             raise SystemExit(msg)
         where[rule["name"]] = place
     return [rule for _, rule in found]
+
+
+def chosen(rules: list[dict], only: list[str] | None) -> list[dict]:
+    """The rules guarding the named source files, or every rule when none is named.
+
+    A file may be named as it is, from its row folder, or with Windows' backslashes. A
+    named file with no rule is said, never passed over: a quiet empty run would read as
+    all well.
+    """
+    if not only:
+        return rules
+    rows = f"{ROWS.relative_to(ROOT).as_posix()}/"
+    named = set()
+    for name in only:
+        path = pathlib.PurePosixPath(name.replace("\\", "/")).as_posix()
+        named.add(path.removeprefix(rows))
+    missing = sorted(named - {rule["file"] for rule in rules})
+    if missing:
+        raise SystemExit(f"no rule guards {', '.join(missing)}; name a source file that has rows under {rows}")
+    return [rule for rule in rules if rule["file"] in named]
 
 
 def misfiled(folder: pathlib.Path = ROWS) -> list[str]:
@@ -311,19 +332,24 @@ def stop_cleanly() -> None:
             signal.signal(getattr(signal, name), stop)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     """Mutate every rule in turn, restore the tree, and report."""
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--write", type=pathlib.Path, help="write the evidence table here")
     parser.add_argument("--json", type=pathlib.Path, help="write the run's figures here, for the checks to keep")
-    args = parser.parse_args()
+    parser.add_argument(
+        "--only", action="append", metavar="FILE", help="turn off only the rules guarding this source file"
+    )
+    args = parser.parse_args(argv)
+    if args.only and (args.write or args.json):
+        parser.error("--only runs some rules; its figures are never written for the checks to keep")
 
     stop_cleanly()
     repair()
     sweep()
     # RULE: an empty rule table is not a crash
     # A scaffolded repository starts with a table of comments and no rows.
-    rules = all_rows()
+    rules = chosen(all_rows(), args.only)
     if not rules:
         print(f"no rules in {ROWS.relative_to(ROOT)} yet; add one file per rule the code enforces")  # noqa: T201
         return 0

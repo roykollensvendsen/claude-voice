@@ -16,6 +16,11 @@ takes as long again. `quality.json` holds only the suite's time budget, a limit 
     uv run python scripts/ratchet.py check --base REF   # measure and compare with REF
     uv run python scripts/ratchet.py check --base REF --levels FILE --out FILE
     uv run python scripts/ratchet.py measure --out FILE  # measure only
+    uv run python scripts/ratchet.py check --base origin/main --fast   # before every push
+
+`--fast` compares only what the code shows (the most tangled function per module, the layers,
+import circles and copied code) and checks the mutation rows, in seconds. It runs neither the
+suite nor the mutations, so continuous integration still has the last word.
 
 `check` reads exceptions from the environment variable RATCHET_EXCEPTIONS (continuous
 integration passes the pull request's text). `--skip-mutation` keeps the base's
@@ -308,6 +313,42 @@ def measure(
     }
 
 
+def static_measures(source: Path) -> dict[str, Any]:
+    """The measures read from the code alone, with no suite and no mutation run: seconds."""
+    package = source / PACKAGE.name
+    return {
+        "cycles": cycles(package),
+        "layer_violations": len(layer_breaches(package, LAYERS)),
+        "duplication": duplication(source),
+        "complexity": complexity(source),
+        "test_seconds": 0,
+    }
+
+
+def static_at(ref: str) -> dict[str, Any]:
+    """The code-only measures of `ref`, read in a copy of it that is removed afterwards."""
+    held = hold()
+    try:
+        copy = held.path / "base"
+        copy_of(ref, copy)
+        return static_measures(copy / "src")
+    finally:
+        held.remove()
+
+
+def rule_rows() -> list[str]:
+    """What is wrong with the mutation rows, by their own tests alone."""
+    checked = _run("uv", "run", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_rules_have_evidence.py")
+    return [] if checked.returncode == 0 else ["the rule rows do not match the code:\n" + checked.stdout[-2000:]]
+
+
+def fast(ref: str) -> list[str]:
+    """A quick check before a push: the code-only measures against `ref`, and the rule rows."""
+    allowed = exceptions(os.environ.get("RATCHET_EXCEPTIONS", ""))
+    found = compare(static_at(ref), static_measures(SOURCE), allowed, {"seconds": 1, "tolerance": 0})
+    return found + rule_rows()
+
+
 # -- comparing ---------------------------------------------------------------------------
 
 
@@ -488,6 +529,7 @@ def main() -> int:
     parser.add_argument("--out", type=Path, help="where to write the levels measured now")
     parser.add_argument("--skip-mutation", action="store_true")
     parser.add_argument("--mutations", type=Path, help="where the mutation run writes its report, rule by rule")
+    parser.add_argument("--fast", action="store_true", help="only what the code shows, and the rule rows: no suite")
     args = parser.parse_args()
     stop_cleanly()
     if args.action == "measure":
@@ -500,11 +542,17 @@ def main() -> int:
     if not args.base:
         print("check needs --base, the ref to compare with (usually origin/main).", file=sys.stderr)
         return 1
+    if args.fast:
+        return said(fast(args.base))
     base = base_levels(args.levels, lambda: measure_at(args.base))
     now = measure(args.skip_mutation, base, args.mutations)
     if args.out:
         write_levels(args.out, now)
-    found = compare(base, now, exceptions(os.environ.get("RATCHET_EXCEPTIONS", "")), budget(FILE))
+    return said(compare(base, now, exceptions(os.environ.get("RATCHET_EXCEPTIONS", "")), budget(FILE)))
+
+
+def said(found: list[str]) -> int:
+    """Print what got worse, or that nothing did, and give the exit code."""
     for problem in found:
         print(problem, file=sys.stderr)
     if not found:
