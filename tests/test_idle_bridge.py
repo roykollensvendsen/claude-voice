@@ -115,8 +115,8 @@ async def call(server, name, **args):
 async def test_the_manager_and_the_voice_hear_once_that_every_builder_is_idle(bridge):
     server, deliver = bridge
     cursor = (await call(server, "whats_new"))["cursor"]
-    await server.idle_check()
-    await server.idle_check()  # the same episode, a moment later: nothing more
+    await asyncio.wait_for(server.idle_check(), 5)
+    await asyncio.wait_for(server.idle_check(), 5)  # the same episode, a moment later: nothing more
     assert deliver.sent == [("acme-boss", "All builders in Acme Robots idle 15 min; 1 item waiting, 1 blocked.")]
     news = (await call(server, "whats_new", cursor=cursor))["events"]
     assert [(e["kind"], e["text"]) for e in news if e["kind"] == "idle_builders"] == [
@@ -160,11 +160,11 @@ async def test_a_delivery_to_a_manager_never_holds_up_the_watch(bridge_with):
 async def test_a_delivery_to_a_manager_gives_up_after_its_time(bridge_with):
     stuck = Stuck()
     server, clock = bridge_with(stuck)
-    await server.idle_check()
+    await asyncio.wait_for(server.idle_check(), 5)
     await asyncio.sleep(0.3)
     assert server.deliveries_in_flight == set()
     clock.now += 60
-    await server.idle_check()
+    await asyncio.wait_for(server.idle_check(), 5)
     await asyncio.sleep(0.3)
     assert len(stuck.sent) == 1  # it may have arrived, so it is never sent twice
 
@@ -172,10 +172,10 @@ async def test_a_delivery_to_a_manager_gives_up_after_its_time(bridge_with):
 async def test_a_message_the_courier_never_tried_is_sent_again_next_minute(bridge_with):
     courier = Answers({"delivered": False, "detail": "no courier", "attempted": False})
     server, clock = bridge_with(courier)
-    await server.idle_check()
+    await asyncio.wait_for(server.idle_check(), 5)
     await let_deliveries_finish()
     clock.now += 60
-    await server.idle_check()
+    await asyncio.wait_for(server.idle_check(), 5)
     await let_deliveries_finish()
     assert len(courier.sent) == 2
 
@@ -184,10 +184,10 @@ async def test_a_message_the_courier_may_have_sent_is_never_sent_twice(bridge_wi
     for out in ({"delivered": False, "detail": "half way", "attempted": True}, {"delivered": False, "detail": "?"}):
         courier = Answers(out)
         server, clock = bridge_with(courier)
-        await server.idle_check()
+        await asyncio.wait_for(server.idle_check(), 5)
         await let_deliveries_finish()
         clock.now += 60
-        await server.idle_check()
+        await asyncio.wait_for(server.idle_check(), 5)
         await let_deliveries_finish()
         assert len(courier.sent) == 1
 
