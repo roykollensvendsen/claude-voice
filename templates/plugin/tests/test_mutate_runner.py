@@ -10,6 +10,7 @@ None of these runs a real suite: the suite is a stand-in that records what it wa
 asked to do, so a test here never mutates anything.
 """
 
+import argparse
 import fcntl
 import importlib.util
 import json
@@ -253,3 +254,34 @@ def test_a_row_that_breaks_the_code_is_named_and_runs_nothing(mutate):
     assert mutate.broken("scripts/x.py", "def f(:\n") is not None
     assert mutate.broken("scripts/x.py", "x = 1\n") is None
     assert mutate.broken("README.md", "def f(:\n") is None
+
+
+def test_a_row_that_breaks_the_code_fails_the_run_and_is_named(tmp_path, monkeypatch, mutate, capsys):
+    """A replacement that does not compile fails every test, which would pass for a kill."""
+    source = tmp_path / "src/pkg/core.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("x = 1\n", encoding="utf-8")
+    monkeypatch.setattr(mutate, "ROOT", tmp_path)
+    monkeypatch.setattr(mutate, "RECOVERY", tmp_path / "recovery.json")
+    suites = []
+    monkeypatch.setattr(mutate, "run_suite", lambda *a, **k: suites.append(a) or (1, []))
+    rule = {"name": "a rule", "file": "src/pkg/core.py", "find": "x = 1", "replace": "x = ("}
+    args = argparse.Namespace(write=None, json=None)
+    assert mutate.mutate_all([rule], tmp_path, args) == 1
+    out = capsys.readouterr().out
+    assert "BROKEN   a rule: the replacement is not valid code" in out
+    assert "KILLED" not in out
+    assert suites == []
+    assert source.read_text(encoding="utf-8") == "x = 1\n"
+
+
+def test_the_written_report_names_every_broken_row(tmp_path, monkeypatch, mutate):
+    """The page a run leaves behind is what a reviewer reads, so a broken row is on it too."""
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    page = tmp_path / "rule-mutations.md"
+    args = argparse.Namespace(write=page, json=None)
+    results = [("proven", "src/a.py", 2, "test_proven", True)]
+    assert mutate.summarise(results, [], ["a broken rule"], args) == 1
+    text = page.read_text(encoding="utf-8")
+    assert "Broken rows, so nothing was tested: a broken rule." in text
+    assert "None survived." not in text
