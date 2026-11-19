@@ -59,6 +59,12 @@ def refusal(
         positional = [a for a in args if not a.startswith("-")]
         target = positional[0] if positional else default_remote()
         url = target if ("/" in target or ":" in target) else remote_url(target)
+        # RULE: a push whose address cannot be read is refused
+        if url is None:
+            return (
+                f"Pushing to {target} is refused: the guard could not read where it goes. "
+                "Check the remote with `git remote -v` and the clone's settings with `git config --list --local`."
+            )
         # RULE: a contribute session never pushes to the upstream repository
         if _names_upstream(url, upstream):
             return (
