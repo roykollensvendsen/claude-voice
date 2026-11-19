@@ -9,9 +9,10 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, edited]
 
+# One run per pull request: a newer push or edit cancels the run it superseded.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
