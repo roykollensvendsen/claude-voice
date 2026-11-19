@@ -40,8 +40,8 @@ def test_a_request_from_another_computer_is_not_from_here(peer):
     [
         ("x-forwarded-for", "100.101.102.103"),
         ("forwarded", "for=100.101.102.103"),
-        ("tailscale-user-login", "roy@example.com"),
-        ("tailscale-user-name", "Roy"),
+        ("tailscale-user-login", "owner@example.com"),
+        ("tailscale-user-name", "Owner"),
     ],
 )
 def test_a_forwarded_request_is_not_from_here(header):
@@ -51,7 +51,7 @@ def test_a_forwarded_request_is_not_from_here(header):
 @pytest.mark.parametrize(
     "host",
     [
-        "precision.example.ts.net:8814",
+        "hub-host.example.ts.net:8814",
         "100.66.86.99:8813",
         f"127.0.0.1:{PORT + 1}",
         "127.0.0.1",
@@ -140,7 +140,7 @@ async def test_a_session_on_another_machine_is_not_local(desk):
     server.fleet.machines = [FakeMachine(sessions=[MOD])]
     await server.fleet.refresh()
     async with client(app) as c:
-        out = await c.post("/api/v1/sessions/lukas-laptop/840ab631/focus", headers=BEARER)
+        out = await c.post("/api/v1/sessions/laptop-a/840ab631/focus", headers=BEARER)
     assert out.status_code == 409 and out.json() == {"reason": "not_local"}
     assert fake.opened == []
 

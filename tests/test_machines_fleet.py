@@ -34,9 +34,9 @@ async def test_the_sessions_on_every_machine_are_in_one_list(tmp_path):
         hub = the_hub(tmp_path, laptop)
         listed = (await call(hub, "list_active_sessions")).structured_content
         recap = (await call(hub, "fleet_recap")).structured_content
-    assert {"name": "lukas-laptop/mod", "machine": "lukas-laptop"}.items() <= listed["sessions"][0].items()
-    assert [s["name"] for s in recap["sessions"]] == ["lukas-laptop/mod"]
-    assert listed["machines"][0]["name"] == "lukas-laptop" and listed["machines"][0]["reachable"] is True
+    assert {"name": "laptop-a/mod", "machine": "laptop-a"}.items() <= listed["sessions"][0].items()
+    assert [s["name"] for s in recap["sessions"]] == ["laptop-a/mod"]
+    assert listed["machines"][0]["name"] == "laptop-a" and listed["machines"][0]["reachable"] is True
 
 
 async def test_a_session_on_another_machine_is_reached_by_the_machine_name_in_front(tmp_path):
@@ -44,10 +44,10 @@ async def test_a_session_on_another_machine_is_reached_by_the_machine_name_in_fr
     async with laptop:
         await approve(laptop, tmp_path / "hub")
         hub = the_hub(tmp_path, laptop)
-        sent = await call(hub, "message_active_session", session="lukas-laptop/mod", message="hei")
-        read = await call(hub, "read_session_output", session="lukas-laptop/mod")
+        sent = await call(hub, "message_active_session", session="laptop-a/mod", message="hei")
+        read = await call(hub, "read_session_output", session="laptop-a/mod")
     assert not sent.is_error and deliver.sent == [("mod", "hei")]
-    assert not read.is_error and read.structured_content["session"] == "lukas-laptop/mod"
+    assert not read.is_error and read.structured_content["session"] == "laptop-a/mod"
 
 
 async def test_a_machine_that_does_not_answer_is_reported_with_its_state(tmp_path):
@@ -71,7 +71,7 @@ async def test_a_machine_that_does_not_answer_is_reported_with_its_state(tmp_pat
     assert listed["sessions"] == []
     gone = listed["machines"][0]
     assert gone["reachable"] is False and gone["error"] == "did not answer" and gone["state"] in ("offline", "slow")
-    assert health["machines"][0]["name"] == "lukas-laptop"
+    assert health["machines"][0]["name"] == "laptop-a"
 
 
 class Hanging:
@@ -80,7 +80,7 @@ class Hanging:
     def __init__(self, name):
         from claude_voice.config import MachineSpec
 
-        self.machine = MachineSpec(name=name, address="100.86.231.118")
+        self.machine = MachineSpec(name=name, address="100.64.0.2")
         self.approval, self.last_failure = {"seen_as": name}, None
         self.spec = type("Spec", (), {"tools": ["list_active_sessions"]})()
 
@@ -108,7 +108,7 @@ async def test_a_session_on_another_machine_gets_its_number_from_the_same_pool_a
         hub = the_hub(tmp_path, laptop)
         listed = (await call(hub, "list_active_sessions")).structured_content["sessions"]
         again = (await call(hub, "list_active_sessions")).structured_content["sessions"]
-        there = next(s for s in listed if s["name"] == "lukas-laptop/mod")
+        there = next(s for s in listed if s["name"] == "laptop-a/mod")
         sent = await call(hub, "message_active_session", session=f"nummer {there['number']}", message="hei")
     assert isinstance(there["number"], int)
     assert [s["number"] for s in again] == [s["number"] for s in listed]
@@ -129,10 +129,10 @@ async def test_a_session_number_from_another_machine_is_never_passed_on(tmp_path
     async with laptop:
         await approve(laptop, tmp_path / "hub")
         hub = the_hub(tmp_path, laptop)
-        listed = (await call(hub, "lukas-laptop_list_active_sessions")).structured_content
-        tree = (await call(hub, "lukas-laptop_session_tree")).structured_content
-        recap = (await call(hub, "lukas-laptop_fleet_recap")).structured_content
-        page = (await call(hub, "get_active_session", session="lukas-laptop/mod")).structured_content
+        listed = (await call(hub, "laptop-a_list_active_sessions")).structured_content
+        tree = (await call(hub, "laptop-a_session_tree")).structured_content
+        recap = (await call(hub, "laptop-a_fleet_recap")).structured_content
+        page = (await call(hub, "get_active_session", session="laptop-a/mod")).structured_content
     assert listed["sessions"] and tree["nodes"] and recap["sessions"]
     # The laptop numbers its sessions from its own pool, so its "1" may be the hub's own #1.
     assert _numbers_in([listed, tree, recap, page]) == []
@@ -144,7 +144,7 @@ async def test_a_session_on_another_machine_is_made_the_active_one_by_its_number
         await approve(laptop, tmp_path / "hub")
         hub = the_hub(tmp_path, laptop)
         listed = (await call(hub, "list_active_sessions")).structured_content["sessions"]
-        there = next(s for s in listed if s["name"] == "lukas-laptop/mod")
+        there = next(s for s in listed if s["name"] == "laptop-a/mod")
         made = await call(hub, "set_active_session", session=f"nummer {there['number']}")
     assert not made.is_error, made.content
-    assert made.structured_content["name"] == "lukas-laptop/mod"
+    assert made.structured_content["name"] == "laptop-a/mod"

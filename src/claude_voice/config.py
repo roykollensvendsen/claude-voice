@@ -145,7 +145,7 @@ def _machines(raw: Any) -> list[MachineSpec]:
         whole = isinstance(port, int) and not isinstance(port, bool)
         # RULE: a machine without a tailnet address is refused
         if not (MACHINE_NAME.fullmatch(str(name)) and tailnet.on_tailnet(str(body.get("address", ""))) and whole):
-            raise ConfigError(f"[machines.{name}] needs a lowercase name and a tailnet address, such as 100.86.231.118")
+            raise ConfigError(f"[machines.{name}] needs a lowercase name and a tailnet address, such as 100.64.0.2")
         out.append(MachineSpec(str(name), str(body["address"]), port, float(body.get("timeout", 30.0))))
     return out
 

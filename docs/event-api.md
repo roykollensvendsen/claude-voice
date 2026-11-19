@@ -75,7 +75,7 @@ ran in the last day, with the session the owner talks to:
 - `kind`: `terminal`, `background` or `bridge-session`.
 - `machine`: `null` for a session on this computer, or the name of the other
   machine it runs on (see [other machines](other-machines.md)). A session there has
-  an `id` with the machine in front, `lukas-laptop/840ab631…`, which every
+  an `id` with the machine in front, `laptop-a/840ab631…`, which every
   endpoint below takes, as a slash or as `%2F`. Its `name` is the machine's own
   name for it, and its `number` is `null`. One whose questions can only be answered
   in the Claude app carries `answer_in: "claude_app"`.
@@ -159,8 +159,8 @@ Turn texts are cut to 600 characters; `cut` and `length` say when.
 `GET /api/v1/sessions` also carries `machines`, one per approved machine:
 
 ```json
-{"machines": [{"name": "lukas-laptop", "state": "online", "reachable": true, "error": null,
-               "seen_as": "hjemme", "latency_ms": 54, "checked_at": "<iso>",
+{"machines": [{"name": "laptop-a", "state": "online", "reachable": true, "error": null,
+               "seen_as": "laptop-host", "latency_ms": 54, "checked_at": "<iso>",
                "last_seen": "<iso>", "sessions": true}]}
 ```
 
@@ -179,7 +179,7 @@ changes, so remote news is up to ten seconds late.
 `GET /api/v1/prompts` includes the questions on other machines that can be
 answered from here, with a prefixed `id` and `session` and a `machine`.
 `POST /api/v1/prompts/{id}` passes the answer on, and answers `502 {"error":
-"lukas-laptop did not answer"}` when it cannot. A question that goes away on the
+"laptop-a did not answer"}` when it cannot. A question that goes away on the
 machine itself closes with `prompt_closed` and `how: "screen"`.
 
 ## Usage

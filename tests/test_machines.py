@@ -17,18 +17,18 @@ from claude_voice import agent, machines
 from claude_voice.config import ConfigError, MachineSpec, PluginSpec, load
 
 HUB = "100.66.86.99"
-LAPTOP = "100.86.231.118"
-NODES = {HUB: ("nHUB", "precision7530-arch-roy"), LAPTOP: ("nLAPTOP", "hjemme")}
-SPEC = MachineSpec(name="lukas-laptop", address=LAPTOP)
+LAPTOP = "100.64.0.2"
+NODES = {HUB: ("nHUB", "hub-host"), LAPTOP: ("nLAPTOP", "laptop-host")}
+SPEC = MachineSpec(name="laptop-a", address=LAPTOP)
 
 
 class Laptop:
-    """Lukas's laptop: its agent, and what the hub's Tailscale says is at its address."""
+    """a second laptop: its agent, and what the hub's Tailscale says is at its address."""
 
     def __init__(self, tmp_path, specs=(), approvals=None, client=None, bridge=None):
         self.pairing = agent.Pairing(tmp_path / "agent")
         server = agent.build_agent(
-            "hjemme",
+            "laptop-host",
             self.pairing,
             specs=list(specs),
             plugin_approvals=approvals,
@@ -66,7 +66,7 @@ def typed(*answers):
     return lambda prompt: queue.pop(0)
 
 
-async def approve(laptop, folder, name="lukas-laptop", code=None):
+async def approve(laptop, folder, name="laptop-a", code=None):
     lines = []
     out = await machines.pair(
         SPEC,
@@ -96,16 +96,16 @@ async def call(server, tool, **args):
 async def test_a_machine_is_approved_by_typing_its_pairing_code_and_then_its_name(laptop, tmp_path):
     async with laptop:
         folder = tmp_path / "hub"
-        key = folder / "machines" / "lukas-laptop" / "key"
+        key = folder / "machines" / "laptop-a" / "key"
         out, _ = await approve(laptop, folder, name="yes")
         assert not out["approved"] and not key.exists()
         out, shown = await approve(laptop, folder)
-        assert out["approved"] and "hjemme" in shown and "agent_info" in shown
+        assert out["approved"] and "laptop-host" in shown and "agent_info" in shown
         assert private(key)
         server, started = hub(laptop, folder)
-        assert [m.offered for m in started] == [["lukas-laptop_agent_info"]]
-        res = await call(server, "lukas-laptop_agent_info")
-        assert not res.is_error and res.structured_content["machine"] == "hjemme"
+        assert [m.offered for m in started] == [["laptop-a_agent_info"]]
+        res = await call(server, "laptop-a_agent_info")
+        assert not res.is_error and res.structured_content["machine"] == "laptop-host"
 
 
 async def test_typing_another_name_approves_nothing(laptop, tmp_path):
@@ -113,7 +113,7 @@ async def test_typing_another_name_approves_nothing(laptop, tmp_path):
         folder = tmp_path / "hub"
         out, shown = await approve(laptop, folder, name="yes")
         assert not out["approved"] and "Not approved" in shown
-        assert not (folder / "machines" / "lukas-laptop" / "key").exists()
+        assert not (folder / "machines" / "laptop-a" / "key").exists()
         assert hub(laptop, folder)[1] == []
 
 
@@ -141,7 +141,7 @@ async def test_pairing_with_a_machine_that_does_not_answer_says_so(laptop, tmp_p
     lines = []
     out = await machines.pair(
         SPEC,
-        ask=typed("ABCDEFGH", "lukas-laptop"),
+        ask=typed("ABCDEFGH", "laptop-a"),
         say=lines.append,
         http=unreachable,
         whois=laptop.whois,
@@ -158,8 +158,8 @@ async def test_the_hub_talks_only_to_the_machine_tailscale_says_it_approved(lapt
         folder = tmp_path / "hub"
         await approve(laptop, folder)
         server, _ = hub(laptop, folder)
-        laptop.seen_as[LAPTOP] = ("nSTRANGER", "hjemme")  # another node took the address
-        res = await call(server, "lukas-laptop_agent_info")
+        laptop.seen_as[LAPTOP] = ("nSTRANGER", "laptop-host")  # another node took the address
+        res = await call(server, "laptop-a_agent_info")
         assert res.is_error and "not the machine" in res.content[0].text
 
 
@@ -176,8 +176,8 @@ async def test_a_machine_whose_tools_changed_is_not_called_until_approved_again(
     plugins.approve(door, plugins.Plugin(door, FakePlugin).listing(), own)
     async with Laptop(tmp_path / "before", [door], own, FakePlugin) as after:  # same pairing, one tool more
         server, _ = hub(after, folder)
-        res = await call(server, "lukas-laptop_agent_info")
-    assert res.is_error and "machines approve lukas-laptop" in res.content[0].text
+        res = await call(server, "laptop-a_agent_info")
+    assert res.is_error and "machines approve laptop-a" in res.content[0].text
 
 
 async def test_a_machine_that_does_not_answer_in_two_seconds_is_reported_not_waited_for(laptop, tmp_path):
@@ -196,9 +196,9 @@ async def test_a_machine_that_does_not_answer_in_two_seconds_is_reported_not_wai
         server = MCPServer("hub")
         machines.start_approved(server, [SPEC], folder, http=asleep, whois=laptop.whois)
         started = time.monotonic()
-        res = await call(server, "lukas-laptop_agent_info")
+        res = await call(server, "laptop-a_agent_info")
         assert time.monotonic() - started < 4
-        assert res.is_error and "lukas-laptop did not answer" in res.content[0].text
+        assert res.is_error and "laptop-a did not answer" in res.content[0].text
 
 
 # -- settings -------------------------------------------------------------------
@@ -206,16 +206,16 @@ async def test_a_machine_that_does_not_answer_in_two_seconds_is_reported_not_wai
 
 def test_a_machine_is_named_in_the_settings_with_its_tailnet_address(tmp_path):
     f = tmp_path / "settings.toml"
-    f.write_text('[machines.lukas-laptop]\naddress = "100.86.231.118"\n')
+    f.write_text('[machines.laptop-a]\naddress = "100.64.0.2"\n')
     assert load(f, env={"HOME": str(tmp_path)}).machines == [SPEC]
 
 
 @pytest.mark.parametrize(
-    "body", ['address = "192.168.10.198"', 'address = "hjemme"', "", 'address = "100.86.231.118"\nport = "x"']
+    "body", ['address = "192.168.10.198"', 'address = "laptop-host"', "", 'address = "100.64.0.2"\nport = "x"']
 )
 def test_a_machine_without_a_tailnet_address_is_refused(tmp_path, body):
     f = tmp_path / "settings.toml"
-    f.write_text(f"[machines.lukas-laptop]\n{body}\n")
+    f.write_text(f"[machines.laptop-a]\n{body}\n")
     with pytest.raises(ConfigError, match="tailnet"):
         load(f, env={"HOME": str(tmp_path)})
 
@@ -227,8 +227,8 @@ async def test_the_bridge_offers_an_approved_machines_tools(laptop, tmp_path):
         folder = tmp_path / "hub"
         await approve(laptop, folder)
         server = bridge_with(tmp_path, machines=[SPEC], machine_folder=folder, http=laptop.http, whois=laptop.whois)
-        res = await call(server, "lukas-laptop_agent_info")
-    assert not res.is_error and res.structured_content["machine"] == "hjemme"
+        res = await call(server, "laptop-a_agent_info")
+    assert not res.is_error and res.structured_content["machine"] == "laptop-host"
 
 
 async def test_machines_list_says_which_are_approved(laptop, tmp_path, capsys, monkeypatch):
@@ -241,11 +241,11 @@ async def test_machines_list_says_which_are_approved(laptop, tmp_path, capsys, m
     home = tmp_path / "home"
     (home / ".config/claude-voice").mkdir(parents=True)
     settings = home / "settings.toml"
-    settings.write_text('[machines.lukas-laptop]\naddress = "100.86.231.118"\n')
+    settings.write_text('[machines.laptop-a]\naddress = "100.64.0.2"\n')
     env = {"HOME": str(home), "CLAUDE_VOICE_CONFIG": str(settings)}
     assert main(["machines"], env=env) == 0
-    assert "not approved; run: claude-voice machines approve lukas-laptop" in capsys.readouterr().out
+    assert "not approved; run: claude-voice machines approve laptop-a" in capsys.readouterr().out
     async with laptop:
         await approve(laptop, home / ".config/claude-voice")
     assert main(["machines"], env=env) == 0
-    assert "approved, as hjemme; tools lukas-laptop_agent_info" in capsys.readouterr().out
+    assert "approved, as laptop-host; tools laptop-a_agent_info" in capsys.readouterr().out

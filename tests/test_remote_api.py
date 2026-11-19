@@ -20,9 +20,9 @@ class Answer:
 class FakeMachine:
     """A machine whose agent answers from a table, and remembers what it was asked."""
 
-    def __init__(self, name="lukas-laptop", sessions=None, approvals=None):
-        self.machine = MachineSpec(name=name, address="100.86.231.118")
-        self.approval, self.last_failure = {"seen_as": "hjemme"}, None
+    def __init__(self, name="laptop-a", sessions=None, approvals=None):
+        self.machine = MachineSpec(name=name, address="100.64.0.2")
+        self.approval, self.last_failure = {"seen_as": "laptop-host"}, None
         self.spec = type("Spec", (), {"tools": ["list_active_sessions"]})()
         self.sessions = sessions or []
         self.approvals = approvals or []
@@ -32,7 +32,7 @@ class FakeMachine:
     async def call(self, tool, arguments):
         self.asked.append((tool, arguments))
         if self.down:
-            raise RuntimeError("lukas-laptop did not answer")
+            raise RuntimeError("laptop-a did not answer")
         if tool == "fleet_recap":
             return Answer({"sessions": self.sessions})
         if tool == "list_pending_approvals":
@@ -70,16 +70,16 @@ async def test_each_session_says_which_machine_it_is_on(tmp_path):
     listed = across.listing({"sessions": [{"id": "here-1", "name": "billing", "number": 1}]})
     here, there = listed["sessions"]
     assert here["machine"] is None and here["id"] == "here-1"
-    assert there["machine"] == "lukas-laptop" and there["id"] == "lukas-laptop/840ab631" and there["name"] == "mod"
+    assert there["machine"] == "laptop-a" and there["id"] == "laptop-a/840ab631" and there["name"] == "mod"
     assert there["answer_in"] == "claude_app" and there["number"] is None
     machine = listed["machines"][0]
-    assert machine["name"] == "lukas-laptop" and machine["state"] == "online" and machine["reachable"] is True
+    assert machine["name"] == "laptop-a" and machine["state"] == "online" and machine["reachable"] is True
 
 
 async def test_a_machine_that_does_not_answer_leaves_its_sessions_out():
     across, laptop = await a_fleet(sessions=[MOD])
     laptop.down = True
-    across._seen["lukas-laptop"]["checked_at"] = 0
+    across._seen["laptop-a"]["checked_at"] = 0
     await across.refresh()
     listed = across.listing({"sessions": []})
     assert listed["sessions"] == []
@@ -88,7 +88,7 @@ async def test_a_machine_that_does_not_answer_leaves_its_sessions_out():
 
 async def test_a_remote_session_is_read_by_its_id_with_the_machine_in_front():
     across, laptop = await a_fleet(sessions=[MOD])
-    out = await across.output("lukas-laptop/840ab631", 6, None)
+    out = await across.output("laptop-a/840ab631", 6, None)
     assert out == {"status": "idle", "turns": [], "next_after": -1, "turns_left": 0}
     assert laptop.asked[-1] == ("read_session_output", {"session": "840ab631", "limit": 6})
 
@@ -98,9 +98,9 @@ async def test_only_questions_the_hub_can_answer_are_offered_to_the_page():
     prompts = across.prompts()
     assert prompts == [
         {
-            "id": "lukas-laptop/3",
-            "session": "lukas-laptop/s-7",
-            "machine": "lukas-laptop",
+            "id": "laptop-a/3",
+            "session": "laptop-a/s-7",
+            "machine": "laptop-a",
             "kind": "approval",
             "tool": "Bash",
             "input": "touch a",
@@ -113,14 +113,14 @@ async def test_only_questions_the_hub_can_answer_are_offered_to_the_page():
 async def test_an_answer_from_the_page_reaches_the_machine_the_question_is_on():
     across, laptop = await a_fleet(sessions=[OWN], approvals=[ASK])
     laptop.down = True
-    assert await across.answer("lukas-laptop/3", {"decision": "allow"}) == (
+    assert await across.answer("laptop-a/3", {"decision": "allow"}) == (
         502,
-        {"error": "lukas-laptop did not answer"},
+        {"error": "laptop-a did not answer"},
     )
     laptop.down = False
-    assert await across.answer("lukas-laptop/3", {"decision": "deny", "reason": "nei"}) == (200, {"ok": True})
+    assert await across.answer("laptop-a/3", {"decision": "deny", "reason": "nei"}) == (200, {"ok": True})
     assert laptop.asked[-1] == ("deny", {"approval_id": "3", "reason": "nei"})
-    assert await across.answer("lukas-laptop/3", {"decision": "allow"}) == (404, {"error": "this prompt is gone"})
+    assert await across.answer("laptop-a/3", {"decision": "allow"}) == (404, {"error": "this prompt is gone"})
 
 
 async def test_the_page_hears_when_a_machine_or_its_sessions_change():
@@ -129,22 +129,20 @@ async def test_the_page_hears_when_a_machine_or_its_sessions_change():
     across.publish = lambda event, data: events.append((event, data))
 
     async def again():
-        across._seen["lukas-laptop"]["checked_at"] = 0
+        across._seen["laptop-a"]["checked_at"] = 0
         await across.refresh()
 
     laptop.sessions, laptop.approvals = [{**MOD, "state": "working"}, OWN], [ASK]
     await again()
-    assert ("status", "lukas-laptop/840ab631", "lukas-laptop") in [
-        (e, d.get("session"), d.get("machine")) for e, d in events
-    ]
-    assert [d["id"] for e, d in events if e == "prompt"] == ["lukas-laptop/3"]
+    assert ("status", "laptop-a/840ab631", "laptop-a") in [(e, d.get("session"), d.get("machine")) for e, d in events]
+    assert [d["id"] for e, d in events if e == "prompt"] == ["laptop-a/3"]
     laptop.down = True
     await again()
     assert [d["state"] for e, d in events if e == "machine"] == ["slow"]
     assert not [e for e, _ in events if e == "prompt_closed"]  # not known to be answered while away
     laptop.down, laptop.approvals = False, []
     await again()
-    assert [d for e, d in events if e == "prompt_closed"] == [{"id": "lukas-laptop/3", "how": "screen"}]
+    assert [d for e, d in events if e == "prompt_closed"] == [{"id": "laptop-a/3", "how": "screen"}]
     assert [d["state"] for e, d in events if e == "machine"] == ["slow", "online"]
 
 
@@ -154,13 +152,13 @@ async def test_the_event_api_takes_an_id_with_the_machine_in_front(bridge):  # n
     await server.fleet.refresh()
     async with client(app) as http:
         listed = (await http.get("/api/v1/sessions", headers=BEARER)).json()
-        read = await http.get("/api/v1/sessions/lukas-laptop%2F840ab631/output", headers=BEARER)
+        read = await http.get("/api/v1/sessions/laptop-a%2F840ab631/output", headers=BEARER)
         prompts = (await http.get("/api/v1/prompts", headers=BEARER)).json()["prompts"]
-        answered = await http.post("/api/v1/prompts/lukas-laptop%2F3", headers=BEARER, json={"decision": "allow"})
-    assert {s["id"] for s in listed["sessions"]} >= {"lukas-laptop/840ab631", "lukas-laptop/s-7"}
-    assert listed["machines"][0]["name"] == "lukas-laptop"
+        answered = await http.post("/api/v1/prompts/laptop-a%2F3", headers=BEARER, json={"decision": "allow"})
+    assert {s["id"] for s in listed["sessions"]} >= {"laptop-a/840ab631", "laptop-a/s-7"}
+    assert listed["machines"][0]["name"] == "laptop-a"
     assert read.status_code == 200 and read.json()["status"] == "idle"
-    assert [p["id"] for p in prompts] == ["lukas-laptop/3"]
+    assert [p["id"] for p in prompts] == ["laptop-a/3"]
     assert answered.status_code == 200
 
 
@@ -169,12 +167,10 @@ async def test_a_session_on_another_machine_can_be_the_one_the_voice_talks_to(br
     server.fleet.machines = [FakeMachine(sessions=[MOD])]
     await server.fleet.refresh()
     async with client(app) as http:
-        chosen = await http.put("/api/v1/active", headers=BEARER, json={"session": "lukas-laptop/840ab631"})
-        gone = await http.put("/api/v1/active", headers=BEARER, json={"session": "lukas-laptop/nope"})
+        chosen = await http.put("/api/v1/active", headers=BEARER, json={"session": "laptop-a/840ab631"})
+        gone = await http.put("/api/v1/active", headers=BEARER, json={"session": "laptop-a/nope"})
     assert chosen.status_code == 200, chosen.text
-    assert {"id": "lukas-laptop/840ab631", "name": "lukas-laptop/mod", "machine": "lukas-laptop"}.items() <= (
-        chosen.json().items()
-    )
+    assert {"id": "laptop-a/840ab631", "name": "laptop-a/mod", "machine": "laptop-a"}.items() <= (chosen.json().items())
     assert gone.status_code == 404
 
 
@@ -188,7 +184,7 @@ async def test_the_sessions_here_stay_in_the_list_beside_another_machines(bridge
         recap = (await voice.call_tool("fleet_recap", {})).structured_content
     for answer in (listed, recap):
         names = [s["name"] for s in answer["sessions"]]
-        assert "lukas-laptop/mod" in names and any("/" not in n for n in names), names
+        assert "laptop-a/mod" in names and any("/" not in n for n in names), names
 
 
 async def test_a_session_on_another_machine_has_a_detail_page_of_its_own(bridge):  # noqa: F811
@@ -196,14 +192,14 @@ async def test_a_session_on_another_machine_has_a_detail_page_of_its_own(bridge)
     server.fleet.machines = [FakeMachine(sessions=[MOD, OWN])]
     await server.fleet.refresh()
     async with client(app) as http:
-        page = await http.get("/api/v1/sessions/lukas-laptop%2F840ab631/detail", headers=BEARER)
-        summary = await http.post("/api/v1/sessions/lukas-laptop%2F840ab631/summary", headers=BEARER, json={})
+        page = await http.get("/api/v1/sessions/laptop-a%2F840ab631/detail", headers=BEARER)
+        summary = await http.post("/api/v1/sessions/laptop-a%2F840ab631/summary", headers=BEARER, json={})
     assert page.status_code == 200
     assert page.json() == {
-        "session": "lukas-laptop/840ab631",
+        "session": "laptop-a/840ab631",
         "number": None,
         "name": "mod",
-        "machine": "lukas-laptop",
+        "machine": "laptop-a",
         "context": None,
         "tool_calls": {"total": 0, "by_tool": {}},
         "subagents": {"running": 0, "total": 0},

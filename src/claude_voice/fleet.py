@@ -1,6 +1,6 @@
 """One fleet across machines: the hub's session tools see and reach every approved machine.
 
-A session on another machine is named with its machine in front, ``lukas-laptop/mod``
+A session on another machine is named with its machine in front, ``laptop-a/mod``
 (ADR-CV-006). The session tools take that name and pass the call to the machine, and
 the tools that look across sessions add each machine's sessions to their own. All
 machines are asked at once, each for two seconds at most; one that does not answer is

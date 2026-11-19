@@ -324,7 +324,7 @@ class EventApi:
         route("/api/v1/settings", methods=["GET", "PUT"])(self.settings_route)
         route("/api/v1/prompts/{prompt}/wait", methods=["GET"])(self.wait_prompt)
         route("/api/v1/prompts/{prompt}/close", methods=["POST"])(self.close_prompt)
-        # Last, and taking a slash: a question on another machine is "lukas-laptop/3".
+        # Last, and taking a slash: a question on another machine is "laptop-a/3".
         route("/api/v1/prompts/{prompt:path}", methods=["POST"])(self.answer_prompt)
         route("/api/v1/doctor", methods=["GET"])(self.dependencies)
         route("/api/v1/usage", methods=["GET"])(self.usage_now)
