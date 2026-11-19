@@ -172,7 +172,7 @@ inside its limit is green again whatever the file says, so delete the entry
 then. The ids are `coverage`, `mutation`, `tests`, `problems`, `cycles`,
 `layers`, `duplication`, `complexity` and `test_time`.
 Why it works this way is
-[ADR-CV-013](../../../decisions/ADR-CV-013-an-agreed-exception-is-shown-as-exempt.md).
+[ADR-CV-013](../../decisions/ADR-CV-013-an-agreed-exception-is-shown-as-exempt.md).
 
 ## 5. Land it
 

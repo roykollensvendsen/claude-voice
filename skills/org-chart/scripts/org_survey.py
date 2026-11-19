@@ -2,9 +2,9 @@
 
 Run it with a Python that has claude_voice, as the bridge does:
 
-    uv run python .claude/skills/org-chart/scripts/org_survey.py survey
-    uv run python .claude/skills/org-chart/scripts/org_survey.py check <repo> [--draft <file>]
-    uv run python .claude/skills/org-chart/scripts/org_survey.py exclude <repo>
+    uv run python skills/org-chart/scripts/org_survey.py survey
+    uv run python skills/org-chart/scripts/org_survey.py check <repo> [--draft <file>]
+    uv run python skills/org-chart/scripts/org_survey.py exclude <repo>
 
 It only reads, except `exclude`, which adds one line to the repository's own
 .git/info/exclude.

@@ -49,7 +49,7 @@ then run everything else inside:
 git clone -q https://github.com/OWNER/REPO.git /scratch/pr-N && cd /scratch/pr-N
 gh pr checkout N
 uv sync --frozen --all-extras
-.claude/skills/review-contribution/sandboxed.sh . uv run pytest -q
+skills/review-contribution/sandboxed.sh . uv run pytest -q
 ```
 
 `sandboxed.sh` (beside this file) uses bubblewrap: no network, no home folder,

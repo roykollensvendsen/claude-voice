@@ -6,7 +6,7 @@ description: Find the Claude Code sessions that belong together and write or upd
 # Making a programme
 
 What a programme, a component and a role are, and every field of the file, is
-in [docs/org-chart.md](../../../docs/org-chart.md); read it first. The helper
+in [docs/org-chart.md](../../docs/org-chart.md); read it first. The helper
 script needs the bridge's own Python. In a clone, run it with `uv run python`;
 with the installed tool, use `$(uv tool dir)/claude-voice/bin/python`.
 
@@ -14,7 +14,7 @@ with the installed tool, use `$(uv tool dir)/claude-voice/bin/python`.
 
 <!-- not run: reads the owner's running sessions, which differ on every machine -->
 ```
-uv run python .claude/skills/org-chart/scripts/org_survey.py survey
+uv run python skills/org-chart/scripts/org_survey.py survey
 ```
 
 It prints JSON with:
@@ -57,7 +57,7 @@ after a person or a machine, propose renaming it first, with `rename_session`.
 
    <!-- not run: checks a draft in the owner's own repository -->
    ```
-   uv run python .claude/skills/org-chart/scripts/org_survey.py check <main repo> --draft <draft.toml>
+   uv run python skills/org-chart/scripts/org_survey.py check <main repo> --draft <draft.toml>
    ```
 
    An error (exit 1) must be fixed. A warning, such as a role whose session is
@@ -68,7 +68,7 @@ after a person or a machine, propose renaming it first, with `rename_session`.
 
    <!-- not run: changes the owner's own repository -->
    ```
-   uv run python .claude/skills/org-chart/scripts/org_survey.py exclude <main repo>
+   uv run python skills/org-chart/scripts/org_survey.py exclude <main repo>
    ```
 4. Run `check <main repo>` again and report its problems list as it is.
 5. Offer the local manager rule in references/patterns.md as the main

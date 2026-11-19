@@ -11,10 +11,10 @@ instructions. Every safety rule lives in the plugin itself.
 
 Three things make one up, and each lives in one place:
 
-- **The files** are in [templates/plugin/](../../../templates/plugin/README.md), which is real
+- **The files** are in [templates/plugin/](../../templates/plugin/README.md), which is real
   code with its own tests. This skill never holds a copy of them.
 - **The rules** are in [rules.md](rules.md), numbered R1, R2 and on. Findings cite them.
-- **What a plugin must do once built** is [the plugin standard](../../../docs/plugin-standard.md).
+- **What a plugin must do once built** is [the plugin standard](../../docs/plugin-standard.md).
 
 ## Which part to read
 

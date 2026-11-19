@@ -1,7 +1,7 @@
 # Bringing a plugin into the team
 
 You need: [SKILL.md](SKILL.md) and [rules.md](rules.md). The manager's own role is in
-[docs/organisation.md](../../../docs/organisation.md).
+[docs/organisation.md](../../docs/organisation.md).
 
 The manager does these in order, so a new plugin starts at the level the others reached. Each
 step has a check; the next starts only once it holds.
@@ -60,7 +60,7 @@ request. Secrets are collected with the `secret-box` skill, never pasted.
 ## 7. Checked by voice
 
 After the restart, call one tool through the bridge and see what the voice sees. Then ask the
-voice what it needs, as [docs/voice-feedback.md](../../../docs/voice-feedback.md) says.
+voice what it needs, as [docs/voice-feedback.md](../../docs/voice-feedback.md) says.
 
 ## The gates the manager holds
 

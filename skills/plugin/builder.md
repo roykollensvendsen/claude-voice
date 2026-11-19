@@ -1,12 +1,12 @@
 # Building a plugin
 
 You need: [SKILL.md](SKILL.md) and [rules.md](rules.md). The guide for people,
-[write-a-plugin.md](../../../docs/write-a-plugin.md), says why each file of the template exists.
+[write-a-plugin.md](../../docs/write-a-plugin.md), says why each file of the template exists.
 
 ## 1. Start from a real copy of the template
 
 Make the plugin with `claude-voice new-plugin <name>` (R9). Until that command exists, copy
-[templates/plugin/](../../../templates/plugin/README.md) at main into a folder of its own, and
+[templates/plugin/](../../templates/plugin/README.md) at main into a folder of its own, and
 replace `gizmo` with the plugin's name. Never start from a neighbouring plugin's files, which
 drift.
 

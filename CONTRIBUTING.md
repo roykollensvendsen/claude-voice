@@ -306,7 +306,7 @@ message that sends them into the code to find out has failed. Everyday words,
 and a term explained in the sentence before it is leaned on. Anything
 mechanical — file paths, settings, flags, record numbers — goes at the bottom,
 under a heading of its own, so that everything above it can be read without
-them. The [`write-commit`](.claude/skills/write-commit/SKILL.md) skill has a
+them. The [`write-commit`](skills/write-commit/SKILL.md) skill has a
 worked example of the same change written both ways.
 
 [Conventional Commits](https://www.conventionalcommits.org/), checked by

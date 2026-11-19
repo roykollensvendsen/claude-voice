@@ -7,7 +7,7 @@ that a new plugin starts at the level the best of them reached, and so that one
 plugin's lesson becomes all of theirs.
 
 It was put together on 2026-11-10 from the three plugins' own reviews of
-themselves, and accepted by the owner the same day. The [`plugin`](../.claude/skills/plugin/SKILL.md) skill
+themselves, and accepted by the owner the same day. The [`plugin`](../skills/plugin/SKILL.md) skill
 says how to build one; this page says what it must do once built.
 
 ## A. How a plugin behaves towards the voice

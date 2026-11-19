@@ -44,6 +44,7 @@ each kind of rule is proven.
 | 20 | R36 | A restart during a running call | The call is cut off instead of finishing |
 | 21 | R37 | The plugin's pull requests to others' projects | Private detail in public text, or a security finding pushed before the owner decided |
 | 22 | R38 | Each limit the fake copies, and each tool called done | A measured limit with no date, or no live try on the real device |
+| 23 | R39 | The mutation script's handling of a row that does not compile | It counts as killed, the run passes, or the row is not named on the console and in the report |
 
 ## A pull request to the template itself
 

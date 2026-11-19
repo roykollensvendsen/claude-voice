@@ -8,7 +8,7 @@ import pytest
 
 from claude_voice import org
 
-SCRIPT = pathlib.Path(__file__).parent.parent / ".claude/skills/org-chart/scripts/org_survey.py"
+SCRIPT = pathlib.Path(__file__).parent.parent / "skills/org-chart/scripts/org_survey.py"
 EXAMPLE = pathlib.Path(__file__).parent.parent / "docs/examples/acme-robots/.claude/org.toml"
 
 

@@ -50,7 +50,7 @@ owner's next step, with the exact command when there is one. A bare "not answeri
 
 **A tool's first line says what it is for,** in one sentence of at most 78 characters.
 Field descriptions name every input form accepted, from the first tool on
-([the plugin standard](../../../docs/plugin-standard.md), A.2).
+([the plugin standard](../../docs/plugin-standard.md), A.2).
 
 ### R3
 
@@ -436,6 +436,19 @@ it.
 **A limit that isn't documented is measured once on the real device**, with the date written
 next to it. A tool counts as done only after one live try on the real device. The fake knows
 only the limits someone wrote down, so this and R3 are the backstop.
+
+## Added after the move
+
+### R39
+
+**A mutation row that breaks the code fails the run and is named**. The runner compiles each
+changed file before it runs a test. A row whose replacement does not compile is reported as
+broken, runs nothing, and fails the run. The console and the written report both name it.
+Without this, every test fails on the broken file, and the rule looks guarded while nothing
+tested it.
+
+Template: `scripts/mutate.py` has `def broken(`
+Template: `tests/test_mutate_runner.py` has `def test_a_row_that_breaks_the_code_is_named_and_runs_nothing(`
 
 ## How each rule is proven
 

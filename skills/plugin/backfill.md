@@ -4,7 +4,7 @@ You need: [SKILL.md](SKILL.md) and [rules.md](rules.md).
 
 ## 1. List what fails
 
-Diff the plugin's repository against [templates/plugin/](../../../templates/plugin/README.md) at
+Diff the plugin's repository against [templates/plugin/](../../templates/plugin/README.md) at
 main. Read each difference against rules.md, and list the rule numbers that fail. A difference
 no rule covers is a real difference of the plugin, and stays.
 
