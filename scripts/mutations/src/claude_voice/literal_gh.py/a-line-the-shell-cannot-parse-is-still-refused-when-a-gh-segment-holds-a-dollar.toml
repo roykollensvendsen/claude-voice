@@ -1,0 +1,5 @@
+[[rule]]
+name = "a line the shell cannot parse is still refused when a gh segment holds a dollar"
+file = "src/claude_voice/literal_gh.py"
+find = 'return any\(s\.strip\(\)\.startswith\("gh "\) and _spelled\(\[s\]\)'
+replace = 'return False'

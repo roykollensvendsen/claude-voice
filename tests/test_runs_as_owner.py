@@ -122,7 +122,11 @@ def test_hooks_and_config_of_any_clone_are_refused(rules, name):
         assert any(_covers(rule, f"Edit(/{where})") for rule in rules.deny), where
 
 
-@pytest.mark.parametrize("name", [".githooks/pre-commit", ".npmrc", "uv.toml", "pip.conf", ".envrc"])
+@pytest.mark.parametrize(
+    "name",
+    # literal_gh.py runs before every shell call of every session, as the owner (gh-literal-deny v1.1)
+    [".githooks/pre-commit", ".npmrc", "uv.toml", "pip.conf", ".envrc", "src/claude_voice/literal_gh.py"],
+)
 def test_what_runs_from_the_owners_own_checkout_is_refused_there_but_not_in_a_worktree(rules, name):
     assert decision(rules, f"tee {REPO}/{name}") == "refused"
     assert any(_covers(rule, f"Edit(/{REPO}/{name})") for rule in rules.deny)
