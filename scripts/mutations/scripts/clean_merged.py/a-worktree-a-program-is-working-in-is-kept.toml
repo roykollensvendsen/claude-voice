@@ -1,0 +1,5 @@
+[[rule]]
+name = "a worktree a program is working in is kept"
+file = "scripts/clean_merged.py"
+find = 'if reason is None and any\(_inside\(cwd, tree\.path\.resolve\(\)\) for cwd in cwds\):'
+replace = 'if False:'

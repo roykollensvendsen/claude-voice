@@ -1,0 +1,5 @@
+[[rule]]
+name = "a branch with a commit not on the base is kept"
+file = "scripts/clean_merged.py"
+find = 'if missing:'
+replace = 'if False:'

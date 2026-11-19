@@ -1,0 +1,5 @@
+[[rule]]
+name = "a branch on the never-touch list is kept"
+file = "scripts/clean_merged.py"
+find = 'if branch in never:'
+replace = 'if False:'
