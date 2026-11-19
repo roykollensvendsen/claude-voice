@@ -116,6 +116,34 @@ def test_a_push_not_started_by_git_itself_is_refused(command):
     assert judged(command)
 
 
+@pytest.mark.parametrize(
+    "command",
+    ["git --git-dir=/x/.git push origin feature", "git --git-dir /x/.git push origin feature",
+     "git --work-tree=/x push origin feature"],
+)  # fmt: skip
+def test_a_push_that_names_another_repository_by_git_dir_or_work_tree_is_refused(command):
+    assert judged(command)
+
+
+@pytest.mark.parametrize("command", ["eval git push origin feature", "bash -c \"bash -c 'git push origin feature'\""])
+def test_a_push_inside_eval_or_a_shell_within_a_shell_is_refused(command):
+    assert judged(command)
+
+
+def test_a_push_is_judged_in_the_folder_it_names(tmp_path):
+    fork, upstream = tmp_path / "fork", tmp_path / "up"
+    for folder, url in ((fork, FORK_URLS["origin"]), (upstream, UP_URL)):
+        subprocess.run(["git", "init", "-q", str(folder)], check=True)
+        subprocess.run(["git", "-C", str(folder), "remote", "add", "origin", url], check=True)
+    hook_input = {"tool_name": "Bash", "tool_input": {"command": f"git -C {upstream} push origin feature"},
+                  "cwd": str(fork)}  # fmt: skip
+    assert guard.answer(hook_input, UPSTREAM)["hookSpecificOutput"]["permissionDecision"] == "deny"
+    relative = {**hook_input, "tool_input": {"command": "git -C ../up push origin feature"}}
+    assert guard.answer(relative, UPSTREAM)["hookSpecificOutput"]["permissionDecision"] == "deny"
+    there = {**hook_input, "tool_input": {"command": f"git -C {fork} push origin feature"}, "cwd": str(upstream)}
+    assert guard.answer(there, UPSTREAM) == {}
+
+
 def test_a_plain_push_to_the_fork_still_goes_through():
     assert judged("git push origin feature") is None
     assert judged("git -C /x push -u origin feature") is None

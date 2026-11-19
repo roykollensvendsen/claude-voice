@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -33,6 +34,8 @@ class _Push:
     args: list[str]  # the words after `push`
     settings: list[str] = field(default_factory=list)  # keys set on the line itself, by -c or --config-env
     wrapped: bool = False  # something other than git itself starts the command
+    folder: str | None = None  # the folder its -C options name, joined in order
+    elsewhere: bool = False  # it names another repository by --git-dir or --work-tree
 
 
 #: Commands that start the command after them, so `env git push` is still a push.
@@ -56,7 +59,8 @@ def _starts_git(words: list[str]) -> bool:
 
 def _shell_push(words: list[str]) -> bool:
     """A shell given a string that holds a git push."""
-    return bool(words) and words[0].rsplit("/", 1)[-1] in SHELLS and any("git" in w and "push" in w for w in words[1:])
+    rest = " ".join(words[1:])
+    return bool(words) and words[0].rsplit("/", 1)[-1] in SHELLS and "git" in rest and "push" in rest
 
 
 def _pushes(command: str) -> list[_Push]:
@@ -74,15 +78,20 @@ def _pushes(command: str) -> list[_Push]:
         at = next((i for i, word in enumerate(words) if _is_git(word)), None)
         if at is None or (at > 0 and not _starts_git(words)):
             continue
-        rest, settings = words[at + 1 :], []
+        rest, push = words[at + 1 :], _Push([], wrapped=at != 0 or words[0] != "git")
         while rest and rest[0].startswith("-"):  # options before the subcommand, such as -C dir
             if rest[0] == "-c" and len(rest) > 1:
-                settings.append(rest[1].partition("=")[0])
+                push.settings.append(rest[1].partition("=")[0])
             elif rest[0].startswith("--config-env="):
-                settings.append(rest[0].removeprefix("--config-env=").partition("=")[0])
-            rest = rest[2:] if rest[0] in ("-C", "-c") else rest[1:]
+                push.settings.append(rest[0].removeprefix("--config-env=").partition("=")[0])
+            elif rest[0] == "-C" and len(rest) > 1:
+                push.folder = os.path.join(push.folder or "", rest[1])
+            elif rest[0].split("=")[0] in ("--git-dir", "--work-tree"):
+                push.elsewhere = True
+            rest = rest[2:] if rest[0] in ("-C", "-c", "--git-dir", "--work-tree") else rest[1:]
         if rest and rest[0] == "push":
-            found.append(_Push(rest[1:], settings, wrapped=at != 0 or words[0] != "git"))
+            push.args = rest[1:]
+            found.append(push)
     return found
 
 
@@ -118,8 +127,10 @@ def refusal(
     upstream: str,
     remote_url: Callable[[str], str | None],
     default_remote: Callable[[], str],
+    folder: Callable[[str], tuple[Callable[[str], str | None], Callable[[], str]]] | None = None,
 ) -> str | None:
-    """Why `command` must not run, or None when it may."""
+    """Why `command` must not run, or None when it may. `folder` gives the two readers for a
+    folder a push names by -C; without it, the first two are read for that folder too."""
     for push in _pushes(command):
         # RULE: a push not started by git itself is refused
         if push.wrapped:
@@ -127,8 +138,17 @@ def refusal(
         # RULE: a push that sets where it goes on its own line is refused
         if any(key.lower().startswith(("remote.", "url.")) for key in push.settings):
             return "A push is refused when its own line sets a remote or url setting: push without that -c."
-        target = _target(push.args, default_remote)
-        url = target if ("/" in target or ":" in target) else remote_url(target)
+        # RULE: a push that names another repository by git dir or work tree is refused
+        if push.elsewhere:
+            return (
+                "A push is refused when it names another repository by --git-dir or --work-tree: push from its folder."
+            )
+        read_url, read_default = remote_url, default_remote
+        # RULE: a push is judged in the folder it names
+        if push.folder is not None and folder is not None:
+            read_url, read_default = folder(push.folder)
+        target = _target(push.args, read_default)
+        url = target if ("/" in target or ":" in target) else read_url(target)
         # RULE: a push whose address cannot be read is refused
         if url is None:
             return (
@@ -152,18 +172,26 @@ def answer(hook_input: dict[str, Any], upstream: str) -> dict[str, Any]:
     command = str((hook_input.get("tool_input") or {}).get("command", ""))
     cwd = str(hook_input.get("cwd") or ".")
 
-    def git(*args: str) -> str | None:
-        try:
-            out = safe_git.run("-C", cwd, *args, capture_output=True, text=True, timeout=10, check=True)
-        except (OSError, subprocess.SubprocessError):
-            return None
-        return out.stdout.strip() or None
+    def readers(where: str) -> tuple[Callable[[str], str | None], Callable[[], str]]:
+        """How to read a remote's push address, and the default remote, in the folder `where`."""
 
-    def default_remote() -> str:
-        pushed = git("rev-parse", "--abbrev-ref", "@{push}")
-        return pushed.split("/", 1)[0] if pushed else "origin"
+        def git(*args: str) -> str | None:
+            try:
+                out = safe_git.run("-C", where, *args, capture_output=True, text=True, timeout=10, check=True)
+            except (OSError, subprocess.SubprocessError):
+                return None
+            return out.stdout.strip() or None
 
-    reason = refusal(command, upstream, lambda name: git("remote", "get-url", "--push", name), default_remote)
+        def default_remote() -> str:
+            pushed = git("rev-parse", "--abbrev-ref", "@{push}")
+            return pushed.split("/", 1)[0] if pushed else "origin"
+
+        return (lambda name: git("remote", "get-url", "--push", name)), default_remote
+
+    remote_url, default_remote = readers(cwd)
+    reason = refusal(
+        command, upstream, remote_url, default_remote, folder=lambda named: readers(os.path.join(cwd, named))
+    )
     if reason is None:
         return {}
     return {
