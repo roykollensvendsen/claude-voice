@@ -418,9 +418,31 @@ def test_installing_the_hook_keeps_every_other_setting_and_hook_and_can_run_twic
     assert after["model"] == "opus"
     pre = after["hooks"]["PreToolUse"]
     commands = [h["command"] for m in pre for h in m["hooks"]]
-    assert other["command"] in commands and commands.count("/opt/cv/bin/python -m claude_voice.phone_hook") == 1
+    assert other["command"] in commands and commands.count("/opt/cv/bin/python -I -m claude_voice.phone_hook") == 1
     assert len(after["hooks"]["PermissionRequest"]) == 1
     assert (tmp_path / "settings.json.bak").exists()  # the file as it was, kept beside it
+
+
+def test_installing_the_hook_again_replaces_an_older_phone_hook_line(tmp_path):
+    settings = tmp_path / "settings.json"
+    old = {"type": "command", "command": "/old/venv/bin/python -m claude_voice.phone_hook", "timeout": 150}
+    other = {"type": "command", "command": "$HOME/.claude/hooks/mine.py"}
+    settings.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "PreToolUse": [{"matcher": "AskUserQuestion", "hooks": [old, other]}],
+                    "PermissionRequest": [{"matcher": "*", "hooks": [dict(old)]}],
+                }
+            }
+        )
+    )
+    phone_hook.install(settings, "/opt/cv/bin/python")
+    hooks = json.loads(settings.read_text())["hooks"]
+    commands = {event: [h["command"] for m in hooks[event] for h in m["hooks"]] for event in hooks}
+    new = "/opt/cv/bin/python -I -m claude_voice.phone_hook"
+    assert commands["PreToolUse"] == [other["command"], new]
+    assert commands["PermissionRequest"] == [new]
 
 
 # -- prompts nobody waits on any more ----------------------------------------------------

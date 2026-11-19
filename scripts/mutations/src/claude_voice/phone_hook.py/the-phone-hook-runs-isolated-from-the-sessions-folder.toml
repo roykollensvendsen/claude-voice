@@ -1,0 +1,5 @@
+[[rule]]
+name = "the phone hook runs isolated from the sessions folder"
+file = "src/claude_voice/phone_hook.py"
+find = 'hook = \{"type": "command", "command": f"\{python\} -I -m claude_voice\.phone_hook", "timeout": TIMEOUT \+ 30\}'
+replace = 'hook = {"type": "command", "command": f"{python} -m claude_voice.phone_hook", "timeout": TIMEOUT + 30}'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "the push guard runs isolated from the sessions folder"
+file = "src/claude_voice/roles.py"
+find = 'command = f"\{shlex\.quote\(sys\.executable\)\} -I -m claude_voice\.guard'
+replace = 'command = f"{shlex.quote(sys.executable)} -m claude_voice.guard --upstream {shlex.quote(upstream)}"'

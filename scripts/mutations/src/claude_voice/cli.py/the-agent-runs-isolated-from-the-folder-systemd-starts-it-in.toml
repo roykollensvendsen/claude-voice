@@ -1,0 +1,5 @@
+[[rule]]
+name = "the agent runs isolated from the folder systemd starts it in"
+file = "src/claude_voice/cli.py"
+find = 'command = \[sys\.executable, "-I", "-m", "claude_voice\.cli", "agent"\]'
+replace = 'command = [sys.executable, "-m", "claude_voice.cli", "agent"]'
