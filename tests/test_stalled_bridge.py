@@ -1,5 +1,6 @@
 """A question left waiting, in the bridge: the manager's line, the voice's news, no typing."""
 
+import asyncio
 import json
 import subprocess
 import sys
@@ -137,10 +138,10 @@ async def let_deliveries_finish():
 async def test_the_manager_and_the_voice_hear_once_of_a_question_left_waiting(bridge):
     server, deliver, _, clock = bridge
     cursor = (await call(server, "whats_new"))["cursor"]
-    await server.stalled_check()
+    await asyncio.wait_for(server.stalled_check(), 5)
     await let_deliveries_finish()
     clock.now += 60
-    await server.stalled_check()
+    await asyncio.wait_for(server.stalled_check(), 5)
     await let_deliveries_finish()
     assert deliver.sent == [("acme-boss", LINE)]
     news = (await call(server, "whats_new", cursor=cursor))["events"]
@@ -150,7 +151,7 @@ async def test_the_manager_and_the_voice_hear_once_of_a_question_left_waiting(br
 async def test_a_waiting_session_is_never_typed_into(bridge):
     server, _, tmux, clock = bridge
     for _ in range(3):
-        await server.stalled_check()
+        await asyncio.wait_for(server.stalled_check(), 5)
         clock.now += 60
     assert ["tmux", "capture-pane", "-p", "-J", "-t", "%1"] in tmux.commands
     assert not any("send-keys" in part for command in tmux.commands for part in command)
@@ -176,7 +177,7 @@ async def test_a_delivery_about_a_waiting_question_gives_up_after_its_time(tmp_p
     import asyncio
 
     server, _, _, _ = make_bridge(tmp_path, pids, Stuck())
-    await server.stalled_check()
+    await asyncio.wait_for(server.stalled_check(), 5)
     await asyncio.sleep(0.3)
     assert server.deliveries_in_flight == set()
 
@@ -194,7 +195,7 @@ async def test_a_held_question_is_answerable_by_voice_when_its_text_is_not_said(
     server.prompt_book.add(prompt)
     prompt["hook"]["waiting"] = 1  # a hook waits on it
     cursor = (await call(server, "whats_new"))["cursor"]
-    await server.stalled_check()
+    await asyncio.wait_for(server.stalled_check(), 5)
     await let_deliveries_finish()
     news = (await call(server, "whats_new", cursor=cursor))["events"]
     assert [e["text"] for e in news if e["kind"] == "stalled_prompt"] == ["fix-gripper has a question waiting."]
