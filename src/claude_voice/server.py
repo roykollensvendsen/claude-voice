@@ -117,6 +117,11 @@ BASE_INSTRUCTIONS = _BASE + REPLY_IS_WORDS + "\n"
 # The voice's default behaviour, one named rule each, so each can later be switched on or off.
 DEFAULT_RULES: dict[str, str] = {
     "read_next_step": "When a tool's answer says what to do next, read that step out to the user.",
+    # RULE: the voice follows a next at once and stops without one
+    "follow_next": (
+        "When an answer carries `next`, call that tool with its args at once, without asking, "
+        "and read each answer's say; stop when there is no `next`."
+    ),
     "plain_terminal": (
         "A command that asks the user to type something in is given to them to run in a "
         "plain terminal; never run it for them."

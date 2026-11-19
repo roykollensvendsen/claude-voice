@@ -35,6 +35,8 @@ START_SECONDS = 15.0  # how long a plugin may take to start
 # How long a plugin's first answer may take: after new code, uv may install packages first and
 # heavy libraries load (the vacuum's imports alone take 5 to 10 s), so 15 s was too short.
 LIST_SECONDS = 60.0
+HOPS = 6  # the most calls one chain of `next` makes, whatever the plugin says (standard rule 4a)
+HOP = "_hop"  # the bridge's count of calls in a chain, stamped into `next` and never forwarded
 
 
 class NotReady(ConnectionError):
@@ -423,6 +425,57 @@ def _as_object(text: str) -> dict[str, Any]:
     return {"text": text}
 
 
+def _hops(arguments: dict[str, Any]) -> tuple[dict[str, Any], int | None]:
+    """The arguments without the bridge's hop count, and that count: 0 when there is none,
+    None when it is not a whole number below HOPS, which ends the chain."""
+    rest = dict(arguments)
+    # RULE: the plugin never sees the bridges hop count
+    hop = rest.pop(HOP, 0)
+    if isinstance(hop, bool) or not isinstance(hop, int) or not 0 <= hop < HOPS:
+        return rest, None
+    return rest, hop
+
+
+def _own_tool(named: Any, plugin: Plugin) -> str | None:
+    """The plugin's own allowed tool that `named` names, as the plugin or the voice calls it."""
+    own = {exposed_name(plugin.spec.name, t): t for t in plugin.spec.tools}
+    return own.get(named) if isinstance(named, str) else None
+
+
+def _refused_next(follow: Any, plugin: Plugin, listing: dict[str, dict[str, Any]], hop: int | None) -> str | None:
+    """Why the bridge drops a `next` an answer carries, or None when it is passed on."""
+    if hop is None:
+        return "its hop count is not a small whole number"
+    # RULE: the bridge stops a chain after six calls
+    if hop + 1 >= HOPS:
+        return f"a chain stops after {HOPS} calls"
+    if not isinstance(follow, dict) or not isinstance(follow.get("args"), dict):
+        return "it is not a tool and its args"
+    tool = _own_tool(follow.get("tool"), plugin)
+    # RULE: a next naming an unknown tool is refused
+    if tool is None or tool not in listing:
+        return f"{follow.get('tool')!r} is not one of {plugin.spec.name}'s tools"
+    # RULE: a next naming a tool that presses is refused
+    if listing[tool].get("read_only") is not True:
+        return f"{tool} is not marked read-only"
+    return None
+
+
+def follow_up(result: Any, plugin: Plugin, listing: dict[str, dict[str, Any]], hop: int | None) -> Any:
+    """The answer with its `next` passed on, named as the voice sees the tool and with the
+    hop count stamped in, or without it when the bridge refuses it; rule 4a of the standard."""
+    if not isinstance(result, dict) or "next" not in result:
+        return result
+    rest = {k: v for k, v in result.items() if k != "next"}
+    follow = result["next"]
+    why = _refused_next(follow, plugin, listing, hop)
+    if why is not None:
+        log.info("plugin %s: next dropped, since %s", plugin.spec.name, why)
+        return rest
+    tool = exposed_name(plugin.spec.name, follow["tool"])
+    return {**rest, "next": {"tool": tool, "args": {**follow["args"], HOP: (hop or 0) + 1}}}
+
+
 def offer(server: Any, plugin: Plugin, listing: dict[str, dict[str, Any]]) -> list[str]:
     """Offer the plugin's allowed tools on the bridge's MCP server; the names offered."""
     from mcp.server.mcpserver.exceptions import ToolError
@@ -430,6 +483,7 @@ def offer(server: Any, plugin: Plugin, listing: dict[str, dict[str, Any]]) -> li
 
     class PluginTool(Tool):
         async def run(self, arguments: dict[str, Any], context: Any, convert_result: bool = False) -> Any:
+            arguments, hop = _hops(arguments)
             try:
                 answer = await plugin.call(self.meta["plugin_tool"], arguments)  # type: ignore[index]
             except RuntimeError as exc:
@@ -438,7 +492,7 @@ def offer(server: Any, plugin: Plugin, listing: dict[str, dict[str, Any]]) -> li
             if answer.is_error:
                 raise ToolError(text or f"{plugin.spec.name} refused")
             result = answer.structured_content if answer.structured_content is not None else _as_object(text)
-            result = plugin.shown(result)
+            result = follow_up(plugin.shown(result), plugin, listing, hop)
             return self.fn_metadata.convert_result(result) if convert_result else result
 
     async def placeholder() -> dict[str, Any]:  # never called: PluginTool.run answers instead

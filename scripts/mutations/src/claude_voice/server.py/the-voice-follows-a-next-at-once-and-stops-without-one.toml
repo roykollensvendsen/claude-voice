@@ -1,0 +1,5 @@
+[[rule]]
+name = "the voice follows a next at once and stops without one"
+file = "src/claude_voice/server.py"
+find = '"When an answer carries `next`, call that tool with its args at once, without asking, "'
+replace = '"When an answer carries `next`, you may call that tool, "'

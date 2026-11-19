@@ -1,0 +1,5 @@
+[[rule]]
+name = "a next naming a tool that presses is refused"
+file = "src/claude_voice/plugins.py"
+find = 'if listing\[tool\]\.get\("read_only"\) is not True:'
+replace = 'if False:'
