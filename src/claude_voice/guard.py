@@ -83,6 +83,11 @@ def _hidden_push(segment: str) -> bool:
     return any(_is_git(word) for word in words) and "push" in words
 
 
+def _escaped_push(segment: str) -> bool:
+    """Whether a part spells words in the shell's own quoting, $'...' or $"...", and says push."""
+    return ("$'" in segment or '$"' in segment) and "push" in segment
+
+
 def _pushes(command: str) -> list[_Push]:
     """Every `git push` in a command line, `git -C dir push` included, with the settings the line
     gives git itself, and whether anything but git starts it."""
@@ -92,7 +97,8 @@ def _pushes(command: str) -> list[_Push]:
             words = shlex.split(segment)
         except ValueError:
             words = segment.split()
-        if _shell_push(words):
+        # RULE: a push spelled in shell escapes is refused
+        if _shell_push(words) or _escaped_push(segment):
             found.append(_Push([], wrapped=True))
             continue
         at = next((i for i, word in enumerate(words) if _is_git(word)), None)

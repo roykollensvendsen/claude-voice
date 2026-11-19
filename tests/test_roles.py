@@ -181,6 +181,16 @@ def test_a_push_hidden_in_shell_structure_is_refused(command):
     assert judged(command.replace("UP", UP_URL))
 
 
+@pytest.mark.parametrize("command", ["$'git' push UP main", "$'\\x67it' push UP main", 'g$"i"t push UP main'])
+def test_a_push_spelled_in_shell_escapes_is_refused(command):
+    assert judged(command.replace("UP", UP_URL))
+
+
+@pytest.mark.parametrize("command", ["g''it push UP main", '"g"it push UP main', "gi\\t push UP main"])
+def test_a_push_spelled_in_plain_quotes_is_judged(command):
+    assert judged(command.replace("UP", UP_URL))
+
+
 def aliased(command, aliases):
     return guard.refusal(
         command, UPSTREAM, remote_url=remotes(FORK_URLS), default_remote=lambda: "origin", alias=aliases.get
@@ -194,6 +204,7 @@ def test_a_git_alias_is_judged_by_what_it_runs():
     assert aliased("git s", {"s": "!git push origin feature"})
     assert aliased("git s", {"s": "-c remote.origin.url=x push"})
     assert aliased("git -c alias.p=push p up feature", {})
+    assert aliased("git p", {"p": "q", "q": "!git push origin feature"})
     assert aliased("git p origin feature", {"p": "push"}) is None
     assert aliased("git st", {"st": "status -sb"}) is None
     assert aliased("git lfs pull", {}) is None
