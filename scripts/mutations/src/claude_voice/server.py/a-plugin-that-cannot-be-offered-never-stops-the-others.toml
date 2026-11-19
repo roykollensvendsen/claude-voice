@@ -1,0 +1,5 @@
+[[rule]]
+name = "a plugin that cannot be offered never stops the others"
+file = "src/claude_voice/server.py"
+find = 'log\.warning\("plugin %s could not be offered: %s", spec\.name, exc\)'
+replace = 'raise'

@@ -100,3 +100,29 @@ async def test_the_plugins_start_side_by_side(tmp_path):
     server = behind_bridge(tmp_path, specs, side_by_side)
     async with Client(server) as c:
         assert await offered(c, "garage_status") and await offered(c, "tv_status")
+
+
+async def test_a_plugin_that_cannot_be_offered_never_stops_the_others(tmp_path, monkeypatch, caplog):
+    garage, _ = stand_in()
+    tv = tv_stand_in()
+    present = plugins.present
+
+    def breaks_on_garage(server, plugin, listing, commit):
+        if plugin.spec.name == "garage":
+            raise RuntimeError("the tool table broke")
+        present(server, plugin, listing, commit)
+
+    monkeypatch.setattr(plugins, "present", breaks_on_garage)
+    fakes = {GARAGE.cwd: garage, TV.cwd: tv}
+    specs = [(GARAGE, lambda p: Client(garage)), (TV, lambda p: Client(tv))]
+    server = behind_bridge(tmp_path, specs, lambda params: Client(fakes[params.cwd]))
+    with caplog.at_level("INFO", logger="claude_voice"):
+        async with Client(server) as c:
+            came = await offered(c, "tv_status")
+            health = (await c.call_tool("health", {})).structured_content
+    assert came  # the plugin after the broken one is still offered
+    states = {p["name"]: p for p in health["plugins"]}
+    assert states["tv"]["state"] == "running" or "tv_status" in states["tv"]["tools"]
+    assert states["garage"]["state"] == "could not be offered"
+    assert "the tool table broke" in states["garage"]["why"]
+    assert "garage could not be offered" in caplog.text and "the tool table broke" in caplog.text
