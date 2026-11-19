@@ -2,13 +2,13 @@
 
 ## Status
 
-Accepted by Roy Kollen Svendsen, 2026-11-07. Proposed 2026-11-05.
+Accepted by the owner, 2026-11-07. Proposed 2026-11-05.
 
 ## Context
 
 The bridge runs on one computer, the owner's laptop, and the voice reaches only
-the sessions and plugins there. He wants the same reach on his other machines:
-the work PC, a Raspberry Pi in the rack, and later his Android phone.
+the sessions and plugins there. The owner wants the same reach on their other machines:
+the work PC, a Raspberry Pi in the rack, and later their Android phone.
 
 What holds today:
 
@@ -66,13 +66,13 @@ addresses. It offers what its own settings file allows, and nothing else:
 
 It holds its own plugins' secrets and passes on only the tools' answers.
 
-**Pairing and approval, typed by Roy.**
+**Pairing and approval, typed by the owner.**
 
 1. On the new machine, `claude-voice agent pair` shows an eight-character code
    for ten minutes.
 2. On the hub, `claude-voice machines approve pi` asks for that code. It shows
    the machine's tailnet name and owner (from `tailscale whois`) and the tools it
-   offers. Roy types the code, and then the machine's name.
+   offers. The owner types the code, and then the machine's name.
 3. The hub sends the code to the agent, which answers with a long random key
    meant for that hub alone. Each side stores its half, readable only by its
    owner.
@@ -106,7 +106,7 @@ call is logged with its machine, like any other tool call today.
 **Least privilege.**
 
 - An agent offers only what its own file lists.
-- The hub offers only what Roy approved for that machine.
+- The hub offers only what the owner approved for that machine.
 - The hub never holds a remote plugin's secret or a remote Claude Code login.
 - A remote session's approvals stay on its machine. A spoken yes is passed on
   as a yes, never as a standing permission.

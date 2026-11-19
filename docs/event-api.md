@@ -302,7 +302,7 @@ per measure, and counts only with both a written reason and the owner's yes:
 [[exempt]]
 measure = "complexity"
 reason = "the tool table is one long match on the tool's name"
-approved = "Roy, 2026-11-11, in pull request #212"
+approved = "the owner, 2026-11-11, in pull request #212"
 ```
 
 `mutations` is the newest mutation report the followed branch kept with a
@@ -427,7 +427,7 @@ box shows at once rather than after five minutes.
 | `POST /api/v1/prompts/{id}` | for a question `{"answer": "<label>"}`, `{"answer": ["<label>", …]}` when `multi`, or `{"answer": {"text": "…"}}`; for an approval `{"decision": "allow"|"deny", "reason"?}`. `200`, `409` when it does not fit the prompt, `404` when it is gone. A change: with the cookie it needs an allowed `Origin` |
 
 While the hook waits, the bridge asks every five seconds whether the owner is still away.
-Once he is back at the laptop, the hook's wait gets `409`, and the box shows in the terminal.
+Once the owner is back at the laptop, the hook's wait gets `409`, and the box shows in the terminal.
 
 Read `GET /api/v1/prompts` on every connect; the stream only carries changes:
 `prompt` (one opened) and `prompt_closed` (`{"id", "how"}`).

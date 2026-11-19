@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted by Roy Kollen Svendsen, 2026-10-05.
+Accepted by the owner, 2026-10-05.
 
 Partly superseded by [ADR-CV-015](ADR-CV-015-the-red-run-is-proved-by-ci.md)
 (2026-11-14): the red run is proved by CI, not by a red commit. Its other two

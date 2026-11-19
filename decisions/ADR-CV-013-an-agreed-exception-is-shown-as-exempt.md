@@ -2,9 +2,9 @@
 
 ## Status
 
-Accepted 2026-11-11 by Roy Kollen Svendsen, in the brief he gave the session
+Accepted 2026-11-11 by the owner, in the brief they gave the session
 that built the code-quality skill: an exemption only with a written reason and
-his yes, kept in the repository's `quality.toml`, shown as "exempt" and never
+their yes, kept in the repository's `quality.toml`, shown as "exempt" and never
 green.
 
 ## Context
@@ -45,7 +45,7 @@ missing either field is ignored. Exempt is never shown as green.
 
 - A cell can be quietened, so the page is only as honest as the approvals.
   The `approved` field is text, not a signature; what makes it the owner's is
-  that it lands by a pull request he can see.
+  that it lands by a pull request they can see.
 - An exemption covers a whole measure, not one function: while complexity is
   exempt for one tangled function, a second one past the limit is hidden
   behind it. Narrowing an entry to one module is left for when that happens.

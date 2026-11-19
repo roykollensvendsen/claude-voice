@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted by Roy, 2026-11-15, with the platform-setup design that quality reviewed.
+Accepted by the owner, 2026-11-15, with the platform-setup design that quality reviewed.
 
 ## Context
 

@@ -238,7 +238,7 @@ EXEMPT = """
 [[exempt]]
 measure = "complexity"
 reason = "the tool table is one long match"
-approved = "Roy, 2026-11-11"
+approved = "the owner, 2026-11-11"
 """
 
 
@@ -252,7 +252,7 @@ def test_an_exempt_measure_is_shown_as_exempt_and_never_as_ok(tmp_path):
 
 
 def test_an_exemption_counts_only_with_a_reason_and_the_owners_yes(tmp_path):
-    no_yes = EXEMPT.replace('approved = "Roy, 2026-11-11"', "")
+    no_yes = EXEMPT.replace('approved = "the owner, 2026-11-11"', "")
     no_reason = EXEMPT.replace('reason = "the tool table is one long match"', 'reason = "  "')
     for i, text in enumerate((no_yes, no_reason, "not toml [[")):
         repo = exemptions(repo_with_history(tmp_path / f"r{i}", QUALITY), text)

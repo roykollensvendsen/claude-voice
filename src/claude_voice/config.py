@@ -127,7 +127,7 @@ MACHINE_NAME = re.compile(r"[a-z][a-z0-9-]{0,31}")
 
 @dataclass
 class MachineSpec:
-    """Another of Roy's machines, running `claude-voice agent`, reached over the tailnet."""
+    """Another of the owner's machines, running `claude-voice agent`, reached over the tailnet."""
 
     name: str
     address: str

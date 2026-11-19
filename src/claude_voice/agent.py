@@ -1,6 +1,6 @@
 """The agent: claude-voice on another machine, answering only the hub it was paired with.
 
-Roy's laptop is the hub; the voice talks to it alone. Each other machine runs
+The owner's laptop is the hub; the voice talks to it alone. Each other machine runs
 ``claude-voice agent``, a small MCP server listening on that machine's tailnet address and
 nowhere else (ADR-CV-006). It offers the plugins its own owner approved, and nothing more.
 

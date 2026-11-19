@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted by Roy Kollen Svendsen, 2026-11-14. Supersedes the first decision
+Accepted by the owner, 2026-11-14. Supersedes the first decision
 point and the first consequence of
 [ADR-CV-005](ADR-CV-005-how-a-change-is-made.md).
 

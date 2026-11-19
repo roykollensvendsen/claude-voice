@@ -1,4 +1,4 @@
-"""The hub's side of another machine: pairing with its agent, and offering what Roy approved.
+"""The hub's side of another machine: pairing with its agent, and offering what the owner approved.
 
 The other machine here is a real agent app, reached in memory; each side has its own
 stand-in for what Tailscale says about the other.
@@ -61,7 +61,7 @@ def laptop(tmp_path):
 
 
 def typed(*answers):
-    """Roy at the keyboard: each prompt gets the next answer."""
+    """The owner at the keyboard: each prompt gets the next answer."""
     queue = list(answers)
     return lambda prompt: queue.pop(0)
 
