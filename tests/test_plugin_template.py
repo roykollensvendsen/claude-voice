@@ -137,6 +137,13 @@ def test_the_template_s_red_first_is_this_repository_s():
     assert _code(TEMPLATE / "scripts/red_first.py") == _code(ROOT / "scripts/red_first.py")
 
 
+def test_the_template_s_workflow_test_is_this_repository_s():
+    """Both carry the same check of how pull request runs are grouped; a fix to one must reach
+    the other, so the two files are held byte for byte equal."""
+    ours = (ROOT / "tests/test_workflows.py").read_bytes()
+    assert (TEMPLATE / "tests/test_workflows.py").read_bytes() == ours
+
+
 def test_the_template_manifest_meets_the_published_schema():
     schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
     manifest = tomllib.loads((TEMPLATE / "claude-voice-plugin.toml").read_text(encoding="utf-8"))
