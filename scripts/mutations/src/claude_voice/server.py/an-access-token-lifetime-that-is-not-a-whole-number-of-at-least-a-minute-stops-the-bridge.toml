@@ -1,5 +1,5 @@
 [[rule]]
 name = "an access-token lifetime that is not a whole number of at least a minute stops the bridge"
 file = "src/claude_voice/server.py"
-find = 'if not ttl.isdigit\(\) or int\(ttl\) < MIN_ACCESS_TTL:'
+find = 'if not \(ttl\.isascii\(\) and ttl\.isdigit\(\)\) or int\(ttl\) < MIN_ACCESS_TTL:'
 replace = 'if False:'

@@ -163,7 +163,8 @@ def _counted(state: Path, total: int | None) -> bool:
     if total is None:
         return False
     _write(state / COUNT_FILE, str(total))
-    return seen is not None and seen.isdigit() and total > int(seen)
+    # RULE: a kept restart count that is not a plain number is ignored
+    return seen is not None and seen.isascii() and seen.isdigit() and total > int(seen)
 
 
 def _started_on(state: Path, git: Callable[..., str | None]) -> tuple[str | None, str | None]:

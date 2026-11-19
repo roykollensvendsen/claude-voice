@@ -72,6 +72,12 @@ def test_a_restart_by_systemd_with_no_reason_file_is_a_crash(tmp_path):
     assert (tmp_path / restarts.COUNT_FILE).read_text() == "4"
 
 
+def test_a_kept_restart_count_that_is_not_a_plain_number_is_ignored(tmp_path):
+    """'²' counts as a digit to Python but is no number int() reads; a bad file must not stop the start."""
+    assert info(tmp_path, total=4, seen="²")["reason"] == "unplanned"
+    assert (tmp_path / restarts.COUNT_FILE).read_text() == "4"
+
+
 def test_a_stale_reason_file_does_not_hide_a_crash(tmp_path):
     written(tmp_path, 60 * 60, reason="update")
     assert info(tmp_path, total=4, seen=3)["reason"] == "crash"
