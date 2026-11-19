@@ -94,6 +94,35 @@ This holds for every session that works under a manager.
 - When the work does not flow, tell the manager in one message what stopped you,
   how often, and what you propose.
 
+## What may ask the owner
+
+The owner's rule, said by voice on 19.11, for every role and the base rule pack:
+
+> A box may reach the owner only for a real decision he can judge in one
+> sentence: merging, marking a PR ready, pushing to main, real hardware,
+> secrets, deleting unmerged work. Routine, harmless steps must never ask him,
+> such as a session writing its own scratch files or doing a read-only ls.
+> Treat any such box as friction, fix its cause, and record it with the reason.
+
+A box is a permission question on the owner's screen. When a harmless step
+asks, don't route round it: tell the manager the exact command and the box.
+
+Most boxes come from how a command is written, not from what it does.
+
+How to write a command: base pack line 7. Until the base pack is installed,
+here is that line in full (rule-packs v1 notes, 4a51663e38be):
+
+> **Commands the gate can read.** Run each command on its own and plain, with every
+> value written out. Use no `&&`, `;`, `|`, loops, `$VAR`, `$(…)` or backticks,
+> and no `$` inside an awk or jq program. Never feed one command's output into the
+> next: run the first, read its result, and write the value into the second. Read
+> files and logs with the Read tool, and search them with Grep where the session
+> has it, not cat, head, tail or grep. Put a text body or a script in a file and
+> run it by path, never in the command itself. Temporary files go only in your own
+> scratchpad, never in another session's. Never `rm -r` or `rm -rf`: reuse one
+> folder per job. *Why: the gate and the permission rules judge one plain command;
+> anything else, and any rule word inside a body, stops at the owner's box.*
+
 ## When you are changing claude-voice itself
 
 If you are the session working in this repository on the owner's own machine,
