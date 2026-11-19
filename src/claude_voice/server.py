@@ -247,7 +247,7 @@ def _access_seconds(env: Mapping[str, str]) -> int | None:
     if not ttl:
         return None
     # RULE: an access-token lifetime that is not a whole number of at least a minute stops the bridge
-    if not ttl.isdigit() or int(ttl) < MIN_ACCESS_TTL:
+    if not (ttl.isascii() and ttl.isdigit()) or int(ttl) < MIN_ACCESS_TTL:
         raise ConfigError(
             f"CLAUDE_VOICE_ACCESS_TOKEN_SECONDS is {ttl!r}; use a whole number of seconds, "
             f"at least {MIN_ACCESS_TTL} (an hour is 3600, a week 604800)."

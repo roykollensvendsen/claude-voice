@@ -89,7 +89,8 @@ def _label(question: dict[str, Any], said: Any) -> Any:
     options = question["options"]
     text = str(said).strip()
     # RULE: an option is chosen by its number or its label
-    if text.isdigit() and 1 <= int(text) <= len(options):
+    # isdigit alone takes '²', which int() cannot read; only plain 0-9 is a number here.
+    if text.isascii() and text.isdigit() and 1 <= int(text) <= len(options):
         return options[int(text) - 1]["label"]
     return next((o["label"] for o in options if o["label"].casefold() == text.casefold()), said)
 

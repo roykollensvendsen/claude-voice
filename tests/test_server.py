@@ -164,7 +164,7 @@ def test_config_reads_the_access_token_lifetime(tmp_path):
     assert load_config(env, transport="stdio").access_ttl == 604800
 
 
-@pytest.mark.parametrize("bad", ["a week", "-5", "30", "1.5"])
+@pytest.mark.parametrize("bad", ["a week", "-5", "30", "1.5", "3600²"])
 def test_an_access_token_lifetime_that_is_not_a_whole_number_of_at_least_a_minute_stops_the_bridge(tmp_path, bad):
     env = {"CLAUDE_VOICE_ROOT": str(tmp_path), "CLAUDE_VOICE_ACCESS_TOKEN_SECONDS": bad}
     with pytest.raises(ConfigError, match="CLAUDE_VOICE_ACCESS_TOKEN_SECONDS"):

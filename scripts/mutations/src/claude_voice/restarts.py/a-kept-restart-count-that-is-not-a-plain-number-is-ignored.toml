@@ -1,0 +1,5 @@
+[[rule]]
+name = "a kept restart count that is not a plain number is ignored"
+file = "src/claude_voice/restarts.py"
+find = 'return seen is not None and seen\.isascii\(\) and seen\.isdigit\(\) and total > int\(seen\)'
+replace = 'return seen is not None and seen.isdigit() and total > int(seen)'

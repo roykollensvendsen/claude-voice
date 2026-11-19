@@ -237,6 +237,15 @@ def test_an_empty_pick_is_refused():
         assert prompt["answer"] is None
 
 
+def test_a_number_written_as_a_superscript_is_refused_with_the_options():
+    """'²' counts as a digit to Python but is no number int() reads; it is refused like any word."""
+    book, prompt, _ = asked()
+    with book.waiting(prompt):
+        status, said = answers.answer(book, "q1", "²", None)
+    assert status == 409 and said["answered"] is False and "²" in said["error"]
+    assert [o["label"] for o in said["options"]] == ["Red", "Blue"]
+
+
 def test_a_choice_named_twice_counts_once():
     book, prompt, _ = asked(multi=True)
     with book.waiting(prompt):
