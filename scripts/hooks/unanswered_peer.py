@@ -54,7 +54,11 @@ ACK = re.compile(
 def _asks_nothing(text: str) -> bool:
     """A message marked as needing no reply, or a plain acknowledgement from the closed list."""
     text = text.strip()
-    return text.startswith(NO_REPLY) or ACK.fullmatch(text) is not None
+    # RULE: the marker counts only at the start
+    if text.startswith(NO_REPLY):
+        return True
+    # RULE: an acknowledgement with a request is held
+    return ACK.fullmatch(text) is not None
 
 
 def _texts(entry: dict[str, Any]) -> list[str]:
