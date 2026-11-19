@@ -1,0 +1,5 @@
+[[rule]]
+name = "a session's replies can be pushed alone"
+file = "src/claude_voice/mailbox.py"
+find = '" AND \(\? IS NULL OR sender = \?\)"'
+replace = '" AND (? IS NULL OR ? IS NOT NULL)"'

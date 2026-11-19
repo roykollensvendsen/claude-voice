@@ -1,0 +1,5 @@
+[[rule]]
+name = "a recap brings the session's unheard replies"
+file = "src/claude_voice/server.py"
+find = 'return with_replies\(recap, recap\["label"\]\)'
+replace = 'return recap'
