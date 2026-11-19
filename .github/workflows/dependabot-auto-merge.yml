@@ -7,9 +7,10 @@ name: dependabot auto-merge
 on:
   pull_request:
 
-# One run per pull request: a newer push cancels the run it superseded.
+# A newer push to a pull request stops that pull request's stale run. Every other run is
+# its own group and always runs to the end.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
