@@ -65,6 +65,23 @@ def test_check_runs_every_gate_a_pull_request_needs_offline():
     assert check == ["lint", "types", "private", "tests", "mutation"]
 
 
+#: One run per workflow and ref. A newer push to a pull request cancels the run it superseded,
+#: so old runs do not hold the runners; a run on main always finishes.
+SUPERSEDED = """\
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+"""
+
+
+def test_every_pull_request_workflow_cancels_a_superseded_run_but_never_one_on_main():
+    workflows = sorted((ROOT / ".github/workflows").glob("*.yml"))
+    on_pull_requests = [p for p in workflows if "\n  pull_request:" in p.read_text()]
+    assert on_pull_requests, "no workflow runs on pull requests"
+    missing = [p.name for p in on_pull_requests if SUPERSEDED not in p.read_text()]
+    assert missing == [], "give these the concurrency block in tests/test_docs.py: " + ", ".join(missing)
+
+
 def test_no_job_that_runs_the_mutation_run_or_the_ratchet_has_a_time_limit():
     """A run cut short proves nothing, so neither is ever capped."""
     text = (ROOT / ".github/workflows/checks.yml").read_text()
