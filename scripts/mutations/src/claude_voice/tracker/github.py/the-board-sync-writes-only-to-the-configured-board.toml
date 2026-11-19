@@ -1,0 +1,5 @@
+[[rule]]
+name = "the board sync writes only to the configured board"
+file = "src/claude_voice/tracker/github.py"
+find = 'if variables\.get\("project"\) != self\.board\.project:'
+replace = 'if False:'

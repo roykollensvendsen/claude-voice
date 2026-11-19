@@ -1,0 +1,5 @@
+[[rule]]
+name = "an item from a repository outside the board is never touched"
+file = "src/claude_voice/tracker/github.py"
+find = 'if work\["repository"\]\["nameWithOwner"\] in board\.repos:'
+replace = 'if True:'

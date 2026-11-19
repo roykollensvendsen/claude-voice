@@ -1,0 +1,9 @@
+[Unit]
+Description=claude-voice: bring the project board in step with the open pull requests and issues
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/claude-voice
+ExecStart=%h/claude-voice/.venv/bin/claude-voice tracker sync
+TimeoutStartSec=300

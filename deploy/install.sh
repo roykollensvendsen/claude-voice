@@ -38,7 +38,12 @@ fi
 
 mkdir -p "$(dirname "$unit")"
 install -m 644 "$repo/deploy/claude-voice.service" "$unit"
+# The board sync runs outside the bridge, every five minutes; without a [tracker] board in
+# config.toml each run only says there is nothing to sync.
+install -m 644 "$repo/deploy/claude-voice-board.service" "$(dirname "$unit")/claude-voice-board.service"
+install -m 644 "$repo/deploy/claude-voice-board.timer" "$(dirname "$unit")/claude-voice-board.timer"
 systemctl --user daemon-reload
+systemctl --user enable --now claude-voice-board.timer
 systemctl --user enable --now claude-voice.service
 systemctl --user restart claude-voice.service
 
