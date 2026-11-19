@@ -337,6 +337,44 @@ A note over ten minutes old is ignored, and the log says so. The reason is one o
 - `boot`, when the computer has been up under five minutes;
 - `unplanned`, for anything else, such as a plain `systemctl --user restart`.
 
+### Keep a project board in step
+
+`deploy/install.sh` also installs a timer that runs `claude-voice tracker sync` every five
+minutes, apart from the bridge. It keeps a GitHub project board in step with the open pull
+requests and issues of the repositories linked to that board. It uses your own `gh` login,
+which needs the `project` scope. Without a board in the settings file, a run does nothing:
+
+```console
+$ claude-voice tracker sync --dry-run
+claude-voice: no [tracker] board in the settings file; nothing to sync
+```
+
+To use it, name the board in `~/.config/claude-voice/config.toml`. `project_id` is the board's
+node id, which `gh project view <number> --owner <you> --format json` shows as `id`:
+
+```toml
+[tracker]
+owner = "your-login"
+board = 7
+project_id = "PVT_..."
+waiting = "Waiting on you"  # the column for an outside issue nobody has looked at yet
+```
+
+The board needs a Status field with the columns Backlog, In progress, In review, Done, and
+the waiting column. A run reads the board and the open work in two queries, and sends only
+what changed. It writes no text: it adds existing pull requests and issues and sets their
+Status, on that board only.
+
+- A draft pull request, or one nobody has been asked to review, goes in **In progress**.
+- A pull request with a review asked for or given goes in **In review**.
+- Merged or closed work goes in **Done**.
+- An open issue goes in **Backlog**. If someone else opened it and you have not labelled or
+  answered it yet, it goes in the waiting column instead.
+- An open issue you moved by hand stays where you put it.
+
+When fewer than 500 GraphQL points are left, a run does nothing, and the journal
+(`journalctl --user -u claude-voice-board`) says so once.
+
 ## Answer questions and approvals from the phone
 
 With the companion app open, a session's choice box or permission prompt can be

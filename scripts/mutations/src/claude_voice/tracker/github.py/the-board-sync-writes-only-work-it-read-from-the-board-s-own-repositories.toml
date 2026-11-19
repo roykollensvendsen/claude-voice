@@ -1,0 +1,5 @@
+[[rule]]
+name = "the board sync writes only work it read from the board's own repositories"
+file = "src/claude_voice/tracker/github.py"
+find = 'if query == ADD and variables\.get\("content"\) not in self\.contents:'
+replace = 'if False:'

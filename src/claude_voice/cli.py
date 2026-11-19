@@ -35,6 +35,7 @@ COMMANDS: tuple[str, ...] = (
     "repos",
     "roles",
     "set",
+    "tracker",
 )
 
 SIGN_IN = (
@@ -214,9 +215,15 @@ def main(
     repos_cmd = sub.add_parser("repos", help="the profile's repositories: where each one stands")
     repos_cmd.add_argument("action", choices=["sync"])
     repos_cmd.add_argument("--check", action="store_true", help="say what a sync would do, from local refs only")
+    tracker_cmd = sub.add_parser(
+        "tracker", help="bring the project board in step with the open pull requests and issues"
+    )
+    tracker_cmd.add_argument("action", choices=["sync"])
+    tracker_cmd.add_argument("--dry-run", action="store_true", help="say what would change, and change nothing")
     parsed = parser.parse_args(args)
 
     verbs: dict[str, Callable[[], int]] = {
+        "tracker": lambda: tracker_command(parsed.dry_run, env),
         "setup": lambda: setup_command(parsed.check, parsed.json, env, login),
         "repos": lambda: repos_command(parsed.check, env),
         "restart": lambda: restart_command(parsed.why, parsed.dry_run, systemctl),
@@ -342,6 +349,26 @@ def setup_command(check: bool, as_json: bool, env: Mapping[str, str], login: Cal
     else:
         sys.stdout.write("\n".join(setup.lines(found)) + "\n")
     return 1 if left else 0
+
+
+def tracker_command(dry_run: bool, env: Mapping[str, str], client: Any = None) -> int:
+    """One board sync: read the board and the open work, and send only what changed."""
+    from . import config
+    from .tracker import github
+
+    home = env.get("HOME") or str(Path.home())
+    text = env.get("CLAUDE_VOICE_CONFIG") or str(config.FILE)
+    path = Path(home + text[1:] if text.startswith("~") else text)
+    settings = github.settings_from(path)
+    if settings is None:
+        sys.stdout.write("claude-voice: no [tracker] board in the settings file; nothing to sync\n")
+        return 0
+    try:
+        state = Path(home + str(STATE_DIR)[1:])
+        return github.sync(client or github.gh_graphql, settings, state, dry=dry_run)
+    except github.SyncError as exc:
+        sys.stderr.write(f"claude-voice: the board sync could not reach GitHub: {exc}. It tries again next run.\n")
+        return 1
 
 
 def repos_command(check: bool, env: Mapping[str, str]) -> int:

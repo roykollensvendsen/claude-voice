@@ -1,0 +1,5 @@
+[[rule]]
+name = "a low rate limit skips the run and says so once"
+file = "src/claude_voice/tracker/github.py"
+find = 'if board\.remaining < FLOOR:'
+replace = 'if False:'
