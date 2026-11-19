@@ -86,10 +86,40 @@ def test_a_pull_request_need_not_record_the_levels_it_reached():
     assert problems(BASE, better) == []
 
 
-def test_the_suite_must_stay_inside_its_time_budget():
-    assert problems(BASE, measured(test_seconds=124.0)) == []  # inside the tolerance
-    found = problems(BASE, measured(test_seconds=126.0))
-    assert found and "test_seconds" in found[0]
+def test_the_suites_cpu_time_must_stay_inside_its_budget():
+    assert problems(BASE, measured(test_cpu_seconds=124.0)) == []  # inside the tolerance
+    found = problems(BASE, measured(test_cpu_seconds=126.0))
+    assert found and "test_cpu_seconds" in found[0]
+
+
+def test_wall_time_never_fails_the_check():
+    """A busy machine makes the suite wait; that is the machine's load, not the code's work."""
+    assert problems(BASE, measured(test_seconds=500.0, test_cpu_seconds=60.0)) == []
+
+
+def test_in_ci_a_suite_that_waits_is_reported_as_waiting_and_passes():
+    _, wall, cpu = ratchet.timed(lambda: ratchet._run(sys.executable, "-c", "import time; time.sleep(2)"))
+    now = measured(test_seconds=wall, test_cpu_seconds=cpu)
+    one_second = {"seconds": 1, "tolerance": 0}
+    assert ratchet.compare(BASE, now, set(), one_second) == []
+    [said] = ratchet.notes(now, one_second, ci=True)
+    assert "waiting" in said and "work" in said
+    assert ratchet.notes(now, one_second, ci=False) == []
+
+
+def test_cpu_time_counts_the_work_of_the_suite_run_through_uv():
+    """The suite runs as `uv run pytest`; its work counts because uv waits for it, and the ratchet for uv."""
+    burn = "import time\nend = time.process_time() + 0.3\nwhile time.process_time() < end: pass"
+    _, _, cpu = ratchet.timed(lambda: ratchet._run("uv", "run", "python", "-c", burn))
+    assert cpu is not None and cpu >= 0.25
+
+
+def test_without_cpu_time_the_wall_time_is_only_reported(monkeypatch):
+    monkeypatch.setitem(sys.modules, "resource", None)  # as on Windows: no such module
+    assert ratchet.children_cpu() is None
+    now = measured(test_seconds=500.0, test_cpu_seconds=None)
+    assert problems(BASE, now) == []
+    assert any("CPU time cannot be read on this system" in n for n in ratchet.notes(now, BUDGET, ci=False))
 
 
 def test_the_time_budget_is_the_one_thing_quality_json_keeps(tmp_path):

@@ -269,6 +269,30 @@ def _run(*command: str, cwd: Path = ROOT, env: dict[str, str] | None = None) -> 
     return subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True, check=False)
 
 
+def children_cpu() -> float | None:
+    """CPU seconds used so far by the child processes this one has waited for, or None where
+    the system cannot say (Windows has no `resource` module).
+
+    RUSAGE_CHILDREN counts only children that were waited for. `_run` waits, so a suite run
+    through it counts. So does the `uv run pytest` it runs: pytest counts because uv waits
+    for it, and uv because `_run` waits for uv. A process left running is not counted.
+    """
+    try:
+        import resource
+    except ImportError:
+        return None
+    used = resource.getrusage(resource.RUSAGE_CHILDREN)
+    return used.ru_utime + used.ru_stime
+
+
+def timed[T](run: Callable[[], T]) -> tuple[T, float, float | None]:
+    """Run, and say how long it took on the clock and how much of that was CPU work."""
+    before, started = children_cpu(), time.monotonic()
+    result = run()
+    wall, after = round(time.monotonic() - started, 1), children_cpu()
+    return result, wall, (round(after - before, 1) if before is not None and after is not None else None)
+
+
 def mutation_command(report: Path | None) -> list[str]:
     """The mutation run, asked to write its report rule by rule where the checks keep it."""
     return ["uv", "run", "python", "scripts/mutate.py", *(["--json", str(report)] if report else [])]
@@ -280,9 +304,9 @@ def measure(
     """Every measure, from the tree as it is."""
     with tempfile.TemporaryDirectory() as tmp:
         report = Path(tmp) / "coverage.json"
-        started = time.monotonic()
-        suite = _run("uv", "run", "pytest", "-q", "-p", "no:cacheprovider", "--cov", f"--cov-report=json:{report}")
-        seconds = round(time.monotonic() - started, 1)
+        suite, seconds, cpu = timed(
+            lambda: _run("uv", "run", "pytest", "-q", "-p", "no:cacheprovider", "--cov", f"--cov-report=json:{report}")
+        )
         if suite.returncode:
             raise SystemExit("The suite fails; the ratchet measures a green tree.\n" + suite.stdout[-2000:])
         coverage = round(json.loads(report.read_text())["totals"]["percent_covered"], 2)
@@ -308,6 +332,7 @@ def measure(
         "duplication": duplication(SOURCE),
         "complexity": complexity(SOURCE),
         "test_seconds": seconds,
+        "test_cpu_seconds": cpu,
         "test_budget": None,
     }
 
@@ -349,13 +374,31 @@ def compare(base: dict[str, Any], now: dict[str, Any], allowed: set[str], budget
             found.append(f"complexity of {module} got worse: {before} -> {score}")
         if before is None and score > NEW_MODULE_CEILING and "complexity" not in allowed:
             found.append(f"{module} is new and has a function of complexity {score}; keep it at {NEW_MODULE_CEILING}")
-    limit = budget["seconds"] * (1 + budget["tolerance"])
-    if now["test_seconds"] > limit:
-        found.append(
-            f"test_seconds is {now['test_seconds']}, over the budget of {budget['seconds']}"
-            f" (+{budget['tolerance']:.0%})"
-        )
+    cpu = now.get("test_cpu_seconds")
+    # RULE: the suite's CPU time must stay inside its budget
+    if cpu is not None and cpu > _limit(budget):
+        found.append(f"test_cpu_seconds is {cpu}, over the budget of {budget['seconds']} (+{budget['tolerance']:.0%})")
+    # RULE: wall time never fails the check; a busy machine waits, and that is not the code's work
     return found
+
+
+def _limit(budget: dict[str, Any]) -> float:
+    return float(budget["seconds"]) * (1 + float(budget["tolerance"]))
+
+
+def notes(now: dict[str, Any], budget: dict[str, Any], ci: bool) -> list[str]:
+    """Lines that say something about time and fail nothing."""
+    wall, cpu = now.get("test_seconds"), now.get("test_cpu_seconds")
+    said = []
+    if cpu is None:
+        said.append(f"CPU time cannot be read on this system; the suite took {wall} s on the clock, judged by nothing")
+    # RULE: in ci a suite that waits is reported as waiting and passes
+    if ci and wall is not None and wall > _limit(budget) and (cpu is None or cpu <= _limit(budget)):
+        work = "" if cpu is None else f" but only {cpu} s of it was work"
+        said.append(
+            f"test_seconds is {wall} (wall){work}; the suite is waiting on something (a sleep, a lock, the network)"
+        )
+    return said
 
 
 def exceptions(text: str) -> set[str]:
@@ -508,7 +551,10 @@ def main() -> int:
     now = measure(args.skip_mutation, base, args.mutations)
     if args.out:
         write_levels(args.out, now)
-    found = compare(base, now, exceptions(os.environ.get("RATCHET_EXCEPTIONS", "")), budget(FILE))
+    limits = budget(FILE)
+    found = compare(base, now, exceptions(os.environ.get("RATCHET_EXCEPTIONS", "")), limits)
+    for note in notes(now, limits, ci=bool(os.environ.get("CI"))):
+        print(note)
     for problem in found:
         print(problem, file=sys.stderr)
     if not found:
