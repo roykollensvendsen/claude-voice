@@ -19,7 +19,8 @@ A branch is deleted only when all of these hold:
 A worktree is removed only when it lies under <repo>/.claude/worktrees/, its branch (or its
 detached commit) is merged as above, `git status` shows nothing uncommitted, and no running
 program has its working folder inside it. Removal uses plain `git worktree remove`, which
-refuses anything changed. Nothing remote is touched. A missing never-touch list stops the
+refuses anything changed. A branch is deleted only if it still points at the commit that was
+judged. Only local branches and worktrees are touched, never a branch on GitHub. A missing never-touch list stops the
 script before it looks at anything. Standard library only.
 """
 
@@ -107,7 +108,7 @@ def _plural(n: int) -> str:
 
 def plan(
     repo: pathlib.Path, base: str, never: set[str], cwds: Iterable[pathlib.Path]
-) -> tuple[list[pathlib.Path], list[str], list[str]]:
+) -> tuple[list[pathlib.Path], list[tuple[str, str]], list[str]]:
     """What to remove: worktrees, branches, and a line per decision."""
     said: list[str] = []
     home = repo / ".claude" / "worktrees"
@@ -162,8 +163,9 @@ def plan(
             gone.append(tree.path)
     going_with_tree = {t.branch for t in worktrees(repo) if t.path in gone and t.branch}
 
-    branches: list[str] = []
-    for branch in _git(repo, "branch", "--format=%(refname:short)").split():
+    branches: list[tuple[str, str]] = []
+    for line in _git(repo, "branch", "--format=%(refname:short) %(objectname)").splitlines():
+        branch, judged = line.split()
         if branch in staying:
             if ORGANISATION_NAME.match(branch):
                 said.append(f"keep branch {branch}: checked out in a worktree that stays")
@@ -173,7 +175,7 @@ def plan(
             if ORGANISATION_NAME.match(branch) or reason == "not a name the organisation makes":
                 said.append(f"keep branch {branch}: {reason}")
         else:
-            branches.append(branch)
+            branches.append((branch, judged))
     return gone, branches, said
 
 
@@ -197,15 +199,25 @@ def main(argv: list[str] | None = None, cwds: Callable[[], Iterable[pathlib.Path
     for line in said:
         print(line)
     verb = "" if args.apply else "would "
+    merged = f"merged: every change on it is on {args.base}, nothing uncommitted, no program in it"
     for path in gone:
-        print(f"{verb}remove worktree {path}")
+        print(f"{verb}remove worktree {path}: {merged}")
         if args.apply:
             _git(args.repo, "worktree", "remove", str(path))
-    for branch in branches:
-        print(f"{verb}delete branch {branch}")
+    for branch, judged in branches:
+        print(f"{verb}delete branch {branch} at {judged[:12]}: every change on it is on {args.base}")
         if args.apply:
-            _git(args.repo, "branch", "-D", branch)
+            delete_branch(args.repo, branch, judged)
     return 0
+
+
+def delete_branch(repo: pathlib.Path, branch: str, judged: str) -> None:
+    """Delete `branch` only if it still points at `judged`, the commit the checks looked at.
+
+    `git branch -d` can't be the backstop: a rebase merge leaves the branch off main's history,
+    so -d refuses every merged branch. This refuses instead if the branch moved since."""
+    # RULE: a branch that moved since it was judged is not deleted
+    _git(repo, "update-ref", "-d", f"refs/heads/{branch}", judged)
 
 
 if __name__ == "__main__":

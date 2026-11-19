@@ -1,0 +1,5 @@
+[[rule]]
+name = "a branch that moved since it was judged is not deleted"
+file = "scripts/clean_merged.py"
+find = '_git\(repo, "update-ref", "-d", f"refs/heads/\{branch\}", judged\)'
+replace = '_git(repo, "update-ref", "-d", f"refs/heads/{branch}")'
