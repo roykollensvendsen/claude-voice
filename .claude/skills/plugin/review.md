@@ -34,6 +34,8 @@ each kind of rule is proven.
 | 12 | R13 | `scripts/no_session_links.py` on the commits | Any trailer but `Co-Authored-By` and an outside contributor's `Signed-off-by` |
 | 13 | R14 to R24 | The cleanup files: `tests/conftest.py`, `scripts/temproot.py`, the runners | Any of these rules or their proofs not met, named by number; for R15 and R17, against the design the conftest names |
 | 14 | R25 to R31 | Every wait and every child a test starts | A test that waits without a bound it sets itself, named by file and line |
+| 14a | R30 | Every line a test reads from a running child | A line read with `select()` instead of `line_within` |
+| 14b | R31 | Every process a test, a cleanup or a session ends | One ended by pattern, or by pid without its cmdline checked |
 | 15 | R25 | The mutation script's output | No flushed progress line per rule |
 | 16 | R27, R28 | The test config, and every child a test starts | A per-test or per-run timeout in the config; a child that can fork started without `run_bounded` |
 | 17 | R32 to R34 | `docs/setup.md` and the README | A step with no `Check:`, a stale README block, a run of an unmarked block |
