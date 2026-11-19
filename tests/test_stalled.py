@@ -144,6 +144,25 @@ def test_only_the_owners_prompts_are_marked():
     assert not stalled.owners_only("git push --force-with-lease origin feat/x")
 
 
+@pytest.mark.parametrize(
+    "command",
+    ["git push origin HEAD:main", "git push origin feat/x:master", "git push origin :feat/x",
+     "git push origin +feat/x", "git push origin +HEAD:feat/x"],
+)  # fmt: skip
+def test_a_push_that_lands_on_main_deletes_or_forces_by_refspec_is_the_owners(command):
+    assert stalled.owners_only(command)
+
+
+@pytest.mark.parametrize(
+    "question",
+    ["Bash: {'command': 'deploy', 'api_key': 'hunter2'}", 'Bash: {"password": "hunter2"}',
+     "Run mytool --password hunter2?"],
+)  # fmt: skip
+def test_a_held_prompt_is_masked_before_its_quotes_are_said(question):
+    said = stalled.said_question(stalled.Asked(question, ["Yes", "No"]))
+    assert "hunter2" not in said and "[hidden]" in said
+
+
 # -- the settings, and what a programme lets the voice hear -------------------------------
 
 

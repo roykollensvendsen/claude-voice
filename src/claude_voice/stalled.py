@@ -99,6 +99,9 @@ def parse_pane(text: str) -> Asked | None:
 OWNERS = re.compile(
     r"push\b[^\n]*(?:--force(?!-with-lease)\b|\s-f\b)"  # a push that forces
     r"|push\b[^\n]*\s(?:origin\s+)?(?:main|master)\b"  # straight onto main
+    # RULE: a push that lands on main deletes or forces by refspec is the owners
+    r"|push\b[^\n]*\s\S*:(?:refs/heads/)?(?:main|master)\b"  # onto main by a refspec
+    r"|push\b[^\n]*\s[:+]\S"  # a branch deleted, or forced, by a refspec
     r"|branch\s+-D\b|push\b[^\n]*\s--delete\b"  # a branch deleted
     r"|plugins\s+approve\b|machines\s+approve\b"  # what only the owner approves
     r"|\blogin\b|/login\b|\bsecret\b|\bpassword\b",  # a sign-in or a secret
@@ -109,7 +112,7 @@ NIGHT = (23, 7)  # from this hour until that one, the voice's item waits for the
 
 
 def owners_only(text: str) -> bool:
-    """Whether a prompt is one only the owner may answer, so a manager leaves it to him."""
+    """Whether a prompt is one only the owner may answer, so a manager leaves it to the owner."""
     return bool(OWNERS.search(text))
 
 
@@ -188,9 +191,11 @@ class Watch:
 
 
 def said_question(asked: Asked) -> str:
-    """The question as it is said: quoted, its own quote marks neutralised, masked, then cut."""
-    question = asked.question.translate(QUOTES)
+    """The question as it is said: masked while its quotes still mark names and values, its
+    own quote marks then neutralised, and cut."""
+    question = redact.mask(asked.question).translate(QUOTES)
     text = f"'{question}'."
     if asked.options:
-        text += " Options: " + ", ".join(f"{i} {o.translate(QUOTES)}" for i, o in enumerate(asked.options, 1)) + "."
+        said = (f"{i} {redact.mask(o).translate(QUOTES)}" for i, o in enumerate(asked.options, 1))
+        text += " Options: " + ", ".join(said) + "."
     return redact.hide(text, LIMIT)

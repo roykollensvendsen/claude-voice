@@ -427,7 +427,7 @@ box shows at once rather than after five minutes.
 | `POST /api/v1/prompts/{id}` | for a question `{"answer": "<label>"}`, `{"answer": ["<label>", …]}` when `multi`, or `{"answer": {"text": "…"}}`; for an approval `{"decision": "allow"|"deny", "reason"?}`. `200`, `409` when it does not fit the prompt, `404` when it is gone. A change: with the cookie it needs an allowed `Origin` |
 
 While the hook waits, the bridge asks every five seconds whether the owner is still away.
-Once he is back at the laptop, the hook's wait gets `409`, and the box shows in the terminal.
+Once the owner is back at the laptop, the hook's wait gets `409`, and the box shows in the terminal.
 
 Read `GET /api/v1/prompts` on every connect; the stream only carries changes:
 `prompt` (one opened) and `prompt_closed` (`{"id", "how"}`).
@@ -461,7 +461,7 @@ laptop can sit there for hours. The bridge says so, once per prompt.
 - **Nobody is at the laptop** by the same rule the phone's prompts use: the screen is
   locked, there has been no keyboard or mouse for five minutes, the app is open, or
   the voice called in the last ten minutes. When the owner is there, the box is in
-  front of him, and nothing is said.
+  front of the owner, and nothing is said.
 - **The question** comes from the prompt the bridge holds, with its options, and can
   then be answered by voice as usual. Otherwise, for a session in tmux, the bridge
   reads its pane (`tmux capture-pane -p -J`): it joins the lines of Claude Code's
