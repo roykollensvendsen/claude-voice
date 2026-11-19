@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/roykollensvendsen/claude-voice/blob/main/docs/agent-protocol/v1/needs-yes.json",
   "title": "Waiting for a spoken yes",
-  "description": "The structured answer of a tool that will not act until the owner says yes aloud, such as calling a number not on the phone's own list. The voice reads say aloud; on a clear yes it calls confirm_with with the token, once.",
+  "description": "The structured answer of a tool that will not act until Roy says yes aloud, such as calling a number not on the phone's own list. The voice reads say aloud; on a clear yes it calls confirm_with with the token, once.",
   "type": "object",
   "required": [
     "needs_yes",

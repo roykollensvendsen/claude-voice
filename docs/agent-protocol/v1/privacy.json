@@ -17,7 +17,7 @@
         "must-answer",
         "after-warning"
       ],
-      "description": "Known in version 1: none: nothing here opens a microphone. must-answer: the person at the machine accepts first. after-warning: it opens after the warning sound. The sound plays under both. A hub shows a value it does not know to the owner as unknown, and treats it as one that may open a microphone."
+      "description": "Known in version 1: none: nothing here opens a microphone. must-answer: the person at the machine accepts first. after-warning: it opens after the warning sound. The sound plays under both. A hub shows a value it does not know to Roy as unknown, and treats it as one that may open a microphone."
     },
     "location_log": {
       "type": "boolean",

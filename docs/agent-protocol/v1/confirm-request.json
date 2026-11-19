@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/roykollensvendsen/claude-voice/blob/main/docs/agent-protocol/v1/confirm-request.json",
   "title": "Confirming a spoken yes",
-  "description": "The input of the tool named in confirm_with. Sent only after the owner clearly said yes to the question just read.",
+  "description": "The input of the tool named in confirm_with. Sent only after Roy clearly said yes to the question just read.",
   "type": "object",
   "required": [
     "token"

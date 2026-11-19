@@ -30,7 +30,7 @@
         "pattern": "^[a-z][a-z0-9_]{0,31}$"
       },
       "uniqueItems": true,
-      "description": "Which of its tools confirm a spoken yes. Each is also in tools. The hub calls one only for the voice, never for a Claude Code session; part of what the owner approves."
+      "description": "Which of its tools confirm a spoken yes. Each is also in tools. The hub calls one only for the voice, never for a Claude Code session; part of what Roy approves."
     },
     "uses": {
       "type": "array",
@@ -50,7 +50,7 @@
         ]
       },
       "uniqueItems": true,
-      "description": "What private thing on the machine the plugin can reach with its settings as they are now. Known in version 1: microphone, camera, location, calls, contacts, notifications, media, sensors, and usage, the use of the machine and its apps, such as data used. A later version may add more; a hub shows a value it does not know to the owner as unknown, and it needs their approval like any other. Part of what the owner approves: a setting that reaches more changes this, and the owner approves the plugin again."
+      "description": "What private thing on the machine the plugin can reach with its settings as they are now. Known in version 1: microphone, camera, location, calls, contacts, notifications, media, sensors, and usage, the use of the machine and its apps, such as data used. A later version may add more; a hub shows a value it does not know to Roy as unknown, and it needs his approval like any other. Part of what he approves: a setting that reaches more changes this, and Roy approves the plugin again."
     },
     "instructions": {
       "type": "string",
