@@ -447,5 +447,16 @@ async def test_a_carried_message_says_the_voice_reads_the_reply(monkeypatch):
     await transcripts.deliver("billing", "Is the build green?")
     message = factory.clients[0].executed[0][1]["message"]
     assert message.startswith("Is the build green?")
-    assert message.endswith("Your reply is read by the voice.")
+    assert message.endswith(transcripts.READ_BY_VOICE)
     await transcripts._courier.close()
+
+
+def test_a_carried_message_asks_for_the_answer_first_in_this_turn_and_no_sendmessage():
+    """A separate SendMessage can reach a voice relay session that no longer listens (19.11),
+    so the answer belongs in the turn's own reply text, where the voice reads it."""
+    from claude_voice import transcripts
+
+    line = transcripts.READ_BY_VOICE
+    assert "read by the voice" in line
+    assert "this turn" in line and "first" in line
+    assert "SendMessage" in line  # named, so a session knows not to use it for the answer
