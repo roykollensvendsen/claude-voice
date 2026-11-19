@@ -1,0 +1,5 @@
+[[rule]]
+name = "an acknowledgement with a request is held"
+file = "scripts/hooks/unanswered_peer.py"
+find = '^\s*return ACK.fullmatch\(text\) is not None'
+replace = '    return ACK.match(text) is not None'

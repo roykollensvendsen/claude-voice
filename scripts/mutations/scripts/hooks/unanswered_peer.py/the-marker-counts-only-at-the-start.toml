@@ -1,0 +1,5 @@
+[[rule]]
+name = "the marker counts only at the start"
+file = "scripts/hooks/unanswered_peer.py"
+find = '^\s*if text.startswith\(NO_REPLY\):'
+replace = '    if NO_REPLY in text:'
