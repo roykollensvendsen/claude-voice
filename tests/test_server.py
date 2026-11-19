@@ -559,8 +559,8 @@ async def test_list_sessions_also_shows_running_claude_code_sessions(tmp_path, r
 def test_the_courier_name_comes_from_the_environment(tmp_path):
     env = {"CLAUDE_VOICE_ROOT": str(tmp_path)}
     assert load_config(env, "stdio").courier_name == "Owner via claude-voice"
-    named = {**env, "CLAUDE_VOICE_COURIER_NAME": "Roy via stemmen"}
-    assert load_config(named, "stdio").courier_name == "Roy via stemmen"
+    named = {**env, "CLAUDE_VOICE_COURIER_NAME": "Owner via stemmen"}
+    assert load_config(named, "stdio").courier_name == "Owner via stemmen"
 
 
 def test_the_log_is_kept_in_a_file_next_to_the_database(tmp_path):

@@ -233,10 +233,10 @@ def test_a_courier_with_a_friendly_name_is_still_the_bridge(world, tmp_path):
     courier_dir = tmp_path / "claude-voice-msg-abc"
     courier_dir.mkdir()
     (world.live / "courier.json").write_text(
-        json.dumps({"pid": 4242, "sessionId": "sid-c", "cwd": str(courier_dir), "name": "Roy via stemmen"})
+        json.dumps({"pid": 4242, "sessionId": "sid-c", "cwd": str(courier_dir), "name": "Owner via stemmen"})
     )
     b, b_cwd = world.session("beta")
-    world.transcript(b, b_cwd, [peer_message("Roy via stemmen", "uds:/run/user/1000/cc-socks/4242.sock")])
+    world.transcript(b, b_cwd, [peer_message("Owner via stemmen", "uds:/run/user/1000/cc-socks/4242.sock")])
     nodes = by_id(world.tree().build())
     assert nodes[BRIDGE_NODE]["talks_to"] == [b]
 

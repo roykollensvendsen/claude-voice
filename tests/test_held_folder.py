@@ -54,7 +54,7 @@ def test_a_folder_with_no_lock_is_removed_only_once_it_is_old(tmp_path):
 
 
 def test_the_sweep_leaves_links_and_other_names_alone(tmp_path):
-    other, outside = tmp_path / "pytest-of-roy", tmp_path / "outside"
+    other, outside = tmp_path / "pytest-of-someone", tmp_path / "outside"
     other.mkdir()
     outside.mkdir()
     (outside / "kept.txt").write_text("x")
