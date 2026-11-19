@@ -1,0 +1,5 @@
+[[rule]]
+name = "only a name the organisation makes is cleaned"
+file = "scripts/clean_merged.py"
+find = 'if not own_worktree and not ORGANISATION_NAME\.match\(branch\):'
+replace = 'if False:'

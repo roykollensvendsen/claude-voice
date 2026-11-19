@@ -1,0 +1,5 @@
+[[rule]]
+name = "a branch with a commit made by hand is kept"
+file = "scripts/clean_merged.py"
+find = 'if made_by_hand\(repo, base, branch\):'
+replace = 'if False:'

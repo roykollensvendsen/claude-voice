@@ -1,0 +1,5 @@
+[[rule]]
+name = "a missing never-touch list stops everything"
+file = "scripts/clean_merged.py"
+find = 'if not args\.never_touch\.is_file\(\):'
+replace = 'if False:'

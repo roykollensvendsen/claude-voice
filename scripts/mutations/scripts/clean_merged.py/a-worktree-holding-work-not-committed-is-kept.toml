@@ -1,0 +1,5 @@
+[[rule]]
+name = "a worktree holding work not committed is kept"
+file = "scripts/clean_merged.py"
+find = 'if reason is None and _git\(tree\.path, "status", "--porcelain", "--untracked-files=all"\)\.strip\(\):'
+replace = 'if False:'
