@@ -38,14 +38,15 @@ NOT_RUN = re.compile(r"<!--\s*not run:\s*(.+?)\s*-->\s*$")
 
 
 def pages() -> list[pathlib.Path]:
-    """Every Markdown page that could carry a command, as git tracks them.
+    """Every Markdown page that could carry a command: the ones git tracks, and new ones it
+    would add. A new page is checked before it is committed, not first after.
 
     Asking git rather than walking the folder leaves out what is not part of this checkout:
-    a page not yet added, and the checkouts other sessions keep under .claude/worktrees/,
-    each holding every page of some other branch.
+    a page git ignores, and the checkouts other sessions keep under .claude/worktrees/, each
+    holding every page of some other branch. git lists another checkout as one folder.
     """
     tracked = subprocess.run(
-        ["git", "ls-files", "-z", "--", "*.md"],  # noqa: S607
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.md"],  # noqa: S607
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -113,12 +114,14 @@ def _git(cwd: pathlib.Path, *args: str) -> None:
     )
 
 
-def test_only_the_pages_git_tracks_here_are_run(tmp_path, monkeypatch):
-    """A page not yet added, and another session's checkout under .claude/worktrees/, are not ours."""
+def test_the_pages_git_tracks_or_would_add_here_are_run(tmp_path, monkeypatch):
+    """A new page counts before it is committed, so it can't pass now and fail once added. A page
+    git ignores, and another session's checkout under .claude/worktrees/, are not ours."""
     _git(tmp_path, "init", "-q")
-    for page in ("README.md", "docs/guide.md", "evidence/quoted.md", "draft.md"):
+    for page in ("README.md", "docs/guide.md", "evidence/quoted.md", "draft.md", "notes/ignored.md"):
         (tmp_path / page).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / page).write_text("# a page\n", encoding="utf-8")
+    (tmp_path / ".gitignore").write_text("notes/\n", encoding="utf-8")
     _git(tmp_path, "add", "README.md", "docs/guide.md", "evidence/quoted.md")
     other = tmp_path / ".claude" / "worktrees" / "agent-1"
     other.mkdir(parents=True)
@@ -129,7 +132,7 @@ def test_only_the_pages_git_tracks_here_are_run(tmp_path, monkeypatch):
 
     found = [p.relative_to(tmp_path).as_posix() for p in pages()]
 
-    assert found == ["README.md", "docs/guide.md"]
+    assert found == ["README.md", "docs/guide.md", "draft.md"]
 
 
 def test_the_documentation_shows_at_least_one_command():
