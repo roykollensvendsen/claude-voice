@@ -16,6 +16,13 @@ SAMPLES = [
     "sk-" + "proj-abcdefghijklmnopqrstuvwxyz012345",
     "xoxb-" + "123456789012-abcdefghijkl",
     "AKIA" + "ABCDEFGHIJKLMNOP",
+    "glpat-" + "abcdefghij0123456789",
+    "hf_" + "abcdefghijklmnopqrstuvwxyz01",
+    "npm_" + "abcdefghijklmnopqrstuvwxyz0123456789",
+    "AIza" + "SyA1234567890abcdefghijklmnopqrstu",
+    "sk_live_" + "abcdefghijklmnop1234",
+    "rk_test_" + "abcdefghijklmnop1234",
+    "eyJhbGciOiJIUzI1NiJ9" + ".eyJzdWIiOiIxMjM0In0" + ".abcDEF123_-xyz",
 ]
 
 
@@ -53,6 +60,37 @@ def test_the_value_after_a_secret_name_is_hidden(text, kept):
     assert out.startswith(kept) and "[hidden]" in out
     for value in ("abc", "dXNlcjpwYXNz", "s3cr3tvalue", "zzz999", "hunter2", "q1w2e3", "deep"):
         assert value not in out
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "{'api_key': 'hunter2', 'mode': 'x'}",
+        '{"password": "hunter2"}',
+        '{"password":"hunter2"}',
+        "{ʼtokenʼ: ʼhunter2ʼ}",
+    ],
+)
+def test_a_quoted_secret_name_hides_its_value(text):
+    out = redact.mask(text)
+    assert "hunter2" not in out and "[hidden]" in out
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "mytool --password hunter2",
+        "curl --token hunter2 https://x",
+        "login --api-key hunter2",
+        "run --auth 'hunter2'",
+        "gh secret set X --body hunter2",
+        "curl -u bob:hunter2 https://x",
+        "mysql -phunter2 db",
+    ],
+)
+def test_the_value_after_a_secret_flag_is_hidden(text):
+    out = redact.mask(text)
+    assert "hunter2" not in out and "[hidden]" in out
 
 
 def test_every_url_query_value_and_its_userinfo_are_hidden():

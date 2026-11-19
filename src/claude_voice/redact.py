@@ -18,13 +18,26 @@ HIDDEN = "[hidden]"
 PRIVATE_KEY = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|\Z)", re.S)
 TOKENS = re.compile(
     r"\b(?:gh[pousr]_[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]{16,}|sk-[A-Za-z0-9_-]{16,}"
-    r"|xox[abprs]-[A-Za-z0-9-]{8,}|AKIA[A-Z0-9]{16})"
+    r"|xox[abprs]-[A-Za-z0-9-]{8,}|AKIA[A-Z0-9]{16}"
+    r"|glpat-[A-Za-z0-9_-]{16,}|hf_[A-Za-z0-9]{16,}|npm_[A-Za-z0-9]{16,}|AIza[0-9A-Za-z_-]{30,}"
+    r"|[sr]k_(?:live|test)_[A-Za-z0-9]{8,}"
+    r"|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,})"
 )
 USERINFO = re.compile(r"(?<=://)[^/\s@:]+:[^/\s@]*@")
 QUERY = re.compile(r"([?&][A-Za-z0-9_.~%-]+=)(?!\[hidden\])[^&\s#'\"]+")
 SCHEME = re.compile(r"\b(Bearer|Basic)\s+(?!\[hidden\])[^\s'\"]+")
+#: A quote around a name or value: plain, double, curly, or the one a said question turns them into.
+Q = "['\"ʼ“”‘’`]"
+SECRET_WORD = r"[A-Za-z0-9_-]*(?:key|token|secret|pass|auth)[A-Za-z0-9_-]*"
 NAMED = re.compile(
-    r"\b([A-Za-z0-9_]*(?:key|token|secret|pass|auth)[A-Za-z0-9_]*\s*[=:]\s*)(['\"]?)(?!\[hidden\])[^\s'\"&]+",
+    rf"(?<![A-Za-z0-9_-])({SECRET_WORD}{Q}?\s*[=:]\s*)({Q}?)(?!\[hidden\])[^\s'\"ʼ&,}}]+",
+    re.I,
+)
+#: A flag whose name holds a secret word, then its value after a space; and the forms that put
+#: a password in a flag of their own.
+FLAG = re.compile(
+    rf"(\s--?{SECRET_WORD}\s+|\bsecret\s+set\s+\S+\s+(?:--body|-b)\s+|\s-u\s+[^\s:]+:"
+    rf"|\b(?:mysql|mariadb|mysqldump|mysqladmin)\b[^\n]*?\s-p)({Q}?)(?!\[hidden\])(?!-)[^\s'\"ʼ]+",
     re.I,
 )
 
@@ -37,6 +50,8 @@ def mask(text: str) -> str:
     text = USERINFO.sub(HIDDEN + "@", text)
     text = QUERY.sub(lambda m: m.group(1) + HIDDEN, text)
     text = SCHEME.sub(lambda m: f"{m.group(1)} {HIDDEN}", text)
+    # RULE: the value after a secret flag is hidden
+    text = FLAG.sub(lambda m: m.group(1) + m.group(2) + HIDDEN, text)
     # RULE: the value after a secret name is hidden
     return NAMED.sub(lambda m: m.group(1) + m.group(2) + HIDDEN, text)
 
