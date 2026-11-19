@@ -228,7 +228,7 @@ but names `main` or `master` is refused too, from the forms under `other pushes`
   allows would let all of these through without these rules.
 - **Approving a pull request,** with `gh pr review --approve` or `-a`, or with
   any `gh api` call that names `APPROVE`. A session acts on GitHub as the owner,
-  so its approval would show publicly in his name. Commenting on a review, or
+  so its approval would show publicly in the owner's name. Commenting on a review, or
   asking for changes, is asked instead. An approval sent from a file with
   `gh api --input` cannot be seen in the command, so it is only asked.
 - **Removing what cannot be got back,** with `rm -r`, `-R`, `-fr` or `--recursive`: the

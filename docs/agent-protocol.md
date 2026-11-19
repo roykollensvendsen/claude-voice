@@ -53,34 +53,34 @@ addresses here are examples: `laptop-a` is a hub, `phone-a` an agent,
   new.
 - **`agent_info` also says `"protocol": 1`**, for people to read. If it and the
   header disagree, the header wins.
-- **The hub refuses an answer in a version it did not offer.** It tells Roy
+- **The hub refuses an answer in a version it did not offer.** It tells the owner
   which machine, which versions it speaks, and which the hub knows.
 - **A receiver ignores what it does not know.** In every message, in every
   version, a field a receiver does not know is ignored, never refused. A later
   version may add fields, and new values to the lists that say so here (`uses`,
   the microphone setting and an error's `code`); it never removes a field or
   changes what one means. So a newer phone or hub never breaks an older one.
-- **Version 0 is accepted until a switch-over Roy decides.** Freezing version 1
-  and refusing version 0 are two separate events, and each is Roy's decision.
+- **Version 0 is accepted until a switch-over the owner decides.** Freezing version 1
+  and refusing version 0 are two separate events, and each is the owner's decision.
   Until the second, hub and agent each accept a peer that sends no header, so
   freezing this version cuts no machine off. After it, both refuse one.
 - **No machine slips back.** The hub keeps, with each machine's pairing, the
   highest version it has answered in. Once a machine has answered in version 1,
   the hub never accepts an answer in a lower version from it again, even before
-  the switch-over: an answer with no header from it is refused, and Roy is told.
+  the switch-over: an answer with no header from it is refused, and the owner is told.
   The agent does the same with its hub's requests. A machine that really went
   back, such as one reinstalled with older software, is paired again.
 
 ## Pairing
 
-Pairing gives the hub a key that this agent answers alone, typed for by Roy at
+Pairing gives the hub a key that this agent answers alone, typed for by the owner at
 both ends.
 
 1. On the agent's machine, its owner asks for a code. It is eight characters
    from `ABCDEFGHJKMNPQRSTUVWXYZ23456789`, which leaves out letters and digits
    that sound or look like one another. It works **once, for ten minutes**. A
    new code ends the old one. Five wrong codes end the pairing.
-2. Roy types that code on the hub. The hub sends it:
+2. The owner types that code on the hub. The hub sends it:
 
    `POST /pair` with
    [`agent-protocol/v1/pair-request.json`](agent-protocol/v1/pair-request.json).
@@ -94,8 +94,8 @@ both ends.
    it. It keeps only a hash of the key, and the hub's Tailscale node: its
    stable id, which does not change when the machine is renamed or readdressed.
    A machine pairs with one hub. Pairing again replaces the hub before.
-5. The hub reads `tools/list` and `agent_info` with the new key, shows Roy what
-   the machine offers, and Roy types the machine's name to approve it. The hub
+5. The hub reads `tools/list` and `agent_info` with the new key, shows the owner what
+   the machine offers, and the owner types the machine's name to approve it. The hub
    keeps the key readable by its owner alone, and the approval: the machine's
    stable node id, its address, and what it offers.
 
@@ -113,16 +113,16 @@ Two checks, by both sides, on every request. Neither alone is enough.
   `not_on_tailnet`, `unauthorized` (not the paired hub's key or node),
   `unsupported_version` and, inside MCP, `duplicate_call` (below). A hub treats a code it does not know as a refusal.
 - **The hub**, before each connection, asks Tailscale who is at the machine's
-  address, and talks to it only if it is the node Roy approved.
-- **The hub compares what the machine offers with what Roy approved**, on each
+  address, and talks to it only if it is the node the owner approved.
+- **The hub compares what the machine offers with what the owner approved**, on each
   connection, and calls nothing while they differ. What is compared is a
   SHA-256 of the canonical JSON (keys sorted) of each tool's name and input
   schema from `tools/list`. In version 1 it also covers each plugin's `name`,
   `tools`, `confirms` and `uses` from `agent_info`. A new tool, a tool that takes new
-  inputs or a plugin that uses something new needs Roy's approval again.
-- **Moving to version 1 asks Roy once per machine.** The larger fingerprint
-  differs from the one he approved under version 0. At a machine's first
-  version 1 connection the hub calls nothing on it until Roy has approved it
+  inputs or a plugin that uses something new needs the owner's approval again.
+- **Moving to version 1 asks the owner once per machine.** The larger fingerprint
+  differs from the one they approved under version 0. At a machine's first
+  version 1 connection the hub calls nothing on it until the owner has approved it
   again by typing its name.
 
 ## MCP
@@ -158,8 +158,8 @@ as `{"text": ...}`.
 or the name of a Claude Code session. The agent logs every call with its time,
 its tool, the hub's node and this caller. **The log stays on the machine**, and
 for a tool whose plugin `uses` anything private it never holds the call's
-inputs or answer, so the log cannot become a record of where Roy has been or
-whom he called.
+inputs or answer, so the log cannot become a record of where the owner has been or
+whom they called.
 
 **A call is run once (new in version 1).** A call can be cut off after it has
 reached the agent, by the hub's timeout or a dropped connection, and the agent
@@ -210,14 +210,14 @@ On the wire it is:
   which private things on the machine it can reach (`microphone`, `camera`,
   `location`, `calls`, `contacts`, `notifications`, `media`, `sensors`, and
   `usage`: the use of the machine and its apps, such as mobile data used). A
-  later version may add values. A hub shows one it does not know to Roy as
-  *unknown*, with its name, and it needs his approval like any other.
+  later version may add values. A hub shows one it does not know to the owner as
+  *unknown*, with its name, and it needs their approval like any other.
 
 Each plugin is approved on its own, first on its machine and then on the hub,
-and `uses` is shown to Roy when he approves it. `uses` follows the plugin's
+and `uses` is shown to the owner when they approve it. `uses` follows the plugin's
 settings as they are now: turning on a setting that reaches more, such as
 naming a home Wi-Fi, which needs `location`, changes it, and the hub calls
-nothing on that machine until Roy has approved it again.
+nothing on that machine until the owner has approved it again.
 
 ## The privacy rules on the wire (new in version 1)
 
@@ -246,7 +246,7 @@ them and cannot change them. What travels between the two:
 
 ### A spoken yes (new in version 1)
 
-Some calls wait for Roy to say yes aloud, as ADR-CV-003 sets: calling a number
+Some calls wait for the owner to say yes aloud, as ADR-CV-003 sets: calling a number
 that is not on the phone's own list, for one. The plugin decides which; the hub
 cannot skip the question.
 
@@ -254,7 +254,7 @@ cannot skip the question.
    [`agent-protocol/v1/needs-yes.json`](agent-protocol/v1/needs-yes.json): the
    question to read aloud, a token, the tool to confirm with, and how many
    seconds the token works, at most 120.
-2. The voice reads the question exactly. Only if Roy clearly says yes does it
+2. The voice reads the question exactly. Only if the owner clearly says yes does it
    call the named tool with
    [`agent-protocol/v1/confirm-request.json`](agent-protocol/v1/confirm-request.json).
 3. The hub calls the tool in `confirm_with` only if it is listed in the

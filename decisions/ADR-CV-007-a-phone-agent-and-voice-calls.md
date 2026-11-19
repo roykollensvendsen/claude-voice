@@ -2,8 +2,8 @@
 
 ## Status
 
-Proposed 2026-11-08. Settled with Roy Kollen Svendsen by voice on 2026-11-08.
-Nothing beyond the first prototype is built until he accepts this record.
+Proposed 2026-11-08. Settled with the owner by voice on 2026-11-08.
+Nothing beyond the first prototype is built until the owner accepts this record.
 
 This record holds what the hub depends on. How the phone app is built inside is
 [ADR-CVM-003 in claude-voice-mobile](https://github.com/roykollensvendsen/claude-voice-mobile/blob/main/decisions/ADR-CVM-003-the-apps-internal-design.md).
@@ -11,17 +11,17 @@ This record holds what the hub depends on. How the phone app is built inside is
 ## Context
 
 ADR-CV-006 made every extra machine a small claude-voice agent. The hub (the
-laptop running the bridge) dials each one over Tailscale, after Roy pairs and
-approves it by typing. A second laptop runs one today. Roy now wants his Android
+laptop running the bridge) dials each one over Tailscale, after the owner pairs and
+approves it by typing. A second laptop runs one today. The owner now wants their Android
 phone to join the same way, offering its own functions to the voice: its status,
 finding it, notifications, location, phone calls, playback, and later the camera
-and sensors. He also wants to start voice calls between machines by voice.
+and sensors. The owner also wants to start voice calls between machines by voice.
 
 What holds today:
 
 - **Agents already run plugins.** `build_agent` starts the plugins in the
   machine's own settings file, approved there by typing their name, and offers
-  their tools to the hub. Roy approves them again for that machine.
+  their tools to the hub. The owner approves them again for that machine.
 - **The agent protocol is plain MCP over HTTP** on the tailnet address. It has a
   pairing code, a long key per hub, and a Tailscale identity check on each call.
   It is not written down anywhere except in the code, and it carries no version.
@@ -29,8 +29,8 @@ What holds today:
   machine recorded sound and piped it over SSH into `pacat` on the other. It went
   over a shell key that reaches everything, and nobody was warned before the
   speaker opened.
-- **A phone carries more that is private than a laptop does:** where Roy is, who
-  he calls, what the microphone and camera pick up.
+- **A phone carries more that is private than a laptop does:** where the owner is, who
+  they call, what the microphone and camera pick up.
 
 ## Options considered
 
@@ -65,8 +65,8 @@ What holds today:
 ## Decision
 
 **A phone is one more machine.** It is paired, approved and named like
-`laptop-b`, for example `roy-phone`. Its tools reach the voice as
-`roy-phone_<tool>`. It runs no Claude Code sessions; it offers plugins only.
+`laptop-b`, for example `phone-a`. Its tools reach the voice as
+`phone-a_<tool>`. It runs no Claude Code sessions; it offers plugins only.
 
 **The protocol is written down and versioned.**
 
@@ -95,7 +95,7 @@ the hub offers can change them:
   on only on the phone, and its log can be deleted there. Every reading is logged
   with its time and caller.
 - **The people who can be called straight away are a list kept on the phone**,
-  and edited only there. Calling any other number from the hub needs Roy's spoken
+  and edited only there. Calling any other number from the hub needs the owner's spoken
   yes, as risky actions do (ADR-CV-003).
 - **The camera always shows that it is on**, on the phone, while in use.
 - **Every plugin is approved on its own**, and every call to one is logged.

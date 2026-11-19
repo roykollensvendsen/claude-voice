@@ -596,7 +596,7 @@ def _machines(parsed: Any, env: Mapping[str, str]) -> int:
 
 
 def machines_command(action: str, name: str | None, env: Mapping[str, str]) -> int:
-    """List the machines in the settings file, or pair with one: Roy types its code and name."""
+    """List the machines in the settings file, or pair with one: the owner types its code and name."""
     import asyncio
 
     from . import config as settings

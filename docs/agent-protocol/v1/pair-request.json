@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/roykollensvendsen/claude-voice/blob/main/docs/agent-protocol/v1/pair-request.json",
   "title": "Pairing request",
-  "description": "What the hub sends to POST /pair: the code the agent shows, as Roy typed it, in capitals.",
+  "description": "What the hub sends to POST /pair: the code the agent shows, as the owner typed it, in capitals.",
   "type": "object",
   "required": [
     "code"

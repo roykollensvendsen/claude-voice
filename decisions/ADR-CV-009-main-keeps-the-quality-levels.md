@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted 2026-11-10 by Roy Kollen Svendsen, in the terminal, choosing this over
+Accepted 2026-11-10 by the owner, in the terminal, choosing this over
 two other options.
 
 ## Context

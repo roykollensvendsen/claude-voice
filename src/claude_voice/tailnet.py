@@ -1,4 +1,4 @@
-"""Tailscale, the private network between Roy's own machines: who is at an address on it."""
+"""Tailscale, the private network between the owner's own machines: who is at an address on it."""
 
 from __future__ import annotations
 

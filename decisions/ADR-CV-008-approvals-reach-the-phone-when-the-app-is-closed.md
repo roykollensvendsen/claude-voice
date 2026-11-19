@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted 2026-11-08 by Roy Kollen Svendsen, by voice, after it was proposed on
+Accepted 2026-11-08 by the owner, by voice, after it was proposed on
 2026-11-07.
 
 ## Context
@@ -30,7 +30,7 @@ What holds:
   service (Google's, for Chrome on Android) carries an opaque blob and learns
   only that something was sent to this phone.
 - The hook blocks the session while it waits. Waiting for the phone while the
-  owner sits at the laptop delays the box he would have answered at once.
+  owner sits at the laptop delays the box they would have answered at once.
 - The laptop reports whether its screen is locked and whether it is idle
   (`loginctl`, `LockedHint` and `IdleHint`).
 
@@ -63,7 +63,7 @@ lock and the idle time are read apart, so a desktop that tells only one still
 counts it. While a prompt waits, the bridge asks again every few seconds, so
 coming back to the laptop brings the box back to the screen.
 
-**When he is away, the hook waits, and the bridge sends a Web Push notification**
+**When the owner is away, the hook waits, and the bridge sends a Web Push notification**
 to each phone that has subscribed:
 
 - The text names the session and the kind of request, and nothing else:
@@ -117,9 +117,9 @@ clear yes.
 
 - Most prompts should be answerable away from the laptop. How many is measured
   in the bridge's log, as the 5 of 66 was.
-- **Worse:** while he is away, a session waits up to five minutes on a prompt he
+- **Worse:** while the owner is away, a session waits up to five minutes on a prompt they
   doesn't see in time, where today it would show in the terminal at once. It
-  only matters to someone at the laptop while it counts him as away. Screen
+  only matters to someone at the laptop while it counts them as away. Screen
   locked or ten minutes since the voice should make that rare. The five minutes
   can be made shorter.
 - **Worse:** a new dependency (`pywebpush`, with `cryptography`) and a key pair

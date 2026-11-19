@@ -8,7 +8,7 @@ approved.
 ## Context
 
 The owner wants to shut down or restart a paired machine by voice, the way the garage door
-is opened: a question first, and an action only on his spoken yes. No Claude session may
+is opened: a question first, and an action only on their spoken yes. No Claude session may
 ever decide this. A session on a paired machine refused a shutdown that arrived as a
 message, and that refusal was right.
 

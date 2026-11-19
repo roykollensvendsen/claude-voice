@@ -17,7 +17,7 @@ and their name. Neither has to change for a session to be placed.
 
 ## Options considered
 
-- **Do nothing.** The owner keeps the picture in his head, and the voice keeps
+- **Do nothing.** The owner keeps the picture in their head, and the voice keeps
   asking which session is meant. That is the cost this removes.
 - **Tag each session by hand**, in the bridge or on the phone. Every new
   session would start untagged, and a tag kept in the bridge's database would

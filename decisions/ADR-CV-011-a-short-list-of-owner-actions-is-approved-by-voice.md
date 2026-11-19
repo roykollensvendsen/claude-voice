@@ -10,7 +10,7 @@ Accepted 2026-11-10 by the owner, by voice. It builds on
 The owner runs six repositories through one manager session: the bridge, its
 phone page, the phone app and three plugins. The sessions do the work and merge
 their own green pull requests. A few small actions are still the owner's alone,
-and each one sends him back to a terminal to paste a command: turning on a
+and each one sends them back to a terminal to paste a command: turning on a
 repository's documentation site, closing a pull request that a newer one
 replaced, making a check required, running a failed check again.
 

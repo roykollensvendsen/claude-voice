@@ -1,7 +1,7 @@
-"""Other machines: the hub's side of each `claude-voice agent`, and what Roy approved of it.
+"""Other machines: the hub's side of each `claude-voice agent`, and what the owner approved of it.
 
 A machine is named in the settings file's ``[machines.<name>]`` section with its tailnet
-address (ADR-CV-006). ``claude-voice machines approve <name>`` pairs with its agent: Roy
+address (ADR-CV-006). ``claude-voice machines approve <name>`` pairs with its agent: the owner
 types the code the agent shows, sees what it offers, and types the machine's name. The hub
 keeps the key the agent handed out, readable by its owner alone, and the approval: which
 tailnet node it is, and what each tool takes.
@@ -71,7 +71,7 @@ def _write_private(target: Path, text: str) -> None:
 
 
 def tools_fingerprint(listing: dict[str, dict[str, Any]]) -> str:
-    """What Roy approved the machine to offer: each tool's name and what it takes."""
+    """What the owner approved the machine to offer: each tool's name and what it takes."""
     return plugins._hash({tool: found.get("schema") for tool, found in sorted(listing.items())})
 
 
@@ -108,7 +108,7 @@ async def pair(
     whois: Whois = tailnet.whois,
     folder: Path = FOLDER,
 ) -> dict[str, Any]:
-    """Pair with the agent on `spec`: Roy types its code, sees what it offers, types its name."""
+    """Pair with the agent on `spec`: the owner types its code, sees what it offers, types its name."""
     import httpx
 
     node = await _whois(whois, spec.address)
@@ -205,7 +205,7 @@ def without_numbers(body: Any) -> Any:
 
 
 class Refused(ConnectionError):
-    """A machine that answered, but not as the one Roy approved."""
+    """A machine that answered, but not as the one the owner approved."""
 
 
 def _refusal(exc: BaseException) -> Refused | None:

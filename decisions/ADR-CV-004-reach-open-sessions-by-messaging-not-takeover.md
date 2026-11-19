@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted by Roy Kollen Svendsen, 2026-10-05.
+Accepted by the owner, 2026-10-05.
 
 ## Context
 
