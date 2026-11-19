@@ -94,7 +94,7 @@ def bridge(tmp_path, pids):
     return make_bridge(tmp_path, pids, Delivered())
 
 
-def make_bridge(tmp_path, pids, deliver, org_text=ORG, waiting_for="permission prompt"):
+def make_bridge(tmp_path, pids, deliver, org_text=ORG, waiting_for="permission prompt", approvals=None):
     root = tmp_path / "src"
     (root / "acme" / ".claude").mkdir(parents=True)
     (root / "acme" / ".claude" / "org.toml").write_text(org_text)
@@ -107,7 +107,9 @@ def make_bridge(tmp_path, pids, deliver, org_text=ORG, waiting_for="permission p
         (live / f"{pid}.json").write_text(json.dumps(record))
     clock = Clock()
     tmux = FakeTmux(pids)
-    m = SessionManager(Store(tmp_path / "b.db"), project_root=root, client_factory=FakeClaude(), clock=clock)
+    m = SessionManager(
+        Store(tmp_path / "b.db"), project_root=root, client_factory=FakeClaude(), clock=clock, approvals=approvals
+    )
     server = build_server(
         m,
         conversations=lambda **k: [],
@@ -146,6 +148,20 @@ async def test_the_manager_and_the_voice_hear_once_of_a_question_left_waiting(br
     assert deliver.sent == [("acme-boss", LINE)]
     news = (await call(server, "whats_new", cursor=cursor))["events"]
     assert [e["text"] for e in news if e["kind"] == "stalled_prompt"] == [LINE]
+
+
+class OneUnknown:
+    """An approval broker holding one request for a session the bridge's store does not know."""
+
+    def pending(self, session_id=None):
+        return [{"id": "9", "session_id": "gone", "tool": "Bash", "input": {"command": "ls"}}]
+
+
+async def test_an_approval_for_an_unknown_session_does_not_silence_the_others(tmp_path, pids):
+    server, deliver, _, _ = make_bridge(tmp_path, pids, Delivered(), approvals=OneUnknown())
+    await asyncio.wait_for(server.stalled_check(), 5)
+    await let_deliveries_finish()
+    assert ("acme-boss", LINE) in deliver.sent
 
 
 async def test_a_waiting_session_is_never_typed_into(bridge):

@@ -1061,12 +1061,17 @@ def build_server(
                 del approvals_seen[key]
         for req in pending:
             since = approvals_seen.setdefault(req["id"], now)
-            own = store.get_session(req["session_id"])
+            # RULE: an approval for an unknown session does not silence the others
+            try:
+                own = store.get_session(req["session_id"])
+            except SessionNotFound:
+                own = {}
             at = place({"cwd": own.get("project_path"), "name": own.get("label")})
             names = managers_of(at.programme, rows, place)
             asked = stalled.Asked(f"{req.get('tool')}: {req.get('input')}", ["Yes", "No"])
             text_ok = at.programme is None or at.programme.stalled_prompt_text
-            label = str(own.get("label") or Path(str(own.get("project_path"))).name)
+            path = own.get("project_path")
+            label = str(own.get("label") or (Path(str(path)).name if path else "a session"))
             key = f"approval:{req['id']}"
             read = functools.partial(stalled.same, asked)
             item = stalled.Waiting(key, label, since, read, True, text_ok, bool(names))
