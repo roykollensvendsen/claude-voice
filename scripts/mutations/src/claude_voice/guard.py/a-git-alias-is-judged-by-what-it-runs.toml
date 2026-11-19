@@ -1,0 +1,5 @@
+[[rule]]
+name = "a git alias is judged by what it runs"
+file = "src/claude_voice/guard.py"
+find = '^\s*if value.lstrip\(\).startswith\("!"\):'
+replace = '        if False:'

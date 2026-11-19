@@ -1,0 +1,5 @@
+[[rule]]
+name = "a push names its target by repo too"
+file = "src/claude_voice/guard.py"
+find = '^\s*if word.startswith\("--repo="\):'
+replace = '        if False:'

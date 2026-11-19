@@ -1,0 +1,5 @@
+[[rule]]
+name = "a push that names another repository by git dir or work tree is refused"
+file = "src/claude_voice/guard.py"
+find = '^\s*if push.elsewhere:'
+replace = '        if False:'

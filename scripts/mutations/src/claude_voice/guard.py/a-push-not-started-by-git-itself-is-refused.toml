@@ -1,0 +1,5 @@
+[[rule]]
+name = "a push not started by git itself is refused"
+file = "src/claude_voice/guard.py"
+find = '^\s*if push.wrapped:'
+replace = '        if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a push spelled in shell escapes is refused"
+file = "src/claude_voice/guard.py"
+find = '^\s*if _shell_push\(words\) or _escaped_push\(segment\):'
+replace = '        if _shell_push(words):'
