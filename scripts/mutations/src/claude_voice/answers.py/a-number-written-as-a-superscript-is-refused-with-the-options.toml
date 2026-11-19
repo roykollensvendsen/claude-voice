@@ -1,0 +1,5 @@
+[[rule]]
+name = "a number written as a superscript is refused with the options"
+file = "src/claude_voice/answers.py"
+find = 'if text\.isascii\(\) and text\.isdigit\(\) and 1 <= int\(text\) <= len\(options\):'
+replace = 'if text.isdigit() and 1 <= int(text) <= len(options):'

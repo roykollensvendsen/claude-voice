@@ -164,9 +164,16 @@ def test_config_reads_the_access_token_lifetime(tmp_path):
     assert load_config(env, transport="stdio").access_ttl == 604800
 
 
-@pytest.mark.parametrize("bad", ["a week", "-5", "30", "1.5", "3600²"])
+@pytest.mark.parametrize("bad", ["a week", "-5", "30", "1.5"])
 def test_an_access_token_lifetime_that_is_not_a_whole_number_of_at_least_a_minute_stops_the_bridge(tmp_path, bad):
     env = {"CLAUDE_VOICE_ROOT": str(tmp_path), "CLAUDE_VOICE_ACCESS_TOKEN_SECONDS": bad}
+    with pytest.raises(ConfigError, match="CLAUDE_VOICE_ACCESS_TOKEN_SECONDS"):
+        load_config(env, transport="stdio")
+
+
+def test_an_access_token_lifetime_written_with_a_superscript_stops_the_bridge(tmp_path):
+    """isdigit() takes "²", which int() cannot read: a plain refusal, not a crash."""
+    env = {"CLAUDE_VOICE_ROOT": str(tmp_path), "CLAUDE_VOICE_ACCESS_TOKEN_SECONDS": "3600²"}
     with pytest.raises(ConfigError, match="CLAUDE_VOICE_ACCESS_TOKEN_SECONDS"):
         load_config(env, transport="stdio")
 
