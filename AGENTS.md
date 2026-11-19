@@ -62,7 +62,7 @@ what to add on the hub. Then:
 - **When a tool's answer says what to do next, say that step.** Read it out or
   pass it on as it is; never swallow it into "it failed". The same holds for
   errors you write: name what is wrong and the next step (the `plugin`
-  skill's [rules](.claude/skills/plugin/rules.md#r1), and [the plugin standard](docs/plugin-standard.md), A.4).
+  skill's [rules](skills/plugin/rules.md#r1), and [the plugin standard](docs/plugin-standard.md), A.4).
 - **A command that asks for input is the person's to type.** Give it to them to
   run in a plain terminal, such as `claude-voice plugins approve <name>`. Never
   run it for them, and never pipe an answer into it.
@@ -93,6 +93,27 @@ This holds for every session that works under a manager.
   refused whole, even when the rest is allowed.
 - When the work does not flow, tell the manager in one message what stopped you,
   how often, and what you propose.
+
+## Builder plain forms
+
+A command in an unusual form stops for the owner's yes, even when each part is
+allowed. These forms run without asking, so a builder uses them every time.
+
+- One command per call. No `&&`, `;`, pipe or loop, and no `$` or backtick
+  anywhere in the line, not even inside `awk` or `jq`.
+- Read a file with the Read tool, not `cat`, `head` or `tail`. Read CI with one
+  `gh` command, literal values, and `--json` with `--jq` for the fields.
+- Change a file with Edit or Write, never a heredoc or a script that writes it.
+- One git step per call. Commit with several `-m` flags, one per paragraph.
+- No `rm -r`. Keep temporary files, and `TMPDIR`, in the session's scratchpad.
+- From a worktree, read another repository with
+  `git --git-dir=<repo>/.git show <ref>:<path>`, not by changing folder.
+- In a fresh worktree, run `uv sync --extra dev` first. Without it, `mypy` and
+  `pytest` come from elsewhere and fail on missing stubs.
+- Run one heavy check at a time: the suite, the mutation run or the template's
+  gates. Work in a second worktree meanwhile.
+- Change a skill in `skills/`, never in `.claude/`. Every change under `.claude/`
+  asks the owner, so it goes to the manager first.
 
 ## When you are changing claude-voice itself
 

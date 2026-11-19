@@ -22,7 +22,7 @@ ROOT = pathlib.Path(__file__).parent.parent
 MARKER = re.compile(r"^[ \t]*#\s*RULE:\s*(.+?)\s*$")
 #: The scripts whose rules are held to the same evidence as the source's. The older
 #: scripts mark rules with no rows yet; each joins this list when its rows are written.
-SCRIPTS_WITH_ROWS = ("scripts/red_first.py", "scripts/hooks/unanswered_peer.py")
+SCRIPTS_WITH_ROWS = ("scripts/red_first.py", "scripts/hooks/unanswered_peer.py", "scripts/link_skills.py")
 
 
 def _mutate():

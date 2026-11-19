@@ -1,0 +1,5 @@
+[[rule]]
+name = "a skill that lives only in .claude is refused"
+file = "scripts/link_skills.py"
+find = 'if entry\.name not in sources:'
+replace = 'if False:'

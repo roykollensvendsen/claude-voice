@@ -70,7 +70,7 @@ proposes. The manager does the same with the owner.
 
 ## Bringing in a new plugin
 
-The [`plugin`](../.claude/skills/plugin/manager.md) skill's manager part has the
+The [`plugin`](../skills/plugin/manager.md) skill's manager part has the
 steps, so that a new plugin starts at the level the others reached: its
 repository set up and locked like the rest, a session of its own that reports
 to the manager, the standard's gaps listed, and the owner's approval asked for

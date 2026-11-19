@@ -11,9 +11,9 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).parent.parent
-SKILL = ROOT / ".claude/skills/plugin"
+SKILL = ROOT / "skills/plugin"
 TEMPLATE = ROOT / "templates/plugin"
-OLD = ROOT / ".claude/skills/write-plugin"
+OLD = ROOT / "skills/write-plugin"
 PARTS = ("SKILL.md", "manager.md", "builder.md", "review.md", "backfill.md", "rules.md", "reference.md")
 #: The parts a role reads on its own; each says first what to have read before it.
 ROLE_PARTS = ("manager.md", "builder.md", "review.md", "backfill.md")
@@ -212,7 +212,7 @@ def test_the_old_skill_is_a_short_pointer_to_the_new_one():
 
 #: Where the old name may still be read: the pointer itself, the README's row saying it is one,
 #: and this file.
-MAY_NAME_THE_OLD_SKILL = {".claude/skills/write-plugin/SKILL.md", "README.md", "tests/test_plugin_skill.py"}
+MAY_NAME_THE_OLD_SKILL = {"skills/write-plugin/SKILL.md", "README.md", "tests/test_plugin_skill.py"}
 
 
 def _tracked() -> list[str]:

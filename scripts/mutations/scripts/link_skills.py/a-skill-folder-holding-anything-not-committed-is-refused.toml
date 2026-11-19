@@ -1,0 +1,5 @@
+[[rule]]
+name = "a skill folder holding anything not committed is refused"
+file = "scripts/link_skills.py"
+find = '^        if left:$'
+replace = 'if False:'
