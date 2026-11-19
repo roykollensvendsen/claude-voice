@@ -316,6 +316,25 @@ def test_a_change_while_the_owner_reads_the_screen_writes_nothing(owner, monkeyp
     assert plugins.APPROVALS.read_bytes() == approvals
 
 
+def test_a_list_changed_after_the_settings_were_loaded_is_not_used(owner, monkeypatch, capsys):
+    """The screen is built from the file read for this approval, so a change between loading the
+    settings and that read stops it too."""
+    settings, env = owner
+    serve(monkeypatch)
+    answer(monkeypatch, "garage +1")
+    edited = SETTINGS.replace('tools = ["garage_status"]', 'tools = ["garage_status", "garage_hours"]')
+    known = plugins.known_place
+
+    def and_meanwhile(spec):
+        settings.write_text(edited)
+        return known(spec)
+
+    monkeypatch.setattr(plugins, "known_place", and_meanwhile)
+    assert approve(env) == 1
+    assert "changed while approving; nothing was written; run it again" in capsys.readouterr().out
+    assert settings.read_text() == edited
+
+
 def test_a_second_writer_waits_for_the_lock(owner):
     settings, _ = owner
     done = threading.Event()

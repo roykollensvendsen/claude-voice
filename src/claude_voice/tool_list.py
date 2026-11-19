@@ -109,6 +109,16 @@ def judge(typed: str, name: str, found: Offer) -> str:
     return "add" if " ".join(words) == found.answer(name) else "wrong"
 
 
+def listed(text: bytes, plugin: str) -> list[str] | None:
+    """The plugin's tools list in the settings file's `text`, or None when it has none."""
+    try:
+        table = tomllib.loads(text.decode("utf-8")).get("plugins", {}).get(plugin)
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError):
+        return None
+    tools = table.get("tools") if isinstance(table, dict) else None
+    return [str(tool) for tool in tools] if isinstance(tools, list) else None
+
+
 def write_tools(
     path: Path, plugin: str, tools: list[str], seen: bytes | None = None, now: datetime | None = None
 ) -> None:

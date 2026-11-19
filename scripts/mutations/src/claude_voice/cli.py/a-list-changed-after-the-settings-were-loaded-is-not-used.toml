@@ -1,0 +1,5 @@
+[[rule]]
+name = "a list changed after the settings were loaded is not used"
+file = "src/claude_voice/cli.py"
+find = 'if tool_list\.listed\(seen, spec\.name\) != spec\.tools:'
+replace = 'if False:'

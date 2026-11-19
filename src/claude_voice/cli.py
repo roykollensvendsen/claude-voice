@@ -560,6 +560,10 @@ def _approve_known(spec: PluginSpec, env: Mapping[str, str]) -> int:
     except (safefile.Unsafe, OSError) as exc:
         sys.stdout.write(f"Not approved: the settings file could not be read: {exc}\n")
         return 1
+    # RULE: a list changed after the settings were loaded is not used
+    if tool_list.listed(seen, spec.name) != spec.tools:
+        sys.stdout.write(f"Not approved: {path} changed while approving; nothing was written; run it again\n")
+        return 1
     full = plugins.Plugin(spec, plugins.CLIENT).listing(everything=True)
     if not full:
         sys.stdout.write(f"{spec.name} did not start, so nothing was approved. Check its command and folder.\n")
