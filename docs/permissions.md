@@ -299,9 +299,12 @@ only the role's entry in the owner's own roles file chooses between them.
   name, since GitHub sends a renamed repository's old address on. Every push
   address must be a plain GitHub address the guard can read, or the push is
   refused. A push after `cd` or with `-C` is judged by the remotes of the folder
-  it runs in. Where a `cd` may not last, as inside a subshell or beside a pipe,
-  the push must pass in both folders. Also refused: a push in a folder the guard
-  cannot read, such as `cd $DIR`; a push to an address written in the command; a
+  it runs in. A `cd` counts as certain only when `&&` alone joins it to the
+  push, as in `cd X && git push`. After `;`, `||`, `|` or `&`, or inside a
+  subshell, the shell may skip it, so the push must pass in both folders. Also
+  refused: a push in a folder the guard cannot read, such as `cd $DIR`, a
+  relative `cd` while CDPATH is set, or a move by `pushd`, `eval` or `then cd`; a
+  push to an address written in the command; a
   push with `--git-dir` or `--work-tree`; a push that brings its own git settings
   with `-c`, `--config-env`, `--repo` or the environment; and a push run behind
   another command or a shell, such as `timeout` or `sh -c`.

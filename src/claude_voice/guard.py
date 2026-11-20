@@ -36,9 +36,12 @@ from claude_voice import safe_git
 #: the marks of a subshell or a command substitution. They are kept in the split, so the guard
 #: knows what joins each command to the next.
 PARTS = re.compile(r"(&&|\|\||;|\||\n|&|\$\(|[()`])")
-#: Joiners after which a `cd` still holds for the next command. After `|` or `&`, or inside a
-#: subshell, it may not, so a push there is judged in both folders.
-LASTING = frozenset({"&&", "||", ";", "\n"})
+#: Joiners that end a list of commands. A `cd` surely runs before a push only when every joiner
+#: from the start of the list through the push is `&&`; otherwise the push is judged in every
+#: folder it may run in.
+LISTS = frozenset({";", "\n"})
+#: Words that change the folder in a shape the guard does not follow, such as `pushd` or `then cd`.
+MOVERS = frozenset({"cd", "pushd", "popd"})
 #: A folder the guard cannot read, such as `cd $DIR` or `cd -`.
 UNREAD = "?"
 #: A redirection with its target, taken out before the line is split, so the `&` in `2>&1` or
@@ -135,11 +138,25 @@ def _join(base: str | None, folder: str) -> str:
     return posixpath.join(base, folder)
 
 
-def _cd(words: list[str]) -> str:
-    """Where a `cd` goes: home with no folder, UNREAD for any option or anything the shell fills in."""
+def _cd(words: list[str], cdpath: bool) -> str:
+    """Where a `cd` goes: home with no folder, UNREAD for any option or anything the shell fills in.
+    Under CDPATH a relative folder may be found elsewhere, so only `./` and `../` are followed."""
     if len(words) == 1:
         return "~"
-    return _readable(words[1]) if len(words) == 2 and not words[1].startswith("-") else UNREAD
+    if len(words) != 2 or words[1].startswith("-"):
+        return UNREAD
+    # RULE: a relative cd under cdpath is never followed
+    if cdpath and not words[1].startswith(("/", "~", "./", "../")) and words[1] not in (".", ".."):
+        return UNREAD
+    return _readable(words[1])
+
+
+def _unfollowed(words: list[str]) -> bool:
+    """Whether a command changes the folder in a shape the guard does not follow: `then cd`,
+    `{ cd`, `builtin cd`, `pushd`, `popd` or an `eval`. Words that `echo` or `printf` print are text."""
+    if not words or words[0] in ("cd", "echo", "printf") or _is_git(words[0]):
+        return False
+    return words[0] == "eval" or any(word in MOVERS or word.startswith("cd ") for word in words)
 
 
 def _pushes(command: str) -> list[Push]:
@@ -147,8 +164,12 @@ def _pushes(command: str) -> list[Push]:
     each with the folders it may run in. A push behind any other wrapper is found too, as one the
     guard could not read word by word."""
     found = []
-    folders: list[str | None] = [None]
-    depth, quoted = 0, False
+    # Every folder a command may run in, and the folders it surely runs in while the list so far
+    # is joined by && alone.
+    possible: list[str | None] = [None]
+    sure: list[str | None] = [None]
+    depth, quoted, joined = 0, False, True
+    cdpath = "CDPATH" in command or "CDPATH" in os.environ
     # RULE: a redirection is never read as a remote
     parts = PARTS.split(REDIRECTION.sub(" ", command))
     for at in range(0, len(parts), 2):
@@ -158,11 +179,15 @@ def _pushes(command: str) -> list[Push]:
         except ValueError:
             words = segment.split()
         words, environment = _without_environment(words)
+        folders = sure if joined and depth == 0 and not quoted else possible
+        if _unfollowed(words):
+            # RULE: a folder change the guard cannot follow leaves the folder unread
+            possible, sure = list(dict.fromkeys([*possible, UNREAD])), [*sure, UNREAD]
         if words and words[0] == "cd":
-            moved: list[str | None] = [_join(folder, _cd(words)) for folder in folders]
+            target = UNREAD if after in ("$(", "`") else _cd(words, cdpath)
+            possible = list(dict.fromkeys([*possible, *(_join(folder, target) for folder in possible)]))
             # RULE: a push is judged by the remotes of the folder it runs in
-            lasting = depth == 0 and not quoted and after in LASTING
-            folders = moved if lasting else list(dict.fromkeys([*folders, *moved]))
+            sure = [_join(folder, target) for folder in sure]
         elif not words or not _is_git(words[0]):
             # RULE: a push behind a wrapper is never let through unjudged
             if _hidden(words):
@@ -179,6 +204,11 @@ def _pushes(command: str) -> list[Push]:
                         place = _readable(before[i + 1]) if i + 1 < len(before) else UNREAD
                         within = [_join(folder, place) for folder in within]
                 found.append(Push(rest[1:], before, environment, folders=within))
+        if depth == 0 and not quoted and after in LISTS:
+            sure, joined = list(possible), True
+        else:
+            # RULE: a cd the shell may skip is never taken as certain
+            joined = joined and after == "&&"
         if after in ("(", "$("):
             depth += 1
         elif after == ")":

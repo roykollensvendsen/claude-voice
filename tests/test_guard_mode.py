@@ -193,8 +193,7 @@ def test_a_fork_only_push_from_another_clone_is_refused(tmp_path, option):
     [
         "git -C {there} push origin feat/x",
         "cd {there} && git push origin feat/x",
-        "cd {there}; git push origin feat/x",
-        "cd {there}\ngit push origin feat/x 2>&1",
+        "make && cd {there} && git push origin feat/x 2>&1",
     ],
 )
 def test_a_push_is_judged_by_the_remotes_of_the_folder_it_runs_in(tmp_path, command):
@@ -222,6 +221,94 @@ def test_a_move_that_may_not_last_judges_the_push_in_both_folders(tmp_path, comm
     """Here is the owner's repo; a move inside a subshell, or beside a pipe, does not reach the push."""
     here, there = clone(tmp_path / "here", OWNERS), clone(tmp_path / "there", FORK)
     verdict, _ = decision(guard.answer(hook(here, command.format(there=there)), UPSTREAM))
+    assert verdict == "deny"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "false && cd {there} || git push origin feat/x",
+        "true || cd {there} && git push origin feat/x",
+        "false && cd {there}; git push origin feat/x",
+        "cd {there} || git push origin feat/x",
+        "cd {there}; git push origin feat/x",
+        "cd {there}\ngit push origin feat/x",
+    ],
+)
+def test_a_cd_the_shell_may_skip_is_never_taken_as_certain(tmp_path, command):
+    """Here is the owner's repo. Only a cd joined to the push by && alone surely runs first."""
+    here, there = clone(tmp_path / "here", OWNERS), clone(tmp_path / "there", FORK)
+    verdict, _ = decision(guard.answer(hook(here, command.format(there=there)), UPSTREAM))
+    assert verdict == "deny"
+
+
+@pytest.mark.parametrize("command", ["cd {there}; git push origin feat/x", "cd {there} || git push origin feat/x"])
+def test_a_push_after_a_cd_that_may_be_skipped_goes_when_both_folders_pass(tmp_path, command):
+    here, there = clone(tmp_path / "here", FORK), clone(tmp_path / "there", FORK)
+    assert guard.answer(hook(here, command.format(there=there)), UPSTREAM) == {}
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "if true; then cd THERE; fi; git push origin feat/x",
+        "for d in 1; do cd THERE; done; git push origin feat/x",
+        "{ cd THERE; }; git push origin feat/x",
+        "case x in x) cd THERE;; esac; git push origin feat/x",
+        "! cd THERE && git push origin feat/x",
+        "builtin cd THERE && git push origin feat/x",
+        "command cd THERE && git push origin feat/x",
+        "pushd THERE && git push origin feat/x",
+        "popd && git push origin feat/x",
+        "eval cd THERE && git push origin feat/x",
+        "eval 'cd THERE' && git push origin feat/x",
+    ],
+)
+def test_a_folder_change_the_guard_cannot_follow_leaves_the_folder_unread(tmp_path, command):
+    """Here is a fork; the move goes to the owner's repo in a shape the guard does not follow."""
+    here, there = clone(tmp_path / "here", FORK), clone(tmp_path / "there", OWNERS)
+    verdict, _ = decision(guard.answer(hook(here, command.replace("THERE", str(there))), UPSTREAM))
+    assert verdict == "deny"
+
+
+def test_echo_of_a_cd_is_text_and_moves_nothing(tmp_path):
+    here = clone(tmp_path / "here", FORK)
+    assert guard.answer(hook(here, "echo cd /elsewhere && git push origin feat/x"), UPSTREAM) == {}
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "CDPATH={up} cd claude-voice && git push origin feat/x",
+        "export CDPATH={up}; cd claude-voice && git push origin feat/x",
+        "cd claude-voice && git push origin feat/x",
+    ],
+)
+def test_a_relative_cd_under_cdpath_is_never_followed(tmp_path, monkeypatch, command):
+    """A fork sits under here; CDPATH would send the same cd to a clone of the owner's repo."""
+    here = clone(tmp_path / "here", FORK)
+    clone(here / "claude-voice", FORK)
+    up = tmp_path / "up"
+    clone(up / "claude-voice", OWNERS)
+    if "CDPATH" not in command:
+        monkeypatch.setenv("CDPATH", str(up))
+    verdict, _ = decision(guard.answer(hook(here, command.format(up=up)), UPSTREAM))
+    assert verdict == "deny"
+
+
+def test_a_relative_cd_that_starts_with_a_dot_is_followed_under_cdpath(tmp_path, monkeypatch):
+    here = clone(tmp_path / "here", OWNERS)
+    clone(here / "claude-voice", FORK)
+    monkeypatch.setenv("CDPATH", str(tmp_path))
+    assert guard.answer(hook(here, "cd ./claude-voice && git push origin feat/x"), UPSTREAM) == {}
+
+
+@pytest.mark.parametrize(
+    "command", ["cd $(echo THERE) && git push origin feat/x", "cd `echo THERE` && git push origin feat/x"]
+)
+def test_a_cd_into_a_command_substitution_is_unread(tmp_path, command):
+    here, there = clone(tmp_path / "here", FORK), clone(tmp_path / "there", OWNERS)
+    verdict, _ = decision(guard.answer(hook(here, command.replace("THERE", str(there))), UPSTREAM))
     assert verdict == "deny"
 
 
