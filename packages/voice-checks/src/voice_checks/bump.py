@@ -47,14 +47,24 @@ def newest_release(listed: str) -> str:
 
 def latest() -> str:
     """The commit of claude-voice's newest voice-checks release tag, asked of GitHub."""
-    listed = subprocess.run(  # noqa: S603 - a fixed command, no shell
-        ["git", "ls-remote", "--tags", REPO, "voice-checks-v*"],
-        capture_output=True,
-        text=True,
-        check=True,
-        timeout=60,
-    )
-    return newest_release(listed.stdout)
+    try:
+        listed = subprocess.run(  # noqa: S603 - a fixed command, no shell
+            ["git", "ls-remote", "--tags", REPO, "voice-checks-v*"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=60,
+        )
+    except FileNotFoundError:
+        why = "git is not installed here"
+    except subprocess.CalledProcessError as failed:
+        why = f"git could not reach GitHub ({(failed.stderr or '').strip() or failed.returncode})"
+    except subprocess.TimeoutExpired:
+        why = "GitHub did not answer within a minute"
+    else:
+        return newest_release(listed.stdout)
+    msg = f"The newest release could not be looked up: {why}. Check the network, or pin a commit: --sha <sha>."
+    raise BumpError(msg)
 
 
 def bump(pyproject: pathlib.Path, sha: str) -> None:
