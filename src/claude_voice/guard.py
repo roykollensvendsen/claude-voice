@@ -33,6 +33,12 @@ from claude_voice import safe_git
 #: Where one command ends and the next begins: the shell's joiners, a new line, a lone `&`, and
 #: the marks of a subshell or a command substitution.
 SEGMENTS = re.compile(r"&&|\|\||;|\||\n|&|\$\(|[()`]")
+#: A redirection with its target, taken out before the line is split, so the `&` in `2>&1` or
+#: `&> log` never splits a command and `2>` is never read as a remote: `N>&M`, `>&-`, `&> file`,
+#: `>& file`, `N> file`, `>> file` and `>| file`.
+REDIRECTION = re.compile(r"\d*>&(?:\d+|-)|&>>?\s*[^\s;&|()<>]+|\d*>&\s*[^\s;&|()<>]+|\d*>>?\|?\s*[^\s;&|()<>]+")
+#: A word that is still a redirection, such as one left by quoting, is never a remote.
+REDIRECTION_WORD = re.compile(r"\d*[<>&]")
 #: Shells that run a command line given to them with -c.
 SHELLS = frozenset({"sh", "bash", "dash", "zsh", "ksh"})
 OWN_CLONE = "own-clone"
@@ -68,6 +74,11 @@ def _without_environment(words: list[str]) -> tuple[list[str], bool]:
     return rest, found
 
 
+def _positional(args: list[str]) -> list[str]:
+    """The words after `push` that name a remote or a branch: not an option, not a redirection."""
+    return [a for a in args if not a.startswith("-") and not REDIRECTION_WORD.match(a)]
+
+
 def _is_git(word: str) -> bool:
     return word.rsplit("/", 1)[-1] == "git"
 
@@ -99,7 +110,8 @@ def _pushes(command: str) -> list[Push]:
     """Every `git push` in a command line, `git -C dir push` and `NAME=value git push` included.
     A push behind any other wrapper is found too, as one the guard could not read word by word."""
     found = []
-    for segment in SEGMENTS.split(command):
+    # RULE: a redirection is never read as a remote
+    for segment in SEGMENTS.split(REDIRECTION.sub(" ", command)):
         try:
             words = shlex.split(segment)
         except ValueError:
@@ -171,7 +183,7 @@ def _fork_only(push: Push, upstream: str, remote_url: Callable[[str], str | None
             "Pushing from another folder with -C, --git-dir or --work-tree is refused: the guard can only "
             f"tell that the session's own folder does not push to {upstream}. Change to that clone first."
         )
-    positional = [a for a in push.args if not a.startswith("-")]
+    positional = _positional(push.args)
     target = positional[0] if positional else default
     # RULE: a fork-only push to an address written in the command is refused
     if "/" in target or ":" in target:
@@ -225,7 +237,7 @@ def _own_clone(push: Push, upstream: str, remote_url: Callable[[str], str | None
     own = _sets_own_settings(push)
     if not push.placed:
         own = "git push behind another command or a shell, which the guard cannot read word by word"
-    positional = [a for a in push.args if not a.startswith("-")]
+    positional = _positional(push.args)
     if own is None and positional and positional[0] != "origin":
         own = f"the target {positional[0]} instead of origin"
     if own is None and _elsewhere(push):
