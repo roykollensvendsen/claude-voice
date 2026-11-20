@@ -2,4 +2,4 @@
 name = "a push whose address cannot be read is refused"
 file = "src/claude_voice/guard.py"
 find = '^\s*if url is None:'
-replace = '        if False:'
+replace = '    if False:'
