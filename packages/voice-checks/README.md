@@ -44,6 +44,21 @@ uv run voice-checks temp-files
   of the module's functions. A list's `remove` does not count. A marker that names nothing, an unknown name, or a function that
   removes nothing still fails, and says which.
 
+- **`docs`.** A plugin's `docs/setup.md` is one an agent can follow: every step has a
+  `Check:` line, every step the agent does shows its commands, and the steps under
+  `## Steps only the owner can do` are each marked `<!-- owner -->` and say `Why:`, or the
+  heading says `None.`. The README's list of steps, between `<!-- steps:begin -->` and
+  `<!-- steps:end -->`, is the one the guide makes now. `--write` writes that list first.
+
+  <!-- not run: it needs a plugin checkout -->
+  ```bash
+  uv run voice-checks docs --write
+  ```
+
+  The plugin's own tests run the blocks marked `<!-- safe-to-run -->`, with their own bounded
+  run. `voice_checks.docs.safe_blocks()` gives them the blocks, and `isolated_env()` an
+  environment whose home and other folders lie in the test's own folder.
+
 ## Move the pin
 
 <!-- not run: it rewrites the plugin's pyproject.toml -->

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a guide whose owner part says none has nothing to say"
+file = "src/voice_checks/docs.py"
+find = 'if not under and owner_part\.strip\(\) != "None\.":'
+replace = 'if not under:'

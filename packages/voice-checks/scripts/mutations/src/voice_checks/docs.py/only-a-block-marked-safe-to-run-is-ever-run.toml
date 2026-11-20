@@ -1,0 +1,5 @@
+[[rule]]
+name = "only a block marked safe to run is ever run"
+file = "src/voice_checks/docs.py"
+find = 'inside, code, safe = True, \[\], i > 0'
+replace = 'inside, code, safe = True, [], True'
