@@ -40,6 +40,9 @@ PARTS = re.compile(r"(&&|\|\||;|\||\n|&|\$\(|[()`])")
 #: from the start of the list through the push is `&&`; otherwise the push is judged in every
 #: folder it may run in.
 LISTS = frozenset({";", "\n"})
+#: Variables that send git to another repository or other settings. Set anywhere in the command,
+#: as by `export` or `set -a`, or already in the hook's environment, they reach every push.
+GIT_SETTINGS = re.compile(r"GIT_(DIR|WORK_TREE|CONFIG)")
 #: Words that change the folder in a shape the guard does not follow, such as `pushd` or `then cd`.
 MOVERS = frozenset({"cd", "pushd", "popd"})
 #: A folder the guard cannot read, such as `cd $DIR` or `cd -`.
@@ -170,6 +173,8 @@ def _pushes(command: str) -> list[Push]:
     sure: list[str | None] = [None]
     depth, quoted, joined = 0, False, True
     cdpath = "CDPATH" in command or "CDPATH" in os.environ
+    # RULE: git settings set anywhere in the command or the hook environment are refused
+    elsewhere = bool(GIT_SETTINGS.search(command)) or any(GIT_SETTINGS.match(name) for name in os.environ)
     # RULE: a redirection is never read as a remote
     parts = PARTS.split(REDIRECTION.sub(" ", command))
     for at in range(0, len(parts), 2):
@@ -179,6 +184,7 @@ def _pushes(command: str) -> list[Push]:
         except ValueError:
             words = segment.split()
         words, environment = _without_environment(words)
+        environment = environment or elsewhere
         folders = sure if joined and depth == 0 and not quoted else possible
         if _unfollowed(words):
             # RULE: a folder change the guard cannot follow leaves the folder unread
