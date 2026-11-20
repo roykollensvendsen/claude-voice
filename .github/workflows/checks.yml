@@ -2,10 +2,18 @@ name: checks
 
 # pull_request covers every pull request; push:main covers a direct push to main.
 # A commit cannot be both, so the pair never runs the same commit twice.
+# A pull request runs Windows, Python 3.13 and the template only when its paths call for
+# them (scripts/ci_scope.py). Main and the nightly run always run every job, and catch the rest.
 on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    # 02.00 Oslo time all year: cron alone is UTC, and the time zone keeps the hour through
+    # summer time. It is an hour when no one is waiting on a runner. On the night clocks go
+    # forward, 02.00 doesn't exist, so that one run may start late or be skipped; that's accepted.
+    - cron: "0 2 * * *"
+      timezone: "Europe/Oslo"
 
 # A newer push to a pull request stops that pull request's stale run. Every other run, on
 # main, a tag or by hand, is its own group and always runs to the end.
@@ -18,6 +26,26 @@ permissions:
   contents: read
 
 jobs:
+  # Which of the slower jobs this run needs: all of them, except on a pull request whose
+  # paths none of them is there to catch.
+  scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      windows: ${{ steps.scope.outputs.windows }}
+      python313: ${{ steps.scope.outputs.python313 }}
+      template: ${{ steps.scope.outputs.template }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0       # the pull request's changed paths are read from its base
+      - id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: python3 scripts/ci_scope.py scope
+
   # Conventional Commits, over the commits this pull request adds.
   commits:
     runs-on: ubuntu-latest
@@ -72,6 +100,9 @@ jobs:
   # The suite on Windows, where Claude Code also runs and the bridge must not
   # assume Unix: a signal that only probes a process on Linux ends it there.
   windows:
+    needs: scope
+    # Runs even when the scope failed, whose outputs are then empty; skipped, it still reports.
+    if: ${{ !cancelled() && needs.scope.outputs.windows != 'false' }}
     runs-on: windows-latest
     timeout-minutes: 15
     defaults:
@@ -101,6 +132,9 @@ jobs:
       - run: python3 scripts/clean_install.py
 
   quality:
+    # The ratchet compares with a base, and a nightly run has none, so it runs on pull
+    # requests and on main only, as before.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     # No time limit, on purpose: this job holds the mutation run, which grows with every rule,
     # and a run cut short proves nothing. Never cap it; remove a cap rather than raise it.
@@ -158,6 +192,8 @@ jobs:
   # The plugin template, rendered under a made-up name into a temporary folder and put through
   # its own gates there, offline: its suite, its mutation run and its ratchet.
   template:
+    needs: scope
+    if: ${{ !cancelled() && needs.scope.outputs.template != 'false' }}
     runs-on: ubuntu-latest
     # No time limit, on purpose: this job holds the template's mutation run, and a run cut
     # short proves nothing. Never cap it; remove a cap rather than raise it.
@@ -173,18 +209,28 @@ jobs:
         run: uv run pytest -q -p no:cacheprovider --strict-markers -m template
 
   checks:
+    needs: scope
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10          # the default is 360; this job takes under a minute
     strategy:
       fail-fast: false           # one version failing should not hide another
       matrix:                    # every version pyproject.toml claims to support
         python: ["3.12", "3.13"]
+    # A matrix leg can't be skipped by itself and still report under its own name, which
+    # branch protection requires. So the 3.13 leg always runs, and only its steps are left out.
+    env:
+      NEEDED: ${{ matrix.python == '3.12' || needs.scope.outputs.python313 != 'false' }}
     steps:
+      - name: Whether this version runs here
+        run: echo "Python ${{ matrix.python }} needed on this run - ${{ env.NEEDED }}"
       # Actions are pinned to a commit, not a tag, as GitHub's own hardening guide asks.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.NEEDED == 'true'
         with:
           fetch-depth: 0         # the last-checked rule reads each page's commit date
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        if: env.NEEDED == 'true'
         with:
           enable-cache: true     # setup-python's own cache covers pip, not uv
           version: "0.12.13"     # pin uv itself
@@ -192,11 +238,29 @@ jobs:
       # From the lock file, so a new release of a tool cannot turn CI red on its
       # own; Dependabot moves the lock deliberately instead.
       - run: uv sync --locked --all-extras
+        if: env.NEEDED == 'true'
       - name: Lint and format
+        if: env.NEEDED == 'true'
         run: uv run ruff check . && uv run ruff format --check .
       - name: Types
+        if: env.NEEDED == 'true'
         run: uv run mypy src
       - name: The rules that guard the rules
+        if: env.NEEDED == 'true'
         # Coverage is measured and printed, with no threshold yet: a number
         # picked before there is data is a guess with a gate on it.
         run: uv run pytest -q -p no:cacheprovider --strict-markers --cov
+
+  # The one job a branch rule can require instead of the many: it passes only when every
+  # other job passed, or was left out because the scope said so.
+  gate:
+    needs: [scope, commits, windows, clean-install, quality, template, checks]
+    if: ${{ always() && github.event_name != 'schedule' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - env:
+          NEEDS: ${{ toJSON(needs) }}
+          ACTOR: ${{ github.actor }}
+        run: python3 scripts/ci_scope.py gate

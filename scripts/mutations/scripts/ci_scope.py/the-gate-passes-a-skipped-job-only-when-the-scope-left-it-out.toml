@@ -1,0 +1,5 @@
+[[rule]]
+name = "the gate passes a skipped job only when the scope left it out"
+file = "scripts/ci_scope.py"
+find = '^\s*if result == "success" or \(result == "skipped" and job in skippable\):$'
+replace = 'if result in ("success", "skipped"):'
