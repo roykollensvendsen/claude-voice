@@ -333,14 +333,12 @@ def suite(monkeypatch):
     """Stands in for `uv run pytest` printing a failing run, and records how it was started."""
     seen = []
 
-    def run(command, **kwargs):
+    def run(command, cwd, **kwargs):
         seen.append(command)
-        if kwargs.get("stderr") == subprocess.STDOUT:
-            return subprocess.CompletedProcess(command, 1, FAILING_RUN + WARNING, None)
-        return subprocess.CompletedProcess(command, 1, FAILING_RUN, WARNING)
+        return updater.cpu_watch.Finished(1, FAILING_RUN + WARNING, "")
 
     monkeypatch.setattr(updater.procs, "find", lambda name: f"/usr/bin/{name}")
-    monkeypatch.setattr(updater.subprocess, "run", run)
+    monkeypatch.setattr(updater.cpu_watch, "run", run)
     return seen
 
 
@@ -399,19 +397,37 @@ def test_the_failing_tests_names_fit_in_the_update_s_log(install, tmp_path):
     assert next(s for s in steps if s["step"] == "test")["detail"] == said
 
 
-def test_a_test_run_that_runs_out_of_time_keeps_what_it_printed(monkeypatch, tmp_path):
-    """A run stopped at the time limit keeps its output so far, and says it ran out of time."""
+def test_a_stopped_test_run_keeps_what_it_printed_and_says_why_it_was_stopped(monkeypatch, tmp_path):
+    """A run stopped by the CPU watch keeps its output so far, and the reason, and fails."""
+    why = "Stopped: the tests used 541 CPU-seconds, over the cap of 540."
+    seen = []
 
-    def run(command, **kwargs):
-        raise subprocess.TimeoutExpired(command, kwargs["timeout"], output=b"..F\nFAILED tests/t.py::test_x\n")
+    def run(command, cwd, **kwargs):
+        seen.append(kwargs)
+        return updater.cpu_watch.Finished(None, "..F\nFAILED tests/t.py::test_x\n", why)
 
     monkeypatch.setattr(updater.procs, "find", lambda name: f"/usr/bin/{name}")
-    monkeypatch.setattr(updater.subprocess, "run", run)
+    monkeypatch.setattr(updater.cpu_watch, "run", run)
     kept = tmp_path / "update-test.log"
     ok, detail = updater.run_tests(tmp_path, kept)
     assert not ok
-    assert kept.read_text() == "..F\nFAILED tests/t.py::test_x\nThe tests ran past 900 s and were stopped.\n"
-    assert detail.splitlines() == ["FAILED tests/t.py::test_x", "The tests ran past 900 s and were stopped."]
+    assert kept.read_text() == f"..F\nFAILED tests/t.py::test_x\n{why}\n"
+    assert detail.splitlines() == ["FAILED tests/t.py::test_x", why]
+    assert seen == [{"cap": updater.TESTS_CPU_CAP}]
+
+
+def test_an_install_has_no_cpu_cap_and_says_why_it_was_stopped(monkeypatch, tmp_path):
+    why = "Stopped: uv sync used under 1 CPU-second in 10 min, so the run had hung."
+    seen = []
+
+    def run(command, cwd, **kwargs):
+        seen.append(kwargs)
+        return updater.cpu_watch.Finished(None, "Resolved 53 packages\n", why)
+
+    monkeypatch.setattr(updater.procs, "find", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(updater.cpu_watch, "run", run)
+    assert updater._uv(tmp_path, "sync") == (False, why)
+    assert seen == [{"cap": None, "what": "uv sync"}]
 
 
 def test_an_update_brings_the_shipped_rules_to_the_repositories_once_the_bridge_answers(install, tmp_path):

@@ -74,6 +74,7 @@ LAYERS = {
             "safefile",
             "owner_rules",
             "never_touch",
+            "cpu_watch",
             "uvlock",
             "session_hook",
             "literal_gh",

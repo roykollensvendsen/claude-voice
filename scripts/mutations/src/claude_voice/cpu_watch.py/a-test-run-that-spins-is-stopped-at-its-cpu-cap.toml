@@ -1,0 +1,5 @@
+[[rule]]
+name = "a test run that spins is stopped at its CPU cap"
+file = "src/claude_voice/cpu_watch.py"
+find = 'if self\.cap is not None and cpu > self\.cap:'
+replace = 'if False:'
