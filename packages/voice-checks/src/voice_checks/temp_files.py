@@ -56,6 +56,7 @@ def _forgotten_folders(tree: ast.AST, where: str) -> list[str]:
             around = [node] if isinstance(node, ast.Try) else []
             if names and any(_handed(_all_calls(s.finalbody), names) for s in later + around):
                 safe |= {id(c) for c in ast.walk(stmt)}
+    # RULE: the static check refuses each forgotten temporary file
     return [f"{where}:{c.lineno}: mkdtemp, {FORGOTTEN}" for c in _calls(tree, "mkdtemp") if id(c) not in safe]
 
 
@@ -105,6 +106,7 @@ def _remover(call: ast.Call) -> bool:
     func = call.func
     if isinstance(func, ast.Attribute):
         on_os = isinstance(func.value, ast.Name) and func.value.id == "os"
+        # RULE: os remove counts as removing
         return func.attr in REMOVERS or (func.attr == "remove" and on_os)
     return isinstance(func, ast.Name) and func.id in REMOVERS
 
@@ -134,6 +136,7 @@ def _marked(tree: ast.AST, lines: list[str], line: int) -> tuple[bool, str | Non
     for name in names:
         if name not in functions:
             return True, f"{name} is not a function in this module; {NAME_IT}"
+        # RULE: a marker that proves nothing still fails
         if not _removes(name, functions, set()):
             return True, f"{name} removes nothing; {NAME_IT}"
     return True, None
@@ -157,6 +160,7 @@ def offences(source: str, where: str = "x.py", *, src: bool = False) -> list[str
     tree = ast.parse(source)
     found = _excused(tree, source, _forgotten_folders(tree, where) + _forgotten_files(tree, where))
     if src:
+        # RULE: a module in src keeps no temporary path as a constant
         found += _kept_paths(tree, where)
     return sorted(set(found))
 
@@ -169,6 +173,7 @@ def _annotated_monkeypatch(annotation: ast.expr | None) -> bool:
 def _fixture_names(function: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
     """The names a test function gets the monkeypatch fixture under."""
     params = [*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs]
+    # RULE: a test never undoes the monkeypatch fixture part way
     return {p.arg for p in params if p.arg == "monkeypatch" or _annotated_monkeypatch(p.annotation)}
 
 
@@ -190,6 +195,7 @@ def scan(root: pathlib.Path) -> list[str]:
     found: list[str] = []
     for folder in ("src", "scripts", "tests"):
         # A folder can be named like a file: a plugin's mutation rows sit in one per source file.
+        # RULE: a folder named like a python file is not read
         for path in sorted(p for p in (root / folder).rglob("*.py") if p.is_file()):
             where = path.relative_to(root).as_posix()
             text = path.read_text(encoding="utf-8")

@@ -1,0 +1,5 @@
+[[rule]]
+name = "the static check refuses each forgotten temporary file"
+file = "src/voice_checks/temp_files.py"
+find = 'return \[f"\{where\}:\{c\.lineno\}: mkdtemp, \{FORGOTTEN\}"'
+replace = 'return []'

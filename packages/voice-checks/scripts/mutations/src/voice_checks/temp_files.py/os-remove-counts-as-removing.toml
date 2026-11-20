@@ -1,0 +1,5 @@
+[[rule]]
+name = "os remove counts as removing"
+file = "src/voice_checks/temp_files.py"
+find = 'return func\.attr in REMOVERS or \(func\.attr == "remove" and on_os\)'
+replace = 'return func.attr in REMOVERS'

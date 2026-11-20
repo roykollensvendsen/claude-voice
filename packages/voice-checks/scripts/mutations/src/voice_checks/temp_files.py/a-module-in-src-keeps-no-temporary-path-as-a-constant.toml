@@ -1,0 +1,5 @@
+[[rule]]
+name = "a module in src keeps no temporary path as a constant"
+file = "src/voice_checks/temp_files.py"
+find = 'found \+= _kept_paths\(tree, where\)'
+replace = 'pass'

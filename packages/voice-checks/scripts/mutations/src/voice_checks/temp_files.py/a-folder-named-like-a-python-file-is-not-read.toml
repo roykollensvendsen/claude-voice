@@ -1,0 +1,5 @@
+[[rule]]
+name = "a folder named like a python file is not read"
+file = "src/voice_checks/temp_files.py"
+find = 'for path in sorted\(p for p in \(root / folder\)\.rglob\("\*\.py"\) if p\.is_file\(\)\):'
+replace = 'for path in sorted((root / folder).rglob("*.py")):'
