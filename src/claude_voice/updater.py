@@ -35,7 +35,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import procs, restarts, safe_git, safefile
+from . import cpu_watch, procs, restarts, safe_git, safefile
 from .config import STATE_DIR
 
 LOG = Path("~/.local/state/claude-voice/update.json")
@@ -210,6 +210,10 @@ def failure_summary(output: str) -> str:
     return "\n".join([*failures[:NAMED], *more, summary[:200]]).strip()
 
 
+#: CPU seconds the update's test run may use: three times the suite's own budget, so only a spin reaches it.
+TESTS_CPU_CAP = 540.0
+
+
 def run_tests(repo: Path, keep: Path) -> tuple[bool, str]:
     """Run the suite, keep all it printed in `keep`, and name the tests that failed."""
     uv = procs.find("uv")
@@ -217,20 +221,15 @@ def run_tests(repo: Path, keep: Path) -> tuple[bool, str]:
         return False, "uv is not installed"
     command = [uv, "run", "pytest", "-q", "-p", "no:cacheprovider", "-rfE"]
     try:
-        # stderr goes in with stdout, so a warning printed last cannot hide the summary
-        out = subprocess.run(
-            command, cwd=repo, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=900, check=False
-        )
-    except subprocess.TimeoutExpired as exc:
-        so_far = exc.stdout.decode(errors="replace") if isinstance(exc.stdout, bytes) else exc.stdout or ""
-        said = f"{so_far.rstrip()}\nThe tests ran past {exc.timeout:.0f} s and were stopped.\n".lstrip()
-        safefile.replace(keep, said)
-        return False, failure_summary(said)
+        # stderr goes in with stdout, so a warning printed last cannot hide the summary.
+        # A busy machine only slows the run: it is stopped on CPU, never on the clock.
+        done = cpu_watch.run(command, repo, cap=TESTS_CPU_CAP)
     except (OSError, subprocess.SubprocessError) as exc:
         safefile.replace(keep, str(exc))
         return False, str(exc)
-    safefile.replace(keep, out.stdout or "")
-    return out.returncode == 0, failure_summary(out.stdout or "")
+    said = f"{done.output.rstrip()}\n{done.note}\n".lstrip() if done.note else done.output
+    safefile.replace(keep, said)
+    return done.code == 0, failure_summary(said)
 
 
 def _uv(repo: Path, *args: str) -> tuple[bool, str]:
@@ -238,11 +237,12 @@ def _uv(repo: Path, *args: str) -> tuple[bool, str]:
     if not uv:
         return False, "uv is not installed"
     try:
-        out = subprocess.run([uv, *args], cwd=repo, capture_output=True, text=True, timeout=900, check=False)
+        # No CPU cap for an install: only a run that has hung is stopped.
+        done = cpu_watch.run([uv, *args], repo, cap=None, what=f"uv {args[0]}" if args else "uv")
     except (OSError, subprocess.SubprocessError) as exc:
         return False, str(exc)
-    tail = (out.stdout + out.stderr).strip().splitlines()
-    return out.returncode == 0, tail[-1] if tail else ""
+    tail = [*done.output.strip().splitlines(), *([done.note] if done.note else [])]
+    return done.code == 0, tail[-1] if tail else ""
 
 
 SHIPPED_SECONDS = 300.0

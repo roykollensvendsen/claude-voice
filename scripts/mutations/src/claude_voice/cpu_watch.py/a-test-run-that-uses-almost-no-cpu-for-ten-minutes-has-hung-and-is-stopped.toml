@@ -1,0 +1,5 @@
+[[rule]]
+name = "a test run that uses almost no CPU for ten minutes has hung and is stopped"
+file = "src/claude_voice/cpu_watch.py"
+find = 'if now - self\._mark\[1\] >= self\.idle:'
+replace = 'if False:'

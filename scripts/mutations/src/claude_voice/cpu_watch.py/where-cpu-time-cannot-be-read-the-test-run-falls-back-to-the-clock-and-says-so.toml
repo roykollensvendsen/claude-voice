@@ -1,0 +1,5 @@
+[[rule]]
+name = "where CPU time cannot be read the test run falls back to the clock and says so"
+file = "src/claude_voice/cpu_watch.py"
+find = 'over = now - started > WALL'
+replace = 'over = False'
