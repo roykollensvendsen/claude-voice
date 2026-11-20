@@ -37,6 +37,14 @@ START_SECONDS = 15.0  # how long a plugin may take to start
 LIST_SECONDS = 60.0
 HOPS = 6  # the most calls one chain of `next` makes, whatever the plugin says (standard rule 4a)
 HOP = "_hop"  # the bridge's count of calls in a chain, stamped into `next` and never forwarded
+# The cap trusts the voice to pass HOP back; a voice that drops it starts again at 0. So the
+# plugin's own record is the real bound on a chain, and this cap is only a backstop.
+HOP_SCHEMA = {
+    "type": "integer",
+    "minimum": 0,
+    "maximum": HOPS - 1,
+    "description": "set by the bridge in a next; pass it back unchanged",
+}
 
 
 class NotReady(ConnectionError):
@@ -427,13 +435,25 @@ def _as_object(text: str) -> dict[str, Any]:
 
 def _hops(arguments: dict[str, Any]) -> tuple[dict[str, Any], int | None]:
     """The arguments without the bridge's hop count, and that count: 0 when there is none,
-    None when it is not a whole number below HOPS, which ends the chain."""
+    None when it is not a whole number below HOPS, which ends the chain. The count is only
+    a backstop: a voice that drops it starts again at 0, so the plugin's own record bounds
+    a chain."""
     rest = dict(arguments)
     # RULE: the plugin never sees the bridges hop count
     hop = rest.pop(HOP, 0)
     if isinstance(hop, bool) or not isinstance(hop, int) or not 0 <= hop < HOPS:
         return rest, None
     return rest, hop
+
+
+def _with_hop(known: dict[str, Any]) -> dict[str, Any]:
+    """The tool's schema as the voice is offered it: a read-only tool also takes the bridge's
+    hop count, so a client that checks arguments never refuses the follow-up it was given."""
+    schema = dict(known.get("schema") or {"type": "object", "properties": {}})
+    # RULE: only a read-only tool offers the bridges hop count
+    if known.get("read_only") is True:
+        schema["properties"] = {**schema.get("properties", {}), HOP: HOP_SCHEMA}
+    return schema
 
 
 def _own_tool(named: Any, plugin: Plugin) -> str | None:
@@ -509,7 +529,7 @@ def offer(server: Any, plugin: Plugin, listing: dict[str, dict[str, Any]]) -> li
         base = Tool.from_function(placeholder, name=name, description=description, structured_output=True)
         fields = {k: getattr(base, k) for k in type(base).model_fields}
         made = PluginTool(**{**fields, "meta": {"plugin": plugin.spec.name, "plugin_tool": tool}})
-        made.parameters = known.get("schema") or {"type": "object", "properties": {}}
+        made.parameters = _with_hop(known)
         server._tool_manager._tools[name] = made
         offered.append(name)
     _instruct(server._lowlevel_server, plugin.spec.name, rules)
