@@ -101,12 +101,27 @@ def _texts(*, tracked: bool, history: bool, message: str | None = None) -> list[
     out = []
     if history:
         out.append(("the history", _git("log", "-p", "--all", "--no-color", "--format=commit %H%n%B")))
-    names = _git("ls-files") if tracked else ("" if history else _git("diff", "--cached", "--name-only"))
-    for name in names.splitlines():
+    if not tracked:
+        return out if history else out + _staged()
+    for name in _git("ls-files").splitlines():
         try:
             out.append((name, (ROOT / name).read_text(encoding="utf-8")))
         except (FileNotFoundError, IsADirectoryError, UnicodeDecodeError):
             continue
+    return out
+
+
+def _staged() -> list[tuple[str, str]]:
+    """Each staged file as the commit will hold it, not as it stands in the folder now."""
+    out = []
+    for name in _git("diff", "--cached", "--name-only", "--diff-filter=d").splitlines():
+        # RULE: a secret staged and then edited out of the file is still refused
+        blob = subprocess.run(["git", "show", f":{name}"], cwd=ROOT, capture_output=True, check=True).stdout
+        try:
+            out.append((name, blob.decode("utf-8")))
+        except UnicodeDecodeError:
+            # RULE: a staged file that is not utf8 text is named as not scanned
+            sys.stderr.write(f"{name}: not UTF-8 text, so not scanned\n")
     return out
 
 
