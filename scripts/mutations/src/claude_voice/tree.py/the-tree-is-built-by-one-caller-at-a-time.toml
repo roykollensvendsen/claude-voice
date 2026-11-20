@@ -2,4 +2,5 @@
 name = "the tree is built by one caller at a time"
 file = "src/claude_voice/tree.py"
 find = 'with self\._building:'
+occurrence = 1
 replace = 'if True:'

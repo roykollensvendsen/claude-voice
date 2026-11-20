@@ -2,4 +2,5 @@
 name = "an existing home position is kept and not asked again"
 file = "src/claude_voice/install.py"
 find = '^\s*if target\.exists\(\):$'
+occurrence = 1
 replace = 'if False:'
