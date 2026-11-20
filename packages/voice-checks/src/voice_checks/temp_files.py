@@ -7,6 +7,7 @@ tests/test_temp_files.py (R24), with the `monkeypatch.undo(` rule of no-duplicat
 
 import ast
 import pathlib
+import re
 
 FORGOTTEN = "a temporary file or folder made with no removal beside it"
 UNDONE = (
@@ -90,10 +91,60 @@ def _kept_paths(tree: ast.Module, where: str) -> list[str]:
     ]
 
 
+#: A line that makes a temporary file or folder, and the line above it, may name the functions
+#: in its module that remove it: `# temp-files: removed by end_run, dead_runs`.
+MARKER = re.compile(r"#\s*temp-files:\s*removed by\b(.*)$")
+#: The calls that remove a file or folder, by their last name.
+REMOVERS = frozenset({"rmtree", "unlink", "rmdir", "remove"})
+NAME_IT = "name the function that removes it"
+
+
+def _removes(name: str, functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef], seen: set[str]) -> bool:
+    """Whether a function of the module removes something, itself or through another of its functions."""
+    seen.add(name)
+    for call in (c for c in ast.walk(functions[name]) if isinstance(c, ast.Call)):
+        called = getattr(call.func, "attr", None) or getattr(call.func, "id", None)
+        if called in REMOVERS:
+            return True
+        if called in functions and called not in seen and _removes(called, functions, seen):
+            return True
+    return False
+
+
+def _marked(tree: ast.AST, lines: list[str], line: int) -> tuple[bool, str | None]:
+    """Whether a finding's line carries a marker, and why the marker proves nothing, if it doesn't."""
+    found = next((m for m in (MARKER.search(lines[i]) for i in (line - 1, line - 2) if 0 <= i < len(lines)) if m), None)
+    if found is None:
+        return False, None
+    names = [n.strip() for n in found[1].split(",") if n.strip()]
+    if not names:
+        return True, f"a temp-files marker names no function; {NAME_IT}"
+    functions = {f.name: f for f in ast.walk(tree) if isinstance(f, ast.FunctionDef | ast.AsyncFunctionDef)}
+    for name in names:
+        if name not in functions:
+            return True, f"{name} is not a function in this module; {NAME_IT}"
+        if not _removes(name, functions, set()):
+            return True, f"{name} removes nothing; {NAME_IT}"
+    return True, None
+
+
+def _excused(tree: ast.AST, source: str, found: list[str]) -> list[str]:
+    """The findings left once a marker that proves its removal excuses its line."""
+    lines, kept = source.splitlines(), []
+    for finding in found:
+        where, line, _ = finding.split(":", 2)
+        marked, wrong = _marked(tree, lines, int(line))
+        if wrong:
+            kept.append(f"{where}:{line}: {wrong}")
+        elif not marked:
+            kept.append(finding)
+    return kept
+
+
 def offences(source: str, where: str = "x.py", *, src: bool = False) -> list[str]:
     """The ways `source` makes a temporary file and may leave it, by line."""
     tree = ast.parse(source)
-    found = _forgotten_folders(tree, where) + _forgotten_files(tree, where)
+    found = _excused(tree, source, _forgotten_folders(tree, where) + _forgotten_files(tree, where))
     if src:
         found += _kept_paths(tree, where)
     return sorted(set(found))

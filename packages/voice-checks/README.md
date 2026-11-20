@@ -31,6 +31,19 @@ uv run voice-checks temp-files
   test's fixtures set; `monkeypatch.context()` is the way. These are the plugin rules' R24, and
   the note n6 in no-duplicates-v1.
 
+  A folder that is made in one function and removed in another, such as a test run's own
+  folder, can say so on its line or the line above:
+
+  <!-- not run: a line of Python in a plugin's code -->
+  ```python
+  # temp-files: removed by end_run, remove
+  ```
+
+  The check then proves it. Each named function must be in the same module, and must remove
+  something: it calls `rmtree`, `unlink`, `rmdir` or `remove`, itself or through another of
+  the module's functions. A marker that names nothing, an unknown name, or a function that
+  removes nothing still fails, and says which.
+
 ## Move the pin
 
 <!-- not run: it rewrites the plugin's pyproject.toml -->
