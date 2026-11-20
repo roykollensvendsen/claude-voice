@@ -394,6 +394,12 @@ A repository's own `.claude/settings.json` and `.claude/settings.local.json` are
 refused too, in every clone. The owner changes them by hand, or through
 `claude-voice permissions`.
 
+Some of the bridge's own files run as the owner from the owner's checkout, in
+every session's hooks. They are the session hook, the git helper it loads, the
+phone hook, the GitHub command check and the org rules. In that checkout, a
+session can't write them. In a worktree it can, since nothing runs from there.
+The list is the group "own checkout" in `permissions.json`.
+
 git settings that run code are refused in the settings file for the global
 forms. The session hook refuses them in every form, including `git -c` and
 `git --config-env`. The one
