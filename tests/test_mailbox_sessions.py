@@ -147,6 +147,18 @@ async def test_an_ack_marks_only_the_replies_it_names(tmp_path, root, live, cour
     assert senders(news["events"]) == ["fuel-mcp"]
 
 
+async def test_an_ack_on_one_sessions_tool_confirms_a_reply_from_any_session(tmp_path, root, live, courier):
+    """The ids are the voice's own, so any reply it read out can be confirmed on any session tool."""
+    target = Target(live, str(root / "billing"))
+    async with Client(bridge(tmp_path, root, live, target, None)) as c:
+        transcripts._courier.on_reply("fuel-mcp", "Diesel is 21.90 today.")
+        seen = await call(c, "whats_new")
+        fuel = [e["reply_id"] for e in seen["events"] if e["session"] == "fuel-mcp"]
+        await call(c, "wait_for_session", session="billing-ab", wait_seconds=1, ack=fuel)
+        news = await call(c, "whats_new")
+    assert senders(news["events"]) == []
+
+
 async def test_a_reply_from_a_session_under_an_older_name_still_reaches_whats_new(tmp_path, root, live, courier):
     """The session tools match the reply's sender by name; whats_new still hands over the rest."""
     target = Target(live, str(root / "billing"))
