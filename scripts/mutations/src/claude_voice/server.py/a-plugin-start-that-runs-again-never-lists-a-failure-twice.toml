@@ -1,0 +1,5 @@
+[[rule]]
+name = "a plugin start that runs again never lists a failure twice"
+file = "src/claude_voice/server.py"
+find = '^\s*plugin_failures\.clear\(\)$'
+replace = 'pass'

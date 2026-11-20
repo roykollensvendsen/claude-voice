@@ -1144,19 +1144,29 @@ def build_server(
     plugins_started: list[bool] = []
     plugin_failures: list[dict[str, Any]] = []  # shown by health beside the plugins offered
 
-    async def offer_checked(spec: config.PluginSpec, found: plugins.Checked | BaseException) -> None:
-        """Offer one checked plugin's tools; raise what went wrong, in its check or here."""
-        if isinstance(found, BaseException):
-            raise found
+    async def offer_checked(spec: config.PluginSpec, found: plugins.Checked) -> None:
+        """Offer one checked plugin's tools."""
         plugin, listing, _ = found
         if plugin is not None:
             plugins.present(mcp, plugin, listing, await asyncio.to_thread(commit_of, spec.cwd))
             active_plugins.append(plugin)
 
+    def could_not_offer(spec: config.PluginSpec, exc: BaseException) -> None:
+        """Log why a plugin was not offered, and list it in health by the kind of error only."""
+        log.warning("plugin %s could not be offered: %s", spec.name, exc)
+        # Health leaves the laptop, read by the voice, and an error's text may carry a path or a
+        # token. So it names the kind of error, and the full text stays in the local log.
+        # RULE: health never carries the text of a plugin error
+        why = f"{type(exc).__name__}; see the bridge log on the laptop"
+        plugin_failures.append({"name": spec.name, "state": "could not be offered", "why": why})
+
     async def start_plugins() -> None:
         """Start every approved plugin behind the listening bridge, and offer each one's tools
         once it is checked; the voice hears that the tool list changed."""
         specs = list(repos.plugins)
+        # A start cancelled as the bridge stopped runs again at the next one.
+        # RULE: a plugin start that runs again never lists a failure twice
+        plugin_failures.clear()
 
         def check(spec: config.PluginSpec) -> Awaitable[plugins.Checked]:
             return asyncio.to_thread(plugins.check_one, spec, plugin_approvals, plugin_client)
@@ -1165,18 +1175,22 @@ def build_server(
         checked = await asyncio.gather(*map(check, specs), return_exceptions=True)
         try:
             for spec, found in zip(specs, checked, strict=True):
+                if isinstance(found, BaseException):  # its check failed, even by a cancel
+                    # RULE: a check ended by a cancel never stops the others
+                    could_not_offer(spec, found)
+                    continue
                 try:
                     await offer_checked(spec, found)
                 except Exception as exc:
                     # RULE: a plugin that cannot be offered never stops the others
-                    log.warning("plugin %s could not be offered: %s", spec.name, exc)
-                    plugin_failures.append({"name": spec.name, "state": "could not be offered", "why": str(exc)})
+                    could_not_offer(spec, exc)
         finally:
             await tools_changed()
 
     def start_ended(task: asyncio.Task[None]) -> None:
         """Log a plugin start that failed as a whole, so it never disappears unseen."""
         if not task.cancelled() and (failed := task.exception()) is not None:
+            # RULE: a plugin start that fails as a whole is logged
             log.error("the plugins could not be started: %s", failed)
 
     developer_mode = devmode.DeveloperMode()
@@ -2325,8 +2339,11 @@ def build_server(
         snap = METRICS.snapshot()
         courier = transcripts.shared_courier()
         offered = [p.status() for p in active_plugins]
+        # A plugin offered since, by a restart, no longer shows as one that could not be offered.
+        # RULE: a plugin offered after it failed is no longer listed as failed
+        failed = [f for f in plugin_failures if f["name"] not in {p["name"] for p in offered}]
         return {
-            "plugins": offered + plugin_failures,
+            "plugins": offered + failed,
             "developer_mode": developer_mode.state(),
             "now": {
                 "up_since": started_at,

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a plugin start that fails as a whole is logged"
+file = "src/claude_voice/server.py"
+find = '^\s*log\.error\("the plugins could not be started: %s", failed\)$'
+replace = 'pass'

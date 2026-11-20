@@ -1,0 +1,5 @@
+[[rule]]
+name = "health never carries the text of a plugin error"
+file = "src/claude_voice/server.py"
+find = '^\s*why = f"\{type\(exc\)\.__name__\}; see the bridge log on the laptop"$'
+replace = 'why = str(exc)'

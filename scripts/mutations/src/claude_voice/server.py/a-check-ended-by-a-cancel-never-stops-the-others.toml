@@ -1,0 +1,5 @@
+[[rule]]
+name = "a check ended by a cancel never stops the others"
+file = "src/claude_voice/server.py"
+find = '^\s*could_not_offer\(spec, found\)$'
+replace = 'raise found'
