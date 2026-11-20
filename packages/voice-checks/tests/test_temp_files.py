@@ -53,6 +53,56 @@ def test_a_module_in_src_keeps_no_temporary_path_as_a_constant():
     assert offences("import tempfile\nHERE = tempfile.gettempdir()\n") == []
 
 
+RUN_FOLDERS = """\
+import shutil, tempfile
+
+def remove(folder):
+    shutil.rmtree(folder)
+
+def start_run():
+    {marker_above}
+    return tempfile.mkdtemp(){marker_on}
+
+def end_run(folder):
+    remove(folder)
+
+def dead_runs(folders):
+    for folder in folders:
+        shutil.rmtree(folder)
+
+def says_hello():
+    print("hello")
+"""
+
+
+def _run_folders(*, above="", on=""):
+    return RUN_FOLDERS.format(marker_above=above or "pass", marker_on=f"  {on}" if on else "")
+
+
+@pytest.mark.parametrize("place", ["above", "on"], ids=["on the line above", "on the same line"])
+def test_a_folder_its_named_functions_remove_is_let_through(place):
+    """A run folder made here and removed by the run's end and by the sweep is not forgotten."""
+    marker = "# temp-files: removed by end_run, dead_runs"
+    assert offences(_run_folders(**{place: marker})) == []
+
+
+@pytest.mark.parametrize(
+    ("marker", "said"),
+    [
+        ("# temp-files: removed by", "names no function"),
+        ("# temp-files: removed by nowhere", "nowhere is not a function in this module"),
+        ("# temp-files: removed by says_hello", "says_hello removes nothing"),
+        ("# temp-files: removed by end_run, says_hello", "says_hello removes nothing"),
+    ],
+    ids=["a bare marker", "an unknown name", "a function that removes nothing", "one of two removes nothing"],
+)
+def test_a_marker_that_proves_nothing_still_fails(marker, said):
+    found = offences(_run_folders(above=marker))
+    assert len(found) == 1
+    assert said in found[0]
+    assert "name the function that removes it" in found[0]
+
+
 @pytest.mark.parametrize(
     "source",
     [
