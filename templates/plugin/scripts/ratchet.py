@@ -305,7 +305,7 @@ def _run(*command: str, cwd: Path = ROOT, env: dict[str, str] | None = None) -> 
     which the ratchet prints. Its output goes to temporary files, so a step with a lot to say
     never blocks on a full pipe, and one that outlives the ratchet never dies of a closed one.
     """
-    with tempfile.TemporaryFile("w+") as out, tempfile.TemporaryFile("w+") as err:
+    with tempfile.TemporaryFile("w+", encoding="utf-8") as out, tempfile.TemporaryFile("w+", encoding="utf-8") as err:
         step = subprocess.Popen(
             command,
             cwd=cwd,
@@ -434,7 +434,7 @@ def exceptions(text: str | None) -> set[str]:
 def budget(path: Path) -> dict[str, Any]:
     """The suite's time budget, the one thing `quality.json` keeps."""
     try:
-        return dict(json.loads(path.read_text())["test_budget"])
+        return dict(json.loads(path.read_text(encoding="utf-8"))["test_budget"])
     except (OSError, ValueError, KeyError, TypeError):
         return dict(DEFAULT_BUDGET)
 
@@ -442,7 +442,7 @@ def budget(path: Path) -> dict[str, Any]:
 def write_levels(path: Path, now: dict[str, Any]) -> None:
     """Write the measured levels, for main to keep with its run."""
     levels = {k: v for k, v in now.items() if k != "test_budget"}
-    path.write_text(json.dumps(levels, indent=2, sort_keys=True) + "\n")
+    path.write_text(json.dumps(levels, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def base_levels(kept: Path | None, measure_base: Callable[[], dict[str, Any]]) -> dict[str, Any]:

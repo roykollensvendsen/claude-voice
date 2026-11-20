@@ -34,6 +34,11 @@ target-version = "py312"
 # D401 wants an imperative first line, but a command's docstring is also its help.
 select = ["ALL"]
 ignore = ["D203", "D213", "COM812", "ISC001", "CPY001", "D401"]
+# A file opened without naming its encoding reads as UTF-8 on Linux and as the
+# system's code page on Windows. It is a preview rule, so it is named on its own.
+preview = true
+explicit-preview-rules = true
+extend-select = ["PLW1514"]
 
 [tool.ruff.lint.per-file-ignores]
 # A test's name is its docstring, its fixtures need no annotations, and a bare
