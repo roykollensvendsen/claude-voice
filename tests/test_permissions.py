@@ -943,3 +943,31 @@ def test_the_owners_git_settings_are_still_refused_to_every_edit():
     rules = permissions.load()
     for path in (".gitconfig", ".config/git/**"):
         assert f"Edit(~/{path})" in rules.deny, path
+
+
+def _for_home():
+    return permissions.for_folder(permissions.load(), Path("/h/repo"), home=Path("/h"), uid=1000)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git worktree add /h/claude-voice-worktrees/fix-x -b fix/x origin/main",
+        "git worktree add /h/claude-voice-worktrees/fix-x fix/x",
+    ],
+)
+def test_a_new_worktree_in_the_shared_worktrees_folder_is_allowed(command):
+    assert decision(_for_home(), command) == "allowed"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git worktree add /h/elsewhere -b fix/x",
+        "git worktree add /h/claude-voice-worktrees-other/x",
+        "git worktree add /h/claude-voice-worktrees/../.claude/x",
+        "git worktree add ../claude-voice-worktrees/x",
+    ],
+)
+def test_a_new_worktree_anywhere_else_asks_first(command):
+    assert decision(_for_home(), command) == "asked"

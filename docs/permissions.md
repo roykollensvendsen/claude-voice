@@ -146,7 +146,7 @@ The retired rules so far are all allow rules:
 | --- | --- |
 | read files and folders | `cat`, `head`, `tail`, `grep`, `ls` and `wc`, to look at code |
 | git, looking only | status, diffs, logs, branches and the list of worktrees, read but not changed; a plain `git fetch` |
-| git, making work on a branch | adding and committing; new branches, switching branch, pruning and removing worktrees, cherry-picks; `git rebase origin/main` and `--continue` |
+| git, making work on a branch | adding and committing; new branches, switching branch, cherry-picks; `git rebase origin/main` and `--continue`; pruning and removing worktrees, and adding one in `~/claude-voice-worktrees/` |
 | bringing main up to date, by fast-forward only | `git fetch origin`, with or without `main`; `git pull --ff-only`, with or without `origin main`; and `git merge --ff-only origin/main` |
 | GitHub, looking only | reading pull requests, their checks and status, workflow runs and watching one, issues, the repository and its releases |
 | pushing a session's own pull-request branch | `git push origin <branch>`, with `-u` or `-q -u`; `git push --force-with-lease origin <branch>`, with or without `-u`; and `gh pr update-branch <n> --rebase` |
@@ -156,7 +156,9 @@ The retired rules so far are all allow rules:
 | editing files in the repository | `Edit(./**)`, every file under the repository. Claude Code checks a file write against `Edit` rules, so there is no `Write` rule |
 
 Merging, opening a pull request, `gh api` and installing anything else still
-ask, as does anything no rule names. Merging gets no rule of either kind on
+ask, as does anything no rule names. So does `git -C <folder>`, which can carry
+any option before the command. To work in another clone, `cd` into it in a call
+of its own, then run the plain git command in the next call. Merging gets no rule of either kind on
 purpose: the owner lets a session merge its own pull request once every check
 is green.
 
@@ -175,6 +177,7 @@ like any other.
 | a lease push in any other form than the one allowed | `--force-with-lease` after the remote, as in `git push origin feature --force-with-lease` |
 | GitHub, writing what others read | commenting on, closing or reviewing a pull request; creating or commenting on an issue; creating or editing a release; editing the repository; secrets; `gh api graphql`; and `gh api` with `-X`, `--method`, `-f`, `-F`, `--field`, `--raw-field` or `--input` |
 | deleting files | `rm -f`; a recursive remove is asked by the session hook, below |
+| a new worktree whose path climbs out of the worktrees folder | `git worktree add` with `..` anywhere in it |
 | changing the session's own settings | `Edit(./.claude/**)`, so a session cannot edit its own rules without the owner |
 | the devices in the house | the tools that open the garage door, switch a TV on or off, or start, stop, pause, send home, find or clean with the vacuum |
 | the garage door's own server, run in its repository | the same garage tools, by the name the garage door's repository gives its own server |

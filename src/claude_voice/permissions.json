@@ -38,6 +38,7 @@
       "Bash(git rebase origin/main)",
       "Bash(git rebase --continue)",
       "Bash(git cherry-pick *)",
+      "Bash(git worktree add {home}/claude-voice-worktrees/*)",
       "Bash(git worktree prune*)",
       "Bash(git worktree remove *)"
     ],
@@ -145,6 +146,9 @@
     ],
     "deleting files, where a recursive remove is asked by the session hook": [
       "Bash(rm -f*)"
+    ],
+    "a new worktree whose path climbs out of the worktrees folder": [
+      "Bash(git worktree add *..*)"
     ],
     "changing the session's own settings": [
       "Edit(./.claude/**)"
