@@ -411,13 +411,19 @@ def _list_plugins(specs: list[PluginSpec]) -> int:
 
 
 def _show_approved(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> None:
-    """What the owner just approved: each tool's inputs and every word the voice reads."""
+    """What the owner just approved: each tool's inputs, whether the plugin says it only reads,
+    and every word the voice reads."""
     from . import plugins
 
     for tool in spec.tools:
         found = listing.get(tool)
-        sys.stdout.write(f"  {tool} takes: {plugins.takes(found['schema'])}\n" if found else f"  {tool}: not in it\n")
-        if found and found.get("description"):
+        if found is None:
+            sys.stdout.write(f"  {tool}: not in it\n")
+            continue
+        # RULE: the owner sees which approved tools say they only read
+        mark = ", says it only reads" if found.get("read_only") else ""
+        sys.stdout.write(f"  {tool} takes: {plugins.takes(found['schema'])}{mark}\n")
+        if found.get("description"):
             sys.stdout.write(f"    the voice reads: {found['description']}\n")
     rules = plugins.instructions(listing)
     if rules:
