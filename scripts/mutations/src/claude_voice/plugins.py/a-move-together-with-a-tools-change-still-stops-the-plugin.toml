@@ -1,0 +1,5 @@
+[[rule]]
+name = "a move together with a tools change still stops the plugin"
+file = "src/claude_voice/plugins.py"
+find = 'return found\.get\("runs"\) == _hash\(\{\*\*_place\(spec\), "tools": sorted\(each\)\}\)'
+replace = 'return True'

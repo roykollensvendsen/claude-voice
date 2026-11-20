@@ -30,6 +30,13 @@ def _no(say: str) -> dict[str, Any]:
     return {"ok": False, "say": say}
 
 
+def _waits(plugin: plugins.Plugin) -> str:
+    """The sentence after a restart that names the tools still waiting, or nothing."""
+    if not plugin.waiting:
+        return ""
+    return f" It is running, with {len(plugin.waiting)} waiting for your approval: {', '.join(plugin.waiting)}."
+
+
 def _typed(name: str) -> str:
     return f"type it in a terminal: {invocation.command()} plugins approve {name}"
 
@@ -48,8 +55,10 @@ class Desk:
         mode: DeveloperMode,
         questions: Questions,
         announce: Callable[[], Awaitable[None]] | None = None,
+        offered: Callable[[plugins.Plugin], None] = lambda plugin: None,
     ) -> None:
         self.server, self.active, self.specs = server, active, specs
+        self.offered = offered  # told of each plugin started again, to announce what waits
         self.approvals, self.client, self.git = approvals, client, git
         self.mode, self.questions = mode, questions
         self.announce = announce  # tells connected clients that the tool list changed
@@ -86,8 +95,9 @@ class Desk:
             how = "approve it by voice in developer mode, or " if why == "tools changed" else ""
             return _no(f"{name} was not started again: {why}. To use it, {how}{_typed(name)}.")
         self.active.append(plugin)
+        self.offered(plugin)
         log.info("plugin %s restarted by voice", name)
-        return {"ok": True, "say": f"{name} started again with its new code.", "tools": plugin.offered}
+        return {"ok": True, "say": f"{name} started again with its new code.{_waits(plugin)}", "tools": plugin.offered}
 
     def _kept(self, name: str, running: list[plugins.Plugin], why: str) -> dict[str, Any]:
         """The answer when the new process did not start: the one running, if any, stays. A start

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a waiting tool is announced once per state"
+file = "src/claude_voice/plugins.py"
+find = 'fresh = \[tool for tool, mark in plugin\.waiting\.items\(\) if before\.get\(tool\) != mark\]'
+replace = 'fresh = list(plugin.waiting)'

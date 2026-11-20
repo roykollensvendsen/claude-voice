@@ -120,8 +120,10 @@ async def test_a_restarted_plugin_whose_inputs_changed_is_not_offered(tmp_path):
     made, holder, server, _ = desk(tmp_path, before)
     holder["fake"] = after
     out = await made.restart("garage")
-    assert not out["ok"] and "approve" in out["say"]
-    assert not any(n.startswith("garage") for n in await tool_names(server))
+    # The changed tool waits for approval while the unchanged one keeps running.
+    assert out["ok"] and "1 waiting for your approval: garage_request" in out["say"]
+    names = await tool_names(server)
+    assert "garage_request" not in names and "garage_status" in names
 
 
 async def test_a_restart_that_finds_the_plugin_not_started_says_try_again_and_asks_no_approval(tmp_path):
@@ -245,6 +247,22 @@ async def test_a_changed_plugin_is_approved_by_voice_and_offered_at_once(tmp_pat
     assert "garage_request" in await tool_names(server)
     again = await made.approve_confirm("claude_app", asked["token"])
     assert not again["ok"]  # the token is spent
+
+
+async def test_a_tool_waiting_since_the_settings_named_it_is_read_out_and_approved_by_voice(tmp_path):
+    fake, _ = stand_in()
+    made, _, server, _ = desk(tmp_path, fake)
+    wider = PluginSpec(**{**GARAGE.__dict__, "tools": [*GARAGE.tools, "garage_arm"]})
+    made.specs = lambda: [wider]
+    await made.restart("garage")
+    assert "garage_arm" not in await tool_names(server)
+    asked = await made.approve_request("claude_app", "garage")
+    assert asked["ok"] and "new: garage_arm" in asked["say"]
+    assert "garage_status" not in asked["say"]
+    assert (await made.approve_confirm("claude_app", asked["token"]))["ok"]
+    assert "garage_arm" in await tool_names(server)
+    nothing = await made.approve_request("claude_app", "garage")
+    assert not nothing["ok"] and "Nothing" in nothing["say"]
 
 
 async def test_a_changed_plugin_is_approved_by_voice_only_in_developer_mode(tmp_path):

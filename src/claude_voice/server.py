@@ -351,6 +351,18 @@ def caller_kind(ctx: Any, trace: str | None) -> str:
     return usage.client_of(api.caller_address(getattr(request, "scope", None) or {}), trace) or "local"
 
 
+def _tell(watcher: events.LiveWatcher, kind: str, said: str | None) -> None:
+    """Put one of the bridge's own news items in the feed, when there is one."""
+    if said:
+        watcher.record("claude-voice", kind, said)
+
+
+def _tell_waiting(watcher: events.LiveWatcher, told: Path, *running: plugins.Plugin) -> None:
+    """Tell the owner once about each tool that waits for approval as it is now."""
+    for plugin in running:
+        _tell(watcher, "plugin_waiting", plugins.announce_waiting(plugin, told))
+
+
 def note_voice_call(ctx: Any, tool: str, trace: str | None, result: Any) -> None:
     """Count a call served to the Claude app or the voice app, for the voice estimate."""
     request = getattr(ctx, "request", None)
@@ -1180,14 +1192,19 @@ def build_server(
         hints_seen[:] = [now]
 
     # Approvals from before the branch counted are given it once, before any plugin starts.
-    frozen = plugins.frozen_branches_said(plugins.migrate_branches(repos.plugins, plugin_approvals))
-    if frozen:
-        watcher.record("claude-voice", "plugin_branch", frozen)
+    _tell(
+        watcher,
+        "plugin_branch",
+        plugins.frozen_branches_said(plugins.migrate_branches(repos.plugins, plugin_approvals)),
+    )
     active_plugins = plugins.started_before_listening(
         plugins_behind, lambda: plugins.start_approved(mcp, repos.plugins, plugin_approvals, plugin_client, commit_of)
     )
     plugins_started: list[bool] = []
     plugin_failures: list[dict[str, Any]] = []  # shown by health beside the plugins offered
+    told_waiting = (plugin_approvals or plugins.APPROVALS).with_name("plugins-waiting-told.json")
+    tell_waiting = functools.partial(_tell_waiting, watcher, told_waiting)
+    _tell_waiting(watcher, told_waiting, *active_plugins)
 
     async def offer_checked(spec: config.PluginSpec, found: plugins.Checked) -> None:
         """Offer one checked plugin's tools."""
@@ -1195,6 +1212,7 @@ def build_server(
         if plugin is not None:
             plugins.present(mcp, plugin, listing, await asyncio.to_thread(commit_of, spec.cwd))
             active_plugins.append(plugin)
+            tell_waiting(plugin)
 
     def could_not_offer(spec: config.PluginSpec, exc: BaseException) -> None:
         """Log why a plugin was not offered, and list it in health by the kind of error only."""
@@ -1249,6 +1267,7 @@ def build_server(
         mode=developer_mode,
         questions=devmode.Questions(),
         announce=tools_changed,
+        offered=tell_waiting,
     )
     mcp.plugin_desk = desk  # type: ignore[attr-defined]  # for tests
     across.machines = machines.start_approved(
@@ -1628,6 +1647,7 @@ def build_server(
         run=software._gh,
         login_expiry=lambda: work.read_login_expiry(),  # looked up late, so the suite can stand in for it
         board_url=repos.board_url,
+        bridge_items=lambda: plugins.waiting_items(active_plugins),
     )
 
     def software_listed() -> list[tuple[str, str, Path | None, str]]:
