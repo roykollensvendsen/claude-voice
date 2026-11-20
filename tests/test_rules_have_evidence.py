@@ -27,6 +27,7 @@ SCRIPTS_WITH_ROWS = (
     "scripts/hooks/unanswered_peer.py",
     "scripts/clean_merged.py",
     "scripts/ci_scope.py",
+    "scripts/ratchet.py",
 )
 
 

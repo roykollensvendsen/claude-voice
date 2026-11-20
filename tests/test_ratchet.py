@@ -86,7 +86,7 @@ def test_a_pull_request_need_not_record_the_levels_it_reached():
     assert problems(BASE, better) == []
 
 
-def test_the_suites_cpu_time_must_stay_inside_its_budget():
+def test_the_suite_s_cpu_time_must_stay_inside_its_budget():
     assert problems(BASE, measured(test_cpu_seconds=124.0)) == []  # inside the tolerance
     found = problems(BASE, measured(test_cpu_seconds=126.0))
     assert found and "test_cpu_seconds" in found[0]
@@ -143,7 +143,7 @@ def test_mains_kept_levels_are_the_base_when_they_are_there(tmp_path):
     assert asked == []
 
 
-def test_when_mains_levels_are_missing_the_base_is_measured(tmp_path):
+def test_when_main_s_levels_are_missing_the_base_is_measured(tmp_path):
     for kept in (None, tmp_path / "missing.json", tmp_path / "broken.json"):
         (tmp_path / "broken.json").write_text("{not json")
         assert ratchet.base_levels(kept, lambda: BASE) == BASE

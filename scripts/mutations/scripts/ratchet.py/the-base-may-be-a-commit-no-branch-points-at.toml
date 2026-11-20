@@ -1,0 +1,5 @@
+[[rule]]
+name = "the base may be a commit no branch points at"
+file = "scripts/ratchet.py"
+find = '^\s*\(\*ANY_COMMIT, "fetch", "-q", "--depth", "1", str\(ROOT\), sha\.stdout\.strip\(\)\),$'
+replace = '("git", "fetch", "-q", "--depth", "1", str(ROOT), sha.stdout.strip()),'

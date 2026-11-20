@@ -374,11 +374,12 @@ def compare(base: dict[str, Any], now: dict[str, Any], allowed: set[str], budget
             found.append(f"complexity of {module} got worse: {before} -> {score}")
         if before is None and score > NEW_MODULE_CEILING and "complexity" not in allowed:
             found.append(f"{module} is new and has a function of complexity {score}; keep it at {NEW_MODULE_CEILING}")
+    # RULE: wall time never fails the check
+    # A busy machine waits, and that is not the code's work: only CPU time is judged.
     cpu = now.get("test_cpu_seconds")
     # RULE: the suite's CPU time must stay inside its budget
     if cpu is not None and cpu > _limit(budget):
         found.append(f"test_cpu_seconds is {cpu}, over the budget of {budget['seconds']} (+{budget['tolerance']:.0%})")
-    # RULE: wall time never fails the check; a busy machine waits, and that is not the code's work
     return found
 
 
