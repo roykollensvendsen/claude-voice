@@ -1,5 +1,5 @@
 [[rule]]
 name = "a redirection is never read as a remote"
 file = "src/claude_voice/guard.py"
-find = '^    for segment in SEGMENTS\.split\(REDIRECTION\.sub\(" ", command\)\):$'
-replace = '    for segment in SEGMENTS.split(command):'
+find = '^    parts = PARTS\.split\(REDIRECTION\.sub\(" ", command\)\)$'
+replace = '    parts = PARTS.split(command)'

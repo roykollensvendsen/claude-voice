@@ -20,19 +20,27 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import posixpath
 import re
 import shlex
 import subprocess
 import sys
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from claude_voice import safe_git
 
 #: Where one command ends and the next begins: the shell's joiners, a new line, a lone `&`, and
-#: the marks of a subshell or a command substitution.
-SEGMENTS = re.compile(r"&&|\|\||;|\||\n|&|\$\(|[()`]")
+#: the marks of a subshell or a command substitution. They are kept in the split, so the guard
+#: knows what joins each command to the next.
+PARTS = re.compile(r"(&&|\|\||;|\||\n|&|\$\(|[()`])")
+#: Joiners after which a `cd` still holds for the next command. After `|` or `&`, or inside a
+#: subshell, it may not, so a push there is judged in both folders.
+LASTING = frozenset({"&&", "||", ";", "\n"})
+#: A folder the guard cannot read, such as `cd $DIR` or `cd -`.
+UNREAD = "?"
 #: A redirection with its target, taken out before the line is split, so the `&` in `2>&1` or
 #: `&> log` never splits a command and `2>` is never read as a remote: `N>&M`, `>&-`, `&> file`,
 #: `>& file`, `N> file`, `>> file` and `>| file`.
@@ -59,6 +67,13 @@ class Push:
     before: list[str]
     environment: bool
     placed: bool = True  # False for a push behind a wrapper the guard does not read word by word
+    #: The folders the push may run in, after `cd` and `-C`: None is the session's own folder.
+    folders: list[str | None] = field(default_factory=lambda: [None])
+
+
+#: How the guard reads one folder: a remote's push addresses by name, and the remote a bare
+#: `git push` goes to.
+Reader = tuple[Callable[[str], "str | None"], Callable[[], str]]
 
 
 def _without_environment(words: list[str]) -> tuple[list[str], bool]:
@@ -106,28 +121,70 @@ def _hidden(words: list[str]) -> bool:
     return any(_pushes(line) for line in _inner(words))
 
 
+def _readable(folder: str) -> str:
+    """A folder as written, or UNREAD when the shell would fill it in: a variable, `-`, a pattern."""
+    return UNREAD if folder in ("", "-") or any(mark in folder for mark in "$`*?[{") else folder
+
+
+def _join(base: str | None, folder: str) -> str:
+    """Where `cd folder` or `git -C folder` lands from `base`, None being the session's own folder."""
+    if UNREAD in (base, folder):
+        return UNREAD
+    if base is None or folder.startswith(("/", "~")):
+        return folder
+    return posixpath.join(base, folder)
+
+
+def _cd(words: list[str]) -> str:
+    """Where a `cd` goes: home with no folder, UNREAD for any option or anything the shell fills in."""
+    if len(words) == 1:
+        return "~"
+    return _readable(words[1]) if len(words) == 2 and not words[1].startswith("-") else UNREAD
+
+
 def _pushes(command: str) -> list[Push]:
-    """Every `git push` in a command line, `git -C dir push` and `NAME=value git push` included.
-    A push behind any other wrapper is found too, as one the guard could not read word by word."""
+    """Every `git push` in a command line, `git -C dir push` and `NAME=value git push` included,
+    each with the folders it may run in. A push behind any other wrapper is found too, as one the
+    guard could not read word by word."""
     found = []
+    folders: list[str | None] = [None]
+    depth, quoted = 0, False
     # RULE: a redirection is never read as a remote
-    for segment in SEGMENTS.split(REDIRECTION.sub(" ", command)):
+    parts = PARTS.split(REDIRECTION.sub(" ", command))
+    for at in range(0, len(parts), 2):
+        segment, after = parts[at], (parts[at + 1] if at + 1 < len(parts) else "\n")
         try:
             words = shlex.split(segment)
         except ValueError:
             words = segment.split()
         words, environment = _without_environment(words)
-        if not words or not _is_git(words[0]):
+        if words and words[0] == "cd":
+            moved: list[str | None] = [_join(folder, _cd(words)) for folder in folders]
+            # RULE: a push is judged by the remotes of the folder it runs in
+            lasting = depth == 0 and not quoted and after in LASTING
+            folders = moved if lasting else list(dict.fromkeys([*folders, *moved]))
+        elif not words or not _is_git(words[0]):
             # RULE: a push behind a wrapper is never let through unjudged
             if _hidden(words):
-                found.append(Push([], [], environment, placed=False))
-            continue
-        rest, before = words[1:], list[str]()
-        while rest and rest[0].startswith("-"):  # options before the subcommand, such as -C dir
-            step = 2 if rest[0] in ("-C", "-c", "--config-env", "--git-dir", "--work-tree") else 1
-            before, rest = before + rest[:step], rest[step:]
-        if rest and rest[0] == "push":
-            found.append(Push(rest[1:], before, environment))
+                found.append(Push([], [], environment, placed=False, folders=list(folders)))
+        else:
+            rest, before = words[1:], list[str]()
+            while rest and rest[0].startswith("-"):  # options before the subcommand, such as -C dir
+                step = 2 if rest[0] in ("-C", "-c", "--config-env", "--git-dir", "--work-tree") else 1
+                before, rest = before + rest[:step], rest[step:]
+            if rest and rest[0] == "push":
+                within = list(folders)
+                for i, word in enumerate(before):
+                    if word == "-C":
+                        place = _readable(before[i + 1]) if i + 1 < len(before) else UNREAD
+                        within = [_join(folder, place) for folder in within]
+                found.append(Push(rest[1:], before, environment, folders=within))
+        if after in ("(", "$("):
+            depth += 1
+        elif after == ")":
+            depth = max(depth - 1, 0)
+        elif after == "`":
+            quoted = not quoted
     return found
 
 
@@ -150,8 +207,9 @@ def _owner_of(url: str) -> str | None:
 
 
 def _elsewhere(push: Push) -> bool:
-    """Whether the push runs in another clone than the session's, by -C, --git-dir or --work-tree."""
-    return any(word.startswith(("-C", "--git-dir", "--work-tree")) for word in push.before)
+    """Whether the push names its repository with --git-dir or --work-tree, which the guard does
+    not follow. A folder given with `cd` or -C is followed, and its own remotes are read."""
+    return any(word.startswith(("--git-dir", "--work-tree")) for word in push.before)
 
 
 def _sets_own_settings(push: Push) -> str | None:
@@ -180,8 +238,9 @@ def _fork_only(push: Push, upstream: str, remote_url: Callable[[str], str | None
     # RULE: a fork-only push from another clone is refused
     if _elsewhere(push):
         return (
-            "Pushing from another folder with -C, --git-dir or --work-tree is refused: the guard can only "
-            f"tell that the session's own folder does not push to {upstream}. Change to that clone first."
+            "Pushing from another folder with --git-dir or --work-tree is refused: the guard can only "
+            f"tell where a folder it can read pushes, not whether it reaches {upstream}. "
+            "Run `cd <folder>` in a call of its own, then push."
         )
     positional = _positional(push.args)
     target = positional[0] if positional else default
@@ -221,9 +280,11 @@ def _fork_only(push: Push, upstream: str, remote_url: Callable[[str], str | None
     return None
 
 
-def _own_clone(push: Push, upstream: str, remote_url: Callable[[str], str | None]) -> tuple[str, str]:
+def _own_clone(
+    push: Push, upstream: str, remote_url: Callable[[str], str | None], folder: str | None = None
+) -> tuple[str, str]:
     """A push in own-clone mode: refused when the clone does not push to the role's repository,
-    and otherwise asked."""
+    and otherwise asked. `folder` is where it runs, when that is not the session's own folder."""
     origin = remote_url("origin")
     pushes_to = origin.splitlines() if origin else []
     # RULE: in own-clone mode a clone that does not push to the role's repository is refused
@@ -241,7 +302,9 @@ def _own_clone(push: Push, upstream: str, remote_url: Callable[[str], str | None
     if own is None and positional and positional[0] != "origin":
         own = f"the target {positional[0]} instead of origin"
     if own is None and _elsewhere(push):
-        own = "another folder with -C, --git-dir or --work-tree, judged here by this folder's origin"
+        own = "another folder with --git-dir or --work-tree, judged here by this folder's origin"
+    if own is None and folder is not None:
+        own = f"another folder, {folder}"
     why = (
         f"This push names {own}, so it needs your yes."
         if own
@@ -257,14 +320,32 @@ def decide(
     own_clone: bool,
     remote_url: Callable[[str], str | None],
     default_remote: Callable[[], str],
+    in_folder: Callable[[str], Reader | None] | None = None,
 ) -> tuple[str, str] | None:
-    """("deny" or "ask", why) for a command with a push in it, or None when it may run."""
+    """("deny" or "ask", why) for a command with a push in it, or None when it may run.
+    `in_folder` reads another folder's remotes, or answers None when it cannot."""
     verdicts = []
     for push in _pushes(command):
-        if own_clone:
-            verdicts.append(_own_clone(push, upstream, remote_url))
-        elif (reason := _fork_only(push, upstream, remote_url, default_remote())) is not None:
-            verdicts.append(("deny", reason))
+        for folder in push.folders:
+            if folder is None:
+                reader: Reader | None = (remote_url, default_remote)
+            else:
+                reader = in_folder(folder) if in_folder is not None and folder != UNREAD else None
+            if reader is None:
+                where = "a folder the guard cannot name" if folder == UNREAD else folder
+                verdicts.append(
+                    ("ask", f"This push runs in another folder, {where}, whose remotes the guard could not read.")
+                    if own_clone
+                    else (
+                        "deny",
+                        f"Pushing from another folder, {where}, is refused: the guard could not read whether "
+                        f"it pushes to {upstream}. Run `cd <folder>` in a call of its own, then push.",
+                    )
+                )
+            elif own_clone:
+                verdicts.append(_own_clone(push, upstream, reader[0], folder))
+            elif (reason := _fork_only(push, upstream, reader[0], reader[1]())) is not None:
+                verdicts.append(("deny", reason))
     denied = [v for v in verdicts if v[0] == "deny"]
     first = denied or verdicts
     return first[0] if first else None
@@ -281,16 +362,12 @@ def refusal(
     return verdict[1] if verdict else None
 
 
-def answer(hook_input: dict[str, Any], upstream: str, own_clone: bool = False) -> dict[str, Any]:
-    """Claude Code's hook answer: a refusal, a question, or nothing so the command runs."""
-    if hook_input.get("tool_name") != "Bash":
-        return {}
-    command = str((hook_input.get("tool_input") or {}).get("command", ""))
-    cwd = str(hook_input.get("cwd") or ".")
+def _reader(path: str) -> Reader:
+    """How to read the remotes of the clone at `path`, through the bridge's safe git."""
 
     def git(*args: str) -> str | None:
         try:
-            out = safe_git.run("-C", cwd, *args, capture_output=True, text=True, timeout=10, check=True)
+            out = safe_git.run("-C", path, *args, capture_output=True, text=True, timeout=10, check=True)
         except (OSError, subprocess.SubprocessError):
             return None
         return out.stdout.strip() or None
@@ -299,9 +376,22 @@ def answer(hook_input: dict[str, Any], upstream: str, own_clone: bool = False) -
         pushed = git("rev-parse", "--abbrev-ref", "@{push}")
         return pushed.split("/", 1)[0] if pushed else "origin"
 
-    verdict = decide(
-        command, upstream, own_clone, lambda name: git("remote", "get-url", "--push", "--all", name), default_remote
-    )
+    return (lambda name: git("remote", "get-url", "--push", "--all", name)), default_remote
+
+
+def answer(hook_input: dict[str, Any], upstream: str, own_clone: bool = False) -> dict[str, Any]:
+    """Claude Code's hook answer: a refusal, a question, or nothing so the command runs."""
+    if hook_input.get("tool_name") != "Bash":
+        return {}
+    command = str((hook_input.get("tool_input") or {}).get("command", ""))
+    cwd = str(hook_input.get("cwd") or ".")
+
+    def in_folder(folder: str) -> Reader | None:
+        path = os.path.join(cwd, os.path.expanduser(folder))
+        return _reader(path) if os.path.isdir(path) else None
+
+    remote_url, default_remote = _reader(cwd)
+    verdict = decide(command, upstream, own_clone, remote_url, default_remote, in_folder)
     if verdict is None:
         return {}
     return {
