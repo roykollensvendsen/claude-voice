@@ -41,6 +41,7 @@ WINDOWS = (
             "agent",
             "cli",
             "config",
+            "cpu_watch",
             "cv",
             "doctor",
             "gitstatus",
