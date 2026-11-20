@@ -166,6 +166,11 @@ def main(
     )
     plugin_cmd.add_argument("--from", dest="source", help="with install: the plugin's checkout (default ~/<its repo>)")
     plugin_cmd.add_argument("--dry-run", action="store_true", help="with install: show each change, write nothing")
+    plugin_cmd.add_argument(
+        "--no-ask",
+        action="store_true",
+        help="with install: a known plugin that needs no answer from you, with no terminal; it never approves",
+    )
     plugin_cmd.add_argument("--anywhere", action="store_true", help="with install: allow a home outside Norway")
     home_cmd = sub.add_parser("home", help="set the home position plugins share, typed without showing it")
     home_cmd.add_argument("action", nargs="?", choices=["set"], default="set")
@@ -480,6 +485,8 @@ def install_command(name: str | None, options: Any, env: Mapping[str, str]) -> i
 
     from . import install
 
+    if options.no_ask:
+        return _install_no_ask(name, options, env)
     # RULE: plugins install asks only in a real terminal
     if _refuse_outside_a_terminal("plugins install", env):
         return 1
@@ -500,6 +507,33 @@ def install_command(name: str | None, options: Any, env: Mapping[str, str]) -> i
     for line in install.summary(outcome, plan, options.dry_run):
         _say(line)
     return code
+
+
+def _install_no_ask(name: str | None, options: Any, env: Mapping[str, str]) -> int:
+    """Install a known plugin that needs no answer from the owner, with no one at a terminal.
+    It never approves: the owner types that, as for any new plugin."""
+    from . import install
+
+    if not name or options.source:
+        sys.stderr.write("claude-voice: --no-ask installs a known plugin from ~/<its repository>; leave out --from\n")
+        return 1
+    owners = f"{invocation.command()} plugins install {name}"
+    try:
+        plan = install.plan(name, None, env)
+        why = install.no_ask_refusal(plan)
+    except install.InstallError as exc:
+        why = str(exc)
+    if why:
+        sys.stderr.write(f"claude-voice: {why}. The owner installs it in a terminal: {owners}\n")
+        return 1
+    outcome = install.run(plan, install.no_asker(_say), options.dry_run)
+    if outcome.error:
+        sys.stderr.write(f"claude-voice: {outcome.error}. The owner installs it in a terminal: {owners}\n")
+    for line in install.summary(outcome, plan, options.dry_run):
+        _say(line)
+    if not outcome.stopped:
+        _say(f"  next     the owner approves it, typed: {invocation.command()} plugins approve {name}")
+    return 1 if outcome.stopped else 0
 
 
 def _install_approval(plan: Any, outcome: Any, dry_run: bool, env: Mapping[str, str]) -> int:

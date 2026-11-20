@@ -379,6 +379,63 @@ def _answers(count: int) -> str:
     return "1 answer" if count == 1 else f"{count} answers"
 
 
+# -- with no one asked (plugin-config-commands-v1, 2.4) ---------------------------------------
+
+
+def _pushes_to(folder: Path) -> list[str]:
+    """Every address `origin` pushes to, as owner/name in lower case, or the raw text."""
+    from . import safe_git
+    from .work import GITHUB
+
+    try:
+        out = safe_git.run(
+            "-C", str(folder), "remote", "get-url", "--push", "--all", "origin",
+            capture_output=True, text=True, timeout=10, check=False,
+        )  # fmt: skip
+    except OSError:
+        return []
+    found = [GITHUB.search(line.strip()) for line in out.stdout.splitlines()] if out.returncode == 0 else []
+    return [f"{m[1]}/{m[2]}".lower() if m else "?" for m in found]
+
+
+def _would_ask(plan: Plan) -> str | None:
+    """What install would ask the owner, or None when every answer is in place already."""
+    if "home" in plan.manifest.uses and not homes.path(plan.home).exists():
+        return "it asks you for your home position"
+    wanted = plan.manifest.config
+    if wanted and plan.plugin_config and not plan.plugin_config.exists() and (wanted.personal or not plan.known_folder):
+        return "it asks you for its own settings"
+    return None
+
+
+def no_ask_refusal(plan: Plan) -> str | None:
+    """Why this plugin may not be installed with no one asked, or None when it may: a known
+    plugin, from its own folder, clean, level with its branch, pushing only to its known
+    repository, and with nothing to ask."""
+    from .plugins import checkout_refusal
+
+    found = known().get(plan.manifest.name)
+    if found is None:
+        return f"{plan.manifest.name} is not a known plugin"
+    if plan.folder != (plan.home / found.folder).absolute():
+        return f"its checkout is not at ~/{found.folder}"
+    # RULE: a checkout not clean level and pushing to its known repository is refused
+    if set(_pushes_to(plan.folder)) != {found.repo.lower()}:
+        return f"its checkout's origin does not push only to {found.repo}"
+    why = checkout_refusal(gitstatus.read(plan.folder), plan.manifest.branch)
+    # RULE: a plugin that would ask the owner anything is refused before anything is written
+    return why or _would_ask(plan)
+
+
+def _never_asked(question: str) -> str:
+    raise InstallError(f"it asks you something ({question.strip()}), so you install it in a terminal")
+
+
+def no_asker(say: Callable[[str], None]) -> Asker:
+    """An asker for an install with no one at the terminal: any question stops the install."""
+    return Asker(say, _never_asked, _never_asked)
+
+
 def run(plan: Plan, asker: Asker, dry: bool = False, anywhere: bool = False, now: datetime | None = None) -> Outcome:
     """Do the install's steps in order; what it did, and whether it stopped before the end."""
     steps = Run(plan, asker, dry, anywhere, now or datetime.now())

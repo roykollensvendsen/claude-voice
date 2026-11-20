@@ -1,0 +1,5 @@
+[[rule]]
+name = "a checkout not clean level and pushing to its known repository is refused"
+file = "src/claude_voice/install.py"
+find = 'if set\(_pushes_to\(plan\.folder\)\) != \{found\.repo\.lower\(\)\}:'
+replace = 'if False:'

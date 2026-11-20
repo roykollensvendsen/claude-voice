@@ -1,0 +1,5 @@
+[[rule]]
+name = "a plugin that would ask the owner anything is refused before anything is written"
+file = "src/claude_voice/install.py"
+find = 'return why or _would_ask\(plan\)'
+replace = 'return why'
