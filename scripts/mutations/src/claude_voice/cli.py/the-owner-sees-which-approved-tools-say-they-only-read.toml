@@ -1,5 +1,5 @@
 [[rule]]
 name = "the owner sees which approved tools say they only read"
 file = "src/claude_voice/cli.py"
-find = '^        mark = ", only reads" if found\.get\("read_only"\) else ""$'
+find = '^        mark = ", says it only reads" if found\.get\("read_only"\) else ""$'
 replace = '        mark = ""'

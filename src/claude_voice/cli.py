@@ -421,7 +421,7 @@ def _show_approved(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> None
             sys.stdout.write(f"  {tool}: not in it\n")
             continue
         # RULE: the owner sees which approved tools say they only read
-        mark = ", only reads" if found.get("read_only") else ""
+        mark = ", says it only reads" if found.get("read_only") else ""
         sys.stdout.write(f"  {tool} takes: {plugins.takes(found['schema'])}{mark}\n")
         if found.get("description"):
             sys.stdout.write(f"    the voice reads: {found['description']}\n")

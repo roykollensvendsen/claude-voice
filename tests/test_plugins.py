@@ -147,7 +147,7 @@ def test_the_owner_sees_which_approved_tools_say_they_only_read(tmp_path, monkey
     env = {"HOME": str(tmp_path), "CLAUDE_VOICE_CONFIG": str(f)}
     assert cli.main(["plugins", "approve", "garage"], env=env) == 0
     shown = capsys.readouterr().out
-    assert "garage_status takes: nothing, only reads" in shown
+    assert "garage_status takes: nothing, says it only reads" in shown
     assert "garage_request takes: action\n" in shown  # a tool that may press is not marked
 
 
