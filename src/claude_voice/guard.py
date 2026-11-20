@@ -27,7 +27,7 @@ import shlex
 import subprocess
 import sys
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from claude_voice import safe_git
@@ -36,23 +36,27 @@ from claude_voice import safe_git
 #: the marks of a subshell or a command substitution. They are kept in the split, so the guard
 #: knows what joins each command to the next.
 PARTS = re.compile(r"(&&|\|\||;|\||\n|&|\$\(|[()`])")
-#: Joiners that end a list of commands. A `cd` surely runs before a push only when every joiner
-#: from the start of the list through the push is `&&`; otherwise the push is judged in every
-#: folder it may run in.
-LISTS = frozenset({";", "\n"})
-#: Variables that send git to another repository or other settings. Set anywhere in the command,
-#: as by `export` or `set -a`, or already in the hook's environment, they reach every push.
-GIT_SETTINGS = re.compile(r"GIT_(DIR|WORK_TREE|CONFIG)")
-#: Words that change the folder in a shape the guard does not follow, such as `pushd` or `then cd`.
-MOVERS = frozenset({"cd", "pushd", "popd"})
-#: A folder the guard cannot read, such as `cd $DIR` or `cd -`.
-UNREAD = "?"
 #: A redirection with its target, taken out before the line is split, so the `&` in `2>&1` or
 #: `&> log` never splits a command and `2>` is never read as a remote: `N>&M`, `>&-`, `&> file`,
 #: `>& file`, `N> file`, `>> file` and `>| file`.
 REDIRECTION = re.compile(r"\d*>&(?:\d+|-)|&>>?\s*[^\s;&|()<>]+|\d*>&\s*[^\s;&|()<>]+|\d*>>?\|?\s*[^\s;&|()<>]+")
 #: A word that is still a redirection, such as one left by quoting, is never a remote.
 REDIRECTION_WORD = re.compile(r"\d*[<>&]")
+#: Marks that put a second command, a variable, a pattern or a subshell beside a push. The plain
+#: shape has none of them, apart from one `&&` after a leading `cd`.
+UNSAFE = re.compile(r"[;|&$`()<>\n\r*?\[\]{}\\!#]")
+#: Options after `push` that keep the plain shape; any other option fails it.
+PUSH_OPTIONS = frozenset({"-u", "--set-upstream", "-q", "--quiet", "-v", "--dry-run", "--force-with-lease"})
+#: `--force-with-lease=<ref>:<sha>`, the one form of a lease with a value that keeps the shape.
+LEASE = re.compile(r"--force-with-lease=[^\s:=]+:[0-9a-f]{4,40}")
+#: Git variables in the hook's environment that never change where a push goes. Claude Code sets
+#: GIT_EDITOR for every session; any other GIT_ variable fails the plain shape.
+HARMLESS_GIT = frozenset({"GIT_EDITOR", "GIT_SEQUENCE_EDITOR", "GIT_PAGER", "GIT_TERMINAL_PROMPT"})
+#: What the guard tells a session whose push is not in the plain shape.
+SHAPE = (
+    "`git push <remote> <branch>`, `git -C <folder> push <remote> <branch>` or "
+    "`cd <folder> && git push <remote> <branch>`, as a call of its own"
+)
 #: Shells that run a command line given to them with -c.
 SHELLS = frozenset({"sh", "bash", "dash", "zsh", "ksh"})
 OWN_CLONE = "own-clone"
@@ -66,15 +70,10 @@ TURN_ON = f'push_mode = "{OWN_CLONE}"'
 
 @dataclass
 class Push:
-    """One `git push` in a command line: the words after `push`, the options given to git
-    before it, and whether anything was set in the environment for it."""
+    """One `git push` in a command line: the words after `push`, or none for a push behind a
+    wrapper, which the guard does not read word by word."""
 
     args: list[str]
-    before: list[str]
-    environment: bool
-    placed: bool = True  # False for a push behind a wrapper the guard does not read word by word
-    #: The folders the push may run in, after `cd` and `-C`: None is the session's own folder.
-    folders: list[str | None] = field(default_factory=lambda: [None])
 
 
 #: How the guard reads one folder: a remote's push addresses by name, and the remote a bare
@@ -127,100 +126,91 @@ def _hidden(words: list[str]) -> bool:
     return any(_pushes(line) for line in _inner(words))
 
 
-def _readable(folder: str) -> str:
-    """A folder as written, or UNREAD when the shell would fill it in: a variable, `-`, a pattern."""
-    return UNREAD if folder in ("", "-") or any(mark in folder for mark in "$`*?[{") else folder
-
-
 def _join(base: str | None, folder: str) -> str:
-    """Where `cd folder` or `git -C folder` lands from `base`, None being the session's own folder."""
-    if UNREAD in (base, folder):
-        return UNREAD
+    """Where `git -C folder` lands from `base`, None being the session's own folder."""
     if base is None or folder.startswith(("/", "~")):
         return folder
     return posixpath.join(base, folder)
 
 
-def _cd(words: list[str], cdpath: bool) -> str:
-    """Where a `cd` goes: home with no folder, UNREAD for any option or anything the shell fills in.
-    Under CDPATH a relative folder may be found elsewhere, so only `./` and `../` are followed."""
-    if len(words) == 1:
-        return "~"
-    if len(words) != 2 or words[1].startswith("-"):
-        return UNREAD
-    # RULE: a relative cd under cdpath is never followed
-    if cdpath and not words[1].startswith(("/", "~", "./", "../")) and words[1] not in (".", ".."):
-        return UNREAD
-    return _readable(words[1])
-
-
-def _unfollowed(words: list[str]) -> bool:
-    """Whether a command changes the folder in a shape the guard does not follow: `then cd`,
-    `{ cd`, `builtin cd`, `pushd`, `popd` or an `eval`. Words that `echo` or `printf` print are text."""
-    if not words or words[0] in ("cd", "echo", "printf") or _is_git(words[0]):
+def _literal(folder: str) -> bool:
+    """Whether a folder after `cd` or -C is written out as it is: no option, no `~user`. Under
+    CDPATH a relative folder may be found elsewhere, so only `./` and `../` keep it literal."""
+    if (
+        not folder
+        or folder.startswith("-")
+        or (folder.startswith("~") and not folder.startswith(("~/",)) and folder != "~")
+    ):
         return False
-    return words[0] == "eval" or any(word in MOVERS or word.startswith("cd ") for word in words)
+    relative = not folder.startswith(("/", "~", "./", "../")) and folder not in (".", "..")
+    # RULE: a relative cd under cdpath is never followed
+    if relative and "CDPATH" in os.environ:
+        return False
+    return True
+
+
+def _shape(command: str) -> tuple[bool, str | None]:
+    """Whether the command is a plain push the guard can judge, and the folder it runs in: None
+    for the session's own folder. The plain shape is `git push <words>` or
+    `git -C <folder> push <words>`, after at most one `cd <folder> &&`, on one line, with
+    redirections the only other thing in it."""
+    # RULE: a git variable in the hook environment fails the plain shape
+    if any(name.startswith("GIT_") and name not in HARMLESS_GIT for name in os.environ):
+        return False, None
+    # RULE: a redirection is never read as a remote
+    text = REDIRECTION.sub(" ", command).strip(" \t")
+    head, joiner, tail = text.partition("&&")
+    lines = [head, tail] if joiner else [head]
+    # RULE: a second command never rides on a plain push
+    if any(UNSAFE.search(line) for line in lines):
+        return False, None
+    try:
+        words = [shlex.split(line) for line in lines]
+    except ValueError:
+        return False, None
+    folder = None
+    if joiner:
+        if len(words[0]) != 2 or words[0][0] != "cd" or not _literal(words[0][1]):
+            return False, None
+        # RULE: a push is judged by the remotes of the folder it runs in
+        folder = words[0][1]
+    rest = words[-1][1:] if words[-1][:1] == ["git"] else []
+    if rest[:1] == ["-C"]:
+        if len(rest) < 2 or not _literal(rest[1]):
+            return False, None
+        folder, rest = _join(folder, rest[1]), rest[2:]
+    if rest[:1] != ["push"]:
+        return False, None
+    for word in rest[1:]:
+        # RULE: a push option outside the allowed few fails the plain shape
+        if word.startswith("-") and word not in PUSH_OPTIONS and not LEASE.fullmatch(word):
+            return False, None
+        if word.startswith((":", "+", "~")):
+            return False, None
+    return True, folder
 
 
 def _pushes(command: str) -> list[Push]:
-    """Every `git push` in a command line, `git -C dir push` and `NAME=value git push` included,
-    each with the folders it may run in. A push behind any other wrapper is found too, as one the
-    guard could not read word by word."""
+    """Every `git push` in a command line, `git -C dir push` and `NAME=value git push` included.
+    A push behind any other wrapper is found too, with no words, as one the guard could not read
+    word by word."""
     found = []
-    # Every folder a command may run in, and the folders it surely runs in while the list so far
-    # is joined by && alone.
-    possible: list[str | None] = [None]
-    sure: list[str | None] = [None]
-    depth, quoted, joined = 0, False, True
-    cdpath = "CDPATH" in command or "CDPATH" in os.environ
-    # RULE: git settings set anywhere in the command or the hook environment are refused
-    elsewhere = bool(GIT_SETTINGS.search(command)) or any(GIT_SETTINGS.match(name) for name in os.environ)
-    # RULE: a redirection is never read as a remote
-    parts = PARTS.split(REDIRECTION.sub(" ", command))
-    for at in range(0, len(parts), 2):
-        segment, after = parts[at], (parts[at + 1] if at + 1 < len(parts) else "\n")
+    for segment in PARTS.split(REDIRECTION.sub(" ", command))[::2]:
         try:
             words = shlex.split(segment)
         except ValueError:
             words = segment.split()
-        words, environment = _without_environment(words)
-        environment = environment or elsewhere
-        folders = sure if joined and depth == 0 and not quoted else possible
-        if _unfollowed(words):
-            # RULE: a folder change the guard cannot follow leaves the folder unread
-            possible, sure = list(dict.fromkeys([*possible, UNREAD])), [*sure, UNREAD]
-        if words and words[0] == "cd":
-            target = UNREAD if after in ("$(", "`") else _cd(words, cdpath)
-            possible = list(dict.fromkeys([*possible, *(_join(folder, target) for folder in possible)]))
-            # RULE: a push is judged by the remotes of the folder it runs in
-            sure = [_join(folder, target) for folder in sure]
-        elif not words or not _is_git(words[0]):
+        words, _ = _without_environment(words)
+        if not words or not _is_git(words[0]):
             # RULE: a push behind a wrapper is never let through unjudged
             if _hidden(words):
-                found.append(Push([], [], environment, placed=False, folders=list(folders)))
+                found.append(Push([]))
         else:
-            rest, before = words[1:], list[str]()
+            rest = words[1:]
             while rest and rest[0].startswith("-"):  # options before the subcommand, such as -C dir
-                step = 2 if rest[0] in ("-C", "-c", "--config-env", "--git-dir", "--work-tree") else 1
-                before, rest = before + rest[:step], rest[step:]
+                rest = rest[2:] if rest[0] in ("-C", "-c", "--config-env", "--git-dir", "--work-tree") else rest[1:]
             if rest and rest[0] == "push":
-                within = list(folders)
-                for i, word in enumerate(before):
-                    if word == "-C":
-                        place = _readable(before[i + 1]) if i + 1 < len(before) else UNREAD
-                        within = [_join(folder, place) for folder in within]
-                found.append(Push(rest[1:], before, environment, folders=within))
-        if depth == 0 and not quoted and after in LISTS:
-            sure, joined = list(possible), True
-        else:
-            # RULE: a cd the shell may skip is never taken as certain
-            joined = joined and after == "&&"
-        if after in ("(", "$("):
-            depth += 1
-        elif after == ")":
-            depth = max(depth - 1, 0)
-        elif after == "`":
-            quoted = not quoted
+                found.append(Push(rest[1:]))
     return found
 
 
@@ -242,42 +232,9 @@ def _owner_of(url: str) -> str | None:
     return match.group(1).split("/")[0].lower() if match else None
 
 
-def _elsewhere(push: Push) -> bool:
-    """Whether the push names its repository with --git-dir or --work-tree, which the guard does
-    not follow. A folder given with `cd` or -C is followed, and its own remotes are read."""
-    return any(word.startswith(("--git-dir", "--work-tree")) for word in push.before)
-
-
-def _sets_own_settings(push: Push) -> str | None:
-    """What in the push gives git settings of its own, or None."""
-    if push.environment:
-        return "settings given to git through the environment"
-    if any(word.startswith(("-c", "--config-env")) for word in push.before):
-        return "settings given to git with -c or --config-env"
-    if any(arg == "--repo" or arg.startswith("--repo=") for arg in push.args):
-        return "a --repo option"
-    return None
-
-
 def _fork_only(push: Push, upstream: str, remote_url: Callable[[str], str | None], default: str) -> str | None:
     """Why a push in fork-only mode is refused, or None when it may go. Any repository of the
     upstream's owner is refused, not only the upstream itself."""
-    if not push.placed:
-        return (
-            "This command runs git push behind another command or a shell, so the guard cannot read "
-            "where it goes. Run `git push <remote> <branch>` on its own line."
-        )
-    own = _sets_own_settings(push)
-    # RULE: a fork-only push that gives git settings of its own is refused
-    if own:
-        return f"Pushing with {own} is refused: a contribute session pushes only to your own fork, as its remote says."
-    # RULE: a fork-only push from another clone is refused
-    if _elsewhere(push):
-        return (
-            "Pushing from another folder with --git-dir or --work-tree is refused: the guard can only "
-            f"tell where a folder it can read pushes, not whether it reaches {upstream}. "
-            "Run `cd <folder>` in a call of its own, then push."
-        )
     positional = _positional(push.args)
     target = positional[0] if positional else default
     # RULE: a fork-only push to an address written in the command is refused
@@ -331,14 +288,10 @@ def _own_clone(
             f"but the clone's origin pushes to {origin or 'an address the guard could not read'}. "
             "Check it with `git remote get-url --push origin`.",
         )
-    own = _sets_own_settings(push)
-    if not push.placed:
-        own = "git push behind another command or a shell, which the guard cannot read word by word"
+    own = None
     positional = _positional(push.args)
-    if own is None and positional and positional[0] != "origin":
+    if positional and positional[0] != "origin":
         own = f"the target {positional[0]} instead of origin"
-    if own is None and _elsewhere(push):
-        own = "another folder with --git-dir or --work-tree, judged here by this folder's origin"
     if own is None and folder is not None:
         own = f"another folder, {folder}"
     why = (
@@ -360,31 +313,35 @@ def decide(
 ) -> tuple[str, str] | None:
     """("deny" or "ask", why) for a command with a push in it, or None when it may run.
     `in_folder` reads another folder's remotes, or answers None when it cannot."""
-    verdicts = []
-    for push in _pushes(command):
-        for folder in push.folders:
-            if folder is None:
-                reader: Reader | None = (remote_url, default_remote)
-            else:
-                reader = in_folder(folder) if in_folder is not None and folder != UNREAD else None
-            if reader is None:
-                where = "a folder the guard cannot name" if folder == UNREAD else folder
-                verdicts.append(
-                    ("ask", f"This push runs in another folder, {where}, whose remotes the guard could not read.")
-                    if own_clone
-                    else (
-                        "deny",
-                        f"Pushing from another folder, {where}, is refused: the guard could not read whether "
-                        f"it pushes to {upstream}. Run `cd <folder>` in a call of its own, then push.",
-                    )
-                )
-            elif own_clone:
-                verdicts.append(_own_clone(push, upstream, reader[0], folder))
-            elif (reason := _fork_only(push, upstream, reader[0], reader[1]())) is not None:
-                verdicts.append(("deny", reason))
-    denied = [v for v in verdicts if v[0] == "deny"]
-    first = denied or verdicts
-    return first[0] if first else None
+    pushes = _pushes(command)
+    if not pushes:
+        return None
+    plain, folder = _shape(command)
+    # RULE: only a push in the plain shape is judged by its remotes
+    if not plain:
+        if own_clone:
+            return ("ask", f"This push is not in a plain shape the guard can judge, such as {SHAPE}.")
+        return (
+            "deny",
+            f"This push is refused: the guard can tell whether a push reaches {upstream}, not your own "
+            f"fork, only in a plain shape. Run {SHAPE}.",
+        )
+    push = pushes[0]
+    reader: Reader | None = (remote_url, default_remote)
+    if folder is not None:
+        reader = in_folder(folder) if in_folder is not None else None
+    if reader is None:
+        if own_clone:
+            return ("ask", f"This push runs in another folder, {folder}, whose remotes the guard could not read.")
+        return (
+            "deny",
+            f"Pushing from another folder, {folder}, is refused: the guard could not read whether it "
+            f"pushes to {upstream}. Check that the folder is a clone, then push again.",
+        )
+    if own_clone:
+        return _own_clone(push, upstream, reader[0], folder)
+    reason = _fork_only(push, upstream, reader[0], reader[1]())
+    return ("deny", reason) if reason else None
 
 
 def refusal(

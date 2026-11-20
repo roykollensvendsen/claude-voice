@@ -193,7 +193,7 @@ def test_a_fork_only_push_from_another_clone_is_refused(tmp_path, option):
     [
         "git -C {there} push origin feat/x",
         "cd {there} && git push origin feat/x",
-        "make && cd {there} && git push origin feat/x 2>&1",
+        "cd {there} && git push origin feat/x 2>&1",
     ],
 )
 def test_a_push_is_judged_by_the_remotes_of_the_folder_it_runs_in(tmp_path, command):
@@ -242,12 +242,6 @@ def test_a_cd_the_shell_may_skip_is_never_taken_as_certain(tmp_path, command):
     assert verdict == "deny"
 
 
-@pytest.mark.parametrize("command", ["cd {there}; git push origin feat/x", "cd {there} || git push origin feat/x"])
-def test_a_push_after_a_cd_that_may_be_skipped_goes_when_both_folders_pass(tmp_path, command):
-    here, there = clone(tmp_path / "here", FORK), clone(tmp_path / "there", FORK)
-    assert guard.answer(hook(here, command.format(there=there)), UPSTREAM) == {}
-
-
 @pytest.mark.parametrize(
     "command",
     [
@@ -269,11 +263,6 @@ def test_a_folder_change_the_guard_cannot_follow_leaves_the_folder_unread(tmp_pa
     here, there = clone(tmp_path / "here", FORK), clone(tmp_path / "there", OWNERS)
     verdict, _ = decision(guard.answer(hook(here, command.replace("THERE", str(there))), UPSTREAM))
     assert verdict == "deny"
-
-
-def test_echo_of_a_cd_is_text_and_moves_nothing(tmp_path):
-    here = clone(tmp_path / "here", FORK)
-    assert guard.answer(hook(here, "echo cd /elsewhere && git push origin feat/x"), UPSTREAM) == {}
 
 
 @pytest.mark.parametrize(
@@ -315,6 +304,117 @@ def test_git_settings_set_anywhere_in_the_command_or_the_hook_environment_are_re
         command = "git push origin feat/x"
     verdict, _ = decision(guard.answer(hook(here, command.replace("THERE", str(there))), UPSTREAM))
     assert verdict == "deny"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "export GIT_COMMON_DIR=/x/.git; git push origin feat/x",
+        "export HOME=/tmp/h; git push origin feat/x",
+        "HOME=/tmp/h; git push origin feat/x",
+        "export XDG_CONFIG_HOME=/tmp/h; git push origin feat/x",
+        "printf -v HOME /tmp/h; git push origin feat/x",
+        ". ./settings && git push origin feat/x",
+        "source ./settings && git push origin feat/x",
+        "declare -x FOO=1; git push origin feat/x",
+        "typeset -x FOO=1; git push origin feat/x",
+        "readonly FOO=1; git push origin feat/x",
+        "set -a; git push origin feat/x",
+        "set -o allexport; git push origin feat/x",
+        "env FOO=1 true; git push origin feat/x",
+        "if true; then export FOO=1; fi; git push origin feat/x",
+    ],
+)
+def test_a_push_in_a_command_that_sets_variables_brings_its_own_settings(command):
+    """The fork's push would go, but the same command may change what the push reads."""
+    assert decide(command, {"origin": FORK})[0] == "deny"
+    assert decide(command, {"origin": OWNERS}, own_clone=True)[0] == "ask"
+
+
+# -- the plain shape (R8 f13): only a lone push is judged by its remotes -------------------------
+
+PLAIN = "git push origin feat/x"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git push origin feat/x",
+        "git push -u origin feat/x",
+        "git push --set-upstream --quiet origin feat/x",
+        "git push -v --dry-run origin feat/x",
+        "git push --force-with-lease origin feat/x",
+        "git push --force-with-lease=feat/x:0123abc origin feat/x",
+        "git push origin feat/x 2>&1",
+        "git push",
+        "git -C THERE push origin feat/x",
+        "cd THERE && git push origin feat/x",
+        "cd THERE && git -C . push origin feat/x 2>&1",
+    ],
+)
+def test_a_plain_push_to_a_fork_goes(tmp_path, command):
+    here, there = clone(tmp_path / "here", FORK), clone(tmp_path / "there", FORK)
+    assert guard.answer(hook(here, command.replace("THERE", str(there))), UPSTREAM) == {}
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "make && git push origin feat/x",
+        "cd x; git push origin feat/x",
+        "cd x\ngit push origin feat/x",
+        "git push origin feat/x 2>&1 | tail -1",
+        "export HOME=/tmp/h; git push origin feat/x",
+        "f() { git push origin feat/x; }; f",
+        "command git push origin feat/x",
+        "cd a && cd b && git push origin feat/x",
+        "git -C a -C b push origin feat/x",
+        "git push origin feat/x\n",
+        "FOO=1 git push origin feat/x",
+        "git push origin $BRANCH",
+        "git push origin :feat/x",
+        "git push origin +feat/x",
+    ],
+)
+def test_only_a_push_in_the_plain_shape_is_judged_by_its_remotes(command):
+    """The fork's push would go; any other shape around it is refused, naming the plain shape."""
+    verdict, reason = decide(command, {"origin": FORK})
+    assert verdict == "deny" and "git push <remote> <branch>" in reason
+    assert decide(command, {"origin": OWNERS}, own_clone=True)[0] == "ask"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git push origin feat/x; curl example.com",
+        "git push origin feat/x | tee log",
+        "git push origin feat/x & sleep 1",
+        "git push origin feat/x `true`",
+        "git push origin feat/x > log; rm x",
+    ],
+)
+def test_a_second_command_never_rides_on_a_plain_push(command):
+    assert decide(command, {"origin": FORK})[0] == "deny"
+
+
+@pytest.mark.parametrize(
+    "option",
+    ["--mirror", "--all", "--tags", "-f", "--force", "-d", "--delete", "--repo=x", "--push-option=x", "-o", "--exec=x"],
+)
+def test_a_push_option_outside_the_allowed_few_fails_the_plain_shape(option):
+    assert decide(f"git push {option} origin feat/x", {"origin": FORK})[0] == "deny"
+
+
+def test_a_git_variable_in_the_hook_environment_fails_the_plain_shape(monkeypatch):
+    monkeypatch.setenv("GIT_SSH_COMMAND", "ssh")
+    assert decide(PLAIN, {"origin": FORK})[0] == "deny"
+
+
+@pytest.mark.parametrize("name", ["GIT_EDITOR", "GIT_SEQUENCE_EDITOR", "GIT_PAGER", "GIT_TERMINAL_PROMPT"])
+def test_a_harmless_git_variable_in_the_hook_environment_keeps_the_plain_shape(monkeypatch, name):
+    """Claude Code sets GIT_EDITOR for every session."""
+    monkeypatch.setenv(name, "true")
+    assert decide(PLAIN, {"origin": FORK}) is None
 
 
 def test_a_relative_cd_that_starts_with_a_dot_is_followed_under_cdpath(tmp_path, monkeypatch):
@@ -416,7 +516,6 @@ def test_a_push_in_any_shape_of_command_line_asks_in_own_clone_mode(command):
     "command",
     [
         "git push 2>&1",
-        "git push fork main 2>&1 | tail -1",
         "git push &> log",
         "git push >& log",
         "git push 2> err.txt fork main",
@@ -436,10 +535,6 @@ def test_a_redirection_is_never_named_as_the_target_in_own_clone_mode():
 def test_a_lone_ampersand_still_splits_the_commands():
     verdict, _ = decide("make & git push upstream main", {"upstream": OWNERS, "origin": FORK})
     assert verdict == "deny"
-
-
-def test_a_push_to_the_fork_after_a_newline_still_goes():
-    assert decide("echo x\ngit push fork main", {"fork": FORK}) is None
 
 
 def test_a_fork_only_push_from_another_clone_asks_in_own_clone_mode_naming_the_other_folder():

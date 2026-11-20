@@ -286,21 +286,34 @@ only the role's entry in the owner's own roles file chooses between them.
   named remote is on GitHub under the upstream's owner, whatever the repository
   name, since GitHub sends a renamed repository's old address on. Every push
   address must be a plain GitHub address the guard can read, or the push is
-  refused. A push after `cd` or with `-C` is judged by the remotes of the folder
-  it runs in. A `cd` counts as certain only when `&&` alone joins it to the
-  push, as in `cd X && git push`. After `;`, `||`, `|` or `&`, or inside a
-  subshell, the shell may skip it, so the push must pass in both folders. Also
-  refused: a push in a folder the guard cannot read, such as `cd $DIR`, a
-  relative `cd` while CDPATH is set, or a move by `pushd`, `eval` or `then cd`; a
-  push to an address written in the command; a
-  push with `--git-dir` or `--work-tree`; a push that brings its own git settings
-  with `-c`, `--config-env`, `--repo` or the environment, including `GIT_DIR`,
-  `GIT_WORK_TREE` or `GIT_CONFIG*` set anywhere in the command or already set
-  for the hook; and a push run behind
-  another command or a shell, such as `timeout` or `sh -c`.
+  refused. A push to an address written in the command is refused too.
 - **Own-clone**, set with `push_mode = "own-clone"` on the role. Every push
   address of `origin` must be the role's `upstream`, or the push is refused.
-  Every push then asks the owner, and a push behind another command says so.
+  Every push then asks the owner.
+
+In both modes the guard reads a push's remotes only when the command is a
+plain push, on one line, as a call of its own:
+
+- `git push <words>`, `git -C <folder> push <words>`, or either after one
+  `cd <folder> && `. The push is judged by the remotes of that folder.
+- The folder is written out: no variable, pattern, `~user` or leading `-`.
+  While CDPATH is set, a relative folder must start with `./` or `../`.
+- After `push`, the only options are `-u`, `--set-upstream`, `-q`, `--quiet`,
+  `-v`, `--dry-run` and `--force-with-lease`, bare or as `=<ref>:<sha>`.
+- Redirections such as `2>&1` are allowed. Nothing else is: no second command,
+  pipe, variable, subshell or `NAME=value` before git.
+- The hook's environment holds no GIT_ variable, apart from `GIT_EDITOR`,
+  `GIT_SEQUENCE_EDITOR`, `GIT_PAGER` and `GIT_TERMINAL_PROMPT`.
+
+Any other command with a push in it is refused in fork-only mode, with the
+plain shape to use instead, and asks in own-clone mode. Two common forms are
+refused this way: `git push ... 2>&1 | tail -1` and `cd X; git push`. Run the
+push on its own, or with `&&` after the `cd`.
+
+The shape rule judges only pushes the guard finds: `git push` itself, and one
+behind a wrapper such as `timeout` or `sh -c`. A push the guard cannot see,
+such as one inside a file run with `source` or `.`, or text piped into a
+shell, is not covered here.
 
 The guard is a fence against a slip, not a wall. It cannot see a repository
 that was moved to another owner, since the old address then names someone else.

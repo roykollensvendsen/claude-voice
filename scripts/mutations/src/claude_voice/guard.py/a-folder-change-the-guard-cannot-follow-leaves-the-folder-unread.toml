@@ -1,5 +1,0 @@
-[[rule]]
-name = "a folder change the guard cannot follow leaves the folder unread"
-file = "src/claude_voice/guard.py"
-find = '^            possible, sure = list\(dict\.fromkeys\(\[\*possible, UNREAD\]\)\), \[\*sure, UNREAD\]$'
-replace = '            possible, sure = possible, sure'

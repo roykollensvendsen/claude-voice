@@ -1,0 +1,5 @@
+[[rule]]
+name = "a push option outside the allowed few fails the plain shape"
+file = "src/claude_voice/guard.py"
+find = '^        if word\.startswith\("-"\) and word not in PUSH_OPTIONS and not LEASE\.fullmatch\(word\):$'
+replace = '        if False:'

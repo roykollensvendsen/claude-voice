@@ -1,5 +1,0 @@
-[[rule]]
-name = "git settings set anywhere in the command or the hook environment are refused"
-file = "src/claude_voice/guard.py"
-find = '^    elsewhere = bool\(GIT_SETTINGS\.search\(command\)\) or any\(GIT_SETTINGS\.match\(name\) for name in os\.environ\)$'
-replace = '    elsewhere = False'

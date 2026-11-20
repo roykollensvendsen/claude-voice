@@ -1,5 +1,0 @@
-[[rule]]
-name = "a fork-only push that gives git settings of its own is refused"
-file = "src/claude_voice/guard.py"
-find = '^    if own:$'
-replace = '    if False:'

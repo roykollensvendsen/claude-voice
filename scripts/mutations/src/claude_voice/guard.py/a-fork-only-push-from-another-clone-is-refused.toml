@@ -1,5 +1,0 @@
-[[rule]]
-name = "a fork-only push from another clone is refused"
-file = "src/claude_voice/guard.py"
-find = '^    if _elsewhere\(push\):$'
-replace = '    if False:'
