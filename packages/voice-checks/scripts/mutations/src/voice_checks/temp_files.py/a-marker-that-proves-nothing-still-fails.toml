@@ -1,0 +1,5 @@
+[[rule]]
+name = "a marker that proves nothing still fails"
+file = "src/voice_checks/temp_files.py"
+find = 'if not _removes\(name, functions, set\(\)\):'
+replace = 'if False:'

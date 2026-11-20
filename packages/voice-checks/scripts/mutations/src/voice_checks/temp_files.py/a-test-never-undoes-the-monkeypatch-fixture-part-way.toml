@@ -1,0 +1,5 @@
+[[rule]]
+name = "a test never undoes the monkeypatch fixture part way"
+file = "src/voice_checks/temp_files.py"
+find = 'return \{p\.arg for p in params if p\.arg == "monkeypatch"'
+replace = 'return set()'
