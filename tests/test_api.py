@@ -124,6 +124,20 @@ async def test_a_change_sent_from_another_site_is_refused(bridge):
     assert foreign.status_code == 403 and bare.status_code == 403 and allowed.status_code == 200
 
 
+async def test_a_change_from_the_page_reached_over_https_is_from_its_own_site(bridge):
+    """Tailscale's https forward reaches the bridge over plain http and says https in a header.
+    The page's own origin is the https one, so the bridge must read the scheme from there."""
+    _, app, _, _ = bridge
+    name = "box.example.ts.net:8814"
+    forwarded = {"Host": name, "X-Forwarded-Proto": "https"}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=f"http://{name}") as c:
+        await c.post("/api/v1/signin", json={"secret": SECRET})
+        put = await c.put(
+            "/api/v1/active", json={"session": "billing-ab"}, headers={**forwarded, "Origin": f"https://{name}"}
+        )
+    assert put.status_code == 200
+
+
 async def test_one_sessions_output_pending_questions_and_pull_requests(bridge):
     _, app, _, prs = bridge
     async with client(app) as c:

@@ -356,7 +356,8 @@ class EventApi:
 
     def _same_site(self, request: Request) -> bool:
         origin = (request.headers.get("origin") or "").rstrip("/")
-        own = (self.public_url, f"{request.url.scheme}://{request.url.netloc}")
+        # The scheme the page was reached by: Tailscale's https forward arrives over plain http.
+        own = (self.public_url, f"{_scheme(request)}://{request.url.netloc}")
         return bool(origin) and (origin in own or origin in self.ui_origins)
 
     async def _change_allowed(self, request: Request) -> Response | None:
