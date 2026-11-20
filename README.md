@@ -559,12 +559,15 @@ clients are told the tool list changed:
 claude-voice plugins approve garage
 ```
 
-The approval covers exactly that command, folder and list of tools, what each tool
-takes as the plugin describes it then, and every word the voice reads from the plugin:
-each tool's description and the plugin's own instructions. Once approved, the command
-starts the plugin and prints those inputs and words. Change any of them, or let the
-plugin give a tool a new input or rewrite what a tool or its instructions say, and it
-must be approved again: until then the bridge offers none of its tools and logs why.
+The approval covers exactly that command, folder, branch and list of tools, what each
+tool takes as the plugin describes it then, and every word the voice reads from the
+plugin: each tool's description and the plugin's own instructions. Once approved, the
+command starts the plugin and prints those inputs and words. Move its command, folder
+or branch, and the plugin stops until it is approved again. Add a tool, or let the
+plugin give a tool a new input or rewrite what a tool says, and only that tool waits:
+the others stay offered. You hear about a waiting tool once, and `health` and the work
+page list it until you approve it. A change to the plugin's own instructions reaches
+every tool, so all of them wait. The bridge logs why each one waits.
 `claude-voice plugins list` starts each plugin and checks it the same way, so it says
 `approved` only when a restart would offer the plugin's tools. The bridge never holds a plugin's secrets:
 the plugin reads its own, and starts with only a small default environment. Each
@@ -589,10 +592,13 @@ Once a plugin is approved, three things can happen to it
   hours, can be switched off at once from anywhere, and `health` and the work page
   show it. The voice then names each changed tool and approves on your yes. It works
   only from the Claude app, never from a program on this computer, and only when the
-  plugin's checkout is clean and level with the branch it follows (`branch`). Any
-  file git does not know about counts as unclean, a backup included, so keep such
-  files out of the plugin's folder or list them in its `.git/info/exclude`.
-- **A new plugin, or a new command or folder.** Always typed, as above.
+  plugin's checkout is clean and at the tip of the branch it follows (`branch`) as
+  GitHub has it. The bridge asks GitHub when the question is asked and again at your
+  yes, for the repository in its own list of known plugins; if GitHub cannot be
+  read, you type the approval instead. Any file git does not know about counts as
+  unclean, a backup included, so keep such files out of the plugin's folder or list
+  them in its `.git/info/exclude`.
+- **A new plugin, or a new command, folder or branch.** Always typed, as above.
 
 To take an approval back, run `claude-voice plugins revoke garage`. A running bridge
 stops offering the plugin's tools within a few seconds, and it waits for a typed
@@ -602,6 +608,32 @@ An approval written by an older version of the bridge did not cover the words th
 voice reads. So after upgrading, every plugin waits for one more approval, typed as
 above or by voice in developer mode, because its command and folder are still known.
 Until then its tools are not offered, and `claude-voice plugins list` says `tools changed`.
+
+An approval from before the branch counted is given the branch your settings name
+now, once, at the bridge's first start after the upgrade, so no plugin stops. You
+hear in one line which plugins that put on a branch other than main; if one is wrong,
+take it back with `claude-voice plugins revoke`
+([ADR-CV-020](decisions/ADR-CV-020-a-plugins-tools-come-from-its-manifest-and-wait-alone.md)).
+
+### Changing a plugin's tools
+
+A plugin's tools come only from its own manifest. When a plugin gains a tool, this
+sets its list in the settings file, with no list typed:
+
+<!-- not run: it changes the bridge's settings file -->
+```
+claude-voice plugins tools weather --from-manifest
+```
+
+It reads the manifest in the plugin's checkout, which must be clean and level with
+the branch it follows, and refuses when the manifest names another plugin or command.
+It adds only the tools new to the manifest since you last approved the plugin, so a
+tool you left out stays out, and it removes the tools the manifest dropped. Each
+approval keeps the manifest's list for that comparison, so the command asks for one
+approval first on a plugin approved before this. It keeps a copy of the settings
+file in `~/.local/state/claude-voice/backups/bridge-config/` and prints how to put it
+back. It never approves: a new tool waits for you, as above.
+`claude-voice plugins set <name> tools …` is refused and points here.
 
 ### Installing a plugin in one command
 
@@ -642,6 +674,24 @@ runs only in a terminal of your own:
 $ claude-voice plugins install fuel --from ~/fuel-mcp
 claude-voice: plugins install asks you questions; run it in a terminal of your own, not from Claude Code or through a pipe.
 ```
+
+A plugin of your own that needs no answer from you can be installed with no one at a
+terminal, by a session as well:
+
+<!-- not run: it changes the bridge's settings file -->
+```
+claude-voice plugins install weather --no-ask
+```
+
+It runs only for a plugin in the bridge's list of known plugins
+(`src/claude_voice/known_plugins.toml`), from its folder in your home, named after its
+repository. The checkout must be clean, level with its branch, and push only to that
+repository. And install must have nothing to ask: a home position and a plugin
+config that are already there count, and a plugin key is the plugin's own step,
+printed for you at the end. Otherwise it refuses before writing anything and names
+the command for you to run. It writes the same settings entry as above, with the same
+backup and undo line. It never approves: you type `claude-voice plugins approve
+weather`, as for any new plugin.
 
 To list them:
 
