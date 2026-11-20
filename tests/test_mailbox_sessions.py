@@ -154,6 +154,7 @@ async def test_an_ack_on_one_sessions_tool_confirms_a_reply_from_any_session(tmp
         transcripts._courier.on_reply("fuel-mcp", "Diesel is 21.90 today.")
         seen = await call(c, "whats_new")
         fuel = [e["reply_id"] for e in seen["events"] if e["session"] == "fuel-mcp"]
+        assert fuel  # an empty ack would leave nothing to confirm, and pass for the wrong reason
         await call(c, "wait_for_session", session="billing-ab", wait_seconds=1, ack=fuel)
         news = await call(c, "whats_new")
     assert senders(news["events"]) == []
