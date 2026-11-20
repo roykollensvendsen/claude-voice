@@ -478,6 +478,6 @@ def test_a_shipped_rules_step_that_runs_too_long_is_stopped_with_everything_it_s
 
 def _state(pid):
     try:
-        return open(f"/proc/{pid}/stat").read().split()[2]
+        return open(f"/proc/{pid}/stat", encoding="utf-8").read().split()[2]
     except OSError:
         return "Z"

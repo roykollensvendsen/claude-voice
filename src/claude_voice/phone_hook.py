@@ -234,16 +234,16 @@ def install(settings: Path, python: str) -> None:
     """Add the hook to a Claude Code settings file, keeping every other setting and hook.
     Running it again changes nothing; the file as it was is kept beside it as .bak."""
     try:
-        current = json.loads(settings.read_text()) if settings.exists() else {}
+        current = json.loads(settings.read_text(encoding="utf-8")) if settings.exists() else {}
     except ValueError as exc:
         raise SystemExit(f"{settings} is not valid JSON; fix it first: {exc}") from None
     if settings.exists():
-        settings.with_name(settings.name + ".bak").write_text(settings.read_text())
+        settings.with_name(settings.name + ".bak").write_text(settings.read_text(encoding="utf-8"), encoding="utf-8")
     hooks = current.setdefault("hooks", {})
     for event, entries in settings_entries(python).items():
         hooks[event] = _without_ours(hooks.get(event, [])) + entries
     settings.parent.mkdir(parents=True, exist_ok=True)
-    settings.write_text(json.dumps(current, indent=2) + "\n")
+    settings.write_text(json.dumps(current, indent=2) + "\n", encoding="utf-8")
 
 
 def main() -> int:

@@ -42,7 +42,7 @@ def files(tmp_path):
 
 
 def _read(path: Path) -> dict:
-    return tomllib.loads(path.read_text())
+    return tomllib.loads(path.read_text(encoding="utf-8"))
 
 
 def _approve(config: Path, approvals: Path, name: str, home: Path) -> None:
