@@ -290,8 +290,12 @@ def test_without_a_board_in_the_settings_nothing_is_read(tmp_path):
     config = tmp_path / "config.toml"
     config.write_text('[repos]\nbridge = "a/b"\n')
     assert sync.settings_from(config) is None
-    config.write_text(f'[tracker]\nowner = "{OWNER}"\nboard = 7\nproject_id = "{PROJECT}"\nwaiting = "Waits on the team"\n')
-    assert sync.settings_from(config) == sync.Settings(OWNER, 7, PROJECT, {**sync.NAMES, "waiting": "Waits on the team"})
+    config.write_text(
+        f'[tracker]\nowner = "{OWNER}"\nboard = 7\nproject_id = "{PROJECT}"\nwaiting = "Waits on the team"\n'
+    )
+    assert sync.settings_from(config) == sync.Settings(
+        OWNER, 7, PROJECT, {**sync.NAMES, "waiting": "Waits on the team"}
+    )
 
 
 def test_claude_voice_tracker_sync_runs_one_sync_from_the_config(tmp_path, capsys):
