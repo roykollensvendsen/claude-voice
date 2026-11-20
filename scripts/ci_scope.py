@@ -21,19 +21,63 @@ import subprocess
 import sys
 
 # A change to how CI itself is run, or to the lock, may break any job, so it runs them all.
-EVERYTHING = (".github/workflows/*", "scripts/ci_scope.py", "pyproject.toml", "uv.lock")
+# The shared test helpers are in it too, since every test leans on them.
+EVERYTHING = (
+    ".github/workflows/*",
+    "scripts/ci_scope.py",
+    "pyproject.toml",
+    "uv.lock",
+    "tests/conftest.py",
+    "tests/fakes*.py",
+)
 
 # The files where the bridge touches files, processes or terminals, which differ on Windows.
+# A test fails when a module that does is neither here nor in WINDOWS_EXEMPT.
 WINDOWS = (
     *EVERYTHING,
-    "src/claude_voice/cli.py",
-    "src/claude_voice/install*.py",
-    "src/claude_voice/terminals*.py",
-    "src/claude_voice/held_folder.py",
-    "src/claude_voice/safe_git.py",
+    *(
+        f"src/claude_voice/{name}.py"
+        for name in (
+            "agent",
+            "cli",
+            "config",
+            "cv",
+            "doctor",
+            "gitstatus",
+            "guard",
+            "held_folder",
+            "install*",
+            "invocation",
+            "metrics",
+            "org",
+            "permissions",
+            "plugin_venv",
+            "plugins",
+            "presence",
+            "procs",
+            "renames",
+            "reposync",
+            "restarts",
+            "routing",
+            "safe_git",
+            "safefile",
+            "server",
+            "session_hook",
+            "shipped",
+            "software",
+            "tailnet",
+            "terminals*",
+            "transcripts",
+            "updater",
+            "work",
+        )
+    ),
     "deploy/*",
     "scripts/clean_install.py",
 )
+
+# A module that touches processes or files, kept off the Windows list on purpose, with why.
+WINDOWS_EXEMPT: dict[str, str] = {}
 
 # Only a change of supported versions or of the tools can break one version and not the other.
 PYTHON313 = EVERYTHING
@@ -82,7 +126,10 @@ def gate(needs: dict[str, dict], actor: str = "") -> list[str]:
 
 
 def changed(base: str, head: str) -> list[str]:
-    out = subprocess.run(["git", "diff", "--name-only", f"{base}...{head}"], check=True, capture_output=True, text=True)
+    """Every path the pull request changed. A move lists both its old and its new path."""
+    # RULE: a moved file counts under its old path as well as its new one
+    diff = ["git", "diff", "--name-only", "--no-renames", f"{base}...{head}"]
+    out = subprocess.run(diff, check=True, capture_output=True, text=True)
     return out.stdout.split()
 
 
