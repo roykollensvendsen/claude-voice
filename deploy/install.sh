@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Install claude-voice as a systemd user service listening on 127.0.0.1:8811.
+# Install claude-voice as a systemd user service listening on 127.0.0.1:8811, with its local
+# port, for this computer's own page, on 127.0.0.1:8812.
 # Creates ~/.config/claude-voice/env (mode 600) with a fresh token on first run.
 set -euo pipefail
 
@@ -48,3 +49,4 @@ for _ in $(seq 25); do
 done
 echo "health: $(curl -fs http://127.0.0.1:8811/healthz || echo DOWN)"
 echo "without token: HTTP $(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8811/mcp) (expect 401)"
+echo "this computer's own page: http://127.0.0.1:8812/ui/ (never forward that port)"

@@ -163,6 +163,11 @@ tailscale serve --bg --tcp=8813 tcp://127.0.0.1:8811
 `--bg` keeps the ports across restarts. The bridge's `check_dependencies` tool
 and `/api/v1/doctor` say whether such a port is there.
 
+On the laptop itself, open the page at `http://127.0.0.1:8812/ui/`. That is the
+bridge's local port, the only one where the page may open a session's terminal.
+Use `127.0.0.1`, not `localhost`, which may lead to an address the port is not
+on. Never forward the local port: `claude-voice check` fails while it is.
+
 ## How it behaves
 
 - **One bridge session is one Claude conversation.**
@@ -251,6 +256,7 @@ also the default.
 | `CLAUDE_VOICE_PUBLIC_URL` | `https://<first public host>` | the address clients reach the bridge at |
 | `CLAUDE_VOICE_PUBLIC_HOSTS` | — | comma-separated hostnames the tunnel serves |
 | `CLAUDE_VOICE_HOST` / `_PORT` | `127.0.0.1` / `8811` | keep it on this computer and tunnel in |
+| `CLAUDE_VOICE_LOCAL_PORT` | `8812` | the local port, always on `127.0.0.1` and never forwarded; the laptop's own page opens here. The bridge's request log shows `127.0.0.1` for every forwarded request, which is expected |
 | `CLAUDE_VOICE_COURIER_NAME` | `Owner via claude-voice` | the sender name a session sees when the voice messages it, e.g. `Roy via stemmen` |
 | `CLAUDE_VOICE_UI_ORIGINS` | — | comma-separated origins of a companion app served elsewhere, allowed to call the [event API](docs/event-api.md) across sites |
 | `CLAUDE_VOICE_UI_DIR` | — | a folder with a companion app's built files, served at `/ui/` |

@@ -364,13 +364,15 @@ Decided in [ADR-CV-012](../decisions/ADR-CV-012-a-session-opens-where-the-owner-
 | `GET /api/v1/whoami` | `{"here": true \| false}`. Needs no signing in: it tells only whether the asker is on this computer |
 | `POST /api/v1/sessions/{id}/focus` | no body. `200` `{"done": "raised"}` (a terminal holding it was brought to the front) or `{"done": "attached"}` (a new terminal was opened on its tmux session); `401` without signing in; `403` `{"reason": "not_here"}`; `409` `{"reason": "no_window" \| "not_running" \| "not_local"}`; `501` `{"reason": "no_window_list"}` |
 
-A request is **here** only when all of these hold: it comes from a loopback
-address; it has no `X-Forwarded-For`, `Forwarded` or `Tailscale-User-*` header;
-its `Host` is `127.0.0.1` or `localhost` on the bridge's own port; and its
-`Origin`, when it has one, is `http://127.0.0.1:<port>` or
-`http://localhost:<port>`. So the page served at `/ui/` from `127.0.0.1:8811` is
-here, and the same page reached through Tailscale, Funnel or a preview server is
-not, though those connect from this computer too. The page reads `whoami` once
+A request is **here** only when it arrives on the bridge's local port
+(`CLAUDE_VOICE_LOCAL_PORT`, `8812` unless set), which is bound to `127.0.0.1` and
+never forwarded, and all of these hold: it comes from a loopback address; it has
+no `X-Forwarded-For`, `Forwarded` or `Tailscale-User-*` header; its `Host` is
+`127.0.0.1` or `localhost` on the local port; and its `Origin`, when it has one,
+is `http://127.0.0.1:<local port>` or `http://localhost:<local port>`. So the
+page served at `/ui/` from `127.0.0.1:8812` is here, and the same page reached
+on the tailnet port, through Tailscale, Funnel or a preview server, is not.
+A preview server must point at `8811`, never at the local port. The page reads `whoami` once
 when it starts and shows "Open in terminal" only when it is here, and only for a
 session whose `machine` is `null`.
 

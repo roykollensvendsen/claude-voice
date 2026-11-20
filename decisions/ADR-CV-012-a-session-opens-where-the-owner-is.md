@@ -75,3 +75,15 @@ Answers are codes, so the page can say them in its own languages:
   computer is refused, and that has its own test.
 - A session in a plain terminal whose window cannot be found is not opened
   again. The page says it could not find the window.
+
+## Addendum: the local port (2026-11-20)
+
+A request counts as coming from this computer only when it arrives on the
+bridge's local port, which is never forwarded. The tailnet ports never count,
+whatever their headers say.
+
+The local port is `CLAUDE_VOICE_LOCAL_PORT`, `8812` unless set, and is always
+bound to `127.0.0.1`. The rule above still applies after it, with the local
+port as the bridge's port. The laptop's own page is opened at
+`http://127.0.0.1:8812/ui/`. `claude-voice check` fails while the local port is
+forwarded, and names the command that removes the forward.
