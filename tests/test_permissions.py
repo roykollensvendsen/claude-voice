@@ -249,7 +249,7 @@ def test_every_command_allowed_to_read_a_file_is_refused_every_secret_file():
     readers, files = table["secrets"]["readers"], table["secrets"]["files"]
     assert "*.config/claude-voice/env*" in files
     allowed = [reader for reader in readers if f"Bash({reader} *)" in rules.allow or f"Bash({reader}*)" in rules.allow]
-    assert {"cat", "head", "tail", "sed -n", "grep"} <= set(allowed)
+    assert {"cat", "head", "tail", "grep"} <= set(allowed)
     for reader in readers:
         for path in files:
             assert f"Bash({reader} {path})" in rules.deny
@@ -517,8 +517,6 @@ NEWLY_ALLOWED = (
     "npm run typecheck",
     "git commit -q -F message.txt",
     "git commit --amend --no-edit",
-    "git -C ../ui add src/app.ts",
-    "git -C ../ui commit -m fix",
     "git switch feature",
     "git switch -c feature",
     "git rebase origin/main",
@@ -839,3 +837,109 @@ def test_applied_settings_have_the_placeholders_filled(tmp_path):
     every = written["allow"] + written["ask"] + written["deny"]
     assert not [rule for rule in every if "{" in rule and "}" in rule]
     assert f"Bash(rm -r* {folder.resolve()})" in written["deny"]
+
+
+# -- allow rules narrowed to the forms that are used --------------------------------------
+
+#: Allow rules that matched more than the everyday form, each now taken out of every clone.
+NARROWED = (
+    "Bash(git -C * status*)",
+    "Bash(git -C * diff*)",
+    "Bash(git -C * log*)",
+    "Bash(git -C * show*)",
+    "Bash(git -C * ls-files*)",
+    "Bash(git -C * rev-parse*)",
+    "Bash(git -C * remote -v)",
+    "Bash(git -C * branch --show-current)",
+    "Bash(git -C * branch -a*)",
+    "Bash(git -C * branch -r*)",
+    "Bash(git -C * fetch*)",
+    "Bash(git -C * worktree list*)",
+    "Bash(git -C * add *)",
+    "Bash(git -C * commit *)",
+    "Bash(git -C * cherry-pick *)",
+    "Bash(git -C * worktree add *)",
+    "Bash(git fetch*)",
+    "Bash(git worktree add *)",
+    "Bash(uv sync*)",
+    "Bash(sed -n *)",
+)
+
+
+@pytest.mark.parametrize("rule", NARROWED)
+def test_a_narrowed_allow_rule_is_retired(rule):
+    rules = permissions.load()
+    assert rule not in rules.allow and rule in rules.retired
+
+
+def test_a_settings_file_loses_the_narrowed_rules_and_keeps_the_owners_own(tmp_path):
+    with_settings(tmp_path, {"permissions": {"allow": ["Bash(make)", *NARROWED]}})
+    apply(tmp_path, permissions.load())
+    allowed = read(tmp_path)["permissions"]["allow"]
+    assert "Bash(make)" in allowed
+    assert [rule for rule in NARROWED if rule in allowed] == []
+
+
+EXACT_FORMS = (
+    "git fetch",
+    "git fetch origin",
+    "git fetch origin main",
+    "uv sync",
+    "uv sync --locked",
+    "uv sync --frozen",
+    "uv sync --all-extras",
+    "uv sync --locked --all-extras",
+    "uv sync --frozen --all-extras",
+)
+
+
+@pytest.mark.parametrize("command", EXACT_FORMS)
+def test_the_everyday_fetch_and_sync_forms_are_still_allowed(command):
+    assert decision(permissions.load(), command) == "allowed"
+
+
+NO_LONGER_ALLOWED = (
+    "git -C ../ui status",
+    "git -C ../ui add src/app.ts",
+    "git -C ../ui commit -m fix",
+    "git fetch --all",
+    "git fetch origin --prune",
+    "git worktree add ../elsewhere",
+    "uv sync --python 3.12",
+    "uv sync --frozen --no-dev",
+    "sed -n 1p notes.txt",
+)
+
+
+@pytest.mark.parametrize("command", NO_LONGER_ALLOWED)
+def test_other_forms_of_these_commands_ask_first(command):
+    assert decision(permissions.load(), command) == "asked"
+
+
+def test_no_git_or_sync_allow_rule_has_a_star_before_its_last_word():
+    """A star in the middle lets any option in before the words that follow it."""
+    wide = []
+    for rule in permissions.load().allow:
+        if rule.startswith(("Bash(git ", "Bash(uv sync")):
+            words = rule[len("Bash(") : -1].split(" ")
+            if any("*" in word for word in words[:-1]):
+                wide.append(rule)
+    assert wide == []
+
+
+@pytest.mark.parametrize("command", ["git diff --output=x", "git log --output x", "git show HEAD --output=x"])
+def test_git_writing_its_output_to_a_file_is_refused(command):
+    rules = permissions.load()
+    assert "Bash(git * --output*)" in rules.deny
+    assert decision(rules, command) == "refused"
+
+
+def test_gits_own_files_are_never_edited_anywhere():
+    rules = permissions.load()
+    assert {"Edit(//**/.git)", "Edit(//**/.git/**)"} <= set(rules.deny)
+
+
+def test_the_owners_git_settings_are_still_refused_to_every_edit():
+    rules = permissions.load()
+    for path in (".gitconfig", ".config/git/**"):
+        assert {f"Edit(~/{path})", f"Write(~/{path})"} <= set(rules.deny), path
