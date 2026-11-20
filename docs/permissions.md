@@ -300,20 +300,24 @@ plain push, on one line, as a call of its own:
   While CDPATH is set, a relative folder must start with `./` or `../`.
 - After `push`, the only options are `-u`, `--set-upstream`, `-q`, `--quiet`,
   `-v`, `--dry-run` and `--force-with-lease`, bare or as `=<ref>:<sha>`.
-- Redirections such as `2>&1` are allowed. Nothing else is: no second command,
-  pipe, variable, subshell or `NAME=value` before git.
+- Nothing else is in the command: no redirection such as `2>&1`, second
+  command, pipe, variable, subshell or `NAME=value` before git. Bash may run a
+  redirection's target as a command, so the guard reads none.
 - The hook's environment holds no GIT_ variable, apart from `GIT_EDITOR`,
   `GIT_SEQUENCE_EDITOR`, `GIT_PAGER` and `GIT_TERMINAL_PROMPT`.
 
 Any other command with a push in it is refused in fork-only mode, with the
-plain shape to use instead, and asks in own-clone mode. Two common forms are
-refused this way: `git push ... 2>&1 | tail -1` and `cd X; git push`. Run the
-push on its own, or with `&&` after the `cd`.
+plain shape to use instead, and asks in own-clone mode. Common forms are
+refused this way: `git push ... 2>&1`, `git push ... | tail -1` and
+`cd X; git push`. Run the push on its own, or with `&&` after the `cd`.
 
 The shape rule judges only pushes the guard finds: `git push` itself, and one
 behind a wrapper such as `timeout` or `sh -c`. A push the guard cannot see,
-such as one inside a file run with `source` or `.`, or text piped into a
-shell, is not covered here.
+such as one inside a file run with `source` or `.`, text piped into a shell,
+or a push spelled through variables or command substitution, is not covered.
+No text check can catch every disguise. Fork-only mode is a guard against
+slips; the boundary against a deliberate trick is the rights of the credential
+the session pushes with.
 
 The guard is a fence against a slip, not a wall. It cannot see a repository
 that was moved to another owner, since the old address then names someone else.

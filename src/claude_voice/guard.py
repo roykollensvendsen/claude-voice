@@ -38,8 +38,11 @@ from claude_voice import safe_git
 PARTS = re.compile(r"(&&|\|\||;|\||\n|&|\$\(|[()`])")
 #: A redirection with its target, taken out before the line is split, so the `&` in `2>&1` or
 #: `&> log` never splits a command and `2>` is never read as a remote: `N>&M`, `>&-`, `&> file`,
-#: `>& file`, `N> file`, `>> file` and `>| file`.
-REDIRECTION = re.compile(r"\d*>&(?:\d+|-)|&>>?\s*[^\s;&|()<>]+|\d*>&\s*[^\s;&|()<>]+|\d*>>?\|?\s*[^\s;&|()<>]+")
+#: `>& file`, `N> file`, `>> file` and `>| file`. The target is a plain word only: bash runs a
+#: command substitution in a target, so any other redirection stays in the text and fails the shape.
+REDIRECTION = re.compile(
+    r"\d*>&(?:\d+|-)|&>>?\s*[A-Za-z0-9._/+-]+|\d*>&\s*[A-Za-z0-9._/+-]+|\d*>>?\|?\s*[A-Za-z0-9._/+-]+"
+)
 #: A word that is still a redirection, such as one left by quoting, is never a remote.
 REDIRECTION_WORD = re.compile(r"\d*[<>&]")
 #: Marks that put a second command, a variable, a pattern or a subshell beside a push. The plain
@@ -152,13 +155,13 @@ def _literal(folder: str) -> bool:
 def _shape(command: str) -> tuple[bool, str | None]:
     """Whether the command is a plain push the guard can judge, and the folder it runs in: None
     for the session's own folder. The plain shape is `git push <words>` or
-    `git -C <folder> push <words>`, after at most one `cd <folder> &&`, on one line, with
-    redirections the only other thing in it."""
+    `git -C <folder> push <words>`, after at most one `cd <folder> &&`, on one line, with nothing
+    else in it: not even a redirection."""
     # RULE: a git variable in the hook environment fails the plain shape
     if any(name.startswith("GIT_") and name not in HARMLESS_GIT for name in os.environ):
         return False, None
-    # RULE: a redirection is never read as a remote
-    text = REDIRECTION.sub(" ", command).strip(" \t")
+    # The raw command, so a redirection, whose target bash may run as a command, fails the shape.
+    text = command.strip(" \t")
     head, joiner, tail = text.partition("&&")
     lines = [head, tail] if joiner else [head]
     # RULE: a second command never rides on a plain push
