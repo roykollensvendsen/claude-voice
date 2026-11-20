@@ -3,8 +3,9 @@
 ADR-CV-010. A plugin whose tools take the same inputs is started again with its new code
 and nothing is asked. A plugin whose tools changed is approved by voice only in developer
 mode, only from the Claude app (where the owner talks), and only when its checkout is clean
-and level with the branch it follows. A plugin never approved, or one with a new command or
-folder, is still approved by typing its name in a terminal.
+and at the tip of the branch it follows as GitHub has it, checked at the question and again
+at the yes. A plugin never approved, or one with a new command, folder or branch, is still
+approved by typing its name in a terminal.
 
 Every answer has `ok` and `say`, a sentence for the voice to read out as it is.
 """
@@ -18,7 +19,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from . import invocation, plugins
+from . import invocation, plugin_tip, plugins
 from .config import PluginSpec
 from .devmode import DeveloperMode, Questions
 
@@ -56,11 +57,13 @@ class Desk:
         questions: Questions,
         announce: Callable[[], Awaitable[None]] | None = None,
         offered: Callable[[plugins.Plugin], None] = lambda plugin: None,
+        tip: Callable[[PluginSpec], str | None] = plugin_tip.refusal,
     ) -> None:
         self.server, self.active, self.specs = server, active, specs
         self.offered = offered  # told of each plugin started again, to announce what waits
         self.approvals, self.client, self.git = approvals, client, git
         self.mode, self.questions = mode, questions
+        self.tip = tip  # why GitHub's tip of the plugin's branch is not its checkout, or None
         self.announce = announce  # tells connected clients that the tool list changed
         self._seen = plugins.read_approvals(approvals)
 
@@ -167,7 +170,7 @@ class Desk:
 
     # -- approving a changed plugin by voice -------------------------------------------
 
-    def _refusal(self, caller: str, spec: PluginSpec | None, name: str) -> str | None:
+    async def _refusal(self, caller: str, spec: PluginSpec | None, name: str) -> str | None:
         if caller != "claude_app":
             return VOICE_ONLY
         # RULE: a changed plugin is approved by voice only in developer mode
@@ -178,11 +181,13 @@ class Desk:
         if not plugins.known_place(spec, self.approvals):
             return f"{name} is new, or runs a new command or folder, so {_typed(name)}."
         why = plugins.checkout_refusal(self.git(spec.cwd), spec.branch)
+        # RULE: a voice approval asks github before the question
+        why = why or await asyncio.to_thread(self.tip, spec)
         return f"{name} can't be approved by voice: {why}." if why else None
 
     async def approve_request(self, caller: str, name: str) -> dict[str, Any]:
         spec = self._spec(name)
-        refused = self._refusal(caller, spec, name)
+        refused = await self._refusal(caller, spec, name)
         if refused or spec is None:
             return _no(refused or f"There is no plugin called {name}.")
         listing = await asyncio.to_thread(plugins.Plugin(spec, self.client or plugins.CLIENT).listing)
@@ -208,7 +213,7 @@ class Desk:
             return _no("That question has run out or was answered. Ask again.")
         name = str(asked["name"])
         spec = self._spec(name)
-        refused = self._refusal(caller, spec, name)
+        refused = await self._refusal(caller, spec, name)
         if refused or spec is None:
             return _no(refused or f"There is no plugin called {name}.")
         if self._commit(spec.cwd) != asked["commit"]:

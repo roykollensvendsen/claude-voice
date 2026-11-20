@@ -53,6 +53,7 @@ def desk(tmp_path, fake, git=None, mode_on=True, clock=None):
         git=lambda folder: dict(git or LEVEL),
         mode=mode,
         questions=devmode.Questions(clock=clock),
+        tip=lambda spec: None,  # GitHub agrees: the checkout is at its tip (test_plugin_tip)
     )
     return made, holder, server, approvals
 

@@ -80,6 +80,7 @@ LAYERS = {
             "session_hook",
             "literal_gh",
             "org_rules",
+            "known_plugins",
         ),
         0,
     ),
@@ -115,6 +116,7 @@ LAYERS = {
             "routing",
             "calllog",
             "activity",
+            "plugin_tip",
         ),
         1,
     ),  # parts, each about one thing

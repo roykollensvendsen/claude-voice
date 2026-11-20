@@ -1,0 +1,5 @@
+[[rule]]
+name = "a voice approval asks github before the question"
+file = "src/claude_voice/plugin_desk.py"
+find = 'why = why or await asyncio\.to_thread\(self\.tip, spec\)'
+replace = 'why = why'

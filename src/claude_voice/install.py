@@ -29,9 +29,9 @@ from . import config as settings
 from . import fields, gitstatus, safefile
 from . import home as homes
 from . import manifest as manifests
+from .known_plugins import Known, known, known_folders
 from .manifest import Manifest
 
-KNOWN = Path(__file__).with_name("known_plugins.toml")
 MASK = "•••"  # a personal value in a dry run
 MASKED_HOME = "lat = ••.••\nlon = ••.••\n"
 
@@ -77,31 +77,6 @@ class Outcome:
     steps: int = 0
     stopped: bool = False
     error: str | None = None
-
-
-@dataclass(frozen=True)
-class Known:
-    """One of the owner's own plugins: its repository, and the folder its checkout had
-    before the repository was renamed, if it was."""
-
-    repo: str
-    formerly: str | None = None
-
-    @property
-    def folder(self) -> str:
-        return self.repo.split("/")[1]
-
-
-def known() -> dict[str, Known]:
-    """The owner's own plugins, by name."""
-    raw = tomllib.loads(KNOWN.read_text(encoding="utf-8"))
-    return {name: Known(str(body["repo"]), body.get("formerly")) for name, body in raw.items()}
-
-
-def known_folders() -> set[str]:
-    """The config folders the known plugins use: each one's name and its repository's,
-    old and new."""
-    return {*known(), *(k.folder for k in known().values()), *(k.formerly for k in known().values() if k.formerly)}
 
 
 def _expand(text: str, home: Path) -> Path:
