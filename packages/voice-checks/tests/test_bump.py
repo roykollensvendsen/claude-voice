@@ -1,5 +1,7 @@
 """`voice-checks bump`: one pin, moved by one tool, in each plugin's pyproject.toml."""
 
+import subprocess
+
 import pytest
 
 from voice_checks import bump
@@ -37,6 +39,24 @@ def test_the_newest_release_tag_is_found_by_its_version_not_its_name():
 def test_no_release_tag_yet_says_how_to_pin_by_hand():
     with pytest.raises(bump.BumpError, match="--sha"):
         bump.newest_release("")
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        FileNotFoundError("git"),
+        subprocess.CalledProcessError(128, ["git", "ls-remote"], stderr="could not resolve host"),
+        subprocess.TimeoutExpired(["git", "ls-remote"], 60),
+    ],
+    ids=["no git", "no network", "too slow"],
+)
+def test_a_failed_look_for_releases_says_what_to_do(monkeypatch, failure):
+    def fails(*_args, **_kwargs):
+        raise failure
+
+    monkeypatch.setattr(bump.subprocess, "run", fails)
+    with pytest.raises(bump.BumpError, match="--sha"):
+        bump.latest()
 
 
 def test_bump_writes_the_new_pin(tmp_path):
