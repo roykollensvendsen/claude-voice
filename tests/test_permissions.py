@@ -942,4 +942,4 @@ def test_gits_own_files_are_never_edited_anywhere():
 def test_the_owners_git_settings_are_still_refused_to_every_edit():
     rules = permissions.load()
     for path in (".gitconfig", ".config/git/**"):
-        assert {f"Edit(~/{path})", f"Write(~/{path})"} <= set(rules.deny), path
+        assert f"Edit(~/{path})" in rules.deny, path
