@@ -679,6 +679,7 @@ def build_server(
 
     def with_replies(answer: dict[str, Any], sender: str, ack: list[int] | None = None) -> dict[str, Any]:
         """The answer, with that session's replies not yet heard, after marking heard those in `ack`.
+        An `ack` may name a reply from any session, since the ids are the voice's own.
 
         No cursor carries this answer's number, so these are confirmed by an `ack`, on this tool
         or on whats_new, or pushed again by whats_new and confirmed there: heard twice at worst,
@@ -2078,7 +2079,8 @@ def build_server(
         at the screen) - "needs_input" before sending means nothing was sent.
         Includes that session's replies not yet read out, as `replies`: read each aloud as
         its words, then pass their reply_id values as `ack` on your next call to this tool,
-        wait_for_session, session_recap or whats_new. `ack` marks only the replies it names."""
+        wait_for_session, session_recap or whats_new. `ack` marks only the replies it names,
+        from any session: a reply_id is the voice's own, so any reply read out may be given."""
         target = find_live(session)
         moved = moved_to(target)
         if moved:
