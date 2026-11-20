@@ -1,0 +1,5 @@
+[[rule]]
+name = "a plugin offered after it failed is no longer listed as failed"
+file = "src/claude_voice/server.py"
+find = '^\s*failed = \[f for f in plugin_failures if f\["name"\] not in \{p\["name"\] for p in offered\}\]$'
+replace = 'failed = plugin_failures'

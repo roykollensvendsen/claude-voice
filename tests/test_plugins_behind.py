@@ -30,9 +30,9 @@ def tv_stand_in():
     return server
 
 
-def behind_bridge(tmp_path, specs, slow):
+def behind_bridge(tmp_path, specs, slow, listed=list):
     """A bridge whose plugins start behind; each is approved first with a quick connection, then
-    started through `slow`."""
+    started through `slow`. `listed` makes the list of plugins the bridge reads."""
     approvals = tmp_path / "approved.json"
     for spec, quick in specs:
         plugins.approve(spec, plugins.Plugin(spec, quick).listing(), approvals)
@@ -40,7 +40,7 @@ def behind_bridge(tmp_path, specs, slow):
     (tmp_path / "home").mkdir(exist_ok=True)
     m = SessionManager(store, project_root=tmp_path / "home", client_factory=FakeClaude())
     repos = config.Config(
-        config.Repos(), config.Paths(None, None, None, None), None, plugins=[spec for spec, _ in specs]
+        config.Repos(), config.Paths(None, None, None, None), None, plugins=listed(spec for spec, _ in specs)
     )
     return build_server(
         m,
@@ -113,16 +113,144 @@ async def test_a_plugin_that_cannot_be_offered_never_stops_the_others(tmp_path, 
         present(server, plugin, listing, commit)
 
     monkeypatch.setattr(plugins, "present", breaks_on_garage)
-    fakes = {GARAGE.cwd: garage, TV.cwd: tv}
-    specs = [(GARAGE, lambda p: Client(garage)), (TV, lambda p: Client(tv))]
-    server = behind_bridge(tmp_path, specs, lambda params: Client(fakes[params.cwd]))
+    server = garage_and_tv(tmp_path, garage, tv)
     with caplog.at_level("INFO", logger="claude_voice"):
         async with Client(server) as c:
             came = await offered(c, "tv_status")
             health = (await c.call_tool("health", {})).structured_content
     assert came  # the plugin after the broken one is still offered
     states = {p["name"]: p for p in health["plugins"]}
-    assert states["tv"]["state"] == "running" or "tv_status" in states["tv"]["tools"]
+    assert states["tv"]["state"] == "not started"  # offered; its process starts at the first call
     assert states["garage"]["state"] == "could not be offered"
-    assert "the tool table broke" in states["garage"]["why"]
     assert "garage could not be offered" in caplog.text and "the tool table broke" in caplog.text
+
+
+def garage_and_tv(tmp_path, garage, tv):
+    """A bridge whose garage and tv plugins start behind it, in that order."""
+    fakes = {GARAGE.cwd: garage, TV.cwd: tv}
+    specs = [(GARAGE, lambda p: Client(garage)), (TV, lambda p: Client(tv))]
+    return behind_bridge(tmp_path, specs, lambda params: Client(fakes[params.cwd]))
+
+
+async def test_health_never_carries_the_text_of_a_plugin_error(tmp_path, monkeypatch, caplog):
+    garage, _ = stand_in()
+    secret = "sk-test-0123456789abcdef"
+
+    def leaks(server, plugin, listing, commit):
+        raise RuntimeError(f"could not log in with {secret} from /home/x/garage/.env")
+
+    monkeypatch.setattr(plugins, "present", leaks)
+    server = behind_bridge(tmp_path, [(GARAGE, lambda p: Client(garage))], lambda p: Client(garage))
+    with caplog.at_level("INFO", logger="claude_voice"):
+        async with Client(server) as c:
+            deadline = time.monotonic() + 5
+            while "garage could not be offered" not in caplog.text:
+                assert time.monotonic() < deadline
+                await asyncio.sleep(0.05)
+            health = (await c.call_tool("health", {})).structured_content
+    states = {p["name"]: p for p in health["plugins"]}
+    assert states["garage"]["why"] == "RuntimeError; see the bridge log on the laptop"
+    assert secret not in str(health) and "/home/x/garage" not in str(health)
+    assert secret in caplog.text  # the full text stays in the log on the laptop
+
+
+async def test_a_plugin_offered_after_it_failed_is_no_longer_listed_as_failed(tmp_path, monkeypatch, caplog):
+    garage, _ = stand_in()
+    present, broke = plugins.present, []
+
+    def breaks_once(server, plugin, listing, commit):
+        if not broke:
+            broke.append(True)
+            raise RuntimeError("the tool table broke")
+        present(server, plugin, listing, commit)
+
+    monkeypatch.setattr(plugins, "present", breaks_once)
+    server = behind_bridge(tmp_path, [(GARAGE, lambda p: Client(garage))], lambda p: Client(garage))
+    with caplog.at_level("INFO", logger="claude_voice"):
+        async with Client(server) as c:
+            deadline = time.monotonic() + 5
+            while "garage could not be offered" not in caplog.text:
+                assert time.monotonic() < deadline
+                await asyncio.sleep(0.05)
+            restarted = (await c.call_tool("plugin_restart", {"name": "garage"})).structured_content
+            health = (await c.call_tool("health", {})).structured_content
+    assert restarted["ok"]
+    assert [(p["name"], p["state"]) for p in health["plugins"]] == [("garage", "not started")]
+
+
+async def test_a_plugin_start_that_runs_again_never_lists_a_failure_twice(tmp_path, monkeypatch):
+    from claude_voice import gitstatus
+
+    garage, _ = stand_in()
+    tv = tv_stand_in()
+    present = plugins.present
+    looked, release = threading.Event(), threading.Event()
+
+    def breaks_on_garage(server, plugin, listing, commit):
+        if plugin.spec.name == "garage":
+            raise RuntimeError("the tool table broke")
+        present(server, plugin, listing, commit)
+
+    def first_tv_look_waits(folder):
+        if folder == TV.cwd and not looked.is_set():
+            looked.set()  # the first start has listed garage's failure, and waits here on tv
+            release.wait(5)
+        return None
+
+    monkeypatch.setattr(plugins, "present", breaks_on_garage)
+    monkeypatch.setattr(gitstatus, "read", first_tv_look_waits)
+    server = garage_and_tv(tmp_path, garage, tv)
+    async with Client(server):
+        assert await asyncio.to_thread(looked.wait, 5)
+    release.set()  # the first start was cancelled as its client went; the next one runs again
+    async with Client(server) as c:
+        assert await offered(c, "tv_status")
+        health = (await c.call_tool("health", {})).structured_content
+    assert [p["name"] for p in health["plugins"]].count("garage") == 1
+
+
+async def test_a_check_ended_by_a_cancel_never_stops_the_others(tmp_path, monkeypatch, caplog):
+    garage, _ = stand_in()
+    tv = tv_stand_in()
+    check_one = plugins.check_one
+
+    def cancelled_on_garage(spec, *args):
+        if spec.name == "garage":
+            raise asyncio.CancelledError
+        return check_one(spec, *args)
+
+    monkeypatch.setattr(plugins, "check_one", cancelled_on_garage)
+    server = garage_and_tv(tmp_path, garage, tv)
+    with caplog.at_level("INFO", logger="claude_voice"):
+        async with Client(server) as c:
+            assert await offered(c, "tv_status")
+            health = (await c.call_tool("health", {})).structured_content
+    states = {p["name"]: p for p in health["plugins"]}
+    assert states["garage"]["state"] == "could not be offered"
+
+
+class Unreadable(list):
+    """A list of plugins that breaks once `broken` is set, so the start fails as a whole."""
+
+    broken = False
+
+    def __iter__(self):
+        if self.broken:
+            raise RuntimeError("the plugin list broke")
+        return super().__iter__()
+
+
+async def test_a_plugin_start_that_fails_as_a_whole_is_logged(tmp_path, caplog):
+    server = behind_bridge(tmp_path, [], lambda p: None, listed=Unreadable)
+    with caplog.at_level("INFO", logger="claude_voice"):
+        Unreadable.broken = True
+        try:
+            async with Client(server) as c:
+                deadline = time.monotonic() + 5
+                while "the plugins could not be started" not in caplog.text:
+                    assert time.monotonic() < deadline
+                    await asyncio.sleep(0.05)
+                await c.list_tools()
+        finally:
+            Unreadable.broken = False
+    assert "the plugin list broke" in caplog.text
