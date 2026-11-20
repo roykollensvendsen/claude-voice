@@ -1,0 +1,5 @@
+[[rule]]
+name = "a push behind a wrapper is never let through unjudged"
+file = "src/claude_voice/guard.py"
+find = '^            if _hidden\(words\):$'
+replace = '            if False:'

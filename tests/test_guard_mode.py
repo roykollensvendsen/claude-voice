@@ -204,6 +204,57 @@ def test_a_fork_only_push_to_any_repository_of_the_upstreams_owner_is_refused(na
     assert verdict == "deny"
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        f"https://x-access-token@github.com/{UPSTREAM}.git",
+        f"ssh://github.com/{UPSTREAM}",
+        f"http://github.com/{UPSTREAM}",
+        f"git@gh-alias:{UPSTREAM}.git",
+        f"gh:{UPSTREAM}",
+    ],
+)
+def test_a_fork_only_push_to_an_address_that_is_not_plainly_on_github_is_refused(url):
+    verdict, reason = decide("git push fork feat/x", {"fork": url})
+    assert verdict == "deny" and "could not read where it goes" in reason
+
+
+HIDDEN = [
+    "cd x\ngit push upstream main",
+    "sleep 1 & git push upstream main",
+    "(git push upstream main)",
+    "echo $(git push upstream main)",
+    "/usr/bin/git push upstream main",
+    "sh -c 'git push upstream main'",
+    "bash -c 'git push upstream main'",
+    "eval git push upstream main",
+    "timeout 60 git push upstream main",
+    "nice -n 5 git push upstream main",
+    "command git push upstream main",
+]
+
+
+@pytest.mark.parametrize("command", HIDDEN)
+def test_a_push_behind_a_wrapper_is_never_let_through_unjudged(command):
+    verdict, _ = decide(command, {"upstream": OWNERS, "origin": FORK})
+    assert verdict == "deny"
+
+
+@pytest.mark.parametrize("command", HIDDEN)
+def test_a_push_in_any_shape_of_command_line_asks_in_own_clone_mode(command):
+    verdict, _ = decide(command, {"upstream": OWNERS, "origin": OWNERS}, own_clone=True)
+    assert verdict == "ask"
+
+
+def test_a_push_to_the_fork_after_a_newline_still_goes():
+    assert decide("cd x\ngit push fork main", {"fork": FORK}) is None
+
+
+def test_a_fork_only_push_from_another_clone_asks_in_own_clone_mode_naming_the_other_folder():
+    verdict, reason = decide("git -C ../other push origin feat/x", {"origin": OWNERS}, own_clone=True)
+    assert verdict == "ask" and "another folder" in reason
+
+
 def test_in_own_clone_mode_a_second_push_address_elsewhere_is_refused():
     verdict, _ = decide("git push origin feat/x", {"origin": f"{OWNERS}\n{FORK}"}, own_clone=True)
     assert verdict == "deny"

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a fork-only push to an address that is not plainly on GitHub is refused"
+file = "src/claude_voice/guard.py"
+find = '^    if unread or not urls\.strip\(\):$'
+replace = '    if False:'

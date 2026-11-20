@@ -296,13 +296,15 @@ only the role's entry in the owner's own roles file chooses between them.
 
 - **Fork-only**, the default. A push is refused when any push address of the
   named remote is on GitHub under the upstream's owner, whatever the repository
-  name, since GitHub sends a renamed repository's old address on. Also refused:
-  a push to an address written in the command, a push from another folder with
-  `-C`, `--git-dir` or `--work-tree`, and a push that brings its own git
-  settings with `-c`, `--config-env`, `--repo` or the environment.
+  name, since GitHub sends a renamed repository's old address on. Every push
+  address must be a plain GitHub address the guard can read, or the push is
+  refused. Also refused: a push to an address written in the command, a push
+  from another folder with `-C`, `--git-dir` or `--work-tree`, a push that brings
+  its own git settings with `-c`, `--config-env`, `--repo` or the environment,
+  and a push run behind another command or a shell, such as `timeout` or `sh -c`.
 - **Own-clone**, set with `push_mode = "own-clone"` on the role. Every push
   address of `origin` must be the role's `upstream`, or the push is refused.
-  Every push then asks the owner.
+  Every push then asks the owner, and a push behind another command says so.
 
 The guard is a fence against a slip, not a wall. It cannot see a repository
 that was moved to another owner, since the old address then names someone else.
