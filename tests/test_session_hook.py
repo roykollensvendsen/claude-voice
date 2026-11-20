@@ -236,8 +236,23 @@ def test_the_session_hook_runs_with_the_standard_library_only(tmp_path):
 def test_the_session_hook_and_the_files_beside_it_import_only_the_standard_library():
     """Read from the source, so a new import can't stop the hook again while every test still
     runs it with the bridge's own Python. A file beside it must keep to the same rule."""
-    folder = Path(session_hook.__file__).parent
-    seen, todo, outside = set(), ["session_hook"], []
+    seen, outside = imports_beyond_the_standard_library(Path(session_hook.__file__).parent, "session_hook")
+    assert seen >= {"session_hook", "safe_git"}
+    assert not outside, f"imports beyond the standard library: {outside}"
+
+
+def test_a_file_imported_beside_the_hook_by_its_own_name_is_read_too(tmp_path):
+    (tmp_path / "hook.py").write_text("from .helper import go\n", encoding="utf-8")
+    (tmp_path / "helper.py").write_text("import requests\n\ndef go(): ...\n", encoding="utf-8")
+    seen, outside = imports_beyond_the_standard_library(tmp_path, "hook")
+    assert seen == {"hook", "helper"}
+    assert outside == ["helper: requests"]
+
+
+def imports_beyond_the_standard_library(folder, start):
+    """Each file the hook loads beside it, from `start`, and every import of theirs that is
+    not in the standard library."""
+    seen, todo, outside = set(), [start], []
     while todo:
         name = todo.pop()
         if name in seen:
@@ -245,16 +260,16 @@ def test_the_session_hook_and_the_files_beside_it_import_only_the_standard_libra
         seen.add(name)
         tree = ast.parse((folder / f"{name}.py").read_text(encoding="utf-8"))
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.level:  # from . import x: a file beside it
-                todo += [a.name for a in node.names]
+            if isinstance(node, ast.ImportFrom) and node.level:
+                # from .x import y loads x.py; from . import x loads x.py
+                todo += [node.module] if node.module else [a.name for a in node.names]
             elif isinstance(node, ast.ImportFrom):
                 outside += [f"{name}: {node.module}"] if node.module.split(".")[0] not in STDLIB else []
             elif isinstance(node, ast.Import):
                 outside += [f"{name}: {a.name}" for a in node.names if a.name.split(".")[0] not in STDLIB]
             elif isinstance(node, ast.Call) and getattr(node.func, "id", None) == "_beside":
                 todo.append(node.args[0].value)  # loaded by its path: _beside("safe_git")
-    assert seen >= {"session_hook", "safe_git"}
-    assert not outside, f"imports beyond the standard library: {outside}"
+    return seen, outside
 
 
 STDLIB = sys.stdlib_module_names | {"__future__"}
