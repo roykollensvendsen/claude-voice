@@ -1,5 +1,0 @@
-[[rule]]
-name = "a cd the shell may skip is never taken as certain"
-file = "src/claude_voice/guard.py"
-find = '^            joined = joined and after == "&&"$'
-replace = '            joined = True'

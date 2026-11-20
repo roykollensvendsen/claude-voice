@@ -1,5 +1,5 @@
 [[rule]]
 name = "a relative cd under cdpath is never followed"
 file = "src/claude_voice/guard.py"
-find = '^    if cdpath and not words\[1\]\.startswith\(\("/", "~", "\./", "\.\./"\)\) and words\[1\] not in \("\.", "\.\."\):$'
+find = '^    if relative and "CDPATH" in os\.environ:$'
 replace = '    if False:'

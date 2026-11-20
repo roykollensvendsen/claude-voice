@@ -1,0 +1,5 @@
+[[rule]]
+name = "a git variable in the hook environment fails the plain shape"
+file = "src/claude_voice/guard.py"
+find = '^    if any\(name\.startswith\("GIT_"\) and name not in HARMLESS_GIT for name in os\.environ\):$'
+replace = '    if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a second command never rides on a plain push"
+file = "src/claude_voice/guard.py"
+find = '^    if any\(UNSAFE\.search\(line\) for line in lines\):$'
+replace = '    if False:'
