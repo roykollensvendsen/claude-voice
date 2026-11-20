@@ -2,4 +2,5 @@
 name = "a manifest key the format does not know is refused"
 file = "src/claude_voice/manifest.py"
 find = '^\s*if unknown:$'
+occurrence = 1
 replace = 'if False:'

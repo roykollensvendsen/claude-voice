@@ -144,6 +144,21 @@ def switched_off(text: str, rule: dict[str, object]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def ambiguous(text: str, rule: dict[str, object]) -> str | None:
+    """Why a row's pattern leaves its line unclear, or None when it names one line.
+
+    A pattern on several lines with no occurrence took the first of them. New code above
+    the rule, with the same words, then took the rule's place, and the run tested that.
+    """
+    if "occurrence" in rule:
+        return None
+    hits = [i + 1 for i, line in enumerate(text.splitlines()) if re.search(str(rule["find"]), line)]
+    if len(hits) < 2:  # noqa: PLR2004 - one line is clear
+        return None
+    where = ", ".join(str(n) for n in hits[:-1]) + f" and {hits[-1]}"
+    return f"the pattern matches lines {where}; name the one meant with occurrence"
+
+
 def broken(file: str, mutated: str) -> str | None:
     """Why a mutated Python file no longer compiles, or None when it does.
 
@@ -338,6 +353,11 @@ def main() -> int:
             # bulk snapshot taken up front is restored over anything edited
             # since, and losing an edit that way costs more than the run.
             text = path.read_text(encoding="utf-8")
+            unclear = ambiguous(text, rule)
+            if unclear:
+                bad_rows.append(rule["name"])
+                print(f"BROKEN   {rule['name']}: {unclear}")  # noqa: T201
+                continue
             mutated = switched_off(text, rule)
             why = broken(rule["file"], mutated)
             if why:
@@ -375,7 +395,11 @@ def main() -> int:
     if lucky:
         print("KILLED BY ANOTHER TEST, so the evidence is not about them:", ", ".join(lucky))  # noqa: T201
     if bad_rows:
-        print("BROKEN ROW, so nothing was tested; make the replacement a whole valid line:", ", ".join(bad_rows))  # noqa: T201
+        print(  # noqa: T201
+            "BROKEN ROW, so nothing was tested; make the replacement a whole valid line,"
+            " and give a pattern on several lines its occurrence:",
+            ", ".join(bad_rows),
+        )
     if lost:
         print("CHANGED WHILE MUTATED, so left as they are:", ", ".join(sorted(set(lost))))  # noqa: T201
         print("Edit the tree while this runs and the result is not about your code.")  # noqa: T201

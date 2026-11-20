@@ -2,4 +2,5 @@
 name = "a temporary file is removed when a write fails"
 file = "src/claude_voice/safefile.py"
 find = '^\s*os\.unlink\(spare\)$'
+occurrence = 1
 replace = 'pass'
