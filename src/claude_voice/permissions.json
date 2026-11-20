@@ -4,7 +4,6 @@
       "Bash(cat *)",
       "Bash(head *)",
       "Bash(tail *)",
-      "Bash(sed -n *)",
       "Bash(grep *)",
       "Bash(ls*)",
       "Bash(wc *)"
@@ -27,35 +26,18 @@
       "Bash(git branch -a*)",
       "Bash(git branch -r*)",
       "Bash(git branch -v*)",
-      "Bash(git fetch*)",
-      "Bash(git worktree list*)",
-      "Bash(git -C * status*)",
-      "Bash(git -C * diff*)",
-      "Bash(git -C * log*)",
-      "Bash(git -C * show*)",
-      "Bash(git -C * ls-files*)",
-      "Bash(git -C * rev-parse*)",
-      "Bash(git -C * remote -v)",
-      "Bash(git -C * branch --show-current)",
-      "Bash(git -C * branch -a*)",
-      "Bash(git -C * branch -r*)",
-      "Bash(git -C * fetch*)",
-      "Bash(git -C * worktree list*)"
+      "Bash(git fetch)",
+      "Bash(git worktree list*)"
     ],
     "git, making work on a branch": [
       "Bash(git add *)",
-      "Bash(git -C * add *)",
       "Bash(git commit *)",
-      "Bash(git -C * commit *)",
       "Bash(git checkout -b *)",
       "Bash(git switch -c *)",
       "Bash(git switch *)",
       "Bash(git rebase origin/main)",
       "Bash(git rebase --continue)",
       "Bash(git cherry-pick *)",
-      "Bash(git -C * cherry-pick *)",
-      "Bash(git worktree add *)",
-      "Bash(git -C * worktree add *)",
       "Bash(git worktree prune*)",
       "Bash(git worktree remove *)"
     ],
@@ -91,7 +73,12 @@
       "Bash(gh pr update-branch * --rebase)"
     ],
     "the gates of the Python repositories": [
-      "Bash(uv sync*)",
+      "Bash(uv sync)",
+      "Bash(uv sync --locked)",
+      "Bash(uv sync --frozen)",
+      "Bash(uv sync --all-extras)",
+      "Bash(uv sync --locked --all-extras)",
+      "Bash(uv sync --frozen --all-extras)",
       "Bash(uv run ruff*)",
       "Bash(uv run mypy*)",
       "Bash(uv run pytest*)",
@@ -243,6 +230,13 @@
     "accepting a repository's rights, which only the owner types": [
       "Bash(*claude-voice permissions*--accept*)"
     ],
+    "git writing its output to a file": [
+      "Bash(git * --output*)"
+    ],
+    "git's own files, anywhere": [
+      "Edit(//**/.git)",
+      "Edit(//**/.git/**)"
+    ],
     "settings and secrets, read broadly with sed": [
       "Bash(sed -n *.config/*)",
       "Bash(sed -n *secrets*)"
@@ -338,7 +332,27 @@
     "allow": [
       "Bash(cp * /tmp/*)",
       "Bash(git commit -m *)",
-      "Bash(git commit -F *)"
+      "Bash(git commit -F *)",
+      "Bash(git -C * status*)",
+      "Bash(git -C * diff*)",
+      "Bash(git -C * log*)",
+      "Bash(git -C * show*)",
+      "Bash(git -C * ls-files*)",
+      "Bash(git -C * rev-parse*)",
+      "Bash(git -C * remote -v)",
+      "Bash(git -C * branch --show-current)",
+      "Bash(git -C * branch -a*)",
+      "Bash(git -C * branch -r*)",
+      "Bash(git -C * fetch*)",
+      "Bash(git -C * worktree list*)",
+      "Bash(git -C * add *)",
+      "Bash(git -C * commit *)",
+      "Bash(git -C * cherry-pick *)",
+      "Bash(git -C * worktree add *)",
+      "Bash(git fetch*)",
+      "Bash(git worktree add *)",
+      "Bash(uv sync*)",
+      "Bash(sed -n *)"
     ],
     "ask": [
       "Bash(git push* :*)",

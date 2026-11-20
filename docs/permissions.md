@@ -144,13 +144,13 @@ The retired rules so far are all allow rules:
 
 | Group | What it is for |
 | --- | --- |
-| read files and folders | `cat`, `head`, `tail`, `sed -n`, `grep`, `ls` and `wc`, to look at code |
-| git, looking only | status, diffs, logs, branches and worktrees, read but not changed |
-| git, making work on a branch | adding and committing, also with `git -C`; new branches, switching branch, worktrees, cherry-picks; `git rebase origin/main` and `--continue` |
+| read files and folders | `cat`, `head`, `tail`, `grep`, `ls` and `wc`, to look at code |
+| git, looking only | status, diffs, logs, branches and the list of worktrees, read but not changed; a plain `git fetch` |
+| git, making work on a branch | adding and committing; new branches, switching branch, pruning and removing worktrees, cherry-picks; `git rebase origin/main` and `--continue` |
 | bringing main up to date, by fast-forward only | `git fetch origin`, with or without `main`; `git pull --ff-only`, with or without `origin main`; and `git merge --ff-only origin/main` |
 | GitHub, looking only | reading pull requests, their checks and status, workflow runs and watching one, issues, the repository and its releases |
 | pushing a session's own pull-request branch | `git push origin <branch>`, with `-u` or `-q -u`; `git push --force-with-lease origin <branch>`, with or without `-u`; and `gh pr update-branch <n> --rebase` |
-| the gates of the Python repositories | `uv sync`, ruff, mypy and pytest, also with `uv run --quiet`, the mutation run and the ratchet |
+| the gates of the Python repositories | `uv sync`, alone or with `--locked` or `--frozen` and with or without `--all-extras`; ruff, mypy and pytest, also with `uv run --quiet`, the mutation run and the ratchet |
 | the gates of the companion app | `npm ci`, its tests, lint, typecheck and build |
 | the gates of the Android app | Gradle's assemble, check, lint and test |
 | editing files in the repository | `Edit(./**)`, every file under the repository. Claude Code checks a file write against `Edit` rules, so there is no `Write` rule |
