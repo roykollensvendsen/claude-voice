@@ -12,8 +12,9 @@ It also steps aside, without asking the bridge, for a call with several
 questions (the phone shows one), and for the session the voice is talking to,
 where another hook refuses the box at once and must not be kept waiting.
 
-Installed in the owner's own Claude Code settings; run as
-``python -m claude_voice.phone_hook`` with Claude Code's hook input on stdin.
+Installed in the owner's own Claude Code settings; run as ``python3 -I -S
+<checkout>/src/claude_voice/phone_hook.py``, with Claude Code's hook input on stdin.
+It uses the standard library only, so it needs none of the bridge's packages.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import shlex
 import sys
 import urllib.error
 import urllib.request
@@ -204,10 +206,12 @@ def _token() -> str:
     return ""
 
 
-def settings_entries(python: str) -> dict[str, list[dict[str, Any]]]:
-    """The hook entries for the owner's Claude Code settings, run with the bridge's Python."""
+def settings_entries(python: str = "python3") -> dict[str, list[dict[str, Any]]]:
+    """The hook entries for the owner's Claude Code settings. The hook runs as its own file,
+    with the standard library only, so no installed package or link to one is loaded."""
     # RULE: the phone hook runs isolated from the sessions folder
-    hook = {"type": "command", "command": f"{python} -I -m claude_voice.phone_hook", "timeout": TIMEOUT + 30}
+    command = shlex.join([python, "-I", "-S", str(Path(__file__).resolve())])
+    hook = {"type": "command", "command": command, "timeout": TIMEOUT + 30}
     return {
         "PreToolUse": [{"matcher": "AskUserQuestion", "hooks": [hook]}],
         "PermissionRequest": [{"matcher": "*", "hooks": [dict(hook)]}],
@@ -215,9 +219,11 @@ def settings_entries(python: str) -> dict[str, list[dict[str, Any]]]:
 
 
 def _ours(hook: dict[str, Any]) -> bool:
-    """Whether a settings hook entry is a phone hook line, with any Python and any flags."""
+    """Whether a settings hook entry is a phone hook line, with any Python and any flags,
+    run as a module or as its own file from any checkout."""
     words = str(hook.get("command") or "").split()
-    return words[-2:] == ["-m", "claude_voice.phone_hook"]
+    last = words[-1].strip("'\"").replace("\\", "/") if words else ""
+    return words[-2:] == ["-m", "claude_voice.phone_hook"] or last.endswith("/claude_voice/phone_hook.py")
 
 
 def _without_ours(matchers: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -249,7 +255,7 @@ def install(settings: Path, python: str) -> None:
 def main() -> int:
     if sys.argv[1:2] == ["--install"]:
         target = Path(sys.argv[2]) if len(sys.argv) > 2 else Path("~/.claude/settings.json").expanduser()
-        install(target, sys.executable)
+        install(target, "python3")
         print(f"Installed the phone hook in {target}")
         return 0
     try:

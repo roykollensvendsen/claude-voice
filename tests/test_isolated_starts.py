@@ -36,11 +36,17 @@ def imports_from_its_folder(argv: list[str], folder: Path) -> bool:
 
 @posix_only
 def test_the_phone_hook_runs_isolated_from_the_sessions_folder(tmp_path):
-    entries = phone_hook.settings_entries(shlex.quote(sys.executable))
+    """The command as it is written, run with -I -S in a folder that plants the modules it uses."""
+    entries = phone_hook.settings_entries(sys.executable)
     for n, event in enumerate(entries.values()):  # the question hook and the permission hook
         folder = tmp_path / str(n)
-        folder.mkdir()
-        assert not imports_from_its_folder(shlex.split(event[0]["hooks"][0]["command"]), folder)
+        (folder / "claude_voice").mkdir(parents=True)
+        (folder / "claude_voice" / "__init__.py").write_text("raise SystemExit('planted')\n")
+        (folder / "json.py").write_text("raise SystemExit('planted')\n")
+        argv = shlex.split(event[0]["hooks"][0]["command"])
+        assert argv[1:3] == ["-I", "-S"]
+        out = subprocess.run(argv, cwd=folder, input="", capture_output=True, text=True, timeout=30, check=False)
+        assert "planted" not in out.stderr and out.returncode == 0, out.stderr
 
 
 @posix_only
