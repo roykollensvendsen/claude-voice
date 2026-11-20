@@ -1,5 +1,0 @@
-[[rule]]
-name = "a redirection is never read as a remote"
-file = "src/claude_voice/guard.py"
-find = '^    text = REDIRECTION\.sub\(" ", command\)\.strip\(" \\t"\)$'
-replace = '    text = command.strip(" \t")'

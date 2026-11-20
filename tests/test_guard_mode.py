@@ -193,7 +193,7 @@ def test_a_fork_only_push_from_another_clone_is_refused(tmp_path, option):
     [
         "git -C {there} push origin feat/x",
         "cd {there} && git push origin feat/x",
-        "cd {there} && git push origin feat/x 2>&1",
+        "cd {there} && git push origin feat/x",
     ],
 )
 def test_a_push_is_judged_by_the_remotes_of_the_folder_it_runs_in(tmp_path, command):
@@ -345,11 +345,10 @@ PLAIN = "git push origin feat/x"
         "git push -v --dry-run origin feat/x",
         "git push --force-with-lease origin feat/x",
         "git push --force-with-lease=feat/x:0123abc origin feat/x",
-        "git push origin feat/x 2>&1",
         "git push",
         "git -C THERE push origin feat/x",
         "cd THERE && git push origin feat/x",
-        "cd THERE && git -C . push origin feat/x 2>&1",
+        "cd THERE && git -C . push origin feat/x",
     ],
 )
 def test_a_plain_push_to_a_fork_goes(tmp_path, command):
@@ -391,6 +390,10 @@ def test_only_a_push_in_the_plain_shape_is_judged_by_its_remotes(command):
         "git push origin feat/x & sleep 1",
         "git push origin feat/x `true`",
         "git push origin feat/x > log; rm x",
+        "git push origin feat/x >`git${IFS}push${IFS}upstream${IFS}main`",
+        "git push origin feat/x 2>`git${IFS}push${IFS}upstream${IFS}main`",
+        "git push origin feat/x >$(true)",
+        "git push origin feat/x >{log}",
     ],
 )
 def test_a_second_command_never_rides_on_a_plain_push(command):
@@ -522,8 +525,10 @@ def test_a_push_in_any_shape_of_command_line_asks_in_own_clone_mode(command):
         "git push fork main > /dev/null 2>&1",
     ],
 )
-def test_a_redirection_is_never_read_as_a_remote(command):
-    assert decide(command, {"origin": FORK, "fork": FORK}) is None
+def test_a_redirection_fails_the_plain_shape(command):
+    """Bash may run a redirection's target as a command, so a plain push has none."""
+    assert decide(command, {"origin": FORK, "fork": FORK})[0] == "deny"
+    assert decide(command, {"origin": OWNERS, "fork": OWNERS}, own_clone=True)[0] == "ask"
 
 
 def test_a_redirection_is_never_named_as_the_target_in_own_clone_mode():
