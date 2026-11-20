@@ -139,7 +139,7 @@ class Place:
 
 @dataclass(frozen=True)
 class Routing:
-    """Who answers: always "roy" for now. `lines` are the fixed-list lines matched, `line` the first."""
+    """Who answers: always "owner" for now. `lines` are the fixed-list lines matched, `line` the first."""
 
     to: str
     lines: tuple[int, ...]
@@ -921,4 +921,4 @@ def sort(
     # RULE: a command of no allowed shape goes to the owner
     shape = not lines and _shape(ask, read_only)
     # RULE: every prompt goes to the owner while no manager answers
-    return Routing("roy", tuple(lines), shape, ask.why)
+    return Routing("owner", tuple(lines), shape, ask.why)

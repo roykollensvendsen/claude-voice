@@ -367,7 +367,7 @@ That covers a session's own branch and pull request, a plugin's money or
 read-only mark, and its scratchpad. Each such case has a test, so the change
 that fills it in has to change the test on purpose.
 
-Each opened approval carries `routed`: `to` (always `roy` for now, which means the owner; it will become `owner`, so read both as the owner), the
+Each opened approval carries `routed`: `to` (always `owner` for now; older bridges wrote the owner's first name, so read any value but `manager` as the owner), the
 fixed-list `lines` it matched, the first as `line`, and `shape`.
 
 ## What later runs as the owner
