@@ -47,9 +47,12 @@ def proc_stats() -> list[str] | None:
 
 
 def _tick() -> int:
+    sysconf = getattr(os, "sysconf", None)  # Windows has none, and its type stubs say so
+    if sysconf is None:
+        return 100
     try:
-        return os.sysconf("SC_CLK_TCK")
-    except (AttributeError, ValueError, OSError):
+        return int(sysconf("SC_CLK_TCK"))
+    except (ValueError, OSError):
         return 100
 
 
