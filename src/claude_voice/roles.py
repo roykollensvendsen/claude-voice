@@ -68,6 +68,9 @@ def guard_settings(role: dict[str, Any]) -> str | None:
         return None
     # RULE: the push guard runs isolated from the sessions folder
     command = f"{shlex.quote(sys.executable)} -I -m claude_voice.guard --upstream {shlex.quote(upstream)}"
+    # RULE: own-clone mode is on only when the role entry names it exactly
+    if role.get("push_mode") == "own-clone":
+        command += " --push-mode own-clone"
     return json.dumps(
         {"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": command}]}]}}
     )

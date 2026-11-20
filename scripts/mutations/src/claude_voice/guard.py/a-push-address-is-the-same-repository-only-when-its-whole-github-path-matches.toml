@@ -1,0 +1,5 @@
+[[rule]]
+name = "a push address is the same repository only when its whole GitHub path matches"
+file = "src/claude_voice/guard.py"
+find = 'return path\.count\("/"\) == 1 and path\.split\("/"\)\[0\]\.lower\(\) == owner\.lower\(\) and path\.split\("/"\)\[1\] == name'
+replace = '    return path.lower().endswith(repository.lower())'

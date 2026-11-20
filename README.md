@@ -488,6 +488,14 @@ your GitHub account if needed, runs the tests and opens a pull request here. It
 cannot push to this repository itself. [CONTRIBUTING.md](CONTRIBUTING.md) has
 the rules it follows, which apply to any change.
 
+A guard checks every push the session makes, by remote name, by address, and
+by any setting given on the command or in the environment. When this repository
+is your own, you can let a role work in it directly: add
+`push_mode = "own-clone"` to the role in your own roles file. The guard then
+checks that the clone pushes to the role's `upstream`, refuses the push when it
+does not, and asks you before every other push. Only your own roles file turns
+this on; the clone, the environment and the command cannot.
+
 ## Develop
 
 [CONTRIBUTING.md](CONTRIBUTING.md) has the gates and how a change is made. Once

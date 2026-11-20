@@ -1,0 +1,5 @@
+[[rule]]
+name = "own-clone mode is on only when the role entry names it exactly"
+file = "src/claude_voice/roles.py"
+find = 'if role\.get\("push_mode"\) == "own-clone":'
+replace = '    if str(role.get("push_mode", "")).lower().startswith("own"):'
