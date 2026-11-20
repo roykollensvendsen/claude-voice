@@ -41,8 +41,15 @@ uv run voice-checks temp-files
 
   The check then proves it. Each named function must be in the same module, and must remove
   something: it calls `rmtree`, `unlink`, `rmdir` or `os.remove`, itself or through another
-  of the module's functions. A list's `remove` does not count. A marker that names nothing, an unknown name, or a function that
-  removes nothing still fails, and says which.
+  of the module's functions. A list's `remove` does not count. A marker that names nothing, an
+  unknown name, or a function that removes nothing still fails, and says which.
+
+  Two ways of removing are not seen, so their marker is refused even when the removal is real.
+  The check errs on the safe side; write the removal so it can see it:
+  - **`remove(path)` after `from os import remove`.** Only `os.remove` counts, because a bare
+    `remove` cannot be told from another one. Write `os.remove(path)`.
+  - **A method, such as `self.cleanup(path)`.** Only the module's own functions, called by
+    their bare names, are followed. Move the removal into a module function, and name that.
 
 - **`docs`.** A plugin's `docs/setup.md` is one an agent can follow: every step has a
   `Check:` line, every step the agent does shows its commands, and the steps under
