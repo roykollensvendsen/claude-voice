@@ -13,6 +13,9 @@ There are two packs, both in the owner's settings folder and never in any reposi
 - `~/.config/claude-voice/orgs/_shared/rules.md`, the lines every organisation shares;
 - `~/.config/claude-voice/orgs/<org>/rules.md`, the organisation's own.
 
+No session may write in that folder: the permission rules refuse every edit there. So
+changing or installing a pack is always the owner's own step.
+
 The shared pack comes first. Where the two disagree, the stricter line wins, and the
 shared pack's own header says so.
 
