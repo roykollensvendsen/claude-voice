@@ -1,0 +1,5 @@
+[[rule]]
+name = "plugins set never takes a typed list of tools"
+file = "src/claude_voice/settings_edit.py"
+find = 'if key == "tools":'
+replace = 'if False:'
