@@ -1,0 +1,5 @@
+[[rule]]
+name = "a tool the owner left out is not added again"
+file = "src/claude_voice/plugin_tools.py"
+find = 'return \[t for t in configured if t in now\] \+'
+replace = 'return list(now)'

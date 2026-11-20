@@ -1,0 +1,5 @@
+[[rule]]
+name = "tools are never set before a first approval stored the manifest"
+file = "src/claude_voice/plugin_tools.py"
+find = 'if not isinstance\(before, list\):'
+replace = 'if False:'

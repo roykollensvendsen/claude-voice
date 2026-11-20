@@ -1,0 +1,5 @@
+[[rule]]
+name = "a manifest of another plugin or command is refused"
+file = "src/claude_voice/plugin_tools.py"
+find = 'if found\.command != table\.get\("command"\) or'
+replace = 'if False:'

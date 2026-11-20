@@ -275,8 +275,20 @@ def _record(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> dict[str, A
     }
 
 
+def _manifest_tools(spec: PluginSpec) -> dict[str, list[str]]:
+    """The tools in the plugin's own manifest as it is at the approval, kept so a later change
+    to the manifest adds only tools new since then; nothing for a plugin with no manifest."""
+    from . import manifest
+
+    try:
+        found = manifest.read(Path(spec.cwd))
+    except manifest.ManifestError:
+        return {}
+    return {"manifest_tools": list(found.tools)} if found.name == spec.name else {}
+
+
 def approve(spec: PluginSpec, listing: dict[str, dict[str, Any]], path: Path | None = None) -> None:
-    _write(spec.name, _record(spec, listing), path)
+    _write(spec.name, {**_record(spec, listing), **_manifest_tools(spec)}, path)
     log.info("plugin %s approved", spec.name)
 
 
