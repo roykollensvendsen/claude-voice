@@ -1,0 +1,5 @@
+[[rule]]
+name = "only a read-only tool offers the bridges hop count"
+file = "src/claude_voice/plugins.py"
+find = '^\s*if known\.get\("read_only"\) is True:$'
+replace = 'if True:'

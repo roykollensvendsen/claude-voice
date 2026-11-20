@@ -48,7 +48,8 @@ new or changed tool, as [voice-feedback.md](voice-feedback.md) describes.
    other, and refuses an unknown tool. A plugin bounds its own chain from a
    record it keeps on its side, such as the time of the press, never from the
    arguments the voice sends back. The bridge also stops a chain after six calls,
-   whatever the plugin says. Use it only to follow up on something already
+   whatever the plugin says. No plugin tool may take a parameter named `_hop`,
+   since that name is the bridge's count of calls in a chain. Use it only to follow up on something already
    happening, never to start an action. The test is named after the rule.
 5. **Say what actually happened.** After an action, read the device's state back
    and say that: "Started. The vacuum is cleaning", or "I sent the start; the

@@ -105,3 +105,14 @@ async def test_a_hop_count_that_is_not_a_small_whole_number_ends_the_chain(tmp_p
         out, _ = await look(tmp_path / str(hop), {"tool": "garage_status", "args": {}}, {"_hop": hop})
         assert "next" not in out, hop
         assert Strict.seen == [{}], hop
+
+
+async def test_only_a_read_only_tool_offers_the_bridges_hop_count(tmp_path):
+    fake, _ = stand_in(None)
+    async with Client(bridge(tmp_path, [GARAGE], factory=factory(fake))) as c:
+        schemas = {t.name: t.input_schema for t in (await c.list_tools()).tools}
+    hop = schemas["garage_status"]["properties"]["_hop"]
+    assert hop["type"] == "integer" and (hop["minimum"], hop["maximum"]) == (0, 5)
+    assert "pass it back unchanged" in hop["description"]
+    assert "_hop" not in schemas["garage_status"].get("required", [])
+    assert "_hop" not in schemas["garage_confirm"]["properties"]
