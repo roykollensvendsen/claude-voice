@@ -32,10 +32,16 @@ until the owner approves version 2.
     machine could not save the pairing. The hub says to free space on the
     machine and pair again. It was never paired, and no key was given.
   - `bad_request`, with `400`, from `POST /pair`: the body was not a pairing
-    request. It does not count as a wrong code.
+    request: not JSON, or with no `code` field. It does not count as a wrong
+    code. A body with a `code` field counts as a wrong code whatever that
+    code's length or letters, so a sender who changes the shape still ends
+    the window after five.
   - `late`, inside MCP: the call started, but ran past the agent's limit. It
     may still finish, and its `call_id` stays kept, so sending it again gets
     `duplicate_call`. The hub says it may have happened, as for a timeout.
+    The same call under a new `call_id` runs again, so version 2 should say
+    that a tool is safe to repeat, or says in its own description that it
+    is not.
   - `not_run`, inside MCP: the agent was too busy to start the call within its
     limit, so it never reached the plugin. Its `call_id` is freed, so the hub
     may send the same call again, and it runs.
