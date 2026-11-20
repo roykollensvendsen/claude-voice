@@ -1,0 +1,5 @@
+[[rule]]
+name = "a base that cannot be read fails closed"
+file = "src/voice_checks/gates.py"
+find = 'raise GateError\(msg\) from failed'
+replace = 'return ""'

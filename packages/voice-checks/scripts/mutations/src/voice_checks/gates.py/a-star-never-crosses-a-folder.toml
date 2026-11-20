@@ -1,0 +1,5 @@
+[[rule]]
+name = "a star never crosses a folder"
+file = "src/voice_checks/gates.py"
+find = 'out\.append\("\[\^/\]\*"\)'
+replace = 'out.append(".*")'

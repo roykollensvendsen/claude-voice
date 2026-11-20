@@ -231,6 +231,31 @@ jobs:
       - name: Its own tests
         run: uv run pytest -q -p no:cacheprovider --strict-markers --cov=voice_checks
 
+  # github-rights-v1 R4: a pull request that changes the files judging it, its gate files, is
+  # merged by the owner. Not required by main's protection, so the owner can still merge one;
+  # a session's merge guard needs every check green, so a red one here stops a self-merge.
+  gate-files:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: packages/voice-checks
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0     # the base's history, to judge by the list as it was there too
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          version: "0.12.13"
+          python-version: "3.12"
+      - run: uv sync --locked
+      - name: No gate file changed
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: uv run voice-checks gate-files --root ../.. --base "$BASE"
+
   checks:
     needs: scope
     if: ${{ !cancelled() }}

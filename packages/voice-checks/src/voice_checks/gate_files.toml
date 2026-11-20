@@ -1,0 +1,36 @@
+# The gate files (github-rights-v1, §4 point 4 and R4): the files that decide how a pull
+# request is judged. A session never merges a pull request that changes one; the owner does.
+#
+# Read by voice-checks' gate-files check in CI, and by claude-voice's guard from the bridge's
+# own checkout, never from a session's worktree. A repo may add paths, under
+# [tool.voice-checks.gate-files] add = [...] in its pyproject.toml, and never take one away.
+#
+# `*` stands for any name within one folder, and `**` for any number of folders, none included.
+
+[gates]
+paths = [
+    # The workflows, and who owns what.
+    ".github/**",
+    "CODEOWNERS",
+    # What the checks run with: settings, locked versions, and the recipes.
+    "**/pyproject.toml",
+    "**/uv.lock",
+    "justfile",
+    "committed.toml",
+    "setup.cfg",
+    "tox.ini",
+    # Every script a workflow runs, and the rows that prove the rules hold, wherever they live.
+    "scripts/**",
+    "**/scripts/mutations/**",
+    # The shared check tools' code, and this list: a pull request that drops a line from it
+    # is judged by the list as it was.
+    # RULE: the list names itself so dropping a line from it is a gate change
+    "packages/voice-checks/src/**",
+    # The guard and the permission files.
+    "**/permissions.json",
+    "**/guard.py",
+    "**/session_hook.py",
+    "**/org_rules.py",
+    "**/owner_rules.py",
+    "**/never_touch.py",
+]

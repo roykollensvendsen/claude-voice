@@ -4,7 +4,22 @@ import argparse
 import pathlib
 import sys
 
-from voice_checks import bump, docs, temp_files
+from voice_checks import bump, docs, gates, temp_files
+
+
+def _gate_files(args: argparse.Namespace) -> int:
+    try:
+        found = gates.judge(pathlib.Path(args.root), args.base)
+    except gates.GateError as refused:
+        print(f"voice-checks: {refused}")
+        return 1
+    for line in found:
+        print(f"voice-checks: this pull request {line}")
+    if found:
+        print(f"voice-checks: {gates.OWNER_MERGES}.")
+        return 1
+    print("voice-checks: this pull request touches no gate file, and weakens no mutation row.")
+    return 0
 
 
 def _temp_files(args: argparse.Namespace) -> int:
@@ -60,6 +75,10 @@ def main(argv: list[str] | None = None) -> int:
     guide.add_argument("--root", default=".", help="the plugin's checkout (default: here)")
     guide.add_argument("--write", action="store_true", help="write the README's step list from the guide first")
     guide.set_defaults(run=_docs)
+    gated = commands.add_parser("gate-files", help="fail a pull request that changes the files judging it")
+    gated.add_argument("--root", default=".", help="the repo's checkout (default: here)")
+    gated.add_argument("--base", required=True, help="the branch the pull request goes into, such as origin/main")
+    gated.set_defaults(run=_gate_files)
     args = parser.parse_args(argv)
     result: int = args.run(args)
     return result

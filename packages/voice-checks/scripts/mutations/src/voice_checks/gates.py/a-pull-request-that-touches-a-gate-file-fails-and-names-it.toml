@@ -1,0 +1,5 @@
+[[rule]]
+name = "a pull request that touches a gate file fails and names it"
+file = "src/voice_checks/gates.py"
+find = 'found = \[f"changes \{path\}, a gate file"'
+replace = 'found = []'
