@@ -1,5 +1,6 @@
 """Which of CI's slower jobs a pull request runs, and the gate that adds the jobs up."""
 
+import ast
 import fnmatch
 import pathlib
 import re
@@ -21,7 +22,7 @@ def ok(**outputs):
 def test_only_a_pull_request_may_leave_out_the_slower_jobs():
     for event in ("push", "schedule", "workflow_dispatch"):
         assert ci_scope.scope(event, []) == {"windows": True, "python313": True, "template": True}
-    assert ci_scope.scope("pull_request", ["src/claude_voice/server.py"]) == {
+    assert ci_scope.scope("pull_request", ["src/claude_voice/mailbox.py"]) == {
         "windows": False,
         "python313": False,
         "template": False,
@@ -38,12 +39,68 @@ def test_each_slower_job_runs_when_a_path_of_its_own_changes():
         assert all(ci_scope.scope("pull_request", [path]).values()), path
 
 
+def test_a_change_to_the_shared_test_helpers_runs_everything():
+    for path in ("tests/conftest.py", "tests/fakes.py"):
+        assert all(ci_scope.scope("pull_request", [path]).values()), path
+
+
+def git(repo, *args):
+    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+
+
+def test_a_moved_file_counts_under_its_old_path_as_well_as_its_new_one(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    git(tmp_path, "init", "-q", "-b", "main")
+    (tmp_path / "safe_git.py").write_text("x = 1\n" * 20, encoding="utf-8")
+    git(tmp_path, "add", ".")
+    git(tmp_path, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "one")
+    git(tmp_path, "mv", "safe_git.py", "moved.py")
+    git(tmp_path, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "two")
+    assert sorted(ci_scope.changed("HEAD~1", "HEAD")) == ["moved.py", "safe_git.py"]
+
+
 def test_every_path_the_scope_lists_names_a_file():
     tracked = subprocess.run(["git", "-C", str(ROOT), "ls-files"], check=True, capture_output=True, text=True)
     files = tracked.stdout.split()
     for job, globs in ci_scope.JOBS.items():
         for glob in globs:
             assert any(fnmatch.fnmatch(f, glob) for f in files), f"{job}: {glob} names no file"
+
+
+def touches_processes_or_files(path):
+    """Whether a module starts or stops processes, copies files, sets their mode or joins
+    paths by hand: the things that behave differently on Windows."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import) and any(a.name in RISKY for a in node.names):
+            return True
+        if isinstance(node, ast.ImportFrom) and node.module in RISKY:
+            return True
+        if isinstance(node, ast.Attribute) and ast.unparse(node) in RISKY_CALLS:
+            return True
+    return False
+
+
+RISKY = {"subprocess", "signal", "shutil"}
+RISKY_CALLS = {
+    "os.chmod",
+    "os.kill",
+    "os.path.join",
+    "asyncio.create_subprocess_exec",
+    "asyncio.create_subprocess_shell",
+}
+
+
+def test_every_module_that_touches_processes_or_files_runs_windows_or_says_why_not():
+    modules = sorted((ROOT / "src" / "claude_voice").glob("*.py"))
+    for module in modules:
+        name = module.relative_to(ROOT).as_posix()
+        listed = any(fnmatch.fnmatch(name, glob) for glob in ci_scope.WINDOWS)
+        if touches_processes_or_files(module):
+            assert listed or ci_scope.WINDOWS_EXEMPT.get(name), f"{name} touches processes or files"
+        assert not (listed and name in ci_scope.WINDOWS_EXEMPT), f"{name} is both listed and exempt"
+    for name in ci_scope.WINDOWS_EXEMPT:
+        assert (ROOT / name).is_file(), f"{name} is exempt but names no file"
 
 
 def test_the_gate_passes_a_skipped_job_only_when_the_scope_left_it_out():

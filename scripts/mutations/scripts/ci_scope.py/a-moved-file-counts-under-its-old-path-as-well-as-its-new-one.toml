@@ -1,0 +1,5 @@
+[[rule]]
+name = "a moved file counts under its old path as well as its new one"
+file = "scripts/ci_scope.py"
+find = '^\s*diff = \["git", "diff", "--name-only", "--no-renames", f"\{base\}\.\.\.\{head\}"\]$'
+replace = 'diff = ["git", "diff", "--name-only", "-M", f"{base}...{head}"]'
