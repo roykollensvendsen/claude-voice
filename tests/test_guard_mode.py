@@ -296,6 +296,27 @@ def test_a_relative_cd_under_cdpath_is_never_followed(tmp_path, monkeypatch, com
     assert verdict == "deny"
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "export GIT_DIR=THERE/.git; git push origin feat/x",
+        "export GIT_WORK_TREE=THERE && git push origin feat/x",
+        "declare -x GIT_DIR=THERE/.git; git push origin feat/x",
+        "set -a; GIT_DIR=THERE/.git; git push origin feat/x",
+        "export GIT_CONFIG_GLOBAL=THERE/cfg; git push origin feat/x",
+        "ENV",
+    ],
+)
+def test_git_settings_set_anywhere_in_the_command_or_the_hook_environment_are_refused(tmp_path, monkeypatch, command):
+    """Here is a fork; the settings point git at a clone of the owner's repo."""
+    here, there = clone(tmp_path / "here", FORK), clone(tmp_path / "there", OWNERS)
+    if command == "ENV":
+        monkeypatch.setenv("GIT_DIR", str(there / ".git"))
+        command = "git push origin feat/x"
+    verdict, _ = decision(guard.answer(hook(here, command.replace("THERE", str(there))), UPSTREAM))
+    assert verdict == "deny"
+
+
 def test_a_relative_cd_that_starts_with_a_dot_is_followed_under_cdpath(tmp_path, monkeypatch):
     here = clone(tmp_path / "here", OWNERS)
     clone(here / "claude-voice", FORK)

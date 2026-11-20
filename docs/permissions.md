@@ -306,7 +306,9 @@ only the role's entry in the owner's own roles file chooses between them.
   relative `cd` while CDPATH is set, or a move by `pushd`, `eval` or `then cd`; a
   push to an address written in the command; a
   push with `--git-dir` or `--work-tree`; a push that brings its own git settings
-  with `-c`, `--config-env`, `--repo` or the environment; and a push run behind
+  with `-c`, `--config-env`, `--repo` or the environment, including `GIT_DIR`,
+  `GIT_WORK_TREE` or `GIT_CONFIG*` set anywhere in the command or already set
+  for the hook; and a push run behind
   another command or a shell, such as `timeout` or `sh -c`.
 - **Own-clone**, set with `push_mode = "own-clone"` on the role. Every push
   address of `origin` must be the role's `upstream`, or the push is refused.
