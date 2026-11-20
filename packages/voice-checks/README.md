@@ -40,8 +40,8 @@ uv run voice-checks temp-files
   ```
 
   The check then proves it. Each named function must be in the same module, and must remove
-  something: it calls `rmtree`, `unlink`, `rmdir` or `remove`, itself or through another of
-  the module's functions. A marker that names nothing, an unknown name, or a function that
+  something: it calls `rmtree`, `unlink`, `rmdir` or `os.remove`, itself or through another
+  of the module's functions. A list's `remove` does not count. A marker that names nothing, an unknown name, or a function that
   removes nothing still fails, and says which.
 
 ## Move the pin

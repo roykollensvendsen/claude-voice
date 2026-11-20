@@ -54,7 +54,7 @@ def test_a_module_in_src_keeps_no_temporary_path_as_a_constant():
 
 
 RUN_FOLDERS = """\
-import shutil, tempfile
+import os, shutil, tempfile
 
 def remove(folder):
     shutil.rmtree(folder)
@@ -72,6 +72,12 @@ def dead_runs(folders):
 
 def says_hello():
     print("hello")
+
+def removes_a_file(path):
+    os.remove(path)
+
+def drops_from_a_list(folders, folder):
+    folders.remove(folder)
 """
 
 
@@ -86,6 +92,10 @@ def test_a_folder_its_named_functions_remove_is_let_through(place):
     assert offences(_run_folders(**{place: marker})) == []
 
 
+def test_os_remove_counts_as_removing():
+    assert offences(_run_folders(above="# temp-files: removed by removes_a_file")) == []
+
+
 @pytest.mark.parametrize(
     ("marker", "said"),
     [
@@ -93,8 +103,15 @@ def test_a_folder_its_named_functions_remove_is_let_through(place):
         ("# temp-files: removed by nowhere", "nowhere is not a function in this module"),
         ("# temp-files: removed by says_hello", "says_hello removes nothing"),
         ("# temp-files: removed by end_run, says_hello", "says_hello removes nothing"),
+        ("# temp-files: removed by drops_from_a_list", "drops_from_a_list removes nothing"),
     ],
-    ids=["a bare marker", "an unknown name", "a function that removes nothing", "one of two removes nothing"],
+    ids=[
+        "a bare marker",
+        "an unknown name",
+        "a function that removes nothing",
+        "one of two removes nothing",
+        "a list's remove",
+    ],
 )
 def test_a_marker_that_proves_nothing_still_fails(marker, said):
     found = offences(_run_folders(above=marker))
