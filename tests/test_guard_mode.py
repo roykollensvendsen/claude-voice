@@ -26,6 +26,7 @@ def git(folder, *args):
 
 
 def clone(tmp_path, origin):
+    tmp_path.mkdir(parents=True, exist_ok=True)
     git(tmp_path, "init", "-q")
     git(tmp_path, "remote", "add", "origin", origin)
     return tmp_path
@@ -161,6 +162,50 @@ def test_a_push_insteadof_in_the_clone_that_points_a_fork_at_the_owners_repo_is_
     folder = clone(tmp_path, "https://github.com/someone/claude-voice")
     git(folder, "config", f"url.{OWNERS}.pushInsteadOf", "https://github.com/someone/claude-voice")
     verdict, _ = decision(guard.answer(hook(folder, "git push origin feat/x"), UPSTREAM))
+    assert verdict == "deny"
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["git push gh:someone/claude-voice feat/x", "git push https://github.com/someone/claude-voice feat/x"],
+)
+def test_a_fork_only_push_to_an_address_written_in_the_command_is_refused(tmp_path, command):
+    """git rewrites a written address through pushInsteadOf too, so only a remote's name is read."""
+    folder = clone(tmp_path, FORK)
+    git(folder, "config", f"url.{OWNERS}.pushInsteadOf", "gh:someone/claude-voice")
+    verdict, reason = decision(guard.answer(hook(folder, command), UPSTREAM))
+    assert verdict == "deny" and "name the remote" in reason
+
+
+@pytest.mark.parametrize("option", ["-C {}", "--git-dir={}/.git", "--git-dir {}/.git --work-tree {}"])
+def test_a_fork_only_push_from_another_clone_is_refused(tmp_path, option):
+    """The session's own folder pushes `fork` to the fork; the other clone's `fork` is the upstream."""
+    here, there = clone(tmp_path / "here", FORK), clone(tmp_path / "there", FORK)
+    git(here, "remote", "add", "fork", FORK)
+    git(there, "remote", "add", "fork", OWNERS)
+    command = f"git {option.format(there, there)} push fork feat/x"
+    verdict, _ = decision(guard.answer(hook(here, command), UPSTREAM))
+    assert verdict == "deny"
+
+
+def test_a_fork_remote_with_a_second_push_address_at_the_upstream_is_refused(tmp_path):
+    folder = clone(tmp_path, FORK)
+    git(folder, "remote", "add", "fork", FORK)
+    git(folder, "config", "--add", "remote.fork.pushurl", FORK)
+    git(folder, "config", "--add", "remote.fork.pushurl", OWNERS)
+    verdict, _ = decision(guard.answer(hook(folder, "git push fork feat/x"), UPSTREAM))
+    assert verdict == "deny"
+
+
+@pytest.mark.parametrize("name", ["old-name", "claude-voice-ui", "Claude-Voice"])
+def test_a_fork_only_push_to_any_repository_of_the_upstreams_owner_is_refused(name):
+    """GitHub sends a renamed repository's old address on to the new one."""
+    verdict, _ = decide("git push fork feat/x", {"fork": f"https://github.com/RoyKollensvendsen/{name}"})
+    assert verdict == "deny"
+
+
+def test_in_own_clone_mode_a_second_push_address_elsewhere_is_refused():
+    verdict, _ = decide("git push origin feat/x", {"origin": f"{OWNERS}\n{FORK}"}, own_clone=True)
     assert verdict == "deny"
 
 

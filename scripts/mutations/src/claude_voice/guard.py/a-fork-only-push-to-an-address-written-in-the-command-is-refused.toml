@@ -1,0 +1,5 @@
+[[rule]]
+name = "a fork-only push to an address written in the command is refused"
+file = "src/claude_voice/guard.py"
+find = '^    if "/" in target or ":" in target:$'
+replace = '    if False:'

@@ -1,5 +1,5 @@
 [[rule]]
 name = "in own-clone mode a clone that does not push to the role's repository is refused"
 file = "src/claude_voice/guard.py"
-find = 'if origin is None or not same_repository\(origin, upstream\):'
-replace = '    if origin is None:'
+find = 'if not pushes_to or not all\(same_repository\(url, upstream\) for url in pushes_to\):'
+replace = '    if not pushes_to:'

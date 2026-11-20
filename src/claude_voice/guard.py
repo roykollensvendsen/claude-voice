@@ -76,7 +76,7 @@ def _pushes(command: str) -> list[Push]:
             continue
         rest, before = words[1:], list[str]()
         while rest and rest[0].startswith("-"):  # options before the subcommand, such as -C dir
-            step = 2 if rest[0] in ("-C", "-c", "--config-env") else 1
+            step = 2 if rest[0] in ("-C", "-c", "--config-env", "--git-dir", "--work-tree") else 1
             before, rest = before + rest[:step], rest[step:]
         if rest and rest[0] == "push":
             found.append(Push(rest[1:], before, environment))
@@ -93,6 +93,17 @@ def same_repository(url: str, repository: str) -> bool:
     path = match.group(1).removesuffix("/").removesuffix(".git")
     owner, _, name = repository.partition("/")
     return path.count("/") == 1 and path.split("/")[0].lower() == owner.lower() and path.split("/")[1] == name
+
+
+def _owner_of(url: str) -> str | None:
+    """The owner a GitHub push address names, without case, or None for any other address."""
+    match = GITHUB.fullmatch(url.strip())
+    return match.group(1).split("/")[0].lower() if match else None
+
+
+def _elsewhere(push: Push) -> bool:
+    """Whether the push runs in another clone than the session's, by -C, --git-dir or --work-tree."""
+    return any(word.startswith(("-C", "--git-dir", "--work-tree")) for word in push.before)
 
 
 def _sets_own_settings(push: Push) -> str | None:
@@ -112,17 +123,32 @@ def _fork_only(push: Push, upstream: str, remote_url: Callable[[str], str | None
     # RULE: a fork-only push that gives git settings of its own is refused
     if own:
         return f"Pushing with {own} is refused: a contribute session pushes only to your own fork, as its remote says."
+    # RULE: a fork-only push from another clone is refused
+    if _elsewhere(push):
+        return (
+            "Pushing from another folder with -C, --git-dir or --work-tree is refused: the guard can only "
+            f"tell that the session's own folder does not push to {upstream}. Change to that clone first."
+        )
     positional = [a for a in push.args if not a.startswith("-")]
     target = positional[0] if positional else default
-    url = target if ("/" in target or ":" in target) else remote_url(target)
+    # RULE: a fork-only push to an address written in the command is refused
+    if "/" in target or ":" in target:
+        return (
+            f"Pushing to the address {target} is refused: name the remote instead, such as `fork`, "
+            "so the guard can read where it really goes."
+        )
+    urls = remote_url(target)
     # RULE: a push whose address cannot be read is refused
-    if url is None:
+    if urls is None:
         return (
             f"Pushing to {target} is refused: the guard could not read where it goes. "
             "Check the remote with `git remote -v` and the clone's settings with `git config --list --local`."
         )
+    owner = upstream.partition("/")[0].lower()
+    reached = [url for url in urls.splitlines() if _owner_of(url) == owner]
     # RULE: a contribute session never pushes to the upstream repository
-    if same_repository(url, upstream) or same_repository(url.lower(), upstream.lower()):
+    if reached:
+        url = reached[0]
         return (
             f"Pushing to {upstream} ({url}) is refused: a contribute session pushes only to your own fork. "
             "Fork it with `gh repo fork --remote --remote-name fork`, push there, "
@@ -136,8 +162,9 @@ def _own_clone(push: Push, upstream: str, remote_url: Callable[[str], str | None
     """A push in own-clone mode: refused when the clone does not push to the role's repository,
     and otherwise asked."""
     origin = remote_url("origin")
+    pushes_to = origin.splitlines() if origin else []
     # RULE: in own-clone mode a clone that does not push to the role's repository is refused
-    if origin is None or not same_repository(origin, upstream):
+    if not pushes_to or not all(same_repository(url, upstream) for url in pushes_to):
         return (
             "deny",
             f"Pushing is refused: this role's settings name {upstream}, "
@@ -206,7 +233,7 @@ def answer(hook_input: dict[str, Any], upstream: str, own_clone: bool = False) -
         return pushed.split("/", 1)[0] if pushed else "origin"
 
     verdict = decide(
-        command, upstream, own_clone, lambda name: git("remote", "get-url", "--push", name), default_remote
+        command, upstream, own_clone, lambda name: git("remote", "get-url", "--push", "--all", name), default_remote
     )
     if verdict is None:
         return {}
