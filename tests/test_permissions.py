@@ -642,13 +642,12 @@ def test_files_in_the_repository_may_be_edited_but_its_claude_settings_ask_first
 
 
 #: The tools that move something in the house, by the names the bridge gives its plugins' tools.
+#: The tools that carry out a yes are refused outright instead; see PLUGIN_CONFIRMS below.
 DEVICE_ACTIONS = (
     "garage_request",
-    "garage_confirm",
     "garage_switch",
     "garage_press_button",
     "tv_power_request",
-    "tv_power_confirm",
     "vacuum_start",
     "vacuum_stop",
     "vacuum_pause",
@@ -839,3 +838,49 @@ def test_applied_settings_have_the_placeholders_filled(tmp_path):
     every = written["allow"] + written["ask"] + written["deny"]
     assert not [rule for rule in every if "{" in rule and "}" in rule]
     assert f"Bash(rm -r* {folder.resolve()})" in written["deny"]
+
+
+# -- acting in the owner's name through the voice connector ----------------------------
+
+#: Plugin tools that carry out what the owner said yes to. The bridge's own tools are read
+#: from its registry below; these come from plugins, which this repository does not hold.
+PLUGIN_CONFIRMS = (
+    "garage_confirm",
+    "tv_power_confirm",
+    "heatpump_set_confirm",
+    "mister_launch_confirm",
+    "xbox_home_confirm",
+    "xbox_launch_confirm",
+    "xbox_power_confirm",
+)
+
+
+def _acts_for_the_owner(tool: str) -> bool:
+    return tool in ("approve", "deny", "answer_question") or tool.endswith("_confirm")
+
+
+def _bridge_tools(tmp_path) -> set[str]:
+    import asyncio
+
+    from mcp.client import Client
+
+    from claude_voice.server import build_server
+    from claude_voice.sessions import SessionManager
+    from claude_voice.store import Store
+
+    async def offered() -> set[str]:
+        m = SessionManager(Store(tmp_path / "b.db"), project_root=tmp_path)
+        async with Client(build_server(m)) as client:
+            return {t.name for t in (await client.list_tools()).tools}
+
+    return asyncio.run(offered())
+
+
+@pytest.mark.parametrize("server", ["claude-voice", "claude_ai_claude-voice"])
+def test_a_session_can_never_answer_or_confirm_for_the_owner_through_the_connector(server, tmp_path):
+    """A session holding the connector could approve its own prompt, or confirm a device action."""
+    denied = permissions.load().deny
+    owners = {tool for tool in _bridge_tools(tmp_path) if _acts_for_the_owner(tool)}
+    assert {"approve", "deny", "answer_question", "plugin_approve_confirm", "developer_mode_confirm"} <= owners
+    missing = [t for t in sorted(owners | set(PLUGIN_CONFIRMS)) if f"mcp__{server}__{t}" not in denied]
+    assert missing == []
