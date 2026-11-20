@@ -200,6 +200,7 @@ class Config:
     transport: str
     host: str = "127.0.0.1"
     port: int = 8811
+    local_port: int = api.LOCAL_PORT  # bound to 127.0.0.1 only; the one port that counts as here
     token: str | None = None
     public_hosts: list[str] = field(default_factory=list)
     public_url: str = ""
@@ -278,9 +279,16 @@ def load_config(env: Mapping[str, str], transport: str) -> Config:
         transport=transport,
         host=env.get("CLAUDE_VOICE_HOST", "127.0.0.1"),
         port=int(env.get("CLAUDE_VOICE_PORT", "8811")),
+        local_port=int(env.get("CLAUDE_VOICE_LOCAL_PORT", str(api.LOCAL_PORT))),
         token=env.get("CLAUDE_VOICE_TOKEN"),
         public_hosts=[h for h in env.get("CLAUDE_VOICE_PUBLIC_HOSTS", "").split(",") if h],
     )
+    # RULE: the two ports can not be the same
+    if cfg.local_port == cfg.port:
+        raise ConfigError(
+            f"CLAUDE_VOICE_LOCAL_PORT ({cfg.local_port}) must differ from CLAUDE_VOICE_PORT ({cfg.port}). "
+            f"Leave it unset for {api.LOCAL_PORT}, or set another free port."
+        )
     cfg.courier_name = env.get("CLAUDE_VOICE_COURIER_NAME", "").strip() or transcripts.COURIER_NAME
     cfg.ui_origins = [o.strip().rstrip("/") for o in env.get("CLAUDE_VOICE_UI_ORIGINS", "").split(",") if o.strip()]
     ui_folder = _ui_folder(env)
@@ -632,6 +640,7 @@ def build_server(
     roles_file: Path | None = roles.USER_FILE,
     doctor_host: doctor.Host | None = None,
     bridge_port: int = 8811,
+    local_port: int = api.LOCAL_PORT,
     statusline_dir: Path = usage.STATUSLINE_DIR,
     presence: Presence | None = None,
     update_log: Path = updater.LOG,
@@ -2599,6 +2608,7 @@ def build_server(
             away=lambda app_open: PRESENCE[0].away(app_open=app_open),
             route=_router(route, across),
             activity=activity_view,
+            local_port=local_port,
         ).routes(mcp)
 
     mcp.prompt_book = prompt_book  # type: ignore[attr-defined]  # for tests

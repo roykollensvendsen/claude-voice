@@ -97,6 +97,8 @@ class TailnetOnly:
 
 
 LOCAL_NAMES = ("127.0.0.1", "localhost")
+#: The bridge's local port, bound to 127.0.0.1 only and never forwarded (ADR-CV-012).
+LOCAL_PORT = 8812
 FORWARDING = (b"x-forwarded-for", b"forwarded")
 
 
@@ -122,13 +124,17 @@ def _own(port: Any, scheme: str = "") -> set[str]:
     return {f"{scheme}{name}:{port}" for name in LOCAL_NAMES}
 
 
-def from_here(scope: Scope) -> bool:
-    """Whether a request comes from this computer itself (ADR-CV-012). Tailscale and a
-    preview server forward the phone's requests from this computer too, so the peer alone
-    is not enough: nothing may have forwarded it, it must be addressed to the bridge's own
-    local address, and a page that sent it must be the bridge's own."""
+def from_here(scope: Scope, local_port: int) -> bool:
+    """Whether a request comes from this computer itself (ADR-CV-012). It must have arrived
+    on the bridge's local port, which is bound to 127.0.0.1 and never forwarded: the socket
+    says so, never a header. Tailscale and a preview server forward the phone's requests from
+    this computer too, so after that nothing may have forwarded it, it must be addressed to
+    the bridge's own local address, and a page that sent it must be the bridge's own."""
+    # RULE: a request that did not arrive on the local port is not from here
+    if tuple(scope.get("server") or ()) != ("127.0.0.1", local_port):
+        return False
     peer = str((scope.get("client") or ("", 0))[0])
-    port = (scope.get("server") or ("", None))[1]
+    port = local_port
     headers = scope.get("headers") or []
     # RULE: a request from another computer is not from here
     if not _loopback(peer):
@@ -269,8 +275,10 @@ class EventApi:
         away: Callable[[bool], bool] | None = None,
         route: Callable[[str, Any, str], dict[str, Any]] | None = None,
         activity: Any = None,
+        local_port: int = LOCAL_PORT,
     ) -> None:
         self.store = store
+        self.local_port = local_port  # the only port a request may count as from here on
         self.login_secret = login_secret
         self.public_url = public_url.rstrip("/")
         self.check_token = check_token
@@ -470,14 +478,14 @@ class EventApi:
     async def whoami(self, request: Request) -> Response:
         """Whether the page asking is on this computer itself, so it may offer to open a
         session's terminal. It says nothing about the bridge, so it needs no signing in."""
-        return JSONResponse({"here": from_here(request.scope)}, headers={"Cache-Control": "no-store"})
+        return JSONResponse({"here": from_here(request.scope, self.local_port)}, headers={"Cache-Control": "no-store"})
 
     async def session_focus(self, request: Request) -> Response:
         """Bring a session's terminal to the front on this computer (ADR-CV-012)."""
         if not await self._allowed(request):
             return JSONResponse({"error": "sign in first"}, 401)
         # RULE: only a request from here may bring a terminal to the front
-        if not from_here(request.scope):
+        if not from_here(request.scope, self.local_port):
             return JSONResponse({"reason": "not_here"}, 403)
         if self.focus is None:
             return JSONResponse({"reason": "no_window_list"}, 501)
@@ -805,7 +813,7 @@ class EventApi:
                 await asyncio.to_thread(self.activity.switch, body)
             except ValueError as exc:
                 return JSONResponse({"error": str(exc)}, 400)
-        out = await asyncio.to_thread(self.activity.state, from_here(request.scope))
+        out = await asyncio.to_thread(self.activity.state, from_here(request.scope, self.local_port))
         return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
     async def activity_clear(self, request: Request) -> Response:
@@ -822,7 +830,7 @@ class EventApi:
             return refused
         scope, window = request.query_params.get("scope", "all"), request.query_params.get("window", "1h")
         try:
-            out = await asyncio.to_thread(self.activity.series, scope, window, from_here(request.scope))
+            out = await asyncio.to_thread(self.activity.series, scope, window, from_here(request.scope, self.local_port))
         except ValueError as exc:
             return JSONResponse({"error": str(exc)}, 400)
         if out is None:  # unknown and not allowed look the same
@@ -835,7 +843,7 @@ class EventApi:
         if refused:
             return refused
         scope = request.query_params.get("scope", "all")
-        out = await asyncio.to_thread(self.activity.now, scope, from_here(request.scope))
+        out = await asyncio.to_thread(self.activity.now, scope, from_here(request.scope, self.local_port))
         if out is None:
             return JSONResponse({"error": "the activity view is off, or no such scope"}, 404)
         return JSONResponse(out, headers={"Cache-Control": "no-store"})
