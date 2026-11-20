@@ -1,0 +1,5 @@
+[[rule]]
+name = "when main's levels are missing, the base is measured"
+file = "scripts/ratchet.py"
+find = '^\s*return measure_base\(\)$'
+replace = 'return {}'

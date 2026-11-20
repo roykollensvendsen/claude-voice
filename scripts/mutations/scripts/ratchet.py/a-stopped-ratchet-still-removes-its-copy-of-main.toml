@@ -1,0 +1,5 @@
+[[rule]]
+name = "a stopped ratchet still removes its copy of main"
+file = "scripts/ratchet.py"
+find = '^\s*signal\.signal\(getattr\(signal, name\), stop\)$'
+replace = 'pass'
