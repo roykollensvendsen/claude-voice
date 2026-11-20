@@ -188,6 +188,64 @@ def test_a_fork_only_push_from_another_clone_is_refused(tmp_path, option):
     assert verdict == "deny"
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git -C {there} push origin feat/x",
+        "cd {there} && git push origin feat/x",
+        "cd {there}; git push origin feat/x",
+        "cd {there}\ngit push origin feat/x 2>&1",
+    ],
+)
+def test_a_push_is_judged_by_the_remotes_of_the_folder_it_runs_in(tmp_path, command):
+    """The session's folder pushes to the owner; the other clone is a fork, and goes."""
+    here, there = clone(tmp_path / "here", OWNERS), clone(tmp_path / "there", FORK)
+    assert guard.answer(hook(here, command.format(there=there)), UPSTREAM) == {}
+
+
+@pytest.mark.parametrize("command", ["cd {there} && git push origin feat/x", "git -C {there} push origin feat/x"])
+def test_a_push_after_moving_into_a_clone_of_the_upstream_is_refused(tmp_path, command):
+    here, there = clone(tmp_path / "here", FORK), clone(tmp_path / "there", OWNERS)
+    verdict, _ = decision(guard.answer(hook(here, command.format(there=there)), UPSTREAM))
+    assert verdict == "deny"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "(cd {there}); git push origin feat/x",
+        "cd {there} & git push origin feat/x",
+        "cd {there} | git push origin feat/x",
+    ],
+)
+def test_a_move_that_may_not_last_judges_the_push_in_both_folders(tmp_path, command):
+    """Here is the owner's repo; a move inside a subshell, or beside a pipe, does not reach the push."""
+    here, there = clone(tmp_path / "here", OWNERS), clone(tmp_path / "there", FORK)
+    verdict, _ = decision(guard.answer(hook(here, command.format(there=there)), UPSTREAM))
+    assert verdict == "deny"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "cd $OTHER && git push origin feat/x",
+        "cd - && git push origin feat/x",
+        "cd {there}/missing && git push origin feat/x",
+        "git -C $OTHER push origin feat/x",
+    ],
+)
+def test_a_push_in_a_folder_the_guard_cannot_read_is_refused(tmp_path, command):
+    here, there = clone(tmp_path / "here", FORK), clone(tmp_path / "there", FORK)
+    verdict, _ = decision(guard.answer(hook(here, command.format(there=there)), UPSTREAM))
+    assert verdict == "deny"
+
+
+def test_a_push_in_another_readable_clone_asks_in_own_clone_mode_naming_that_folder(tmp_path):
+    here, there = clone(tmp_path / "here", OWNERS), clone(tmp_path / "there", OWNERS)
+    verdict, reason = decision(guard.answer(hook(here, f"cd {there} && git push origin feat/x"), UPSTREAM, True))
+    assert verdict == "ask" and str(there) in reason
+
+
 def test_a_fork_remote_with_a_second_push_address_at_the_upstream_is_refused(tmp_path):
     folder = clone(tmp_path, FORK)
     git(folder, "remote", "add", "fork", FORK)
@@ -273,7 +331,7 @@ def test_a_lone_ampersand_still_splits_the_commands():
 
 
 def test_a_push_to_the_fork_after_a_newline_still_goes():
-    assert decide("cd x\ngit push fork main", {"fork": FORK}) is None
+    assert decide("echo x\ngit push fork main", {"fork": FORK}) is None
 
 
 def test_a_fork_only_push_from_another_clone_asks_in_own_clone_mode_naming_the_other_folder():
