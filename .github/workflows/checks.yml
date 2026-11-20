@@ -277,7 +277,7 @@ jobs:
   # The one job a branch rule can require instead of the many: it passes only when every
   # other job passed, or was left out because the scope said so.
   gate:
-    needs: [scope, commits, windows, clean-install, quality, template, checks]
+    needs: [scope, commits, windows, clean-install, quality, template, voice-checks, checks]
     if: ${{ always() && github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
