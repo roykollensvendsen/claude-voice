@@ -406,7 +406,7 @@ class _UnreachableStep:
         self.waits, self.ended = 0, ended
         # Past the highest pid this machine hands out, so no group has this number.
         limit = pathlib.Path("/proc/sys/kernel/pid_max")
-        self.pid = int(limit.read_text()) + 1 if limit.exists() else 2**22 + 1
+        self.pid = int(limit.read_text(encoding="utf-8")) + 1 if limit.exists() else 2**22 + 1
 
     def wait(self):
         self.waits += 1

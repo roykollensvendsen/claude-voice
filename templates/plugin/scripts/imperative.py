@@ -170,7 +170,7 @@ def subjects(commit_range: str, cwd: str | None = None) -> list[tuple[str, str]]
 
 def from_file(path: str) -> list[tuple[str, str]]:
     """The subject of a message being written, as the commit-msg hook sees it."""
-    for line in pathlib.Path(path).read_text().splitlines():
+    for line in pathlib.Path(path).read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
         if stripped and not stripped.startswith("#"):
             return [(pathlib.Path(path).name, stripped)]
