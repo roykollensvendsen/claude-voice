@@ -40,7 +40,7 @@ def line_of(command: str, place: routing.Place, **kwargs) -> int | None:
 def test_every_prompt_goes_to_the_owner_while_no_manager_answers(place):
     for tool, given in [("Read", {"file_path": str(place.repo / "src" / "a.py")}), ("Bash", {"command": "git status"})]:
         out = routing.sort(tool, given, place=place, now=DAY)
-        assert out.to == "roy" and out.shape is True and out.line is None
+        assert out.to == "owner" and out.shape is True and out.line is None
 
 
 # -- the fixed list, one test per line ----------------------------------------------------
@@ -95,7 +95,7 @@ def test_line_3_money_goes_to_the_owner(place, tool):
 def test_line_3_a_plugin_marked_money_goes_to_the_owner_for_now(place):
     """Step 2 reads the manifest's money mark; until then no plugin tool is a shape at all."""
     out = routing.sort("mcp__claude-voice__fuel_price", {}, place=place, now=DAY)
-    assert out.to == "roy" and out.shape is False
+    assert out.to == "owner" and out.shape is False
 
 
 @pytest.mark.parametrize(
@@ -220,7 +220,7 @@ def test_line_12_every_device_tool_goes_to_the_owner_for_now(place):
     """Step 2 reads which plugin tools are read only; until then every plugin tool goes to the owner."""
     for tool in ("mcp__claude-voice__garage_request", "mcp__claude-voice__weather_now"):
         out = routing.sort(tool, {}, place=place, now=DAY)
-        assert out.to == "roy" and out.shape is False
+        assert out.to == "owner" and out.shape is False
 
 
 @pytest.mark.parametrize("path", [".local/state/claude-voice/sessions.toml", ".local/state/claude-voice/ledger.jsonl"])
@@ -459,7 +459,7 @@ def test_without_knowing_the_sessions_folder_no_file_or_command_is_a_shape(place
 )
 def test_an_evasion_goes_to_the_owner_and_is_no_shape(place, command):
     out = bash(command, place)
-    assert out.to == "roy" and out.shape is False, command
+    assert out.to == "owner" and out.shape is False, command
 
 
 def test_a_symlink_out_of_the_repo_is_no_shape(place, tmp_path):
@@ -539,7 +539,7 @@ def test_line_1_key_files_and_env_files_are_secret_even_inside_the_repo(place, n
 )
 def test_line_1_a_secret_named_through_the_home_folder_goes_to_the_owner(place, home_secrets, command):
     out = bash(command, place)
-    assert out.to == "roy" and out.shape is False
+    assert out.to == "owner" and out.shape is False
 
 
 def test_line_1_a_link_to_a_secret_goes_to_the_owner(place, home_secrets):
@@ -703,8 +703,8 @@ async def test_an_opened_approval_records_how_it_was_sorted_and_still_goes_to_th
             await asyncio.sleep(0.02)
     routed = [p["routed"] for p in listed]
     assert routed == [
-        {"to": "roy", "line": 2, "lines": [2], "shape": False},
-        {"to": "roy", "line": None, "lines": [], "shape": True},
+        {"to": "owner", "line": 2, "lines": [2], "shape": False},
+        {"to": "owner", "line": None, "lines": [], "shape": True},
     ]
 
 
@@ -847,7 +847,7 @@ async def test_sorting_a_prompt_never_holds_up_the_bridge(tmp_path):
 
     def slow_route(tool, given, cwd):
         release.wait(5)
-        return {"to": "roy", "line": None, "lines": [], "shape": False}
+        return {"to": "owner", "line": None, "lines": [], "shape": False}
 
     secret = "s3cret-token-for-the-routing-tests"
     bearer = {"Authorization": f"Bearer {secret}"}
@@ -869,4 +869,4 @@ async def test_sorting_a_prompt_never_holds_up_the_bridge(tmp_path):
             if "routed" in listed[0]:
                 break
             await asyncio.sleep(0.05)
-    assert listed[0]["routed"]["to"] == "roy"
+    assert listed[0]["routed"]["to"] == "owner"

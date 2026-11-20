@@ -1,5 +1,5 @@
 [[rule]]
 name = "every prompt goes to the owner while no manager answers"
 file = "src/claude_voice/routing.py"
-find = 'return Routing\("roy", tuple\(lines\), shape, ask\.why\)'
-replace = 'return Routing("manager" if shape else "roy", tuple(lines), shape, ask.why)'
+find = 'return Routing\("owner", tuple\(lines\), shape, ask\.why\)'
+replace = 'return Routing("manager" if shape else "owner", tuple(lines), shape, ask.why)'
