@@ -1,5 +1,5 @@
 [[rule]]
 name = "a push is judged by the remotes of the folder it runs in"
 file = "src/claude_voice/guard.py"
-find = '^            lasting = depth == 0 and not quoted and after in LASTING$'
-replace = '            lasting = False'
+find = '^            sure = \[_join\(folder, target\) for folder in sure\]$'
+replace = '            sure = list(sure)'
