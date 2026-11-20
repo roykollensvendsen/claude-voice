@@ -12,7 +12,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from . import envfile, invocation, procs, restarts
+from . import api, doctor, envfile, invocation, procs, restarts
 from .config import STATE_DIR
 from .server import Config, ConfigError, load_config, serve_forever
 
@@ -83,6 +83,7 @@ def checks(
     transport: str,
     login: Callable[[], tuple[bool, str]],
     env_file: Callable[[Mapping[str, str]], list[envfile.Problem]] = envfile.read,
+    serve_status: Callable[[], dict[str, Any]] | None = None,
 ) -> tuple[Config | None, list[dict[str, Any]]]:
     """Every check, in the order a person would fix them, each with the step that fixes it.
 
@@ -127,7 +128,17 @@ def checks(
     for problem in env_file(env):
         # RULE: a misread env file line is a warning and never stops the check
         add("env_file", False, problem.detail, problem.fix, required=False)
+    found.append(_local_port_check(cfg, serve_status or doctor.serve_status))
     return cfg, found
+
+
+def _local_port_check(cfg: Config | None, serve_status: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+    """Whether the local port, the one that counts as this computer, is kept off the tailnet."""
+    port = cfg.local_port if cfg else api.LOCAL_PORT
+    forwards = doctor.local_port_forwards(serve_status(), port)
+    detail = "; ".join(f["detail"] for f in forwards) or f"the local port {port} is not forwarded"
+    fix = " ".join(f["fix"] for f in forwards)
+    return {"name": "local_port", "ok": not forwards, "required": True, "detail": detail, "fix": fix}
 
 
 def main(

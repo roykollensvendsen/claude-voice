@@ -22,6 +22,15 @@ def no_checkout_programme_file(tmp_path_factory, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_real_tailscale_forwards(monkeypatch):
+    """`check` and the bridge's start ask Tailscale what it forwards. The suite never asks this
+    computer's: what the owner forwards changes no test's answer. A test passes its own."""
+    from claude_voice import doctor
+
+    monkeypatch.setattr(doctor, "serve_status", lambda: {})
+
+
+@pytest.fixture(autouse=True)
 def no_owner_developer_mode(tmp_path_factory, monkeypatch):
     """Keep the owner's own developer mode out of the suite: a test never reads it or ends it."""
     from claude_voice import devmode

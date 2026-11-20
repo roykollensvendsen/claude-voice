@@ -2709,6 +2709,7 @@ def serve_forever(cfg: Config) -> None:
     app = build_app(server, cfg.public_hosts, ui_origins=cfg.ui_origins, ui_dir=cfg.ui_dir)
     configure_logging(cfg.db.parent / LOG_FILE)
     envfile.warn(log)
+    warn_forwarded_local_port(cfg.local_port)
     calls = calllog.CallLog(config.STATE_DIR / calllog.FILE, store)
     try:
         calls.start_up()
@@ -2726,6 +2727,17 @@ def serve_forever(cfg: Config) -> None:
 #: What health says about the last restart: when, why, who asked, and the commits it brought.
 RESTART_FIELDS = ("at", "reason", "by", "changes", "from", "to", "note")
 SHUTDOWN_SECONDS = 5  # how long a stop waits for open requests; event streams never end
+
+
+def warn_forwarded_local_port(port: int, serve_status: Callable[[], dict[str, Any]] | None = None) -> None:
+    """Say in the log, at start, every forward that leads the tailnet to the local port."""
+    try:
+        forwards = doctor.local_port_forwards((serve_status or doctor.serve_status)(), port)
+    except Exception:  # a check that cannot run must never keep the bridge from starting
+        log.exception("could not ask Tailscale what it forwards")
+        return
+    for found in forwards:
+        log.error("%s. %s", found["detail"], found["fix"])
 
 
 def _bound(host: str, port: int) -> socket.socket:

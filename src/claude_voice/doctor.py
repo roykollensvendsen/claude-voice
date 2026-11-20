@@ -179,6 +179,50 @@ def _tcp_ports(status: dict[str, Any], port: int, funnel: set[str]) -> list[str]
     ]
 
 
+LOOPBACK_NAMES = ("127.0.0.1", "localhost", "::1")
+
+
+def _leads_to(target: str, port: int) -> bool:
+    """Whether a forward's target, written any way Tailscale takes, is this computer's `port`."""
+    from urllib.parse import urlsplit
+
+    try:
+        parts = urlsplit(target if "://" in target else f"tcp://{target}")
+        return parts.hostname in LOOPBACK_NAMES and parts.port == port
+    except ValueError:
+        return False
+
+
+def _forward(where: str, kind: str, listen: str, port: int) -> dict[str, str]:
+    command = "funnel" if kind == "funnel" else "serve"
+    flag = "--tcp" if kind == "tcp" else "--https"
+    return {
+        "detail": f"The local port {port} is forwarded to the tailnet at {where}",
+        "fix": f"Remove that forward with `tailscale {command} {flag}={listen} off`.",
+    }
+
+
+def local_port_forwards(status: dict[str, Any], port: int) -> list[dict[str, str]]:
+    """Every forward Tailscale serves that leads to the local port, with the step that removes it."""
+    found = []
+    for listen, tcp in (status.get("TCP") or {}).items():
+        # RULE: any forward of the local port fails the check
+        if _leads_to(str((tcp or {}).get("TCPForward", "")), port):
+            found.append(_forward(f"tcp port {listen}", "tcp", listen, port))
+    funnel = set((status.get("AllowFunnel") or {}).keys())
+    for hostport, web in (status.get("Web") or {}).items():
+        handlers = (web or {}).get("Handlers") or {}
+        if any(_leads_to(str((h or {}).get("Proxy", "")), port) for h in handlers.values()):
+            kind = "funnel" if hostport in funnel else "web"
+            found.append(_forward(hostport, kind, hostport.rsplit(":", 1)[-1], port))
+    return found
+
+
+def serve_status() -> dict[str, Any]:
+    """What `tailscale serve` says it serves on this computer, or nothing when it cannot say."""
+    return _serve_status(RealHost())
+
+
 def _tailnet_port(host: Host, port: int) -> dict[str, Any]:
     """A `tailscale serve` port, not open to Funnel, that leads to this bridge."""
     fix = (

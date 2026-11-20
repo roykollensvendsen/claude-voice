@@ -1,0 +1,5 @@
+[[rule]]
+name = "any forward of the local port fails the check"
+file = "src/claude_voice/doctor.py"
+find = 'if _leads_to\(str\(\(tcp or \{\}\)\.get\("TCPForward", ""\)\), port\):'
+replace = 'if False:'
