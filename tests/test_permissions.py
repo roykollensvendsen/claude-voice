@@ -263,6 +263,35 @@ def test_copying_or_printing_a_secret_file_is_refused():
             assert f"Bash({reader} {path})" in rules.deny
 
 
+MESSAGE_ROWS = [
+    "*.config/messages-mcp/*",
+    "*.config/ntfy/*",
+    "*.local/share/mautrix-meta/*",
+    "*.local/share/synapse/*",
+    "*.local/share/sms-bridge/*",
+    "*.local/share/ntfy/*",
+    "*.local/state/ntfy/*",
+    "*.local/state/messages-mcp/sent.jsonl*",
+]
+
+
+def test_every_reader_is_refused_the_message_bridges_files():
+    rules = permissions.load()
+    for path in MESSAGE_ROWS:
+        for reader in ("cat", "head", "grep", "cp", "base64"):
+            assert f"Bash({reader} {path})" in rules.deny, (reader, path)
+
+
+def test_no_session_can_change_who_may_be_messaged_or_the_undo_delay():
+    """door.toml is the door's allow list, send.toml its undo delay and the push server's
+    server.yml its deny-all policy; only the owner edits them."""
+    rules = permissions.load()
+    for path in ("messages-mcp/door.toml", "messages-mcp/send.toml", "ntfy/server.yml"):
+        for tool in ("Edit", "Write"):
+            assert f"{tool}(~/.config/{path})" in rules.deny, (tool, path)
+        assert any(rule.startswith("Bash(tee") and f".config/{path}" in rule for rule in rules.deny), path
+
+
 def test_the_copy_into_tmp_the_old_installer_allowed_is_retired():
     rules = permissions.load()
     assert "Bash(cp * /tmp/*)" in rules.retired
@@ -314,18 +343,31 @@ def test_everything_refused_before_is_still_refused():
     assert [rule for rule in INSTALLED_BEFORE if rule not in rules.deny] == []
 
 
-def test_the_shipped_rules_name_no_person_host_or_home_folder():
-    text = permissions.TABLE.read_text(encoding="utf-8")
+def _private_named(raw: dict) -> str | None:
+    """The first private marker the table names outside its generic home-relative rows."""
+    text = json.dumps(raw, indent=2)
     # The rules about removing folders name everyone's home and state folders the same way and
     # no person's, so those exact rules are taken out before looking for anything private.
-    raw = json.loads(text)
     owner = raw["what later runs as the owner"]
     generic = raw["what cannot be got back"]["targets"] + owner["home"]
-    assert not any(p.startswith(("/", "~")) for p in owner["home"])  # relative to any home folder
+    # Secret rows under any home's .local folder name a folder, not a host ending in .local.
+    generic += [f for f in raw["secrets"]["files"] if f.startswith(("*.local/share/", "*.local/state/"))]
     for rule in generic:
         text = text.replace(json.dumps(rule), "")
-    for private in ("/home/", "/users/", "~/", "roykollensvendsen", "192.168.", "100.", ".local/"):
-        assert private not in text.lower(), private
+    markers = ("/home/", "/users/", "~/", "roykollensvendsen", "192.168.", "100.", ".local/")
+    return next((private for private in markers if private in text.lower()), None)
+
+
+def test_the_shipped_rules_name_no_person_host_or_home_folder():
+    raw = json.loads(permissions.TABLE.read_text(encoding="utf-8"))
+    assert not any(p.startswith(("/", "~")) for p in raw["what later runs as the owner"]["home"])
+    assert _private_named(raw) is None
+
+
+def test_a_host_ending_in_local_is_still_found_past_the_home_folder_rows():
+    raw = json.loads(permissions.TABLE.read_text(encoding="utf-8"))
+    raw["secrets"]["files"].append("*printer.local/share/x")
+    assert _private_named(raw) == ".local/"
 
 
 # -- forced pushes: a session's own branch, never main ---------------------------------

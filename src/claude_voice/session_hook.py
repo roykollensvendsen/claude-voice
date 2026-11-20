@@ -73,6 +73,14 @@ SECRET_FILES = (
     "*secrets.yaml*",
     "*.config/gh/hosts.yml*",
     "*.claude/.credentials.json*",
+    "*.config/messages-mcp/*",
+    "*.config/ntfy/*",
+    "*.local/share/mautrix-meta/*",
+    "*.local/share/synapse/*",
+    "*.local/share/sms-bridge/*",
+    "*.local/share/ntfy/*",
+    "*.local/state/ntfy/*",
+    "*.local/state/messages-mcp/sent.jsonl*",
 )
 #: What a secret looks like: tokens by their prefix, key headers, long hex or base64 runs,
 #: and a secret's name set to a value. A 40-character hex run is a commit, and allowed.
