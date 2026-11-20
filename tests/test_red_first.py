@@ -423,3 +423,15 @@ def test_a_helper_in_a_test_file_keeps_its_old_body_in_the_before_tree(tmp_path)
         assert "def test_spaces_are_dropped" in text and "def pairs" in text and "import re" in text
     finally:
         git(repo, "worktree", "remove", "--force", str(before))
+
+
+def test_a_test_file_s_constants_come_from_the_branch_in_the_before_tree():
+    """A pull request may change the expected text a new test reads; the old text would let it pass unproved."""
+    old = 'SAY = "the door is open"\nROWS = [1]\n\n\ndef helper():\n    return 1\n'
+    new = (
+        'SAY = "the garage door is open"\nROWS = [1, 2]\n\n\ndef helper():\n    return 2\n\n\n'
+        "def test_says_it():\n    assert SAY and ROWS and helper()\n"
+    )
+    text = red_first.with_old_helpers(old, new)
+    assert 'SAY = "the garage door is open"' in text and "ROWS = [1, 2]" in text
+    assert "return 1" in text and "def test_says_it" in text

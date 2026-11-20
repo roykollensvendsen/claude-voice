@@ -216,19 +216,13 @@ def before_tree(base: str, head: str, dest: pathlib.Path, cwd: pathlib.Path | st
 
 
 def _blocks(source: str) -> dict[str, tuple[int, int]]:
-    """Each top-level definition or assignment by name, as its first and last line, decorators included."""
+    """Each top-level function or class by name, as its first and last line, decorators included.
+    Assignments are left out: in a test file they are mostly data a new test reads."""
     found: dict[str, tuple[int, int]] = {}
     for node in ast.parse(source).body:
-        names: list[str] = []
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            names = [node.name]
-        elif isinstance(node, ast.Assign):
-            names = [t.id for t in node.targets if isinstance(t, ast.Name)]
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            names = [node.target.id]
-        first = min([node.lineno, *(d.lineno for d in getattr(node, "decorator_list", []))])
-        for name in names:
-            found[name] = (first, node.end_lineno or node.lineno)
+            first = min([node.lineno, *(d.lineno for d in node.decorator_list)])
+            found[node.name] = (first, node.end_lineno or node.lineno)
     return found
 
 
