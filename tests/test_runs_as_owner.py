@@ -67,6 +67,7 @@ KINDS = [
     ".config/claude-voice/roles.toml",
     ".config/claude-voice/machines/x.toml",
     ".config/claude-voice/plugins/x.toml",
+    ".config/claude-voice/orgs/x.toml",
     ".config/gh/config.yml",
     ".config/uv/uv.toml",
     ".config/pip/pip.conf",
