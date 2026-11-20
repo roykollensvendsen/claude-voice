@@ -30,7 +30,11 @@ from typing import Any
 
 from claude_voice import safe_git
 
-SEGMENTS = re.compile(r"&&|\|\||;|\|")
+#: Where one command ends and the next begins: the shell's joiners, a new line, a lone `&`, and
+#: the marks of a subshell or a command substitution.
+SEGMENTS = re.compile(r"&&|\|\||;|\||\n|&|\$\(|[()`]")
+#: Shells that run a command line given to them with -c.
+SHELLS = frozenset({"sh", "bash", "dash", "zsh", "ksh"})
 OWN_CLONE = "own-clone"
 ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
 #: The ways of writing a GitHub address, each leaving `owner/name` after it.
@@ -48,6 +52,7 @@ class Push:
     args: list[str]
     before: list[str]
     environment: bool
+    placed: bool = True  # False for a push behind a wrapper the guard does not read word by word
 
 
 def _without_environment(words: list[str]) -> tuple[list[str], bool]:
@@ -63,8 +68,36 @@ def _without_environment(words: list[str]) -> tuple[list[str], bool]:
     return rest, found
 
 
+def _is_git(word: str) -> bool:
+    return word.rsplit("/", 1)[-1] == "git"
+
+
+def _inner(words: list[str]) -> list[str]:
+    """The command lines that a shell's -c or an eval among these words would run."""
+    lines = []
+    for i, word in enumerate(words):
+        name = word.rsplit("/", 1)[-1]
+        if name in SHELLS and "-c" in words[i + 1 :]:
+            at = words.index("-c", i + 1)
+            lines += words[at + 1 : at + 2]
+        elif name == "eval":
+            lines.append(" ".join(words[i + 1 :]))
+    return lines
+
+
+def _hidden(words: list[str]) -> bool:
+    """Whether a push sits behind a wrapper, such as `timeout 60 git push` or `sh -c '...'`.
+    Words that `echo` or `printf` print are text, never run."""
+    if words and words[0] in ("echo", "printf"):
+        return False
+    if any(_is_git(word) and "push" in words[i + 1 :] for i, word in enumerate(words)):
+        return True
+    return any(_pushes(line) for line in _inner(words))
+
+
 def _pushes(command: str) -> list[Push]:
-    """Every `git push` in a command line, `git -C dir push` and `NAME=value git push` included."""
+    """Every `git push` in a command line, `git -C dir push` and `NAME=value git push` included.
+    A push behind any other wrapper is found too, as one the guard could not read word by word."""
     found = []
     for segment in SEGMENTS.split(command):
         try:
@@ -72,7 +105,10 @@ def _pushes(command: str) -> list[Push]:
         except ValueError:
             words = segment.split()
         words, environment = _without_environment(words)
-        if not words or words[0] != "git":
+        if not words or not _is_git(words[0]):
+            # RULE: a push behind a wrapper is never let through unjudged
+            if _hidden(words):
+                found.append(Push([], [], environment, placed=False))
             continue
         rest, before = words[1:], list[str]()
         while rest and rest[0].startswith("-"):  # options before the subcommand, such as -C dir
@@ -118,7 +154,13 @@ def _sets_own_settings(push: Push) -> str | None:
 
 
 def _fork_only(push: Push, upstream: str, remote_url: Callable[[str], str | None], default: str) -> str | None:
-    """Why a push in fork-only mode is refused, or None when it may go."""
+    """Why a push in fork-only mode is refused, or None when it may go. Any repository of the
+    upstream's owner is refused, not only the upstream itself."""
+    if not push.placed:
+        return (
+            "This command runs git push behind another command or a shell, so the guard cannot read "
+            "where it goes. Run `git push <remote> <branch>` on its own line."
+        )
     own = _sets_own_settings(push)
     # RULE: a fork-only push that gives git settings of its own is refused
     if own:
@@ -144,13 +186,22 @@ def _fork_only(push: Push, upstream: str, remote_url: Callable[[str], str | None
             f"Pushing to {target} is refused: the guard could not read where it goes. "
             "Check the remote with `git remote -v` and the clone's settings with `git config --list --local`."
         )
+    unread = [url for url in urls.splitlines() if _owner_of(url) is None]
+    # RULE: a fork-only push to an address that is not plainly on GitHub is refused
+    if unread or not urls.strip():
+        return (
+            f"Pushing to {target} ({unread[0] if unread else 'no address'}) is refused: the guard could not "
+            "read where it goes. A contribute session pushes to a fork named by a plain GitHub address, "
+            "such as git@github.com:<you>/<repo>.git or https://github.com/<you>/<repo>."
+        )
     owner = upstream.partition("/")[0].lower()
     reached = [url for url in urls.splitlines() if _owner_of(url) == owner]
     # RULE: a contribute session never pushes to the upstream repository
     if reached:
         url = reached[0]
         return (
-            f"Pushing to {upstream} ({url}) is refused: a contribute session pushes only to your own fork. "
+            f"Pushing to {url} is refused: it is a repository of {owner}, who owns {upstream}, and a "
+            "contribute session pushes only to your own fork. "
             "Fork it with `gh repo fork --remote --remote-name fork`, push there, "
             f"then `gh pr create --repo {upstream}`. "
             f"For a role that works on the owner's own repository, the owner sets {TURN_ON} in its role entry."
@@ -172,9 +223,13 @@ def _own_clone(push: Push, upstream: str, remote_url: Callable[[str], str | None
             "Check it with `git remote get-url --push origin`.",
         )
     own = _sets_own_settings(push)
+    if not push.placed:
+        own = "git push behind another command or a shell, which the guard cannot read word by word"
     positional = [a for a in push.args if not a.startswith("-")]
     if own is None and positional and positional[0] != "origin":
         own = f"the target {positional[0]} instead of origin"
+    if own is None and _elsewhere(push):
+        own = "another folder with -C, --git-dir or --work-tree, judged here by this folder's origin"
     why = (
         f"This push names {own}, so it needs your yes."
         if own
