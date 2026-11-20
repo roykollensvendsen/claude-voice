@@ -92,20 +92,31 @@ def _kept_paths(tree: ast.Module, where: str) -> list[str]:
 
 
 #: A line that makes a temporary file or folder, and the line above it, may name the functions
-#: in its module that remove it: `# temp-files: removed by end_run, dead_runs`.
+#: in its module that remove it: `# temp-files: removed by end_run, remove`.
 MARKER = re.compile(r"#\s*temp-files:\s*removed by\b(.*)$")
-#: The calls that remove a file or folder, by their last name.
-REMOVERS = frozenset({"rmtree", "unlink", "rmdir", "remove"})
+#: The calls that remove a file or folder whatever they are called on: shutil's rmtree, and the
+#: unlink and rmdir of os and of a Path. A list or a set has none of them.
+REMOVERS = frozenset({"rmtree", "unlink", "rmdir"})
 NAME_IT = "name the function that removes it"
+
+
+def _remover(call: ast.Call) -> bool:
+    """Whether a call removes a file or folder. remove() counts only as os.remove, never a list's."""
+    func = call.func
+    if isinstance(func, ast.Attribute):
+        on_os = isinstance(func.value, ast.Name) and func.value.id == "os"
+        return func.attr in REMOVERS or (func.attr == "remove" and on_os)
+    return isinstance(func, ast.Name) and func.id in REMOVERS
 
 
 def _removes(name: str, functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef], seen: set[str]) -> bool:
     """Whether a function of the module removes something, itself or through another of its functions."""
     seen.add(name)
     for call in (c for c in ast.walk(functions[name]) if isinstance(c, ast.Call)):
-        called = getattr(call.func, "attr", None) or getattr(call.func, "id", None)
-        if called in REMOVERS:
+        if _remover(call):
             return True
+        # A function of the module is called by its bare name, so `items.remove()` is never one.
+        called = call.func.id if isinstance(call.func, ast.Name) else None
         if called in functions and called not in seen and _removes(called, functions, seen):
             return True
     return False
