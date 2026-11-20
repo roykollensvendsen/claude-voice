@@ -407,3 +407,65 @@ def test_every_abbreviation_of_recursive_counts_as_recursive(tmp_root):
     for flag in ("--r", "--re", "--recursive"):
         assert decide(f"rm {flag} /home/x/src", tmp_root) == "ask", flag
     assert decide("rm --force /home/x/notes.txt", tmp_root) is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git push origin :b",
+        "git push origin +b",
+        "git push origin +HEAD:b",
+        "git push origin a :b",
+        "git push origin --delete b",
+        "git push origin -d b",
+        "git push --mirror origin",
+        "git push --prune origin",
+        "git push --all origin",
+        "git push -fd origin b",
+        "git push -nd origin b",
+        "git push -uf origin b",
+        "git push --del origin b",
+        "git push --mir origin",
+        "git push --pru origin",
+        "git push --al origin",
+        "git push origin -- :b",
+        "git -C /x push origin :b",
+        "git -c push.default=current push origin :b",
+        "git --no-pager push origin -d b",
+        "env GIT_TRACE=1 git push origin :b",
+        "GIT_TRACE=1 git push origin :b",
+        "env -u HOME git push origin :b",
+        "timeout 60 git push origin :b",
+        "/usr/bin/git push origin :b",
+        "git status && git push origin :b",
+        "git -c remote.origin.mirror=true push origin",
+        "git -c remote.origin.push=:b push origin",
+        "git push 'origin' ':b'",
+    ],
+)
+def test_a_push_that_deletes_or_forces_a_remote_branch_is_refused(tmp_root, command):
+    assert decide(command, tmp_root) == "deny"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git push origin b",
+        "git push -u origin b",
+        "git push --force-with-lease=b:abc origin b",
+        "git push origin HEAD:b",
+        "git push -o ci.skip origin b",
+        "git push -od origin b",
+        "git status",
+        "echo it's done",
+        "git push --push-option ci.skip origin b",
+    ],
+)
+def test_a_plain_push_is_left_to_the_other_rules(tmp_root, command):
+    assert decide(command, tmp_root) is None
+
+
+def test_a_refused_push_says_who_deletes_a_branch(tmp_root):
+    hook_input = {"tool_name": "Bash", "session_id": SID, "cwd": "/", "tool_input": {"command": "git push origin :b"}}
+    out = session_hook.answer(hook_input, tmp_root=tmp_root, repos=OWN, terms=None)["hookSpecificOutput"]
+    assert out["permissionDecision"] == "deny" and "manager" in out["permissionDecisionReason"]

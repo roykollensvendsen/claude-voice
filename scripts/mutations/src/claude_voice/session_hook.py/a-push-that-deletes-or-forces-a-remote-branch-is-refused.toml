@@ -1,0 +1,5 @@
+[[rule]]
+name = "a push that deletes or forces a remote branch is refused"
+file = "src/claude_voice/session_hook.py"
+find = 'return DENY if pushes_away\(command\) else None'
+replace = '    return None'
