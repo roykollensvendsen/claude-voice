@@ -63,7 +63,11 @@ tmp_path_retention_policy = "failed"
 line-length = 120
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "ASYNC"]
+# PLW1514: a file opened without naming its encoding reads differently on Windows. The rule is
+# still in preview, so preview is on for the rules named here only.
+select = ["E", "F", "I", "B", "UP", "ASYNC", "PLW1514"]
+preview = true
+explicit-preview-rules = true
 
 [tool.ruff.lint.isort]
 known-first-party = ["claude_voice", "claude_voice_power"]

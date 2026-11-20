@@ -95,12 +95,13 @@ def _download(
         got = run(["run", "download", str(run_id), "--repo", repo, "--name", artifact, "--dir", tmp])
         levels = Path(tmp) / name
         saved.parent.mkdir(parents=True, exist_ok=True)
-        saved.write_text(levels.read_text() if got is not None and levels.exists() else "null")
+        found = levels.read_text(encoding="utf-8") if got is not None and levels.exists() else "null"
+        saved.write_text(found, encoding="utf-8")
 
 
 def _read_saved(saved: Path) -> dict[str, Any] | None:
     try:
-        levels = json.loads(saved.read_text())
+        levels = json.loads(saved.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     return levels if isinstance(levels, dict) else None
