@@ -4,7 +4,9 @@ import asyncio
 import http.server
 import json
 import logging
+import shlex
 import threading
+from pathlib import Path
 
 import httpx
 import pytest
@@ -403,7 +405,15 @@ def test_the_hook_is_given_to_claude_code_only_for_questions_and_permission_prom
     entries = phone_hook.settings_entries("/usr/bin/python3")
     assert set(entries) == {"PreToolUse", "PermissionRequest"}
     assert entries["PreToolUse"][0]["matcher"] == "AskUserQuestion"
-    assert json.dumps(entries).count("claude_voice.phone_hook") == 2
+    assert json.dumps(entries).count("phone_hook.py") == 2
+
+
+SCRIPT = str(Path(phone_hook.__file__).resolve())
+
+
+def test_the_hook_is_run_as_its_own_file_by_the_systems_python_with_the_standard_library_only():
+    for entry in phone_hook.settings_entries().values():
+        assert entry[0]["hooks"][0]["command"] == shlex.join(["python3", "-I", "-S", SCRIPT])
 
 
 def test_installing_the_hook_keeps_every_other_setting_and_hook_and_can_run_twice(tmp_path):
@@ -418,7 +428,7 @@ def test_installing_the_hook_keeps_every_other_setting_and_hook_and_can_run_twic
     assert after["model"] == "opus"
     pre = after["hooks"]["PreToolUse"]
     commands = [h["command"] for m in pre for h in m["hooks"]]
-    assert other["command"] in commands and commands.count("/opt/cv/bin/python -I -m claude_voice.phone_hook") == 1
+    assert other["command"] in commands and commands.count(shlex.join(["/opt/cv/bin/python", "-I", "-S", SCRIPT])) == 1
     assert len(after["hooks"]["PermissionRequest"]) == 1
     assert (tmp_path / "settings.json.bak").exists()  # the file as it was, kept beside it
 
@@ -426,13 +436,14 @@ def test_installing_the_hook_keeps_every_other_setting_and_hook_and_can_run_twic
 def test_installing_the_hook_again_replaces_an_older_phone_hook_line(tmp_path):
     settings = tmp_path / "settings.json"
     old = {"type": "command", "command": "/old/venv/bin/python -m claude_voice.phone_hook", "timeout": 150}
+    moved = {"type": "command", "command": "python3 -I -S /old/claude-voice/src/claude_voice/phone_hook.py"}
     other = {"type": "command", "command": "$HOME/.claude/hooks/mine.py"}
     settings.write_text(
         json.dumps(
             {
                 "hooks": {
                     "PreToolUse": [{"matcher": "AskUserQuestion", "hooks": [old, other]}],
-                    "PermissionRequest": [{"matcher": "*", "hooks": [dict(old)]}],
+                    "PermissionRequest": [{"matcher": "*", "hooks": [dict(moved)]}],
                 }
             }
         )
@@ -440,7 +451,7 @@ def test_installing_the_hook_again_replaces_an_older_phone_hook_line(tmp_path):
     phone_hook.install(settings, "/opt/cv/bin/python")
     hooks = json.loads(settings.read_text())["hooks"]
     commands = {event: [h["command"] for m in hooks[event] for h in m["hooks"]] for event in hooks}
-    new = "/opt/cv/bin/python -I -m claude_voice.phone_hook"
+    new = shlex.join(["/opt/cv/bin/python", "-I", "-S", SCRIPT])
     assert commands["PreToolUse"] == [other["command"], new]
     assert commands["PermissionRequest"] == [new]
 
