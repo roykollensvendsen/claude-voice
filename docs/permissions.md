@@ -276,6 +276,25 @@ fence against a slip, and the files themselves stay readable by the owner alone.
 A new plugin that keeps a secret in a file of its own adds that file to
 `secrets.files` in the table, in the same pull request as the plugin.
 
+## The push guard for a role
+
+A session started for a role, such as `contribute`, runs behind a second hook,
+the push guard. It reads every `git push` in a command. It has two modes, and
+only the role's entry in the owner's own roles file chooses between them.
+
+- **Fork-only**, the default. A push is refused when any push address of the
+  named remote is on GitHub under the upstream's owner, whatever the repository
+  name, since GitHub sends a renamed repository's old address on. Also refused:
+  a push to an address written in the command, a push from another folder with
+  `-C`, `--git-dir` or `--work-tree`, and a push that brings its own git
+  settings with `-c`, `--config-env`, `--repo` or the environment.
+- **Own-clone**, set with `push_mode = "own-clone"` on the role. Every push
+  address of `origin` must be the role's `upstream`, or the push is refused.
+  Every push then asks the owner.
+
+The guard is a fence against a slip, not a wall. It cannot see a repository
+that was moved to another owner, since the old address then names someone else.
+
 ## The session hook
 
 Two routine steps used to wait on the owner many times a day: clearing out a

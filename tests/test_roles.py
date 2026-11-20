@@ -63,8 +63,9 @@ def test_the_guard_answers_claude_code_as_a_pre_tool_use_hook(tmp_path):
 
 def test_a_push_whose_address_cannot_be_read_is_refused():
     assert guard.refusal("git push origin feature", UPSTREAM, remote_url=lambda name: None, default_remote=lambda: "o")
-    fork = "git push https://github.com/someone/claude-voice feature"
-    assert guard.refusal(fork, UPSTREAM, remote_url=lambda name: None, default_remote=lambda: "o") is None
+    fork = "git push fork feature"
+    urls = {"fork": "https://github.com/someone/claude-voice"}
+    assert guard.refusal(fork, UPSTREAM, remote_url=urls.get, default_remote=lambda: "o") is None
 
 
 def test_the_guard_refuses_a_push_in_a_clone_whose_settings_it_does_not_read(tmp_path):
