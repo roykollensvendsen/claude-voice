@@ -32,6 +32,11 @@ line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
+# A file opened without naming its encoding reads as UTF-8 on Linux and as the
+# system's code page on Windows. It is a preview rule, so it is named on its own.
+preview = true
+explicit-preview-rules = true
+extend-select = ["PLW1514"]
 
 [tool.mypy]
 strict = true
