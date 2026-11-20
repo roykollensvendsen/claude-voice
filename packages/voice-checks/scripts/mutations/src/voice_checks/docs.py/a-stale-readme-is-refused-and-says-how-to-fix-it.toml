@@ -1,0 +1,5 @@
+[[rule]]
+name = "a stale readme is refused and says how to fix it"
+file = "src/voice_checks/docs.py"
+find = 'if fresh != readme:'
+replace = 'if False:'

@@ -4,7 +4,7 @@ import argparse
 import pathlib
 import sys
 
-from voice_checks import bump, temp_files
+from voice_checks import bump, docs, temp_files
 
 
 def _temp_files(args: argparse.Namespace) -> int:
@@ -29,6 +29,23 @@ def _bump(args: argparse.Namespace) -> int:
     return 0
 
 
+def _docs(args: argparse.Namespace) -> int:
+    root = pathlib.Path(args.root)
+    if args.write:
+        try:
+            docs.write(root)
+        except docs.DocsError as refused:
+            print(f"voice-checks: {refused}")
+            return 1
+    found = docs.problems(root)
+    for line in found:
+        print(f"voice-checks: {line}")
+    if found:
+        return 1
+    print("voice-checks: the setup guide can be followed, and the README's step list is made from it.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="voice-checks", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -39,6 +56,10 @@ def main(argv: list[str] | None = None) -> int:
     bumps.add_argument("--pyproject", default="pyproject.toml", help="the file holding the pin")
     bumps.add_argument("--sha", help="pin this commit instead of the newest release")
     bumps.set_defaults(run=_bump)
+    guide = commands.add_parser("docs", help="check the setup guide and the README's step list made from it")
+    guide.add_argument("--root", default=".", help="the plugin's checkout (default: here)")
+    guide.add_argument("--write", action="store_true", help="write the README's step list from the guide first")
+    guide.set_defaults(run=_docs)
     args = parser.parse_args(argv)
     result: int = args.run(args)
     return result
