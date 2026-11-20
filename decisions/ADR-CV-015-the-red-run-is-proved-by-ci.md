@@ -27,7 +27,8 @@ rearranged. It also leaves red commits on main for anyone running `git bisect`.
   together.
 - The `red-first` check runs the pull request's new and changed tests against
   its merge base, with only the tests applied. Each must fail there and pass on
-  the branch.
+  the branch. A helper a test file already had keeps its old body there, since
+  a fix may live in the helper itself.
 - No new or changed tests means it passes.
 - A test that pins behaviour that already exists is excused by a `Red-first:`
   line in the pull request body.

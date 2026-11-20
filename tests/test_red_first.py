@@ -385,3 +385,41 @@ def test_a_tree_s_tests_cannot_import_the_branch_s_scripts_through_the_plugin(tm
     (tmp_path / "tests/test_uses_it.py").write_text("import red_first\n\n\ndef test_uses_it():\n    pass\n")
     got = red_first.outcomes(["tests/test_uses_it.py::test_uses_it"], tmp_path, python=[sys.executable])
     assert got == {"tests/test_uses_it.py::test_uses_it": "failed"}
+
+
+def test_a_helper_in_a_test_file_keeps_its_old_body_in_the_before_tree(tmp_path):
+    """A fix may live in a test file's own helper; the new test must meet the old helper to prove it."""
+    repo = tmp_path / "repo"
+    (repo / "tests").mkdir(parents=True)
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "config", "user.email", "a@b.c")
+    git(repo, "config", "user.name", "A")
+    old = (
+        "import os\n\n\n"
+        'def parts(s):\n    return s.split(",")\n\n\n'
+        'def test_old():\n    assert parts("a,b") == ["a", "b"]\n'
+    )
+    (repo / "tests/test_code.py").write_text(old, encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "-q", "-m", "base")
+    base = git(repo, "rev-parse", "HEAD").strip()
+    new = (
+        "import os\nimport re\n\n\n"
+        'def parts(s):\n    return [p.strip() for p in s.split(",")]\n\n\n'
+        "def pairs(s):\n    return list(zip(parts(s), parts(s)))\n\n\n"
+        'def test_old():\n    assert parts("a,b") == ["a", "b"]\n\n\n'
+        'def test_spaces_are_dropped():\n    assert parts("a, b") == ["a", "b"] and pairs("a")\n'
+    )
+    (repo / "tests/test_code.py").write_text(new, encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "-q", "-m", "head")
+    head = git(repo, "rev-parse", "HEAD").strip()
+
+    before = tmp_path / "before"
+    red_first.before_tree(base, head, before, cwd=repo)
+    try:
+        text = (before / "tests/test_code.py").read_text(encoding="utf-8")
+        assert 'return s.split(",")' in text and "p.strip()" not in text  # the old helper
+        assert "def test_spaces_are_dropped" in text and "def pairs" in text and "import re" in text
+    finally:
+        git(repo, "worktree", "remove", "--force", str(before))

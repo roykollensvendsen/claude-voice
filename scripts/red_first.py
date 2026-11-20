@@ -3,8 +3,9 @@
 
 A test that passes on its first run proves nothing. This runs the tests a pull
 request adds or changes against its merge base, with only the changes under
-tests/ applied, and each must fail there. It runs them again on the branch,
-where each must pass. Run it from the repository root:
+tests/ applied, and each must fail there. A helper a test file already had keeps
+its old body there, since a fix may live in the helper itself. It runs them
+again on the branch, where each must pass. Run it from the repository root:
 
     uv run python scripts/red_first.py --base origin/main --head HEAD [--body-file body.md]
 
@@ -208,6 +209,49 @@ def before_tree(base: str, head: str, dest: pathlib.Path, cwd: pathlib.Path | st
             f" ({e.stderr.strip()}). Rebase on main and push again."
         )
         raise SystemExit(msg) from e
+    for path in changed_test_files(base, head, cwd=cwd):
+        old, new = _show(base, path, cwd), _show(head, path, cwd)
+        if old is not None and new is not None:
+            (dest / path).write_text(with_old_helpers(old, new), encoding="utf-8")
+
+
+def _blocks(source: str) -> dict[str, tuple[int, int]]:
+    """Each top-level definition or assignment by name, as its first and last line, decorators included."""
+    found: dict[str, tuple[int, int]] = {}
+    for node in ast.parse(source).body:
+        names: list[str] = []
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            names = [node.name]
+        elif isinstance(node, ast.Assign):
+            names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names = [node.target.id]
+        first = min([node.lineno, *(d.lineno for d in getattr(node, "decorator_list", []))])
+        for name in names:
+            found[name] = (first, node.end_lineno or node.lineno)
+    return found
+
+
+def _is_test(name: str) -> bool:
+    return name.startswith("test") or name.startswith("Test")
+
+
+def with_old_helpers(old: str, new: str) -> str:
+    """The branch's test file with every helper the base already had put back as it was there.
+
+    A fix may live in a test file's own helper; the new test only proves it against the old one.
+    A helper new on the branch, the imports and the tests themselves come from the branch."""
+    try:
+        before, after = _blocks(old), _blocks(new)
+    except SyntaxError:
+        return new
+    old_lines, lines = old.splitlines(keepends=True), new.splitlines(keepends=True)
+    # RULE: a helper in a test file keeps its old body in the before-tree
+    kept = {n: span for n, span in after.items() if n in before and not _is_test(n)}
+    for name, (first, last) in sorted(kept.items(), key=lambda item: -item[1][0]):
+        was_first, was_last = before[name]
+        lines[first - 1 : last] = old_lines[was_first - 1 : was_last]
+    return "".join(lines)
 
 
 class Unreported(Exception):
