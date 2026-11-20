@@ -246,6 +246,32 @@ def test_a_push_in_any_shape_of_command_line_asks_in_own_clone_mode(command):
     assert verdict == "ask"
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git push 2>&1",
+        "git push fork main 2>&1 | tail -1",
+        "git push &> log",
+        "git push >& log",
+        "git push 2> err.txt fork main",
+        "git push fork main > /dev/null 2>&1",
+    ],
+)
+def test_a_redirection_is_never_read_as_a_remote(command):
+    assert decide(command, {"origin": FORK, "fork": FORK}) is None
+
+
+def test_a_redirection_is_never_named_as_the_target_in_own_clone_mode():
+    verdict, reason = decide("git push 2>&1 | tail -1", {"origin": OWNERS}, own_clone=True)
+    assert verdict == "ask"
+    assert "2>" not in reason
+
+
+def test_a_lone_ampersand_still_splits_the_commands():
+    verdict, _ = decide("make & git push upstream main", {"upstream": OWNERS, "origin": FORK})
+    assert verdict == "deny"
+
+
 def test_a_push_to_the_fork_after_a_newline_still_goes():
     assert decide("cd x\ngit push fork main", {"fork": FORK}) is None
 
