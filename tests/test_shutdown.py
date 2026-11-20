@@ -41,7 +41,7 @@ def free_port():
 
 def test_the_bridge_stops_within_seconds_even_with_a_stream_open():
     port = free_port()
-    web = server.web_server(endless, "127.0.0.1", port)
+    web = server.web_server(endless, "127.0.0.1", port, free_port())  # never the running bridge's local port
     worker = threading.Thread(target=web.run, daemon=True)
     worker.start()
     for _ in range(100):

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a request counts as from here only on the local socket"
+file = "src/claude_voice/api.py"
+find = 'if tuple\(scope\.get\("server"\) or \(\)\) != \("127\.0\.0\.1", local_port\):'
+replace = 'if False:'

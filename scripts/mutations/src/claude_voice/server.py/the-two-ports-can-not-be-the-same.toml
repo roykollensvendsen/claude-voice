@@ -1,0 +1,5 @@
+[[rule]]
+name = "the two ports can not be the same"
+file = "src/claude_voice/server.py"
+find = 'if cfg\.local_port == cfg\.port:'
+replace = 'if False:'

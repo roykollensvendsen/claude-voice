@@ -12,6 +12,7 @@ import math
 import os
 import re
 import secrets
+import socket
 import subprocess
 import sys
 import threading
@@ -2701,6 +2702,7 @@ def serve_forever(cfg: Config) -> None:
         restart=restart,
         ui_origins=cfg.ui_origins,
         bridge_port=cfg.port,
+        local_port=cfg.local_port,
         sessions_file=roster.FILE.expanduser(),
         activity_file=config.STATE_DIR.expanduser() / activity.FILE,
     )
@@ -2714,7 +2716,7 @@ def serve_forever(cfg: Config) -> None:
     except Exception:  # the log must never keep the bridge from starting
         log.exception("the call log could not start; calls are not logged")
     try:
-        web_server(app, cfg.host, cfg.port).run()
+        web_server(app, cfg.host, cfg.port, cfg.local_port).run()
     finally:
         if CALLS:
             with contextlib.suppress(Exception):
@@ -2726,19 +2728,65 @@ RESTART_FIELDS = ("at", "reason", "by", "changes", "from", "to", "note")
 SHUTDOWN_SECONDS = 5  # how long a stop waits for open requests; event streams never end
 
 
-def web_server(app: Any, host: str, port: int) -> Any:
+def _bound(host: str, port: int) -> socket.socket:
+    """A socket bound to `host`:`port`, ready for the web server to listen on."""
+    sock = socket.socket(socket.AF_INET6 if ":" in host else socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # as uvicorn binds its own
+    try:
+        sock.bind((host, port))
+    except OSError:
+        sock.close()
+        raise
+    return sock
+
+
+class WebServer:
+    """One web server answering on two sockets: the tailnet's port, and the local port
+    bound to 127.0.0.1 only. One server means one start: one watcher, one report, one flush."""
+
+    def __init__(self, server: Any, sockets: list[socket.socket]) -> None:
+        self.server, self.sockets = server, sockets
+        self.config = server.config
+
+    @property
+    def started(self) -> bool:
+        return bool(self.server.started)
+
+    @property
+    def should_exit(self) -> bool:
+        return bool(self.server.should_exit)
+
+    @should_exit.setter
+    def should_exit(self, value: bool) -> None:
+        self.server.should_exit = value
+
+    def run(self) -> None:
+        self.server.run(sockets=self.sockets)
+
+
+def web_server(app: Any, host: str, port: int, local_port: int = api.LOCAL_PORT) -> WebServer:
     """The HTTP server, which stops within seconds of being asked: it waits that long for
     open requests, then closes the rest, so a restart never hangs on a stream."""
     import uvicorn
 
+    public = _bound(host, port)
+    try:
+        # RULE: the local socket is bound to 127.0.0.1 whatever the host
+        local = _bound("127.0.0.1", local_port)
+    except OSError as exc:
+        public.close()
+        raise ConfigError(
+            f"The local port {local_port} could not be opened beside port {port} ({exc.strerror}). "
+            f"Stop what uses it, or set CLAUDE_VOICE_LOCAL_PORT to another free port."
+        ) from None
     # No log config of its own, so uvicorn's lines, the request log included, reach the file.
     config = uvicorn.Config(
         app,
-        host=host,
-        port=port,
         log_level="info",
         log_config=None,
+        # RULE: forwarding headers never rewrite who asked
+        proxy_headers=False,
         # RULE: the bridge stops within seconds even with a stream open
         timeout_graceful_shutdown=SHUTDOWN_SECONDS,
     )
-    return uvicorn.Server(config)
+    return WebServer(uvicorn.Server(config), [public, local])

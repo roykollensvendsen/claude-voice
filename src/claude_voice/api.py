@@ -130,7 +130,7 @@ def from_here(scope: Scope, local_port: int) -> bool:
     says so, never a header. Tailscale and a preview server forward the phone's requests from
     this computer too, so after that nothing may have forwarded it, it must be addressed to
     the bridge's own local address, and a page that sent it must be the bridge's own."""
-    # RULE: a request that did not arrive on the local port is not from here
+    # RULE: a request counts as from here only on the local socket
     if tuple(scope.get("server") or ()) != ("127.0.0.1", local_port):
         return False
     peer = str((scope.get("client") or ("", 0))[0])
@@ -830,7 +830,8 @@ class EventApi:
             return refused
         scope, window = request.query_params.get("scope", "all"), request.query_params.get("window", "1h")
         try:
-            out = await asyncio.to_thread(self.activity.series, scope, window, from_here(request.scope, self.local_port))
+            here = from_here(request.scope, self.local_port)
+            out = await asyncio.to_thread(self.activity.series, scope, window, here)
         except ValueError as exc:
             return JSONResponse({"error": str(exc)}, 400)
         if out is None:  # unknown and not allowed look the same

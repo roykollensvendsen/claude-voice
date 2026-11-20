@@ -105,7 +105,7 @@ def test_one_server_answers_both_ports_and_starts_once(running):
     assert app.starts == 1
 
 
-def test_forwarding_headers_never_rewrite_who_asked_and_the_scheme_is_still_read(running):
+def test_forwarding_headers_never_rewrite_who_asked(running):
     _, web, public, _ = running
     seen = ask(public, **{"X-Forwarded-For": "100.101.102.103", "X-Forwarded-Proto": "https"})
     assert web.config.proxy_headers is False

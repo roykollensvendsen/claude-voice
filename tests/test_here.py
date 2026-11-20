@@ -1,15 +1,25 @@
 """ADR-CV-012: only a request from this computer itself, not one forwarded to it, may bring
 a session's terminal to the front. Each part of the rule has its own test."""
 
+import httpx
 import pytest
-from test_api import BEARER, bridge, client  # noqa: F401  (fixtures)
+from test_api import BEARER, bridge  # noqa: F401  (fixtures)
 from test_live import live, root  # noqa: F401  (fixtures)
 from test_remote_api import MOD, FakeMachine
 
 from claude_voice import api, terminals
 
-PORT = 8811
+PORT = api.LOCAL_PORT  # only a request on the local port can be from here
 OWN = f"http://127.0.0.1:{PORT}"
+
+
+def from_here(asked):
+    return api.from_here(asked, PORT)
+
+
+def on_this_computer(app):
+    """A client of the bridge's local port, as the laptop's own page is."""
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=OWN)
 
 
 def scope(client="127.0.0.1", host=f"127.0.0.1:{PORT}", origin=None, extra=()):
@@ -23,16 +33,16 @@ def scope(client="127.0.0.1", host=f"127.0.0.1:{PORT}", origin=None, extra=()):
 @pytest.mark.parametrize("host", [f"127.0.0.1:{PORT}", f"localhost:{PORT}"])
 @pytest.mark.parametrize("origin", [None, f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}"])
 def test_a_request_from_this_computer_to_the_bridge_itself_is_from_here(host, origin):
-    assert api.from_here(scope(host=host, origin=origin)) is True
+    assert from_here(scope(host=host, origin=origin)) is True
 
 
 def test_the_ipv6_loopback_is_this_computer_too():
-    assert api.from_here(scope(client="::1")) is True
+    assert from_here(scope(client="::1")) is True
 
 
 @pytest.mark.parametrize("peer", ["100.66.86.99", "192.168.1.20", "", "not-an-address"])
 def test_a_request_from_another_computer_is_not_from_here(peer):
-    assert api.from_here(scope(client=peer)) is False
+    assert from_here(scope(client=peer)) is False
 
 
 @pytest.mark.parametrize(
@@ -45,7 +55,7 @@ def test_a_request_from_another_computer_is_not_from_here(peer):
     ],
 )
 def test_a_forwarded_request_is_not_from_here(header):
-    assert api.from_here(scope(extra=[header])) is False
+    assert from_here(scope(extra=[header])) is False
 
 
 @pytest.mark.parametrize(
@@ -60,14 +70,14 @@ def test_a_forwarded_request_is_not_from_here(header):
     ],
 )
 def test_a_request_to_another_address_is_not_from_here(host):
-    assert api.from_here(scope(host=host)) is False
+    assert from_here(scope(host=host)) is False
 
 
 @pytest.mark.parametrize(
     "origin", ["https://evil.example", "https://ui.example", f"http://127.0.0.1:{PORT + 1}", "null", ""]
 )
 def test_a_request_sent_by_another_website_is_not_from_here(origin):
-    assert api.from_here(scope(origin=origin)) is False
+    assert from_here(scope(origin=origin)) is False
 
 
 # -- the endpoints -----------------------------------------------------------------------
@@ -94,7 +104,7 @@ def desk(bridge):  # noqa: F811
 
 async def test_whoami_says_here_to_this_computer_and_not_to_a_forwarded_request(bridge):  # noqa: F811
     _, app, _, _ = bridge
-    async with client(app) as c:
+    async with on_this_computer(app) as c:
         here = await c.get("/api/v1/whoami")
         forwarded = await c.get("/api/v1/whoami", headers={"X-Forwarded-For": "100.101.102.103"})
     assert here.status_code == 200 and here.json() == {"here": True}
@@ -104,7 +114,7 @@ async def test_whoami_says_here_to_this_computer_and_not_to_a_forwarded_request(
 
 async def test_a_session_is_brought_to_the_front_for_a_request_from_here(desk):
     _, app, fake = desk
-    async with client(app) as c:
+    async with on_this_computer(app) as c:
         out = await c.post("/api/v1/sessions/current-id/focus", headers={**BEARER, "Origin": OWN})
     assert out.status_code == 200 and out.json() == {"done": "raised"}
     assert fake.opened == ["current-id"]
@@ -112,7 +122,7 @@ async def test_a_session_is_brought_to_the_front_for_a_request_from_here(desk):
 
 async def test_only_a_request_from_here_may_bring_a_terminal_to_the_front(desk):
     _, app, fake = desk
-    async with client(app) as c:
+    async with on_this_computer(app) as c:
         out = await c.post(
             "/api/v1/sessions/current-id/focus", headers={**BEARER, "X-Forwarded-For": "100.101.102.103"}
         )
@@ -122,7 +132,7 @@ async def test_only_a_request_from_here_may_bring_a_terminal_to_the_front(desk):
 
 async def test_focus_sent_by_another_website_is_refused(desk):
     _, app, fake = desk
-    async with client(app) as c:
+    async with on_this_computer(app) as c:
         out = await c.post("/api/v1/sessions/current-id/focus", headers={**BEARER, "Origin": "https://evil.example"})
     assert out.status_code == 403 and out.json() == {"reason": "not_here"}
     assert fake.opened == []
@@ -130,7 +140,7 @@ async def test_focus_sent_by_another_website_is_refused(desk):
 
 async def test_focus_needs_signing_in_even_from_here(desk):
     _, app, fake = desk
-    async with client(app) as c:
+    async with on_this_computer(app) as c:
         out = await c.post("/api/v1/sessions/current-id/focus")
     assert out.status_code == 401 and fake.opened == []
 
@@ -139,7 +149,7 @@ async def test_a_session_on_another_machine_is_not_local(desk):
     server, app, fake = desk
     server.fleet.machines = [FakeMachine(sessions=[MOD])]
     await server.fleet.refresh()
-    async with client(app) as c:
+    async with on_this_computer(app) as c:
         out = await c.post("/api/v1/sessions/lukas-laptop/840ab631/focus", headers=BEARER)
     assert out.status_code == 409 and out.json() == {"reason": "not_local"}
     assert fake.opened == []
@@ -151,7 +161,7 @@ async def test_a_session_on_another_machine_is_not_local(desk):
 async def test_the_desktop_s_answer_is_passed_on_as_its_code(desk, answer):
     _, app, fake = desk
     fake.answer = answer
-    async with client(app) as c:
+    async with on_this_computer(app) as c:
         out = await c.post("/api/v1/sessions/current-id/focus", headers=BEARER)
     assert (out.status_code, out.json()) == answer
 
@@ -169,7 +179,7 @@ async def test_the_bridge_s_own_desktop_finds_a_running_session_by_its_id(bridge
             return True
 
     server.terminals = terminals.Terminals(Windows(), run=lambda c: "", spawn=lambda c: None)
-    async with client(app) as c:
+    async with on_this_computer(app) as c:
         gone = await c.post("/api/v1/sessions/no-such-id/focus", headers=BEARER)
         found = await c.post("/api/v1/sessions/current-id/focus", headers=BEARER)
     assert (gone.status_code, gone.json()) == (409, {"reason": "not_running"})

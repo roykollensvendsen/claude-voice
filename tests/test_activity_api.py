@@ -14,7 +14,7 @@ from claude_voice import api
 from claude_voice.store import Store
 
 SECRET = "a-secret-for-the-activity-tests"
-HOST = "http://127.0.0.1:8811"
+HOST = f"http://127.0.0.1:{api.LOCAL_PORT}"  # the laptop's own page, the one place that is here
 BEARER = {"Authorization": f"Bearer {SECRET}"}
 PHONE = {**BEARER, "Tailscale-User-Login": "someone@example.test"}
 
