@@ -1,0 +1,10 @@
+#!/bin/sh
+# Never commit an address, token or key from the owner's home: scan the staged files with
+# scripts/private_data_scan.py. Continuous integration runs the same scan over every file and
+# the whole history, so this is a convenience that catches it earlier, not the gate.
+# `just setup` turns it on for a clone, with the commit-msg hook, by
+#
+#     git config core.hooksPath .githooks
+#
+set -e
+python3 "$(git rev-parse --show-toplevel)/scripts/private_data_scan.py"
