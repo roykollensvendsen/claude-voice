@@ -1,0 +1,5 @@
+[[rule]]
+name = "only a pull request may leave out the slower jobs"
+file = "scripts/ci_scope.py"
+find = '^\s*if event != "pull_request":$'
+replace = 'if False:'
