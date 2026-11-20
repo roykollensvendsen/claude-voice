@@ -1,0 +1,5 @@
+[[rule]]
+name = "a change of branch stops the plugin"
+file = "src/claude_voice/plugins.py"
+find = 'if branch and spec\.branch != "main":'
+replace = 'if False:'

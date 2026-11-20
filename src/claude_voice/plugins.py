@@ -23,6 +23,7 @@ import logging
 import os
 import threading
 from collections.abc import AsyncIterator, Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -65,14 +66,25 @@ def _hash(shape: Any) -> str:
     return hashlib.sha256(json.dumps(shape, sort_keys=True).encode()).hexdigest()
 
 
+def _place(spec: PluginSpec, branch: bool = True) -> dict[str, Any]:
+    """Where the plugin runs from. The branch is left out on main, so an approval made before
+    the branch counted still matches a plugin on main."""
+    shape: dict[str, Any] = {"command": spec.command, "args": spec.args, "cwd": spec.cwd}
+    # RULE: a change of branch stops the plugin
+    if branch and spec.branch != "main":
+        shape["branch"] = spec.branch
+    return shape
+
+
 def fingerprint(spec: PluginSpec) -> str:
-    """What the owner approved to run: the command, folder and tools, never anything secret."""
-    return _hash({"command": spec.command, "args": spec.args, "cwd": spec.cwd, "tools": sorted(spec.tools)})
+    """What the owner approved to run: the command, folder, branch and tools, never anything
+    secret."""
+    return _hash({**_place(spec), "tools": sorted(spec.tools)})
 
 
 def place_fingerprint(spec: PluginSpec) -> str:
-    """Where the plugin runs from: its command and folder, without its tools."""
-    return _hash({"command": spec.command, "args": spec.args, "cwd": spec.cwd})
+    """Where the plugin runs from: its command, folder and branch, without its tools."""
+    return _hash(_place(spec))
 
 
 def input_fingerprint(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> str:
@@ -197,6 +209,48 @@ def _record(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> dict[str, A
 def approve(spec: PluginSpec, listing: dict[str, dict[str, Any]], path: Path | None = None) -> None:
     _write(spec.name, _record(spec, listing), path)
     log.info("plugin %s approved", spec.name)
+
+
+def migrate_branches(specs: list[PluginSpec], path: Path | None = None) -> list[tuple[str, str]]:
+    """Give each approval from before the branch counted the branch its settings name now, once,
+    so no plugin stops at the upgrade. Only an approval whose place still matches gets one.
+    Returns each plugin given a branch other than main, with that branch."""
+    target = (path or APPROVALS).expanduser()
+    body = _approvals(target)
+    frozen: list[tuple[str, str]] = []
+    changed = False
+    for spec in specs:
+        found = body.get(spec.name)
+        # RULE: the branch is given once and a second start changes nothing
+        if not isinstance(found, dict) or "migrated_branch" in found:
+            continue
+        before = _place(spec, branch=False)
+        # RULE: an approval that did not match is not given a branch
+        if found.get("place") != _hash(before):
+            continue
+        if found.get("runs") == _hash({**before, "tools": sorted(spec.tools)}):
+            found["runs"] = fingerprint(spec)
+        found["place"] = place_fingerprint(spec)
+        found["migrated_branch"] = {"value": spec.branch, "at": datetime.now(UTC).isoformat(timespec="seconds")}
+        changed = True
+        if spec.branch != "main":
+            frozen.append((spec.name, spec.branch))
+            log.info("plugin %s's approval now includes its branch, %s, from the settings", spec.name, spec.branch)
+    if changed:
+        _save(target, body)
+    return sorted(frozen)
+
+
+def frozen_branches_said(frozen: list[tuple[str, str]]) -> str | None:
+    """One line for the owner naming every plugin whose approval was given a branch other than
+    main, or None when there is none."""
+    if not frozen:
+        return None
+    named = ", ".join(f"{name}: {branch}" for name, branch in frozen)
+    return (
+        f"These plugins' approvals now include the branch your settings name ({named}). "
+        "Say take back and the plugin's name if one is wrong."
+    )
 
 
 def revoke(name: str, path: Path | None = None) -> bool:

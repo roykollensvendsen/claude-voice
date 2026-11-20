@@ -1179,6 +1179,10 @@ def build_server(
             api.HUB.publish("programme_hints", {"programme_hints": now})
         hints_seen[:] = [now]
 
+    # Approvals from before the branch counted are given it once, before any plugin starts.
+    frozen = plugins.frozen_branches_said(plugins.migrate_branches(repos.plugins, plugin_approvals))
+    if frozen:
+        watcher.record("claude-voice", "plugin_branch", frozen)
     active_plugins = plugins.started_before_listening(
         plugins_behind, lambda: plugins.start_approved(mcp, repos.plugins, plugin_approvals, plugin_client, commit_of)
     )

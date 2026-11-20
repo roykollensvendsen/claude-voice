@@ -1,0 +1,5 @@
+[[rule]]
+name = "an approval that did not match is not given a branch"
+file = "src/claude_voice/plugins.py"
+find = 'if found\.get\("place"\) != _hash\(before\):'
+replace = 'if False:'
