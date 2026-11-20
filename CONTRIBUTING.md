@@ -41,7 +41,18 @@ uv run python scripts/ratchet.py check --base origin/main
 python3 scripts/clean_install.py
 ```
 
-The last one follows the README's "Start here" on an empty Ubuntu, so it needs
+The ratchet and the mutation run take many minutes. Two quick forms catch most of what they
+would, in seconds, and are worth running before every push. The first compares only what the
+code shows and checks the rule rows. The second turns off only the rules of one file you
+changed. Neither replaces the full run in CI.
+
+<!-- not run: a gate's quick form; running it from inside a gate would recurse -->
+```
+uv run python scripts/ratchet.py check --base origin/main --fast
+uv run python scripts/mutate.py --only src/claude_voice/<the file you changed>.py
+```
+
+The last of the gates follows the README's "Start here" on an empty Ubuntu, so it needs
 Docker and about two minutes. Run it when you touch the README's first steps,
 the setup check or the packaging.
 

@@ -141,7 +141,9 @@ If you are a session working on this repository, rather than installing it:
 - Keep the quality ratchet: `uv run python scripts/ratchet.py check --base origin/main`
   must hold. Never make a measure worse without a `Ratchet-Exception:` line in
   the pull request saying why. Never edit `quality.json` to pass: main keeps the
-  levels, and the file holds only the time budget.
+  levels, and the file holds only the time budget. Before every push, run its quick form,
+  `--fast`, and `scripts/mutate.py --only <file>` for each source file you changed; never
+  a throwaway script of your own.
 - Push only to your owner's fork; a pull request goes to
   `roykollensvendsen/claude-voice` with `gh pr create --repo`.
 - You may rebase your own pull-request branch and push it again, with
