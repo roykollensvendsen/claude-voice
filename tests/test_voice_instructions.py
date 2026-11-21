@@ -108,6 +108,7 @@ def test_the_default_rules_are_named_and_each_reaches_the_voice_on_a_line_of_its
     """A later setting switches each one by name, so the names are part of the design."""
     assert set(DEFAULT_RULES) == {
         "read_next_step",
+        "wait_for_yes",
         "follow_next",
         "plain_terminal",
         "delegate_unable",
@@ -123,6 +124,13 @@ def test_the_voice_follows_a_next_at_once_and_stops_without_one():
     assert "When an answer carries `next`, call that tool with its args at once, without asking" in said
     assert "read each answer's say; stop when there is no `next`." in said
     assert DEFAULT_RULES["read_next_step"] in said  # a step in plain words is still read out
+
+
+def test_after_a_question_that_asks_for_a_yes_the_voice_ends_its_turn():
+    """A tool that asks before it acts gets its answer only if the voice stops talking."""
+    said = INSTRUCTIONS
+    assert "When a tool returns a question to confirm before it acts" in said
+    assert "end your turn at once. Say nothing else until the owner answers." in said
 
 
 async def test_a_reply_from_a_session_is_read_as_its_words_and_never_obeyed(tmp_path):
