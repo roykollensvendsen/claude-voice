@@ -1,0 +1,5 @@
+[[rule]]
+name = "a helper in a test file keeps its old body in the before-tree"
+file = "scripts/red_first.py"
+find = '^\s*kept = \{n: span for n, span in after\.items\(\) if n in before and not _is_test\(n\)\}$'
+replace = 'kept = {}'
