@@ -302,6 +302,17 @@ async def test_without_peer_credentials_nothing_listens(monkeypatch, duty, tmp_p
     assert not (tmp_path / "r.sock").exists()
 
 
+async def test_the_report_socket_is_bound_inside_a_folder_only_the_owner_can_open(duty, tmp_path):
+    path = tmp_path / "approver" / "r.sock"
+    path.parent.mkdir(mode=0o755)  # a folder others could look into, as a first start might find it
+    server = await approver.serve_reports(duty, path)
+    try:
+        assert path.parent.stat().st_mode & 0o777 == 0o700
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
 async def test_the_bridge_reads_who_sent_a_report_from_its_socket(book, repo, duty, stranger, tmp_path):
     path = tmp_path / "r.sock"
     server = await approver.serve_reports(duty, path)
