@@ -220,6 +220,12 @@
       "Bash(claude --continue*)",
       "Bash(claude * --continue*)"
     ],
+    "the support role's own tools, which only the owner's voice may use": [
+      "mcp__claude_ai_claude-voice__tell_support",
+      "mcp__claude_ai_claude-voice__start_support",
+      "mcp__claude-voice__tell_support",
+      "mcp__claude-voice__start_support"
+    ],
     "history that cannot be got back": [
       "Bash(git reset --hard*)",
       "Bash(git checkout -- *)",

@@ -1,0 +1,5 @@
+[[rule]]
+name = "only the voice uses supports own tools"
+file = "src/claude_voice/origin.py"
+find = '^\s*if caller not in DOORS:$'
+replace = 'if False:'

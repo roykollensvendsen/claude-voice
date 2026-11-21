@@ -1,0 +1,5 @@
+[[rule]]
+name = "only the owners page starts support through start_role"
+file = "src/claude_voice/origin.py"
+find = '^\s*if role == ROLE and caller != PAGE:$'
+replace = 'if False:'
