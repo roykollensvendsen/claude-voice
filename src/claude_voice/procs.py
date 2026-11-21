@@ -7,6 +7,8 @@ process, so every liveness check in the bridge goes through here instead.
 
 Which process sent something over a Unix socket, and whether it runs under another one, is
 read from the kernel. Where the system cannot say (Windows, or no /proc), the answer is no.
+Every session runs as the same Unix user, so this guards against slips and simple stand-ins.
+It is not a wall between users: one user can still look inside its own processes.
 """
 
 from __future__ import annotations

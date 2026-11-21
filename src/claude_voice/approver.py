@@ -334,9 +334,12 @@ async def serve_reports(duty: Duty, path: Path) -> asyncio.AbstractServer | None
 
 
 def _clear(path: Path) -> Path:
-    """The socket's place, with its folder made and a socket a stopped bridge left removed."""
+    """The socket's place, with a socket a stopped bridge left removed. Its folder is made, or
+    narrowed, to the owner alone before the socket is bound, so nobody else can reach it."""
     path = path.expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
+    # RULE: the report socket is bound inside a folder only the owner can open
+    path.parent.chmod(0o700)
     path.unlink(missing_ok=True)
     return path
 

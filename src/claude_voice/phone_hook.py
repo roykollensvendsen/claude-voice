@@ -38,7 +38,7 @@ ENV_FILE = Path("~/.config/claude-voice/env")
 APPROVER_TOOLS = r"mcp__.+__approver_[a-z_]+"
 #: Where the bridge hears reports of approver calls. A Unix socket, so the kernel tells the
 #: bridge which process sent each one; a token would say only that the env file was read.
-REPORT_SOCKET = Path("~/.local/state/claude-voice/approver.sock")
+REPORT_SOCKET = Path("~/.local/state/claude-voice/approver/report.sock")
 
 
 class Bridge(Protocol):
