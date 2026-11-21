@@ -311,3 +311,82 @@ def test_a_wait_goes_on_and_is_counted_off_when_its_news_fails():
     with book.waiting(prompt):
         inside = prompt["hook"]["waiting"]
     assert inside == 1 and prompt["hook"]["waiting"] == 0
+
+
+# -- a terminal session's approval box, which the hook holds for the phone or the voice --------
+
+
+def approval(command="pytest -q tests/test_x.py", session="c-1"):
+    return {"session_id": session, "kind": "approval", "tool": "Bash", "input": {"command": command}, "cwd": "/w"}
+
+
+async def test_an_approval_a_hook_waits_on_is_listed_for_the_voice(server):
+    async with http(server) as h, Client(server) as c:
+        unwaited = (await h.post("/api/v1/prompts", json=approval("ls"), headers=BEARER)).json()["id"]
+        pid, wait = await opened_and_waiting(h, approval())
+        listed = await call(c, "list_pending_approvals")
+        await call(c, "deny", approval_id=pid)
+        await wait
+    (box,) = listed["approvals"]
+    assert box["id"] == pid != unwaited and box["session_name"] == "painter"
+    assert box["tool"] == "Bash" and box["input"] == "pytest -q tests/test_x.py"
+    assert listed["questions"] == []
+
+
+async def test_the_voice_allows_or_refuses_an_approval_a_hook_waits_on(server):
+    async with http(server) as h, Client(server) as c:
+        pid, wait = await opened_and_waiting(h, approval())
+        allowed = await call(c, "approve", approval_id=pid)
+        first = (await wait).json()
+        pid, wait = await opened_and_waiting(h, approval())
+        refused = await call(c, "deny", approval_id=pid, reason="not now")
+        second = (await wait).json()
+        after = await call(c, "list_pending_approvals")
+    assert allowed["decided"] == "allow" and first == {"decision": "allow"}
+    assert refused["decided"] == "deny" and second == {"decision": "deny", "reason": "not now"}
+    assert after["approvals"] == []
+
+
+async def test_an_approval_no_hook_waits_on_is_refused_as_on_the_screen(server):
+    async with http(server) as h, Client(server) as c:
+        gone = await c.call_tool("approve", {"approval_id": "0123456789abcdef"})
+        unwaited = (await h.post("/api/v1/prompts", json=approval(), headers=BEARER)).json()["id"]
+        not_held = await call(c, "approve", approval_id=unwaited)
+        asked_id, wait = await opened_and_waiting(h, question())
+        as_question = await call(c, "approve", approval_id=asked_id)
+        await call(c, "answer_question", question_id=asked_id, choice="1")
+        await wait
+    assert gone.is_error and "screen" in gone.content[0].text
+    assert not_held["decided"] is None and "screen" in not_held["say"]
+    assert as_question["decided"] is None and "answer_question" in as_question["error"]
+
+
+@pytest.mark.parametrize(
+    ("command", "kept"),
+    [
+        ("curl -H 'Authorization: Bearer abc123def456' https://x.test", "curl -H 'Authorization: Bearer"),
+        ("gh auth login --with-token ghp_aaaaBBBBccccDDDDeeeeFFFFgggg1234", "gh auth login --with-token"),
+        ("export API_KEY=abc123 && make", "export API_KEY="),
+        ("deploy --password hunter2 --host x", "deploy --password"),
+        ("echo 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", "echo"),
+    ],
+)
+def test_an_approval_read_to_the_voice_never_carries_what_looks_like_a_secret(command, kept):
+    said = answers.spoken_input(command)
+    assert said.startswith(kept) and answers.HIDDEN in said
+    for secret in ("abc123def456", "ghp_aaaa", "abc123", "hunter2", "9f86d081"):
+        assert secret not in said
+
+
+def test_an_approval_read_to_the_voice_is_short_and_keeps_plain_paths():
+    path = "/home/someone/projects/a-long-folder-name-for-work/src/module_name.py"
+    assert answers.spoken_input(f"cat {path}") == f"cat {path}"
+    long = answers.spoken_input("echo " + "word " * 100)
+    assert len(long) <= answers.SPOKEN_INPUT + 1 and long.endswith("…")
+
+
+def test_an_approval_is_news_once_a_hook_waits_on_it():
+    prompt = {"id": "p1", "session": "c-1", "kind": "approval", "tool": "Bash", "input": "rm -rf build"}
+    who, kind, text = answers.news(prompt, [{"sessionId": "c-1", "name": "painter"}])
+    assert (who, kind) == ("painter", "needs_answer")
+    assert text == "painter asks to run Bash" and "rm" not in text

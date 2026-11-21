@@ -1,0 +1,5 @@
+[[rule]]
+name = "an approval a hook waits on is listed for the voice"
+file = "src/claude_voice/answers.py"
+find = 'if p\["kind"\] == "approval" and p\["answer"\] is None and session in \(None, p\["session"\]\) and book\.hook_waits\(p\)'
+replace = 'if p["kind"] == "approval" and p["answer"] is None and session in (None, p["session"])'

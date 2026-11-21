@@ -1,0 +1,5 @@
+[[rule]]
+name = "an approval no hook waits on is refused as on the screen"
+file = "src/claude_voice/answers.py"
+find = 'if prompt is None or prompt\["answer"\] is not None or not book\.hook_waits\(prompt\):'
+replace = 'if prompt is None or prompt["answer"] is not None:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "an approval is news once a hook waits on it"
+file = "src/claude_voice/answers.py"
+find = 'if prompt\.get\("kind"\) not in \("question", "approval"\):'
+replace = 'if prompt.get("kind") != "question":'
