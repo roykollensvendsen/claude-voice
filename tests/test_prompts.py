@@ -2,9 +2,11 @@
 
 import asyncio
 import http.server
+import io
 import json
 import logging
 import shlex
+import sys
 import threading
 from pathlib import Path
 
@@ -261,6 +263,48 @@ def test_a_broken_bridge_never_stops_a_session():
             raise OSError("bridge down")
 
     assert phone_hook.handle(question_input(), Broken(), timeout=5) == {}
+
+
+APPROVAL_INPUT = {
+    "hook_event_name": "PermissionRequest",
+    "session_id": "s1",
+    "tool_name": "Bash",
+    "tool_input": {"command": "deploy --password made-up-secret"},
+}
+
+
+def test_a_box_that_cannot_reach_the_bridge_leaves_a_line_in_the_log():
+    class Broken(Bridge):
+        def open(self, body):
+            raise OSError("bridge down")
+
+    noted = []
+    assert phone_hook.handle(APPROVAL_INPUT, Broken(), timeout=5, missed=lambda b, why: noted.append((b, why))) == {}
+    assert [(body["session_id"], body["tool"], why) for body, why in noted] == [("s1", "Bash", "OSError")]
+    noted.clear()
+    phone_hook.handle(APPROVAL_INPUT, Bridge(wait=False), timeout=5, missed=lambda b, why: noted.append(why))
+    assert noted == []  # a bridge that answered was reached
+
+
+def test_the_log_of_unreached_boxes_never_holds_their_input(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    phone_hook.unreached(phone_hook._prompt(APPROVAL_INPUT, ""), "OSError")
+    log = tmp_path / "claude-voice" / "hook-unreached.jsonl"
+    [line] = log.read_text(encoding="utf-8").splitlines()
+    assert set(json.loads(line)) == {"at", "session", "kind", "tool", "why"}
+    assert "made-up-secret" not in line and "deploy" not in line
+    assert log.stat().st_mode & 0o777 == 0o600 or sys.platform == "win32"
+
+
+def test_a_box_the_hook_has_no_token_for_leaves_a_line_in_the_log(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    monkeypatch.delenv("CLAUDE_VOICE_TOKEN", raising=False)
+    monkeypatch.setattr(phone_hook, "ENV_FILE", tmp_path / "no-env")
+    monkeypatch.setattr(phone_hook.sys, "argv", ["phone_hook.py"])
+    monkeypatch.setattr(phone_hook.sys, "stdin", io.StringIO(json.dumps(APPROVAL_INPUT)))
+    assert phone_hook.main() == 0
+    [line] = (tmp_path / "claude-voice" / "hook-unreached.jsonl").read_text(encoding="utf-8").splitlines()
+    assert json.loads(line)["why"] == "no token"
 
 
 def test_the_hook_leaves_every_other_tool_and_event_alone():

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a box the hook has no token for leaves a line in the log"
+file = "src/claude_voice/phone_hook.py"
+find = 'unreached\(body, "no token"\)'
+replace = 'pass'
