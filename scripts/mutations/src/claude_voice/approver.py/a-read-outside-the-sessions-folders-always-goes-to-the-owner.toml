@@ -1,0 +1,5 @@
+[[rule]]
+name = "a read outside the sessions folders always goes to the owner"
+file = "src/claude_voice/approver.py"
+find = 'if not all\(routing\._inside'
+replace = 'if False:'

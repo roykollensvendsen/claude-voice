@@ -1,0 +1,5 @@
+[[rule]]
+name = "a symlink out of the repo goes to the owner for a file tool"
+file = "src/claude_voice/approver.py"
+find = 'if not isinstance\(path, str\) or not os\.path\.isabs\(path\)'
+replace = 'if False:'
