@@ -219,7 +219,10 @@ class HttpBridge:
 
 
 def send_report(body: dict[str, Any], path: Path = REPORT_SOCKET) -> None:
-    """One report over the bridge's report socket, waiting until the bridge has taken it."""
+    """One report over the bridge's report socket, waiting until the bridge has taken it.
+    Windows has no such socket, so there the report fails and the approver's call is refused."""
+    if sys.platform == "win32":
+        raise OSError("no report socket on Windows")
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as line:
         line.settimeout(2)
         line.connect(str(path.expanduser()))
