@@ -1,0 +1,5 @@
+[[rule]]
+name = "a machine the table does not name is told to re-apply the permissions"
+file = "src/claude_voice/cli.py"
+find = 'if note := permissions\.reapply_note\(machine, invocation\.command\(\)\):'
+replace = 'if note := None:'

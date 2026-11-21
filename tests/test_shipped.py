@@ -281,7 +281,7 @@ def test_the_shipped_rules_are_recorded_under_the_commit_that_is_installed(home,
     ).stdout.strip()
     folder = lagging(home, "garage")
     monkeypatch.setattr(roles, "own_clone", lambda: home / "cv")
-    monkeypatch.setattr(permissions, "load", lambda: with_(OLD, deny=["Bash(git clean -f*)"]))
+    monkeypatch.setattr(permissions, "load", lambda **_: with_(OLD, deny=["Bash(git clean -f*)"]))
     env = {"HOME": str(home), "CLAUDE_VOICE_ROOT": str(home / "nowhere")}
     assert cli.main(["permissions", "--shipped", str(folder)], env=env) == 0
     assert accepted.read_record()[str(settings_file(folder).resolve())]["source"] == f"shipped@{head}"

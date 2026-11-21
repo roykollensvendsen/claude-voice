@@ -1,0 +1,5 @@
+[[rule]]
+name = "every machine in the settings has its voice-only confirms refused"
+file = "src/claude_voice/cli.py"
+find = 'return \[spec\.name for spec in settings\.load\(settings\.FILE, env=env\)\.machines\]'
+replace = 'return []'
