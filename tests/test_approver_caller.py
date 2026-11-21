@@ -4,14 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import json
+import os
 import re
+import socket
+import subprocess
 import sys
 
 import httpx
 import pytest
 from fakes import FakeClaude
 
-from claude_voice import answers, approver, config, phone_hook, prompts
+from claude_voice import answers, approver, config, phone_hook, procs, prompts
 from claude_voice.oauth import OAuthProvider
 from claude_voice.server import _duty, build_app, build_server
 from claude_voice.sessions import SessionManager
@@ -231,17 +235,90 @@ def bridge_with(tmp_path, duty):
     return build_app(server)
 
 
-async def test_the_bridge_takes_a_report_only_with_its_token(tmp_path, repo, duty, book):
+async def test_a_report_with_only_the_token_is_not_taken(tmp_path, repo, duty, book):
+    """The token says only that a program on this computer read the env file, not who runs it."""
     app = bridge_with(tmp_path, duty)
     args = call("p0")
     body = {"session_id": APPROVER, "tool": TOOL, "args_sha256": phone_hook.args_digest(args)}
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=HOST) as c:
-        refused = await c.post("/api/v1/approver/reports", json=body)
-        taken = await c.post("/api/v1/approver/reports", json=body, headers=BEARER)
-        bad = await c.post("/api/v1/approver/reports", json={**body, "args_sha256": 7}, headers=BEARER)
-    assert refused.status_code == 401 and taken.status_code == 204 and bad.status_code == 400
+        sent = await c.post("/api/v1/approver/reports", json=body, headers=BEARER)
+    assert sent.status_code in (404, 405)
     box(book, repo)
-    assert answer(book, duty, args)["decided"] == "allow"  # the one report the bridge took
+    assert answer(book, duty, args)["refused"] == approver.NOT_PROVEN
+
+
+@pytest.fixture
+def stranger():
+    """A process that is not an ancestor of this test: a forger's stand-in for the approver."""
+    child = subprocess.Popen(["sleep", "30"])
+    yield child.pid
+    child.kill()
+    child.wait()
+
+
+def under(pid):
+    """A duty whose approver is the claude process `pid`, as its live file names it."""
+    return lambda: (APPROVER, pid, procs.start_ticks(pid))
+
+
+def test_a_report_from_outside_the_approvers_process_tree_is_refused(book, repo, duty, stranger):
+    duty.process = under(stranger)
+    prompt = box(book, repo)
+    args = call(prompt["id"])
+    assert not duty.prove(os.getpid(), TOOL, phone_hook.args_digest(args))
+    assert answer(book, duty, args)["refused"] == approver.NOT_PROVEN
+    assert not duty.prove(None, TOOL, phone_hook.args_digest(args))  # the kernel did not say
+
+
+def test_a_report_from_under_the_approvers_process_is_taken(book, repo, duty):
+    duty.process = under(os.getppid())  # this test runs under its parent, as a hook runs under claude
+    prompt = box(book, repo)
+    args = call(prompt["id"])
+    assert duty.prove(os.getpid(), TOOL, phone_hook.args_digest(args))
+    assert answer(book, duty, args)["decided"] == "allow"
+
+
+def test_a_dead_or_reused_approver_pid_proves_nothing():
+    parent = os.getppid()
+    assert procs.descends(os.getpid(), parent, procs.start_ticks(parent))
+    assert not procs.descends(os.getpid(), parent, "1")  # same pid, another start: reused
+    gone = subprocess.Popen(["true"])
+    gone.wait()
+    assert procs.start_ticks(gone.pid) is None
+    assert not procs.descends(os.getpid(), gone.pid, "1")
+
+
+def test_without_the_kernels_word_on_the_sender_no_report_is_taken(monkeypatch):
+    left, right = socket.socketpair()
+    with left, right:
+        assert procs.peer_pid(left) == os.getpid()
+        monkeypatch.delattr(socket, "SO_PEERCRED")
+        assert procs.peer_pid(left) is None
+
+
+async def test_without_peer_credentials_nothing_listens(monkeypatch, duty, tmp_path):
+    monkeypatch.delattr(socket, "SO_PEERCRED")
+    assert await approver.serve_reports(duty, tmp_path / "r.sock") is None
+    assert not (tmp_path / "r.sock").exists()
+
+
+async def test_the_bridge_reads_who_sent_a_report_from_its_socket(book, repo, duty, stranger, tmp_path):
+    path = tmp_path / "r.sock"
+    server = await approver.serve_reports(duty, path)
+    try:
+        assert path.stat().st_mode & 0o777 == 0o600
+        prompt = box(book, repo)
+        args = call(prompt["id"])
+        report = {"session_id": APPROVER, "tool": TOOL, "args_sha256": phone_hook.args_digest(args)}
+        duty.process = under(stranger)
+        await asyncio.to_thread(phone_hook.send_report, report, path)
+        assert answer(book, duty, args)["refused"] == approver.NOT_PROVEN  # the claim alone is not enough
+        duty.process = under(os.getpid())  # now this process is the approver's own tree
+        await asyncio.to_thread(phone_hook.send_report, report, path)
+        assert answer(book, duty, args)["decided"] == "allow"
+    finally:
+        server.close()
+        await server.wait_closed()
 
 
 def test_only_the_session_launched_as_the_approver_role_is_the_approver(tmp_path):
@@ -250,8 +327,16 @@ def test_only_the_session_launched_as_the_approver_role_is_the_approver(tmp_path
     manager = SessionManager(store, project_root=tmp_path / "home", client_factory=FakeClaude())
     (tmp_path / "config.toml").write_text("", encoding="utf-8")
     repos = config.load(tmp_path / "config.toml", own_clone=None, env={"HOME": str(tmp_path)})
-    duty = _duty(None, dataclasses.replace(repos, approver_on=True), manager)
+    live = tmp_path / "live"
+    live.mkdir()
+    duty = _duty(None, dataclasses.replace(repos, approver_on=True), manager, live)
     assert not duty.approver(APPROVER)  # no approver launched yet: nobody is it
+    assert duty.process() is None
     store.set_setting("role:builder", {"name": "builder", "id": WORKER})
     store.set_setting("role:approver", {"name": "approver", "id": APPROVER})
     assert duty.approver(APPROVER) and not duty.approver(WORKER)
+    assert duty.process() is None  # launched, but its live file is not there yet
+    me = {"sessionId": APPROVER, "pid": os.getpid(), "procStart": procs.start_ticks(os.getpid())}
+    (live / "1.json").write_text(json.dumps(me), encoding="utf-8")
+    (live / "2.json").write_text(json.dumps({**me, "sessionId": WORKER}), encoding="utf-8")
+    assert duty.process() == (APPROVER, os.getpid(), procs.start_ticks(os.getpid()))

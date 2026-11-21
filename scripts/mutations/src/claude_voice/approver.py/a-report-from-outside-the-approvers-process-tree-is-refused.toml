@@ -1,0 +1,5 @@
+[[rule]]
+name = "a report from outside the approvers process tree is refused"
+file = "src/claude_voice/approver.py"
+find = 'if peer is None or held is None or not procs.descends\(peer, held\[1\], held\[2\]\):'
+replace = 'if peer is None or held is None:'

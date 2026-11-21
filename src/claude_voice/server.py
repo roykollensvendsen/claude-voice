@@ -602,16 +602,34 @@ def updater_command(python: str, folder: Path, log: Path, port: int) -> list[str
     return [python, "-I", "-m", "claude_voice.updater", "--repo", str(folder), "--log", str(log), "--port", str(port)]
 
 
-def _duty(given: approver.Duty | None, repos: config.Config, manager: SessionManager) -> approver.Duty:
+def _approver_id(store: Store) -> str:
+    """The session launched as the approver role, or nothing while there is none."""
+    held = store.get_setting("role:approver")
+    return str(held.get("id") or "") if isinstance(held, dict) else ""
+
+
+def _approver_process(store: Store, live_dir: Path) -> tuple[str, int, str | None] | None:
+    """The approver's session id, claude pid and start ticks, from its live file."""
+    session = _approver_id(store)
+    rows = [row for row in events.read_live(live_dir) if session and row.get("sessionId") == session]
+    return (session, int(rows[0]["pid"]), str(rows[0].get("procStart") or "") or None) if rows else None
+
+
+def _duty(
+    given: approver.Duty | None, repos: config.Config, manager: SessionManager, live_dir: Path = LIVE_DIR
+) -> approver.Duty:
     """The approver session's duty: the one given, or one on only once the owner switches it on."""
 
     def is_approver(session: str) -> bool:
-        held = manager.store.get_setting("role:approver")
         # RULE: only the session launched as the approver role is the approver
-        return isinstance(held, dict) and bool(session) and held.get("id") == session
+        return bool(session) and _approver_id(manager.store) == session
 
     return given or approver.Duty(
-        on=repos.approver_on, role=manager.store.is_role, approver=is_approver, clock=manager.clock
+        on=repos.approver_on,
+        role=manager.store.is_role,
+        approver=is_approver,
+        clock=manager.clock,
+        process=lambda: _approver_process(manager.store, live_dir),
     )
 
 
@@ -720,7 +738,7 @@ def build_server(
     side_answer = side_answer or transcripts.shared_reader()
     host: doctor.Host = doctor_host or doctor.RealHost()
     repos = repo_config or config.load(config.FILE, own_clone=roles.own_clone())
-    duty = _duty(duty, repos, manager)
+    duty = _duty(duty, repos, manager, live_dir)
     start_settings = launch.Settings(manager.store, repos.sessions)
     desktop = os.environ if desktop_env is None else desktop_env
 
@@ -836,6 +854,8 @@ def build_server(
             warming.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
         # The software report is built on a thread of its own, so the bridge listens at once.
         stop_software = software_report.start() if watch_interval else None
+        # The hooks report approver calls here; nothing listens while the approver is off.
+        reports = await approver.serve_reports(duty, phone_hook.REPORT_SOCKET)
         starting = None
         if plugins_behind and not plugins_started:
             plugins_started.append(True)
@@ -857,6 +877,8 @@ def build_server(
                 _activity_flush(activity_view)
             if stop_software:
                 stop_software()
+            if reports:
+                reports.close()
 
     across = fleet.Fleet()  # the other machines, filled in once they are started below
     across.numbers = manager.store

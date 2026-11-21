@@ -31,17 +31,20 @@ decision is one line in the approver's log, with a hash of the input but never i
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import hashlib
 import json
 import logging
 import os
 import re
+import socket
 import time
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
-from . import prompts, routing, session_hook
+from . import procs, prompts, routing, session_hook
 
 logger = logging.getLogger(__name__)
 
@@ -199,8 +202,9 @@ class Duty:
     """Whether the approver is on duty, who it is, and its log of decisions.
 
     `role` says whether a session was launched as a role, and `approver` whether it is the
-    approver. A call to the approver's tools counts only with a fresh report from that
-    session's own hook, naming the same tool and arguments, and each report counts once."""
+    approver. `process` gives the approver's session id, claude pid and start ticks, from its
+    live file. A call to the approver's tools counts only with a fresh report naming the same
+    tool and arguments, sent from under that claude process, and each report counts once."""
 
     def __init__(
         self,
@@ -209,10 +213,23 @@ class Duty:
         approver: Callable[[str], bool] = lambda session: False,
         clock: Callable[[], float] = time.monotonic,
         log: Path = LOG,
+        process: Callable[[], tuple[str, int, str | None] | None] = lambda: None,
     ) -> None:
         self.on, self.role, self.approver, self.clock, self.log = on, role, approver, clock, log.expanduser()
+        self.process = process
         self.seen: float | None = None  # when the approver last looked at its boxes
         self.reports: list[tuple[float, str, str, str]] = []  # (at, session, tool, args hash)
+
+    def prove(self, peer: int | None, tool: str, digest: str) -> bool:
+        """Keep a hook's report only when the kernel says it came from the approver's own claude
+        process or one it started. What the report claims about its session counts for nothing."""
+        held = self.process()
+        # RULE: a report from outside the approvers process tree is refused
+        if peer is None or held is None or not procs.descends(peer, held[1], held[2]):
+            logger.warning("an approver report from pid %s was refused: not under the approver", peer)
+            return False
+        self.report(held[0], tool, digest)
+        return True
 
     def report(self, session: str, tool: str, digest: str) -> None:
         """A session's hook says that session is about to call `tool` with these arguments."""
@@ -303,6 +320,38 @@ def judge(prompt: dict[str, Any]) -> str | None:
     lines = routed.get("lines") if isinstance(routed, dict) else None
     given = prompt.get("raw_input")
     return why_owner(str(prompt.get("tool")), given, lines, place, cwd=place.repo, cut=bool(prompt.get("cut")))
+
+
+async def serve_reports(duty: Duty, path: Path) -> asyncio.AbstractServer | None:
+    """Listen for the hooks' reports on a Unix socket only this user can open. Where the system
+    cannot name a socket's sender (Windows), nothing listens and every approver call is refused."""
+    if not duty.on or not hasattr(socket, "SO_PEERCRED"):
+        return None
+    path = _clear(path)
+    server = await asyncio.start_unix_server(lambda r, w: _take_report(duty, r, w), path=str(path))
+    path.chmod(0o600)  # noqa: ASYNC240 - one quick call as the bridge starts
+    return server
+
+
+def _clear(path: Path) -> Path:
+    """The socket's place, with its folder made and a socket a stopped bridge left removed."""
+    path = path.expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.unlink(missing_ok=True)
+    return path
+
+
+async def _take_report(duty: Duty, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    """One report: a line of JSON naming the tool and the hash of its arguments."""
+    with contextlib.suppress(Exception):
+        body = json.loads(await asyncio.wait_for(reader.readline(), 2) or b"null")
+        tool = body.get("tool") if isinstance(body, dict) else None
+        digest = body.get("args_sha256") if isinstance(body, dict) else None
+        if isinstance(tool, str) and isinstance(digest, str):
+            duty.prove(procs.peer_pid(writer.get_extra_info("socket")), tool, digest)
+        writer.write(b"ok\n")  # the same answer either way; the hook only waits for it
+        await writer.drain()
+    writer.close()
 
 
 def boxes(book: prompts.Book, duty: Duty, names: dict[str, Any], digest: str) -> list[dict[str, Any]] | dict[str, str]:
