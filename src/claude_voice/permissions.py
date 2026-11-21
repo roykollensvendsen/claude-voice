@@ -94,6 +94,13 @@ def reapply_note(machine: str, command: str = "claude-voice", table: Path = TABL
     )
 
 
+def _voice_only(voice: dict[str, Any], machines: Iterable[str]) -> list[str]:
+    """Each voice-only tool, for the table's machines and `machines`, under each bridge name."""
+    named = _unique([*voice.get("machines", []), *machines])
+    # RULE: a confirm only the voice may call is refused to every session by every name
+    return [f"mcp__{s}__{m}_{tool}" for s in voice["servers"] for m in named for tool in voice["tools"]]
+
+
 def load(table: Path = TABLE, machines: Iterable[str] = ()) -> Rules:
     """The rules, each group flattened; every protected branch refused to every forced push
     and to every other push; every secret file refused to every reader; every device tool
@@ -116,10 +123,7 @@ def load(table: Path = TABLE, machines: Iterable[str] = ()) -> Rules:
     devices = raw.get("device tools", {"servers": [], "tools": []})
     # RULE: a tool that moves something in the house asks first, by every name it is seen under
     ask += [f"mcp__{server}__{tool}" for server in devices["servers"] for tool in devices["tools"]]
-    voice = raw.get("voice only", {"servers": [], "tools": []})
-    named = _unique([*voice.get("machines", []), *machines])
-    # RULE: a confirm only the voice may call is refused to every session by every name
-    deny += [f"mcp__{s}__{m}_{tool}" for s in voice["servers"] for m in named for tool in voice["tools"]]
+    deny += _voice_only(raw.get("voice only", {"servers": [], "tools": []}), machines)
     _refuse_prefix_rules(allow + ask + deny)
     retired = raw.get("retired", {})
     return Rules(
