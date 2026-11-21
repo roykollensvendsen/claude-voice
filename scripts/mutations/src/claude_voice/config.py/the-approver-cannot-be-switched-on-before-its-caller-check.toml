@@ -1,0 +1,5 @@
+[[rule]]
+name = "the approver cannot be switched on before its caller check"
+file = "src/claude_voice/config.py"
+find = 'if on:'
+replace = 'if False:'

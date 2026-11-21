@@ -191,13 +191,21 @@ def test_a_scratchpad_box_is_judged_inside_the_sessions_own_scratchpad(book, rep
     assert str(place.scratchpad).startswith(str(tmp_path / "tmp"))
 
 
-@pytest.mark.parametrize(("text", "on"), [("", False), ("[approver]\non = true\n", True), ("[approver]\n", False)])
-def test_the_approver_is_off_unless_the_config_says_true(tmp_path, text, on):
+@pytest.mark.parametrize("text", ["", "[approver]\n", "[approver]\non = false\n"])
+def test_the_approver_is_off_unless_the_config_says_true(tmp_path, text):
     file = tmp_path / "config.toml"
     file.write_text(text, encoding="utf-8")
-    assert config.load(file, own_clone=None, env={"HOME": str(tmp_path)}).approver_on is on
+    assert config.load(file, own_clone=None, env={"HOME": str(tmp_path)}).approver_on is False
     file.write_text('[approver]\non = "yes"\n', encoding="utf-8")
-    with pytest.raises(config.ConfigError):
+    with pytest.raises(config.ConfigError, match="not true or false"):
+        config.load(file, own_clone=None, env={"HOME": str(tmp_path)})
+
+
+def test_the_approver_cannot_be_switched_on_before_its_caller_check(tmp_path):
+    """Until the bridge checks who calls the approver's tools, any session could answer its own box."""
+    file = tmp_path / "config.toml"
+    file.write_text("[approver]\non = true\n", encoding="utf-8")
+    with pytest.raises(config.ConfigError, match="caller check"):
         config.load(file, own_clone=None, env={"HOME": str(tmp_path)})
 
 
