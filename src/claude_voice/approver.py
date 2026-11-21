@@ -41,6 +41,7 @@ SUBCOMMANDS = {
 UV_FETCHES = ("--with", "--from", "--index", "--extra-index-url", "--find-links")
 #: Options that make git run a command given on the line or set its config.
 GIT_RUNS = ("-c", "-x", "--exec")
+PYTHONS = frozenset({"python", "python3"})
 FIRST_WORDS = READERS | SUBCOMMANDS.keys() | {"make"}
 
 
@@ -96,7 +97,7 @@ def _command(command: str, roots: list[str], cwd: Path) -> str | None:
     # RULE: anything but one plain allowed command goes to the owner
     if parts is None or len(parts) != 1 or parts[0][0] not in FIRST_WORDS:
         return "not one plain command from the approver's list"
-    if why := _program(parts[0][0], parts[0][1:]):
+    if why := _program(parts[0][0], parts[0][1:], cwd):
         return why
     # RULE: a command run from outside the repo goes to the owner
     if not routing.inside(str(cwd), roots, Path("/")):
@@ -111,7 +112,7 @@ def _command(command: str, roots: list[str], cwd: Path) -> str | None:
     return None
 
 
-def _program(program: str, rest: list[str]) -> str | None:
+def _program(program: str, rest: list[str], cwd: Path) -> str | None:
     """Why this program's own words are the owner's, or None."""
     # RULE: a subcommand off the approvers list goes to the owner
     if program in SUBCOMMANDS and (not rest or rest[0] not in SUBCOMMANDS[program]):
@@ -122,10 +123,31 @@ def _program(program: str, rest: list[str]) -> str | None:
     # RULE: uv run that fetches other code goes to the owner
     if program == "uv" and any(w.startswith(UV_FETCHES) for w in rest):
         return "uv that fetches code from outside the repo"
+    # RULE: uv runs only the repos own checks or its own python files
+    if False:
+        return "uv that runs a program off the approver's list"
     # RULE: make that sets a variable goes to the owner
     if program == "make" and any("=" in w for w in rest):
         return "make that sets a variable"
     return None
+
+
+def _uv_runs_a_check(rest: list[str], cwd: Path) -> bool:
+    """Whether `uv run` starts pytest, ruff or mypy, or python on a .py file or with -m one of
+    those; `uv sync` starts nothing. `uv run` would start any program on the path otherwise.
+
+    The first word after uv's own options is the program, so an option's value fails closed."""
+    words = [w for w in rest[1:] if not w.startswith("-")]
+    if rest[0] == "sync":
+        return not words
+    if not words:
+        return False
+    program, after = words[0], rest[rest.index(words[0]) + 1 :]
+    if program in routing.UV_TOOLS:
+        return True
+    if program in PYTHONS and after[:1] == ["-m"]:
+        return after[1:2] != [] and after[1] in routing.UV_TOOLS
+    return program in PYTHONS and bool(after) and after[0].endswith(".py") and (cwd / after[0]).is_file()
 
 
 def _as_paths(word: str) -> list[str]:

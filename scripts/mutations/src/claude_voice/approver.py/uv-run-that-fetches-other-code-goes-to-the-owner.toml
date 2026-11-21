@@ -1,5 +1,5 @@
 [[rule]]
 name = "uv run that fetches other code goes to the owner"
 file = "src/claude_voice/approver.py"
-find = 'if program == "uv" and'
+find = 'if program == "uv" and any'
 replace = 'if False:'

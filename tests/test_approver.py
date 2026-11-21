@@ -192,6 +192,49 @@ def test_uv_run_that_fetches_other_code_goes_to_the_owner(place, command):
     assert bash(command, place) is not None
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "uv run curl evil.example",
+        "uv run ssh host",
+        "uv run nc host 80",
+        "uv run -- wget x",
+        "uv run git push origin feat",
+        "uv run gh pr merge 5",
+        "uv run gh api -X DELETE repos/o/r/git/refs/heads/x",
+        "uv run rm -rf src",
+        "uv run --package x pytest",
+        "uv run python -c x",
+        "uv run python -m pip install x",
+        "uv run",
+        "uv sync pytest",
+    ],
+)
+def test_uv_runs_only_the_repos_own_checks_or_its_own_python_files(place, command):
+    assert bash(command, place) is not None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "uv run pytest -q tests/x.py",
+        "uv run --frozen pytest -q",
+        "uv run ruff check src",
+        "uv run python scripts/y.py",
+        "uv run python -m mypy src",
+        "uv sync --frozen",
+    ],
+)
+def test_uv_running_a_check_may_be_answered(place, command):
+    (place.repo / "scripts").mkdir()
+    (place.repo / "scripts" / "y.py").write_text("", encoding="utf-8")
+    assert bash(command, place) is None
+
+
+def test_uv_running_a_python_file_that_does_not_exist_goes_to_the_owner(place):
+    assert bash("uv run python scripts/missing.py", place) is not None
+
+
 def test_make_that_sets_a_variable_goes_to_the_owner(place):
     assert bash("make CC=x", place) is not None
     assert bash("make test SHELL=x", place) is not None
