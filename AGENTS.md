@@ -67,6 +67,17 @@ what to add on the hub. Then:
   run in a plain terminal, such as `claude-voice plugins approve <name>`. Never
   run it for them, and never pipe an answer into it.
 
+## Answering the voice
+
+The voice asks a session something through `ask_active_session`, or as a message
+that ends "Your reply is read by the voice".
+
+- **Answer in the reply text of that same turn.** The voice reads it from there.
+- **Never send the answer by a separate SendMessage.** The name it goes to can
+  belong to a relay session that has already moved on, and then nobody hears it.
+- **Answer first, and keep that turn short.** The person is listening, often
+  while driving. Other work goes in a later turn.
+
 ## When something fails
 
 - **`check` is not ready:** do its `fix`.

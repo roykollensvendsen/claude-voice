@@ -1,0 +1,5 @@
+[[rule]]
+name = "the courier's default name is known when none is configured"
+file = "scripts/hooks/unanswered_peer.py"
+find = '^\s*return DEFAULT_COURIER$'
+replace = 'return ""'

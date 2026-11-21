@@ -102,6 +102,34 @@ def test_couriers_that_cannot_receive_a_reply_are_ignored(tmp_path, state):
     assert run(tmp_path, [peer("claude-voice-msg-ab12cd-34", "status?")], monkeypatch=state) is None
 
 
+def test_a_message_from_the_voice_is_answered_by_the_turn_s_own_reply(tmp_path, state):
+    """The voice reads the reply text; a SendMessage can reach a relay that no longer listens (19.11)."""
+    from claude_voice import transcripts
+
+    asked = peer("relay-b409b4", f"What did fuel-mcp find?\n\n{transcripts.READ_BY_VOICE}")
+    assert run(tmp_path, [asked], monkeypatch=state) is None
+    assert run(tmp_path, [peer("voice-integration-87", "Is the voice up?")], monkeypatch=state)["decision"] == "block"
+
+
+def test_the_courier_s_default_name_is_known_when_none_is_configured(tmp_path, state):
+    from claude_voice import transcripts
+
+    state.delenv("CLAUDE_VOICE_COURIER_NAME", raising=False)
+    hook = _hook()
+    state.setattr(hook, "ENV_FILE", tmp_path / "no-env")
+    state.setattr(hook, "STATE_DIR", tmp_path / "state")
+    assert hook.unanswered([peer(transcripts.COURIER_NAME, "Status?")]) == []
+    assert hook.unanswered([peer("voice-integration-87", "Status?")])
+
+
+def test_the_hook_knows_the_line_and_the_name_the_bridge_uses():
+    """The hook can't import the bridge, so it keeps its own copies of both."""
+    from claude_voice import transcripts
+
+    assert transcripts.READ_BY_VOICE.startswith(_hook().VOICE_LINE)
+    assert _hook().DEFAULT_COURIER == transcripts.COURIER_NAME
+
+
 def test_a_missing_or_broken_transcript_never_blocks(tmp_path, state):
     hook = _hook()
     out = io.StringIO()

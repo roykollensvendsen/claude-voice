@@ -1047,8 +1047,12 @@ def configure_courier(name: str) -> None:
     _courier.name = name
 
 
-# Said under every message, so the session words its answer for the person listening.
-READ_BY_VOICE = "Your reply is read by the voice."
+# Said under every message, so the session words its answer for the person listening, and puts
+# it where the voice reads it. A separate SendMessage can reach a relay that no longer listens.
+READ_BY_VOICE = (
+    "Your reply is read by the voice. Answer first, in this turn's reply text, and keep this "
+    "turn short; never send the answer by SendMessage. Other work goes in a later turn."
+)
 
 
 async def deliver(name: str, text: str) -> dict[str, Any]:
