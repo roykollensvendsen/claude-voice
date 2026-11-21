@@ -97,6 +97,12 @@ def test_wall_time_never_fails_the_check():
     assert problems(BASE, measured(test_seconds=500.0, test_cpu_seconds=60.0)) == []
 
 
+# CPU time comes from resource.getrusage, which Windows lacks; there the ratchet only reports
+# wall time, as test_without_cpu_time_the_wall_time_is_only_reported shows on every system.
+NO_CPU_TIME = pytest.mark.skipif(sys.platform == "win32", reason="Windows has no resource module for CPU time")
+
+
+@NO_CPU_TIME
 def test_in_ci_a_suite_that_waits_is_reported_as_waiting_and_passes():
     _, wall, cpu = ratchet.timed(lambda: ratchet._run(sys.executable, "-c", "import time; time.sleep(2)"))
     now = measured(test_seconds=wall, test_cpu_seconds=cpu)
@@ -107,6 +113,7 @@ def test_in_ci_a_suite_that_waits_is_reported_as_waiting_and_passes():
     assert ratchet.notes(now, one_second, ci=False) == []
 
 
+@NO_CPU_TIME
 def test_cpu_time_counts_the_work_of_the_suite_run_through_uv():
     """The suite runs as `uv run pytest`; its work counts because uv waits for it, and the ratchet for uv."""
     burn = "import time\nend = time.process_time() + 0.3\nwhile time.process_time() < end: pass"
