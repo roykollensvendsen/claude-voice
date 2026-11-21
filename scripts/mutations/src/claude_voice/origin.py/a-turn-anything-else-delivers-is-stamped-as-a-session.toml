@@ -1,0 +1,5 @@
+[[rule]]
+name = "a turn anything else delivers is stamped as a session"
+file = "src/claude_voice/origin.py"
+find = 'return f"\{FIRST\}session \{caller\}\\n\{text\}"'
+replace = 'return text'

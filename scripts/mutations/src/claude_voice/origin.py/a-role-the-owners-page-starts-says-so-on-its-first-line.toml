@@ -1,0 +1,5 @@
+[[rule]]
+name = "a role the owners page starts says so on its first line"
+file = "src/claude_voice/origin.py"
+find = '^\s*if caller == PAGE:$'
+replace = 'if False:'

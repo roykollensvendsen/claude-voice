@@ -77,7 +77,8 @@ async def test_the_hub_lists_and_messages_a_session_on_the_other_machine(tmp_pat
         listed = await call(server, "laptop-a_list_active_sessions")
         sent = await call(server, "laptop-a_message_active_session", session="mod", message="hello from the hub")
     assert [s["name"] for s in listed.structured_content["sessions"]] == ["mod"]
-    assert not sent.is_error and deliver.sent == [("mod", "hello from the hub")]
+    # The other machine stamps the origin it sees; which one is not this test's business.
+    assert not sent.is_error and [(n, t.split("\n", 1)[1]) for n, t in deliver.sent] == [("mod", "hello from the hub")]
 
 
 def test_the_agent_settings_say_whether_sessions_are_offered(tmp_path):
