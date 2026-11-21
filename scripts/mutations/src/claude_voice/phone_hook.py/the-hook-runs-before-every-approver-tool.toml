@@ -1,0 +1,5 @@
+[[rule]]
+name = "the hook runs before every approver tool"
+file = "src/claude_voice/phone_hook.py"
+find = '\{"matcher": APPROVER_TOOLS, "hooks": \[dict\(hook\)\]\},'
+replace = '{"matcher": "never-matches-anything", "hooks": [dict(hook)]},'

@@ -20,8 +20,10 @@ It uses the standard library only, so it needs none of the bridge's packages.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
+import re
 import shlex
 import sys
 import urllib.error
@@ -31,18 +33,33 @@ from typing import Any, Protocol
 
 TIMEOUT = 300  # seconds the hook waits for the phone before the box shows at the screen
 ENV_FILE = Path("~/.config/claude-voice/env")
+#: The approver's own tools, whichever connector name Claude Code gives the bridge.
+APPROVER_TOOLS = r"mcp__.+__approver_[a-z_]+"
 
 
 class Bridge(Protocol):
     def open(self, body: dict[str, Any]) -> dict[str, Any]: ...
     def wait_for(self, prompt_id: str, seconds: float) -> dict[str, Any] | None: ...
     def close(self, prompt_id: str, how: str) -> None: ...
+    def report(self, body: dict[str, Any]) -> None: ...
+
+
+def args_digest(args: Any) -> str:
+    """A hash of a tool call's arguments, the same whichever order its keys come in. The hook
+    and the bridge each work it out, and an approver call is taken only when both agree."""
+    text = json.dumps(args, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(text.encode()).hexdigest()
 
 
 def handle(hook_input: dict[str, Any], bridge: Bridge, timeout: float = TIMEOUT, spoken_to: str = "") -> dict[str, Any]:
     """Claude Code's hook answer: the phone's answer, or nothing so the box shows.
 
     ``spoken_to`` is the session the voice is talking to, if any (see ``spoken_to()``)."""
+    tool = str(hook_input.get("tool_name") or "")
+    # RULE: the hook reports each approver call with a hash of its arguments
+    if hook_input.get("hook_event_name") == "PreToolUse" and re.fullmatch(APPROVER_TOOLS, tool):
+        _report(hook_input, bridge)
+        return {}  # it only vouches for the caller; the bridge decides
     body = _prompt(hook_input, spoken_to)
     if body is None:
         return {}
@@ -52,6 +69,18 @@ def handle(hook_input: dict[str, Any], bridge: Bridge, timeout: float = TIMEOUT,
     if body["kind"] == "question":
         return _question_answer(hook_input.get("tool_input") or {}, answer)
     return _approval_answer(answer)
+
+
+def _report(hook_input: dict[str, Any], bridge: Bridge) -> None:
+    """Tell the bridge which session is about to call an approver tool, and with what. Only the
+    hook knows the true session; a call the bridge hears no report for is refused."""
+    body = {
+        "session_id": str(hook_input.get("session_id") or ""),
+        "tool": str(hook_input.get("tool_name") or ""),
+        "args_sha256": args_digest(hook_input.get("tool_input") or {}),
+    }
+    with contextlib.suppress(Exception):
+        bridge.report(body)  # a bridge that is down refuses the call itself; the session goes on
 
 
 def _prompt(hook_input: dict[str, Any], spoken_to: str) -> dict[str, Any] | None:
@@ -180,6 +209,9 @@ class HttpBridge:
         except (OSError, urllib.error.URLError):
             pass
 
+    def report(self, body: dict[str, Any]) -> None:
+        self._call("POST", "/api/v1/approver/reports", body, 5)
+
 
 def spoken_to() -> str:
     """The session the voice is talking to, or nothing: the file the box-refusing hook reads too."""
@@ -213,7 +245,11 @@ def settings_entries(python: str = "python3") -> dict[str, list[dict[str, Any]]]
     command = shlex.join([python, "-I", "-S", str(Path(__file__).resolve())])
     hook = {"type": "command", "command": command, "timeout": TIMEOUT + 30}
     return {
-        "PreToolUse": [{"matcher": "AskUserQuestion", "hooks": [hook]}],
+        "PreToolUse": [
+            {"matcher": "AskUserQuestion", "hooks": [hook]},
+            # RULE: the hook runs before every approver tool
+            {"matcher": APPROVER_TOOLS, "hooks": [dict(hook)]},
+        ],
         "PermissionRequest": [{"matcher": "*", "hooks": [dict(hook)]}],
     }
 

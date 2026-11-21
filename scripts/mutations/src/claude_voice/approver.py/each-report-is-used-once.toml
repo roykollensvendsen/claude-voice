@@ -1,0 +1,5 @@
+[[rule]]
+name = "each report is used once"
+file = "src/claude_voice/approver.py"
+find = 'self.reports.remove\(found\)'
+replace = 'pass'

@@ -405,7 +405,7 @@ def test_the_hook_is_given_to_claude_code_only_for_questions_and_permission_prom
     entries = phone_hook.settings_entries("/usr/bin/python3")
     assert set(entries) == {"PreToolUse", "PermissionRequest"}
     assert entries["PreToolUse"][0]["matcher"] == "AskUserQuestion"
-    assert json.dumps(entries).count("phone_hook.py") == 2
+    assert json.dumps(entries).count("phone_hook.py") == 3  # questions, approver calls, permission prompts
 
 
 SCRIPT = str(Path(phone_hook.__file__).resolve())
@@ -428,7 +428,9 @@ def test_installing_the_hook_keeps_every_other_setting_and_hook_and_can_run_twic
     assert after["model"] == "opus"
     pre = after["hooks"]["PreToolUse"]
     commands = [h["command"] for m in pre for h in m["hooks"]]
-    assert other["command"] in commands and commands.count(shlex.join(["/opt/cv/bin/python", "-I", "-S", SCRIPT])) == 1
+    assert (
+        other["command"] in commands and commands.count(shlex.join(["/opt/cv/bin/python", "-I", "-S", SCRIPT])) == 2
+    )  # once for questions, once for approver calls
     assert len(after["hooks"]["PermissionRequest"]) == 1
     assert (tmp_path / "settings.json.bak").exists()  # the file as it was, kept beside it
 
@@ -452,7 +454,7 @@ def test_installing_the_hook_again_replaces_an_older_phone_hook_line(tmp_path):
     hooks = json.loads(settings.read_text())["hooks"]
     commands = {event: [h["command"] for m in hooks[event] for h in m["hooks"]] for event in hooks}
     new = shlex.join(["/opt/cv/bin/python", "-I", "-S", SCRIPT])
-    assert commands["PreToolUse"] == [other["command"], new]
+    assert commands["PreToolUse"] == [other["command"], new, new]  # questions, then approver calls
     assert commands["PermissionRequest"] == [new]
 
 

@@ -1,0 +1,5 @@
+[[rule]]
+name = "an approver call without its own hooks report is refused"
+file = "src/claude_voice/approver.py"
+find = 'if caller is None:'
+replace = 'if False:'

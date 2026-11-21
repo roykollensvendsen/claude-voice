@@ -55,6 +55,7 @@ from . import (
     mailbox,
     metrics,
     org,
+    phone_hook,
     plugin_desk,
     plugins,
     procs,
@@ -603,7 +604,15 @@ def updater_command(python: str, folder: Path, log: Path, port: int) -> list[str
 
 def _duty(given: approver.Duty | None, repos: config.Config, manager: SessionManager) -> approver.Duty:
     """The approver session's duty: the one given, or one on only once the owner switches it on."""
-    return given or approver.Duty(on=repos.approver_on, role=manager.store.is_role, clock=manager.clock)
+
+    def is_approver(session: str) -> bool:
+        held = manager.store.get_setting("role:approver")
+        # RULE: only the session launched as the approver role is the approver
+        return isinstance(held, dict) and bool(session) and held.get("id") == session
+
+    return given or approver.Duty(
+        on=repos.approver_on, role=manager.store.is_role, approver=is_approver, clock=manager.clock
+    )
 
 
 def build_server(
@@ -2438,7 +2447,7 @@ def build_server(
         Each box says whether the approver may answer it, and why not. Looking is the
         approver's check-in: a box waits for it only while it looks at least every two minutes."""
         names = {str(row.get("sessionId")): row.get("name") for row in events.read_live(live_dir)}
-        return approver.boxes(prompt_book, duty, names)
+        return approver.boxes(prompt_book, duty, names, phone_hook.args_digest({}))
 
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
     def approver_answer(id: str, decision: str, reason: str) -> dict[str, Any]:
@@ -2446,7 +2455,8 @@ def build_server(
         Give allow or deny and a short reason. The bridge refuses any box that is not
         answerable. An allow counts for this one call, never for later ones."""
         settle = lambda prompt, body: answers.settle(prompt, body, "approver", api.HUB.publish)  # noqa: E731
-        return approver.answer(prompt_book, duty, id, decision, reason, settle)
+        digest = phone_hook.args_digest({"id": id, "decision": decision, "reason": reason})
+        return approver.answer(prompt_book, duty, id, decision, reason, settle, digest)
 
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
     def approve(approval_id: str) -> dict[str, Any]:

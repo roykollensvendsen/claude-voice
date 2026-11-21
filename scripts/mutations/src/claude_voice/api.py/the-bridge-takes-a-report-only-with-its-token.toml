@@ -1,0 +1,5 @@
+[[rule]]
+name = "the bridge takes a report only with its token"
+file = "src/claude_voice/api.py"
+find = 'if not await self._bearer\(request\):  # only a hook on this computer has the token'
+replace = 'if False:'

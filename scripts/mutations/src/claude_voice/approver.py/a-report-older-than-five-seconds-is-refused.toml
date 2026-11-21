@@ -1,0 +1,5 @@
+[[rule]]
+name = "a report older than five seconds is refused"
+file = "src/claude_voice/approver.py"
+find = 'self.reports = \[r for r in self.reports if now - r\[0\] <= PROOF_SECONDS\]'
+replace = 'self.reports = list(self.reports)'
