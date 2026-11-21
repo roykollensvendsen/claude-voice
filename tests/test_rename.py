@@ -101,7 +101,8 @@ async def test_a_message_to_an_old_name_reaches_the_renamed_session(tmp_path, ro
         await call(c, "message_active_session", session="math-quest", message="old")
         await call(c, "message_active_session", session="math-quest-curriculum", message="new")
     # Outside tmux Claude Code still answers to the old name, so that is where it goes.
-    assert deliver.sent == [("math-quest", "old"), ("math-quest", "new")]
+    stamp = "origin: session in_process\n"
+    assert deliver.sent == [("math-quest", stamp + "old"), ("math-quest", stamp + "new")]
 
 
 async def test_a_message_to_an_old_name_arrives_once_claude_code_has_the_new_one(tmp_path, root, live):
@@ -114,7 +115,7 @@ async def test_a_message_to_an_old_name_arrives_once_claude_code_has_the_new_one
     assert out["claude_code"] == "renamed"
     assert tmux.typed == [("%1", "/rename math-quest-curriculum")]
     assert tmux.renamed == [("math-quest", "math-quest-curriculum")]
-    assert deliver.sent == [("math-quest-curriculum", "old")]
+    assert deliver.sent == [("math-quest-curriculum", "origin: session in_process\nold")]
 
 
 @pytest.mark.parametrize("bad", ["", "math quest", "-flag", "mq/x", "æøå", "a" * 65, "mq;rm"])

@@ -109,7 +109,7 @@ async def test_message_goes_to_the_open_session_by_name(tmp_path, root, live):
     _, srv = server_for(tmp_path, root, live, deliver=deliver)
     async with Client(srv) as c:
         out = await call(c, "message_active_session", session="billing-ab", message="status?")
-    assert deliver.sent == [("billing-ab", "status?")]
+    assert deliver.sent == [("billing-ab", "origin: session in_process\nstatus?")]
     assert out["delivered"] is True
 
 
