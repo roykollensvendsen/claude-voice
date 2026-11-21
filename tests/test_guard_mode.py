@@ -183,7 +183,7 @@ def test_a_fork_only_push_from_another_clone_is_refused(tmp_path, option):
     here, there = clone(tmp_path / "here", FORK), clone(tmp_path / "there", FORK)
     git(here, "remote", "add", "fork", FORK)
     git(there, "remote", "add", "fork", OWNERS)
-    command = f"git {option.format(there, there)} push fork feat/x"
+    command = f"git {option.format(there.as_posix(), there.as_posix())} push fork feat/x"
     verdict, _ = decision(guard.answer(hook(here, command), UPSTREAM))
     assert verdict == "deny"
 
@@ -199,13 +199,13 @@ def test_a_fork_only_push_from_another_clone_is_refused(tmp_path, option):
 def test_a_push_is_judged_by_the_remotes_of_the_folder_it_runs_in(tmp_path, command):
     """The session's folder pushes to the owner; the other clone is a fork, and goes."""
     here, there = clone(tmp_path / "here", OWNERS), clone(tmp_path / "there", FORK)
-    assert guard.answer(hook(here, command.format(there=there)), UPSTREAM) == {}
+    assert guard.answer(hook(here, command.format(there=there.as_posix())), UPSTREAM) == {}
 
 
 @pytest.mark.parametrize("command", ["cd {there} && git push origin feat/x", "git -C {there} push origin feat/x"])
 def test_a_push_after_moving_into_a_clone_of_the_upstream_is_refused(tmp_path, command):
     here, there = clone(tmp_path / "here", FORK), clone(tmp_path / "there", OWNERS)
-    verdict, _ = decision(guard.answer(hook(here, command.format(there=there)), UPSTREAM))
+    verdict, _ = decision(guard.answer(hook(here, command.format(there=there.as_posix())), UPSTREAM))
     assert verdict == "deny"
 
 
@@ -220,7 +220,7 @@ def test_a_push_after_moving_into_a_clone_of_the_upstream_is_refused(tmp_path, c
 def test_a_move_that_may_not_last_judges_the_push_in_both_folders(tmp_path, command):
     """Here is the owner's repo; a move inside a subshell, or beside a pipe, does not reach the push."""
     here, there = clone(tmp_path / "here", OWNERS), clone(tmp_path / "there", FORK)
-    verdict, _ = decision(guard.answer(hook(here, command.format(there=there)), UPSTREAM))
+    verdict, _ = decision(guard.answer(hook(here, command.format(there=there.as_posix())), UPSTREAM))
     assert verdict == "deny"
 
 
@@ -238,7 +238,7 @@ def test_a_move_that_may_not_last_judges_the_push_in_both_folders(tmp_path, comm
 def test_a_cd_the_shell_may_skip_is_never_taken_as_certain(tmp_path, command):
     """Here is the owner's repo. Only a cd joined to the push by && alone surely runs first."""
     here, there = clone(tmp_path / "here", OWNERS), clone(tmp_path / "there", FORK)
-    verdict, _ = decision(guard.answer(hook(here, command.format(there=there)), UPSTREAM))
+    verdict, _ = decision(guard.answer(hook(here, command.format(there=there.as_posix())), UPSTREAM))
     assert verdict == "deny"
 
 
@@ -261,7 +261,7 @@ def test_a_cd_the_shell_may_skip_is_never_taken_as_certain(tmp_path, command):
 def test_a_folder_change_the_guard_cannot_follow_leaves_the_folder_unread(tmp_path, command):
     """Here is a fork; the move goes to the owner's repo in a shape the guard does not follow."""
     here, there = clone(tmp_path / "here", FORK), clone(tmp_path / "there", OWNERS)
-    verdict, _ = decision(guard.answer(hook(here, command.replace("THERE", str(there))), UPSTREAM))
+    verdict, _ = decision(guard.answer(hook(here, command.replace("THERE", there.as_posix())), UPSTREAM))
     assert verdict == "deny"
 
 
@@ -302,7 +302,7 @@ def test_git_settings_set_anywhere_in_the_command_or_the_hook_environment_are_re
     if command == "ENV":
         monkeypatch.setenv("GIT_DIR", str(there / ".git"))
         command = "git push origin feat/x"
-    verdict, _ = decision(guard.answer(hook(here, command.replace("THERE", str(there))), UPSTREAM))
+    verdict, _ = decision(guard.answer(hook(here, command.replace("THERE", there.as_posix())), UPSTREAM))
     assert verdict == "deny"
 
 
@@ -353,7 +353,7 @@ PLAIN = "git push origin feat/x"
 )
 def test_a_plain_push_to_a_fork_goes(tmp_path, command):
     here, there = clone(tmp_path / "here", FORK), clone(tmp_path / "there", FORK)
-    assert guard.answer(hook(here, command.replace("THERE", str(there))), UPSTREAM) == {}
+    assert guard.answer(hook(here, command.replace("THERE", there.as_posix())), UPSTREAM) == {}
 
 
 @pytest.mark.parametrize(
@@ -401,6 +401,16 @@ def test_a_second_command_never_rides_on_a_plain_push(command):
 
 
 @pytest.mark.parametrize(
+    "command", ["cd C:\\Users\\x && git push origin feat/x", "git -C C:\\Users\\x push origin feat/x"]
+)
+def test_a_folder_written_with_backslashes_fails_the_plain_shape(command):
+    """Bash reads an unquoted backslash as an escape, so the push would run somewhere else."""
+    verdict, reason = decide(command, {"origin": FORK})
+    assert verdict == "deny" and "git push <remote> <branch>" in reason
+    assert decide(command, {"origin": OWNERS}, own_clone=True)[0] == "ask"
+
+
+@pytest.mark.parametrize(
     "option",
     ["--mirror", "--all", "--tags", "-f", "--force", "-d", "--delete", "--repo=x", "--push-option=x", "-o", "--exec=x"],
 )
@@ -432,7 +442,7 @@ def test_a_relative_cd_that_starts_with_a_dot_is_followed_under_cdpath(tmp_path,
 )
 def test_a_cd_into_a_command_substitution_is_unread(tmp_path, command):
     here, there = clone(tmp_path / "here", FORK), clone(tmp_path / "there", OWNERS)
-    verdict, _ = decision(guard.answer(hook(here, command.replace("THERE", str(there))), UPSTREAM))
+    verdict, _ = decision(guard.answer(hook(here, command.replace("THERE", there.as_posix())), UPSTREAM))
     assert verdict == "deny"
 
 
@@ -447,14 +457,16 @@ def test_a_cd_into_a_command_substitution_is_unread(tmp_path, command):
 )
 def test_a_push_in_a_folder_the_guard_cannot_read_is_refused(tmp_path, command):
     here, there = clone(tmp_path / "here", FORK), clone(tmp_path / "there", FORK)
-    verdict, _ = decision(guard.answer(hook(here, command.format(there=there)), UPSTREAM))
+    verdict, _ = decision(guard.answer(hook(here, command.format(there=there.as_posix())), UPSTREAM))
     assert verdict == "deny"
 
 
 def test_a_push_in_another_readable_clone_asks_in_own_clone_mode_naming_that_folder(tmp_path):
     here, there = clone(tmp_path / "here", OWNERS), clone(tmp_path / "there", OWNERS)
-    verdict, reason = decision(guard.answer(hook(here, f"cd {there} && git push origin feat/x"), UPSTREAM, True))
-    assert verdict == "ask" and str(there) in reason
+    verdict, reason = decision(
+        guard.answer(hook(here, f"cd {there.as_posix()} && git push origin feat/x"), UPSTREAM, True)
+    )
+    assert verdict == "ask" and there.as_posix() in reason
 
 
 def test_a_fork_remote_with_a_second_push_address_at_the_upstream_is_refused(tmp_path):

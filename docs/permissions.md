@@ -303,6 +303,8 @@ plain push, on one line, as a call of its own:
 - Nothing else is in the command: no redirection such as `2>&1`, second
   command, pipe, variable, subshell or `NAME=value` before git. Bash may run a
   redirection's target as a command, so the guard reads none.
+- A folder has no backslash. Bash reads an unquoted backslash as an escape, so
+  on Windows write `C:/Users/...`, not `C:\Users\...`.
 - The hook's environment holds no GIT_ variable, apart from `GIT_EDITOR`,
   `GIT_SEQUENCE_EDITOR`, `GIT_PAGER` and `GIT_TERMINAL_PROMPT`.
 
