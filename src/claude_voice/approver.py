@@ -39,6 +39,7 @@ import logging
 import os
 import re
 import socket
+import sys
 import time
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -325,7 +326,7 @@ def judge(prompt: dict[str, Any]) -> str | None:
 async def serve_reports(duty: Duty, path: Path) -> asyncio.AbstractServer | None:
     """Listen for the hooks' reports on a Unix socket only this user can open. Where the system
     cannot name a socket's sender (Windows), nothing listens and every approver call is refused."""
-    if not duty.on or not hasattr(socket, "SO_PEERCRED"):
+    if sys.platform == "win32" or not duty.on or not hasattr(socket, "SO_PEERCRED"):
         return None
     path = _clear(path)
     server = await asyncio.start_unix_server(lambda r, w: _take_report(duty, r, w), path=str(path))
