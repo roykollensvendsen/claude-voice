@@ -375,6 +375,8 @@ SECRETS = [
     ("gh auth login --with-token ghp_aaaaBBBBccccDDDDeeeeFFFFgggg1234", "ghp_aaaa"),
     ("API_KEY=abc123 make", "abc123"),
     ("deploy --password hunter2 --host x", "hunter2"),
+    ("vault login s3cr3tpass", "s3cr3tpass"),
+    ("echo hunter2", "hunter2"),
 ]
 
 

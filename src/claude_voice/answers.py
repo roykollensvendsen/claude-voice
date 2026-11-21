@@ -41,7 +41,7 @@ NOT_READ_IN_FULL = "too long or partly left out to read out; answer it on the sc
 SPOKEN_INPUT = 120  # characters of what an approval would run that the voice is given
 PATH_TOOLS = frozenset({"Read", "Edit", "Write", "NotebookEdit"})  # their box shows a file's path
 PROGRAM = re.compile(r"[A-Za-z0-9._/-]{1,40}")
-SUBCOMMAND = re.compile(r"[a-z][a-z0-9-]{0,23}")
+SUBCOMMAND = re.compile(r"[a-z][a-z-]{0,23}")  # no digits: `login s3cr3tpass` is a value, not a subcommand
 FLAG = re.compile(r"-[A-Za-z]|--[a-z][a-z0-9-]{0,30}")  # a bare flag, never one with its value joined on
 PATH = re.compile(r"[A-Za-z0-9._~/-]+")
 
