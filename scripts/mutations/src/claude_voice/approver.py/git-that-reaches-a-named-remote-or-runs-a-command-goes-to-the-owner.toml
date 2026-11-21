@@ -1,0 +1,5 @@
+[[rule]]
+name = "git that reaches a named remote or runs a command goes to the owner"
+file = "src/claude_voice/approver.py"
+find = 'if program == "git" and'
+replace = 'if False:'

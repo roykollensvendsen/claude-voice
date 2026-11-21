@@ -253,9 +253,9 @@ def _template(path: str, ask: Ask) -> bool:
     if ask.place is None or os.path.basename(path) not in ENV_TEMPLATES:
         return False
     full = os.path.abspath(os.path.join(ask.place.repo, path))
-    inside = full.startswith(os.path.realpath(ask.place.repo) + os.sep)
+    in_repo = full.startswith(os.path.realpath(ask.place.repo) + os.sep)
     # RULE: a tracked env template is not secret
-    return not os.path.islink(full) and os.path.realpath(full) == full and inside and ask.tracked(Path(full))
+    return not os.path.islink(full) and os.path.realpath(full) == full and in_repo and ask.tracked(Path(full))
 
 
 #: The secret table's own paths under home, searched for the inodes a hard link could share.
@@ -651,7 +651,7 @@ FIXED: list[tuple[int, Callable[[Ask], bool]]] = [
 # -- the shapes ------------------------------------------------------------------------------
 
 
-def _inside(path: str, roots: list[str], base: Path) -> bool:
+def inside(path: str, roots: list[str], base: Path) -> bool:
     """Whether `path`, symlinks followed, is in one of `roots`."""
     if path.startswith("/proc") or path.startswith("~"):
         return False
@@ -660,7 +660,7 @@ def _inside(path: str, roots: list[str], base: Path) -> bool:
 
 
 def _editable(path: str, place: Place) -> bool:
-    if not _inside(path, place.writes(), place.repo):
+    if not inside(path, place.writes(), place.repo):
         return False
     rel = Path(os.path.relpath(os.path.realpath(os.path.join(place.repo, path)), os.path.realpath(place.repo)))
     return ".git" not in rel.parts and rel.parts[:2] != (".github", "workflows")
@@ -670,7 +670,7 @@ def _git_shape(part: list[str], place: Place) -> bool:
     sub = part[1] if len(part) > 1 else ""
     if sub == "worktree":
         return part[2:3] == ["add"] and all(
-            _inside(w, place.writes(), place.repo) for w in part[3:] if not w.startswith("-")
+            inside(w, place.writes(), place.repo) for w in part[3:] if not w.startswith("-")
         )
     if sub == "rebase" and any(w == "-x" or w.startswith("--exec") for w in part):
         return False
@@ -790,14 +790,14 @@ def _reader_shape(part: list[str], place: Place, ask: Ask) -> bool:
     paths = _read_paths(part)
     if paths is None or "-" in paths:
         return False
-    inside = all(_inside(p, place.reads(), place.repo) and not is_secret(p, ask) for p in paths or ["."])
-    if inside and _recursive(part):
-        inside = all(_walk_clean(p, place, ask) for p in paths or ["."])
+    kept = all(inside(p, place.reads(), place.repo) and not is_secret(p, ask) for p in paths or ["."])
+    if kept and _recursive(part):
+        kept = all(_walk_clean(p, place, ask) for p in paths or ["."])
     # RULE: diff takes two regular files only
     if part[0] == "diff":
-        return inside and len(paths) == 2 and all(os.path.isfile(os.path.join(place.repo, p)) for p in paths)
+        return kept and len(paths) == 2 and all(os.path.isfile(os.path.join(place.repo, p)) for p in paths)
     # RULE: a read outside the areas goes to the owner
-    return inside
+    return kept
 
 
 def _uv_shape(part: list[str], place: Place) -> bool:
@@ -807,7 +807,7 @@ def _uv_shape(part: list[str], place: Place) -> bool:
         return False
     first = part[2]
     return first in UV_TOOLS or (
-        "/" in first and _inside(first, place.writes(), place.repo) and Path(place.repo, first).is_file()
+        "/" in first and inside(first, place.writes(), place.repo) and Path(place.repo, first).is_file()
     )
 
 
@@ -840,9 +840,9 @@ def _file_shape(ask: Ask, place: Place) -> bool:
     if ask.tool == "Glob" and (pattern.startswith("/") or ".." in pattern):
         return False
     if ask.tool in ("Read", "Grep", "Glob"):
-        inside = bool(paths) and all(_inside(p, place.reads(), place.repo) for p in paths)
+        kept = bool(paths) and all(inside(p, place.reads(), place.repo) for p in paths)
         # RULE: the grep tool on a folder walks it first
-        return inside and (ask.tool != "Grep" or all(_walk_clean(p, place, ask) for p in paths))
+        return kept and (ask.tool != "Grep" or all(_walk_clean(p, place, ask) for p in paths))
     return bool(paths) and all(_editable(p, place) for p in paths)
 
 

