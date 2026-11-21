@@ -1,5 +1,5 @@
 [[rule]]
 name = "a confirm only the voice may call is refused to every session by every name"
 file = "src/claude_voice/permissions.py"
-find = 'deny \+= \[f"mcp__\{server\}__\{tool\}" for server in voice\["servers"\] for tool in voice\["tools"\]\]'
+find = 'deny \+= \[f"mcp__\{s\}__\{m\}_\{tool\}" for s in voice\["servers"\] for m in named for tool in voice\["tools"\]\]'
 replace = 'deny += []'

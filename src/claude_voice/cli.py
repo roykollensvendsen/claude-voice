@@ -618,8 +618,23 @@ def agent_command(action: str, env: Mapping[str, str], sessions: bool = False) -
 def _machines(parsed: Any, env: Mapping[str, str]) -> int:
     """machines add writes the settings file; every other machines action is machines_command."""
     if parsed.action == "add":
-        return _settings_edit("machines add", [parsed.name, *parsed.values], env)
-    return machines_command(parsed.action, parsed.name, env)
+        code = _settings_edit("machines add", [parsed.name, *parsed.values], env)
+        if code == 0 and parsed.name:
+            _say_reapply(parsed.name)
+        return code
+    code = machines_command(parsed.action, parsed.name, env)
+    if code == 0 and parsed.action == "approve" and parsed.name:
+        _say_reapply(parsed.name)
+    return code
+
+
+def _say_reapply(machine: str) -> None:
+    """Say how to refuse a new machine's voice-only confirms, when the shipped table doesn't yet."""
+    from . import permissions
+
+    # RULE: a machine the table does not name is told to re-apply the permissions
+    if note := permissions.reapply_note(machine, invocation.command()):
+        sys.stdout.write(note + "\n")
 
 
 def machines_command(action: str, name: str | None, env: Mapping[str, str]) -> int:
@@ -673,7 +688,7 @@ def permissions_command(folders: list[Path], dry_run: bool, env: Mapping[str, st
     folders = _the_clones(folders, env)
     if not folders:
         return 1
-    rules, code = permissions.load(), 0
+    rules, code = permissions.load(machines=_machine_names(env)), 0
     backups = permissions.backup_root(Path(env.get("HOME") or Path.home()))
     hooks = _session_hooks(folders, env)
     for folder in folders:
@@ -684,6 +699,18 @@ def permissions_command(folders: list[Path], dry_run: bool, env: Mapping[str, st
             sys.stderr.write(f"claude-voice: {exc}\n")
             code = 1
     return code
+
+
+def _machine_names(env: Mapping[str, str]) -> list[str]:
+    """The machines in the bridge's settings, whose voice-only confirms are refused; none when
+    the settings cannot be read, which leaves the shipped table's own machines refused."""
+    from . import config as settings
+
+    try:
+        # RULE: every machine in the settings has its voice-only confirms refused
+        return [spec.name for spec in settings.load(settings.FILE, env=env).machines]
+    except settings.ConfigError:
+        return []
 
 
 def _session_hooks(folders: list[Path], env: Mapping[str, str]) -> dict[Path, str]:
@@ -756,7 +783,7 @@ def shipped_command(folders: list[Path], env: Mapping[str, str]) -> int:
     backups = permissions.backup_root(Path(env.get("HOME") or Path.home()))
     # RULE: the shipped rules are recorded under the commit that is installed
     sha = shipped.installed_commit(own)
-    done = shipped.sync(folders, chart, own, permissions.load(), sha, backup_root=backups)
+    done = shipped.sync(folders, chart, own, permissions.load(machines=_machine_names(env)), sha, backup_root=backups)
     for line in shipped.report(done):
         sys.stdout.write(line + "\n")
     return 0

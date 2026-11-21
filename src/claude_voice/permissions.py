@@ -17,7 +17,7 @@ import os
 import shlex
 import shutil
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -77,10 +77,28 @@ def _refuse_prefix_rules(rules: list[str]) -> None:
         raise PermissionsError(f"{old} ends in ':*', which Claude Code reads as a plain prefix, not a wildcard")
 
 
-def load(table: Path = TABLE) -> Rules:
+def voice_only_machines(table: Path = TABLE) -> list[str]:
+    """The machines the shipped table refuses voice-only confirms for, whatever the settings say."""
+    raw = json.loads(table.read_text(encoding="utf-8"))
+    return list(raw.get("voice only", {}).get("machines", []))
+
+
+def reapply_note(machine: str, command: str = "claude-voice", table: Path = TABLE) -> str | None:
+    """What to run so a newly named machine's voice-only confirms are refused too; None when
+    the shipped table already covers it."""
+    if machine in voice_only_machines(table):
+        return None
+    return (
+        f"To refuse {machine}'s voice-only confirms, such as {machine}_sms_send_confirm, to every "
+        f"session, run: {command} permissions"
+    )
+
+
+def load(table: Path = TABLE, machines: Iterable[str] = ()) -> Rules:
     """The rules, each group flattened; every protected branch refused to every forced push
-    and to every other push; every secret file refused to every reader; and
-    every device tool asked for under each name the bridge is known by."""
+    and to every other push; every secret file refused to every reader; every device tool
+    asked for under each name the bridge is known by; and every voice-only confirm refused
+    for each of `machines` and the table's own, under each of the bridge's names."""
     raw = json.loads(table.read_text(encoding="utf-8"))
     allow, ask, deny = _flat(raw["allow"]), _flat(raw.get("ask", {})), _flat(raw["deny"])
     protected = raw["protected branches"]
@@ -99,8 +117,9 @@ def load(table: Path = TABLE) -> Rules:
     # RULE: a tool that moves something in the house asks first, by every name it is seen under
     ask += [f"mcp__{server}__{tool}" for server in devices["servers"] for tool in devices["tools"]]
     voice = raw.get("voice only", {"servers": [], "tools": []})
+    named = _unique([*voice.get("machines", []), *machines])
     # RULE: a confirm only the voice may call is refused to every session by every name
-    deny += [f"mcp__{server}__{tool}" for server in voice["servers"] for tool in voice["tools"]]
+    deny += [f"mcp__{s}__{m}_{tool}" for s in voice["servers"] for m in named for tool in voice["tools"]]
     _refuse_prefix_rules(allow + ask + deny)
     retired = raw.get("retired", {})
     return Rules(

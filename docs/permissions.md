@@ -191,9 +191,13 @@ in the same pull request as the plugin.
 
 Some confirms only the voice may call, after the owner's spoken yes. They are
 listed under `voice only`, and they are refused to every session, never asked.
-The first is the phone's `sms_send_confirm`, offered as
-`phone-a_sms_send_confirm`. It sends a text the voice has read back. The bridge
-writes it under both names, as for the device tools. Drafting a text
+The first is the phone's `sms_send_confirm`. It sends a text the voice has read
+back. The bridge offers a machine's tool with the machine's name in front, such
+as `phone-a_sms_send_confirm`. So the rule is written once for each machine in
+the table's own `machines` list and once for each machine in the bridge's
+settings, under both of the bridge's names. After `machines add` or
+`machines approve` names a machine the table doesn't, the command says to run
+`claude-voice permissions` again, so its confirm is refused too. Drafting a text
 (`phone-a_sms_send_request`) and stopping it (`phone-a_sms_send_cancel`) are not
 refused: a draft sends nothing, and a stop can only keep a text from going.
 

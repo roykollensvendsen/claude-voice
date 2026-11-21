@@ -195,8 +195,9 @@
   },
   "voice only": {
     "servers": ["claude-voice", "claude_ai_claude-voice"],
+    "machines": ["phone-a"],
     "tools": [
-      "phone-a_sms_send_confirm"
+      "sms_send_confirm"
     ]
   },
   "deny": {

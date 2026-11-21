@@ -701,6 +701,33 @@ def test_drafting_a_text_or_stopping_it_is_never_denied(server, tool):
     assert f"mcp__{server}__{tool}" not in permissions.load().deny
 
 
+def test_a_second_phone_or_a_renamed_one_has_its_confirm_refused_too():
+    """The table lists the plain tool; each machine the bridge knows gets its own deny row."""
+    deny = permissions.load(machines=["phone-b"]).deny
+    for server in BRIDGE_NAMES:
+        assert f"mcp__{server}__phone-b_sms_send_confirm" in deny
+        assert f"mcp__{server}__phone-a_sms_send_confirm" in deny, "the table's own machine stays"
+
+
+def test_every_machine_in_the_settings_has_its_voice_only_confirms_refused(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    file = tmp_path / "config.toml"
+    file.write_text("[machines.phone-b]\naddress = '100.64.0.9'\n", encoding="utf-8")
+    assert main(["permissions", str(repo)], env={"HOME": str(tmp_path), "CLAUDE_VOICE_CONFIG": str(file)}) == 0
+    assert "mcp__claude-voice__phone-b_sms_send_confirm" in read(repo)["permissions"]["deny"]
+
+
+def test_a_machine_the_table_does_not_name_is_told_to_re_apply_the_permissions(tmp_path, capsys):
+    file = tmp_path / "config.toml"
+    file.write_text("", encoding="utf-8")
+    env = {"HOME": str(tmp_path), "CLAUDE_VOICE_CONFIG": str(file)}
+    assert main(["machines", "add", "phone-b", "100.64.0.9"], env=env) == 0
+    out = capsys.readouterr().out
+    assert "phone-b_sms_send_confirm" in out and " permissions" in out
+    assert permissions.reapply_note("phone-a") is None, "a machine the table names needs nothing"
+
+
 # -- which folders, and the command ----------------------------------------------------
 
 
