@@ -141,6 +141,32 @@ def test_each_report_is_used_once(book, repo, duty):
     assert approver.boxes(book, duty, {}, phone_hook.args_digest({}))["refused"] == approver.NOT_PROVEN
 
 
+def test_the_approvers_own_report_is_taken_before_another_sessions(book, duty):
+    """Another session's matching report neither blocks the approver's call nor is used up by it."""
+    digest = phone_hook.args_digest({})
+    duty.report(WORKER, LIST, digest)
+    duty.report(APPROVER, LIST, digest)
+    assert isinstance(approver.boxes(book, duty, {}, digest), list)
+    assert [r[1] for r in duty.reports] == [WORKER]
+
+
+def test_the_bridge_keeps_only_the_newest_reports(duty):
+    for n in range(approver.MAX_REPORTS + 5):
+        duty.report(APPROVER, TOOL, str(n))
+    assert len(duty.reports) == approver.MAX_REPORTS
+    assert duty.reports[-1][3] == str(approver.MAX_REPORTS + 4)  # the oldest went first
+
+
+def test_a_refused_call_is_logged_with_the_age_of_its_reports(book, repo, duty, clock, caplog):
+    prompt = box(book, repo)
+    args = call(prompt["id"])
+    duty.report(APPROVER, TOOL, phone_hook.args_digest(args))
+    clock.now += 6
+    with caplog.at_level("WARNING", logger="claude_voice.approver"):
+        assert answer(book, duty, args)["refused"] == approver.NOT_PROVEN
+    assert "approver_answer" in caplog.text and "6.0" in caplog.text
+
+
 def test_a_proven_call_from_the_approver_answers_the_box(book, repo, duty):
     prompt = box(book, repo)
     args = call(prompt["id"])
