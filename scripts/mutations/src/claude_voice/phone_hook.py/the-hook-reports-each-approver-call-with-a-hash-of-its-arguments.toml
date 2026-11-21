@@ -1,0 +1,5 @@
+[[rule]]
+name = "the hook reports each approver call with a hash of its arguments"
+file = "src/claude_voice/phone_hook.py"
+find = 'if hook_input.get\("hook_event_name"\) == "PreToolUse" and re.fullmatch\(APPROVER_TOOLS, tool\):'
+replace = 'if False:'

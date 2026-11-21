@@ -186,20 +186,47 @@ CHECK_IN = 120.0  # seconds after its last look that the approver still counts a
 LOG = Path("~/.local/state/claude-voice/approver/log.jsonl")
 TOO_LATE = "too late: the box is on the screen"
 OFF = "the approver is switched off; the owner turns it on in the bridge's config"
+PROOF_SECONDS = 5.0  # how long a hook's report of an approver call stays good
+NOT_PROVEN = "only the approver session may call this, and its own hook did not report this call"
+OWN_BOX = "the approver never answers its own box"
 
 
 class Duty:
-    """Whether the approver is on duty, and its log of decisions."""
+    """Whether the approver is on duty, who it is, and its log of decisions.
+
+    `role` says whether a session was launched as a role, and `approver` whether it is the
+    approver. A call to the approver's tools counts only with a fresh report from that
+    session's own hook, naming the same tool and arguments, and each report counts once."""
 
     def __init__(
         self,
         on: bool,
         role: Callable[[str], bool] = lambda session: False,
+        approver: Callable[[str], bool] = lambda session: False,
         clock: Callable[[], float] = time.monotonic,
         log: Path = LOG,
     ) -> None:
-        self.on, self.role, self.clock, self.log = on, role, clock, log.expanduser()
+        self.on, self.role, self.approver, self.clock, self.log = on, role, approver, clock, log.expanduser()
         self.seen: float | None = None  # when the approver last looked at its boxes
+        self.reports: list[tuple[float, str, str, str]] = []  # (at, session, tool, args hash)
+
+    def report(self, session: str, tool: str, digest: str) -> None:
+        """A session's hook says that session is about to call `tool` with these arguments."""
+        self.reports.append((self.clock(), session, tool, digest))
+
+    def caller(self, tool: str, digest: str) -> str | None:
+        """The approver session calling `tool` with these arguments, or None when no fresh
+        report from it says so. The matching report is used up either way."""
+        now = self.clock()
+        # RULE: a report older than five seconds is refused
+        self.reports = [r for r in self.reports if now - r[0] <= PROOF_SECONDS]
+        for found in self.reports:
+            if found[2].endswith(f"__{tool}") and found[3] == digest:
+                # RULE: each report is used once
+                self.reports.remove(found)
+                # RULE: a report from another session is refused
+                return found[1] if self.approver(found[1]) else None
+        return None
 
     def check_in(self) -> None:
         self.seen = self.clock()
@@ -269,11 +296,13 @@ def judge(prompt: dict[str, Any]) -> str | None:
     return why_owner(str(prompt.get("tool")), given, lines, place, cwd=place.repo, cut=bool(prompt.get("cut")))
 
 
-def boxes(book: prompts.Book, duty: Duty, names: dict[str, Any]) -> list[dict[str, Any]] | dict[str, str]:
+def boxes(book: prompts.Book, duty: Duty, names: dict[str, Any], digest: str) -> list[dict[str, Any]] | dict[str, str]:
     """The approval boxes a hook waits on now, each with whether the approver may answer it.
-    Looking is the approver's check-in."""
+    Looking is the approver's check-in. `digest` is the hash of this call's arguments."""
     if not duty.on:
         return {"refused": OFF}
+    if duty.caller("approver_boxes", digest) is None:
+        return {"refused": NOT_PROVEN}
     duty.check_in()
     out = []
     for prompt in book.items.values():
@@ -306,12 +335,17 @@ def answer(
     decision: str,
     reason: str,
     settle: Callable[[dict[str, Any], dict[str, Any]], None],
+    digest: str,
 ) -> dict[str, Any]:
     """Answer one box as the approver, once, or say why not. `settle` gives the box its
-    answer (answers.settle). Nothing here awaits, so the hook's own timeout cannot slip in
-    between the check and the answer."""
+    answer (answers.settle), and `digest` is the hash of this call's arguments. Nothing here
+    awaits, so the hook's own timeout cannot slip in between the check and the answer."""
     if not duty.on:
         return {"refused": OFF}
+    caller = duty.caller("approver_answer", digest)
+    # RULE: an approver call without its own hooks report is refused
+    if caller is None:
+        return {"refused": NOT_PROVEN}
     if decision not in ("allow", "deny"):
         return {"refused": "decision is allow or deny"}
     prompt = book.items.get(prompt_id)
@@ -319,6 +353,10 @@ def answer(
     if prompt is None or prompt.get("answer") is not None or not book.hook_waits(prompt):
         duty.record(prompt or {"id": prompt_id}, "late", reason)
         return {"refused": TOO_LATE}
+    # RULE: the approver never answers its own box
+    if prompt.get("session") == caller:
+        duty.record(prompt, "refused", OWN_BOX)
+        return {"refused": OWN_BOX}
     # RULE: the approver never answers a box the owner holds
     if why := judge(prompt):
         duty.record(prompt, "refused", why)

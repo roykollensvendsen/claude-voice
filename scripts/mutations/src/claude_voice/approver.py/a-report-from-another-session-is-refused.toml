@@ -1,0 +1,5 @@
+[[rule]]
+name = "a report from another session is refused"
+file = "src/claude_voice/approver.py"
+find = 'return found\[1\] if self.approver\(found\[1\]\) else None'
+replace = 'return found[1]'

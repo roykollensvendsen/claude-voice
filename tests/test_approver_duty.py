@@ -21,6 +21,7 @@ from claude_voice.store import Store
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="POSIX paths and file modes")
 
 ROLE = "role-session-1"
+APPROVER = "approver-session-1"
 SECRET_WORD = "made-up-secret-value"
 SECRET = "s3cret-token-for-the-duty-tests-xx"
 BEARER = {"Authorization": f"Bearer {SECRET}"}
@@ -49,7 +50,27 @@ def repo(tmp_path):
 
 @pytest.fixture
 def duty(tmp_path, clock):
-    return approver.Duty(on=True, role=lambda s: s == ROLE, clock=clock, log=tmp_path / "approver" / "log.jsonl")
+    return approver.Duty(
+        on=True,
+        role=lambda s: s == ROLE,
+        approver=lambda s: s == APPROVER,
+        clock=clock,
+        log=tmp_path / "approver" / "log.jsonl",
+    )
+
+
+def ask(book, duty, prompt_id, decision, reason, settle):
+    """An approver_answer call, as the approver makes it: its own hook reports it first."""
+    digest = phone_hook.args_digest({"id": prompt_id, "decision": decision, "reason": reason})
+    duty.report(APPROVER, "mcp__claude_ai_claude-voice__approver_answer", digest)
+    return approver.answer(book, duty, prompt_id, decision, reason, settle, digest)
+
+
+def look(book, duty, names):
+    """An approver_boxes call, as the approver makes it: its own hook reports it first."""
+    digest = phone_hook.args_digest({})
+    duty.report(APPROVER, "mcp__claude_ai_claude-voice__approver_boxes", digest)
+    return approver.boxes(book, duty, names, digest)
 
 
 @pytest.fixture
@@ -106,7 +127,7 @@ def test_the_approver_sees_each_open_box_and_whether_it_may_answer_it(book, repo
     box(book, repo)
     box(book, repo, command="git push origin main")
     box(book, repo, waiting=False)
-    listed = approver.boxes(book, duty, {ROLE: "builder"})
+    listed = look(book, duty, {ROLE: "builder"})
     assert [(b["session_name"], b["input"], b["answerable"]) for b in listed] == [
         ("builder", "uv run pytest", True),
         ("builder", "git push origin main", False),
@@ -117,18 +138,18 @@ def test_the_approver_sees_each_open_box_and_whether_it_may_answer_it(book, repo
 def test_the_approver_is_refused_while_switched_off(book, repo, tmp_path, clock):
     off = approver.Duty(on=False, role=lambda s: True, clock=clock, log=tmp_path / "off.jsonl")
     prompt = box(book, repo)
-    assert "refused" in approver.boxes(book, off, {})
-    assert "refused" in approver.answer(book, off, prompt["id"], "allow", "ok", published()[1])
+    assert "refused" in look(book, off, {})
+    assert "refused" in ask(book, off, prompt["id"], "allow", "ok", published()[1])
     assert prompt["answer"] is None
 
 
 def test_an_approver_answer_settles_an_answerable_box_once_and_never_for_always(book, repo, duty):
     prompt = box(book, repo)
-    done = approver.answer(book, duty, prompt["id"], "allow", "the session's own tests", published()[1])
+    done = ask(book, duty, prompt["id"], "allow", "the session's own tests", published()[1])
     assert done["decided"] == "allow" and prompt["answer"]["decision"] == "allow"
     hook = json.dumps(phone_hook._approval_answer(prompt["answer"]))
     assert "updatedPermissions" not in hook and "always" not in hook
-    again = approver.answer(book, duty, prompt["id"], "deny", "twice", published()[1])
+    again = ask(book, duty, prompt["id"], "deny", "twice", published()[1])
     assert again["refused"] == approver.TOO_LATE
 
 
@@ -138,36 +159,36 @@ def test_the_approver_never_answers_a_box_the_owner_holds(book, repo, duty):
     unsorted.pop("routed")
     for prompt in (owners, unsorted):
         for decision in ("allow", "deny"):
-            assert "refused" in approver.answer(book, duty, prompt["id"], decision, "x", published()[1])
+            assert "refused" in ask(book, duty, prompt["id"], decision, "x", published()[1])
         assert prompt["answer"] is None
 
 
 def test_an_answer_after_the_box_fell_back_to_the_screen_is_refused_as_too_late(book, repo, duty):
     prompt = box(book, repo)
     book.close(prompt["id"], "timeout")
-    assert approver.answer(book, duty, prompt["id"], "allow", "x", published()[1])["refused"] == approver.TOO_LATE
+    assert ask(book, duty, prompt["id"], "allow", "x", published()[1])["refused"] == approver.TOO_LATE
     assert prompt["answer"] is None
     assert log_lines(duty)[-1]["decision"] == "late"
     unwatched = box(book, repo, waiting=False)  # still listed, but its hook no longer waits
-    assert approver.answer(book, duty, unwatched["id"], "allow", "x", published()[1])["refused"] == approver.TOO_LATE
+    assert ask(book, duty, unwatched["id"], "allow", "x", published()[1])["refused"] == approver.TOO_LATE
     assert unwatched["answer"] is None
 
 
 def test_the_timeout_and_an_answer_race_and_exactly_one_wins(book, repo, duty):
     first = box(book, repo)
     seen, publish = published()
-    approver.answer(book, duty, first["id"], "allow", "x", publish)
+    ask(book, duty, first["id"], "allow", "x", publish)
     closed = book.close(first["id"], "timeout")
     assert closed is first and closed["answer"]["decision"] == "allow"  # the answer won; the hook takes it
     second = box(book, repo)
     book.close(second["id"], "timeout")
-    assert "refused" in approver.answer(book, duty, second["id"], "allow", "x", publish)  # the timeout won
+    assert "refused" in ask(book, duty, second["id"], "allow", "x", publish)  # the timeout won
     assert second["answer"] is None
 
 
 def test_the_approver_log_keeps_each_decision_without_the_input_text(book, repo, duty):
     prompt = box(book, repo, command=f"uv run pytest -k {SECRET_WORD}")
-    approver.answer(book, duty, prompt["id"], "deny", "not now", published()[1])
+    ask(book, duty, prompt["id"], "deny", "not now", published()[1])
     [line] = log_lines(duty)
     fields = {"at", "session", "folder", "tool", "input_sha256", "lines", "shape", "decision", "by", "reason"}
     assert set(line) == fields
@@ -199,14 +220,6 @@ def test_the_approver_is_off_unless_the_config_says_true(tmp_path, text):
     assert config.load(file, own_clone=None, env={"HOME": str(tmp_path)}).approver_on is False
     file.write_text('[approver]\non = "yes"\n', encoding="utf-8")
     with pytest.raises(config.ConfigError, match="not true or false"):
-        config.load(file, own_clone=None, env={"HOME": str(tmp_path)})
-
-
-def test_the_approver_cannot_be_switched_on_before_its_caller_check(tmp_path):
-    """Until the bridge checks who calls the approver's tools, any session could answer its own box."""
-    file = tmp_path / "config.toml"
-    file.write_text("[approver]\non = true\n", encoding="utf-8")
-    with pytest.raises(config.ConfigError, match="caller check"):
         config.load(file, own_clone=None, env={"HOME": str(tmp_path)})
 
 
