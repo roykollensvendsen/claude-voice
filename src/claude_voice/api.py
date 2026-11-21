@@ -324,7 +324,6 @@ class EventApi:
         route("/api/v1/events", methods=["GET"])(self.events)
         route("/api/v1/roles", methods=["GET"])(self.list_roles)
         route("/api/v1/prompts", methods=["GET", "POST"])(self.prompts_route)
-        route("/api/v1/approver/reports", methods=["POST"])(self.approver_report)
         route("/api/v1/settings", methods=["GET", "PUT"])(self.settings_route)
         route("/api/v1/prompts/{prompt}/wait", methods=["GET"])(self.wait_prompt)
         route("/api/v1/prompts/{prompt}/close", methods=["POST"])(self.close_prompt)
@@ -750,19 +749,6 @@ class EventApi:
         if prompt is not None:
             log.info("prompt %s for %s left to the %s", prompt["id"], prompt["session"], how)
             self.duty.closed(prompt, how)
-        return Response(status_code=204)
-
-    async def approver_report(self, request: Request) -> Response:
-        """A session's hook says that session is about to call an approver tool, and with what."""
-        # RULE: the bridge takes a report only with its token
-        if not await self._bearer(request):  # only a hook on this computer has the token
-            return JSONResponse({"error": "sign in first"}, 401)
-        body = await request.json()
-        fields = [body.get(k) if isinstance(body, dict) else None for k in ("session_id", "tool", "args_sha256")]
-        texts = [f for f in fields if isinstance(f, str) and f]
-        if len(texts) != len(fields):
-            return JSONResponse({"error": "session_id, tool and args_sha256 are text"}, 400)
-        self.duty.report(texts[0], texts[1], texts[2])
         return Response(status_code=204)
 
     # -- roles -----------------------------------------------------------------------

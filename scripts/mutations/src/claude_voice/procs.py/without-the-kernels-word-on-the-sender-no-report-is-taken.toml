@@ -1,0 +1,5 @@
+[[rule]]
+name = "without the kernels word on the sender no report is taken"
+file = "src/claude_voice/procs.py"
+find = 'if option is None or sock is None:'
+replace = 'if sock is None:'

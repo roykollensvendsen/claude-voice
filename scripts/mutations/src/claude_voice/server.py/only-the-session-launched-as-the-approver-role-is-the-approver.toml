@@ -1,5 +1,5 @@
 [[rule]]
 name = "only the session launched as the approver role is the approver"
 file = "src/claude_voice/server.py"
-find = 'return isinstance\(held, dict\) and bool\(session\) and held.get\("id"\) == session'
+find = 'return bool\(session\) and _approver_id\(manager.store\) == session'
 replace = 'return True'

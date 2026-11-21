@@ -25,6 +25,7 @@ import json
 import os
 import re
 import shlex
+import socket
 import sys
 import urllib.error
 import urllib.request
@@ -35,6 +36,9 @@ TIMEOUT = 300  # seconds the hook waits for the phone before the box shows at th
 ENV_FILE = Path("~/.config/claude-voice/env")
 #: The approver's own tools, whichever connector name Claude Code gives the bridge.
 APPROVER_TOOLS = r"mcp__.+__approver_[a-z_]+"
+#: Where the bridge hears reports of approver calls. A Unix socket, so the kernel tells the
+#: bridge which process sent each one; a token would say only that the env file was read.
+REPORT_SOCKET = Path("~/.local/state/claude-voice/approver.sock")
 
 
 class Bridge(Protocol):
@@ -72,8 +76,9 @@ def handle(hook_input: dict[str, Any], bridge: Bridge, timeout: float = TIMEOUT,
 
 
 def _report(hook_input: dict[str, Any], bridge: Bridge) -> None:
-    """Tell the bridge which session is about to call an approver tool, and with what. Only the
-    hook knows the true session; a call the bridge hears no report for is refused."""
+    """Tell the bridge that this session is about to call an approver tool, and with what. The
+    bridge trusts no claim in it: it takes the report only from under the approver's own claude
+    process, which runs this hook. A call the bridge hears no such report for is refused."""
     body = {
         "session_id": str(hook_input.get("session_id") or ""),
         "tool": str(hook_input.get("tool_name") or ""),
@@ -210,7 +215,16 @@ class HttpBridge:
             pass
 
     def report(self, body: dict[str, Any]) -> None:
-        self._call("POST", "/api/v1/approver/reports", body, 5)
+        send_report(body)
+
+
+def send_report(body: dict[str, Any], path: Path = REPORT_SOCKET) -> None:
+    """One report over the bridge's report socket, waiting until the bridge has taken it."""
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as line:
+        line.settimeout(2)
+        line.connect(str(path.expanduser()))
+        line.sendall(json.dumps(body).encode() + b"\n")
+        line.recv(16)  # the bridge answers once the report is in, before the tool call can be
 
 
 def spoken_to() -> str:
