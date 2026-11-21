@@ -114,10 +114,15 @@ def test_in_ci_a_suite_that_waits_is_reported_as_waiting_and_passes():
 
 
 @NO_CPU_TIME
-def test_cpu_time_counts_the_work_of_the_suite_run_through_uv():
-    """The suite runs as `uv run pytest`; its work counts because uv waits for it, and the ratchet for uv."""
+def test_cpu_time_counts_the_work_of_a_suite_run_through_a_waiting_wrapper():
+    """The suite runs as `uv run pytest`; its work counts because uv waits for it, and the ratchet for uv.
+
+    A Python process stands in for uv, so the test needs no uv on PATH; the bridge's update has none.
+    The work is counted in CPU seconds, so a busy machine makes it slower but never smaller.
+    """
     burn = "import time\nend = time.process_time() + 0.3\nwhile time.process_time() < end: pass"
-    _, _, cpu = ratchet.timed(lambda: ratchet._run("uv", "run", "python", "-c", burn))
+    wrapper = f"import subprocess, sys\nsubprocess.run([sys.executable, '-c', {burn!r}], check=True)"
+    _, _, cpu = ratchet.timed(lambda: ratchet._run(sys.executable, "-c", wrapper))
     assert cpu is not None and cpu >= 0.25
 
 
