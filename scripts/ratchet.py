@@ -128,6 +128,7 @@ LAYERS = {
             "plugin_desk",
             "org",
             "answers",
+            "approver",
             "install",
             "setup",
             "shipped",
