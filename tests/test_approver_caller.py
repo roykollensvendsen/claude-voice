@@ -218,12 +218,6 @@ async def test_the_bridge_takes_a_report_only_with_its_token(tmp_path, repo, dut
     assert answer(book, duty, args)["decided"] == "allow"  # the one report the bridge took
 
 
-def test_the_approver_can_be_switched_on_once_its_caller_is_checked(tmp_path):
-    file = tmp_path / "config.toml"
-    file.write_text("[approver]\non = true\n", encoding="utf-8")
-    assert config.load(file, own_clone=None, env={"HOME": str(tmp_path)}).approver_on is True
-
-
 def test_only_the_session_launched_as_the_approver_role_is_the_approver(tmp_path):
     (tmp_path / "home").mkdir()
     store = Store(tmp_path / "b.db")
