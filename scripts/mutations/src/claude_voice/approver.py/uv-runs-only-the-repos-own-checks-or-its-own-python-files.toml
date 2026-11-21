@@ -1,0 +1,5 @@
+[[rule]]
+name = "uv runs only the repos own checks or its own python files"
+file = "src/claude_voice/approver.py"
+find = 'if program == "uv" and not _uv_runs_a_check'
+replace = 'if False:'
