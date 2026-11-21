@@ -1,0 +1,5 @@
+[[rule]]
+name = "before the packs are installed a lane gets no hook"
+file = "src/claude_voice/roles.py"
+find = 'return \(shared, own\) if isinstance\(shared, str\) and isinstance\(own, str\) else None'
+replace = 'return (str(shared), str(own))'

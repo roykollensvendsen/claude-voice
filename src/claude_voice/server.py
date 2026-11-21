@@ -1455,7 +1455,7 @@ def build_server(
                 str(folder),
                 name,
                 prompt=roles.first_message(spec, folder, task),
-                settings=roles.guard_settings(spec),
+                settings=roles.role_settings(spec),
                 **how,
             )
         except Exception as exc:

@@ -67,8 +67,21 @@ That happens when:
 
 A `rules.md` in the session's folder or its repository is never read.
 
+## How a role gets them
+
+When the bridge starts a role, it passes the role's settings with `--settings`. For a
+role that is not a manager, these hold the hook above, for `SessionStart` and for
+`SubagentStart`, with the two shas from `~/.config/claude-voice/orgs/pins.json`. Only the
+owner's install writes that file.
+
+Before both packs are installed there are no pins, so a role starts with no hook. It is
+not told to stop over rules that do not exist yet. A role marked `manager = true` never
+gets the hook. A role belongs to the `voice` organisation unless it sets `org`.
+
 ## Who may change them
 
-No session. `org_rules.py` is in the owner's checkout's deny list, because every role's
-start hook runs it as the owner. Installing a pack, and denying writes to the packs, come
-in the next changes.
+No session. Every role the bridge starts, managers included, is refused Edit, Write and
+the shell's writing commands on `~/.config/claude-voice/orgs/` and
+`~/.local/state/claude-voice/orgs/`. Reading stays open. `org_rules.py` is in the owner's
+checkout's deny list, because every role's start hook runs it as the owner. Installing a
+pack, which needs the owner's typed yes, comes in a later change.

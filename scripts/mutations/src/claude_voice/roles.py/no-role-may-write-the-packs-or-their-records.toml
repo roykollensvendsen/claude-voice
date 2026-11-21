@@ -1,0 +1,5 @@
+[[rule]]
+name = "no role may write the packs or their records"
+file = "src/claude_voice/roles.py"
+find = 'settings: dict\[str, Any\] = \{"permissions": \{"deny": _pack_denies\(home or Path\.home\(\)\)\}\}'
+replace = 'settings: dict[str, Any] = {"permissions": {"deny": []}}'

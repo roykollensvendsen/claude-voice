@@ -222,7 +222,10 @@ def test_the_hook_runs_isolated_from_the_sessions_folder(tmp_path):
     (work / "claude_voice" / "__init__.py").write_text("")
     (work / "claude_voice" / "org_rules.py").write_text('print("PLANTED")\n')
     argv = [*org_rules.COMMAND, "emit", "voice", "--event", "SessionStart", "--shared-sha", "a" * 12, "--sha", "b" * 12]
-    out = subprocess.run(argv, cwd=work, capture_output=True, text=True, timeout=60, check=False)
+    home = {"HOME": str(tmp_path), "USERPROFILE": str(tmp_path)}  # never the owner's real packs
+    out = subprocess.run(
+        argv, cwd=work, env={**os.environ, **home}, capture_output=True, text=True, timeout=60, check=False
+    )
     assert "PLANTED" not in out.stdout
     assert out.returncode == 0
     assert stopped(json.loads(out.stdout)["hookSpecificOutput"]["additionalContext"])  # no packs here
