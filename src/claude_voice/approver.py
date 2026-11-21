@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import time
@@ -41,6 +42,8 @@ from pathlib import Path
 from typing import Any
 
 from . import prompts, routing, session_hook
+
+logger = logging.getLogger(__name__)
 
 READERS = frozenset({"ls", "cat", "head", "tail", "grep", "wc"})
 #: The subcommands each program may run (approver-v1 v1.3); `make` takes any target.
@@ -187,6 +190,7 @@ LOG = Path("~/.local/state/claude-voice/approver/log.jsonl")
 TOO_LATE = "too late: the box is on the screen"
 OFF = "the approver is switched off; the owner turns it on in the bridge's config"
 PROOF_SECONDS = 5.0  # how long a hook's report of an approver call stays good
+MAX_REPORTS = 32  # reports kept at once; a flood pushes out only the oldest
 NOT_PROVEN = "only the approver session may call this, and its own hook did not report this call"
 OWN_BOX = "the approver never answers its own box"
 
@@ -213,20 +217,25 @@ class Duty:
     def report(self, session: str, tool: str, digest: str) -> None:
         """A session's hook says that session is about to call `tool` with these arguments."""
         self.reports.append((self.clock(), session, tool, digest))
+        # RULE: the bridge keeps only the newest reports
+        del self.reports[:-MAX_REPORTS]
 
     def caller(self, tool: str, digest: str) -> str | None:
         """The approver session calling `tool` with these arguments, or None when no fresh
-        report from it says so. The matching report is used up either way."""
+        report from it says so. Only the approver's own matching report is used up."""
         now = self.clock()
+        matches = [r for r in self.reports if r[2].endswith(f"__{tool}") and r[3] == digest]
         # RULE: a report older than five seconds is refused
         self.reports = [r for r in self.reports if now - r[0] <= PROOF_SECONDS]
-        for found in self.reports:
-            if found[2].endswith(f"__{tool}") and found[3] == digest:
-                # RULE: each report is used once
-                self.reports.remove(found)
-                # RULE: a report from another session is refused
-                return found[1] if self.approver(found[1]) else None
-        return None
+        # RULE: a report from another session is refused
+        mine = [r for r in matches if r in self.reports and self.approver(r[1])]
+        if not mine:
+            ages = [round(now - r[0], 1) for r in matches]
+            logger.warning("%s refused as not proven; ages of matching reports: %s", tool, ages)
+            return None
+        # RULE: each report is used once
+        self.reports.remove(mine[0])
+        return mine[0][1]
 
     def check_in(self) -> None:
         self.seen = self.clock()
