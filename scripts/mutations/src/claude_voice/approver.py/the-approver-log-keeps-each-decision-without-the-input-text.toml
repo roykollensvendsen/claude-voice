@@ -1,0 +1,5 @@
+[[rule]]
+name = "the approver log keeps each decision without the input text"
+file = "src/claude_voice/approver.py"
+find = 'held = hashlib.sha256\(given.encode\(\)\).hexdigest\(\)'
+replace = 'held = given'
