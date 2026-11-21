@@ -1,0 +1,5 @@
+[[rule]]
+name = "the log of unreached boxes never holds their input"
+file = "src/claude_voice/phone_hook.py"
+find = '"why": why,'
+replace = '"why": why, "input": body.get("input"),'

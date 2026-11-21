@@ -24,8 +24,10 @@ import json
 import os
 import shlex
 import sys
+import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -39,14 +41,21 @@ class Bridge(Protocol):
     def close(self, prompt_id: str, how: str) -> None: ...
 
 
-def handle(hook_input: dict[str, Any], bridge: Bridge, timeout: float = TIMEOUT, spoken_to: str = "") -> dict[str, Any]:
+def handle(
+    hook_input: dict[str, Any],
+    bridge: Bridge,
+    timeout: float = TIMEOUT,
+    spoken_to: str = "",
+    missed: Callable[[dict[str, Any], str], None] = lambda body, why: None,
+) -> dict[str, Any]:
     """Claude Code's hook answer: the phone's answer, or nothing so the box shows.
 
-    ``spoken_to`` is the session the voice is talking to, if any (see ``spoken_to()``)."""
+    ``spoken_to`` is the session the voice is talking to, if any (see ``spoken_to()``).
+    ``missed`` is told of a prompt that never reached the bridge, and why (see ``unreached()``)."""
     body = _prompt(hook_input, spoken_to)
     if body is None:
         return {}
-    answer = _ask_phone(body, bridge, timeout)
+    answer = _ask_phone(body, bridge, timeout, missed)
     if answer is None:
         return {}
     if body["kind"] == "question":
@@ -86,11 +95,15 @@ def _question(session: str, tool_input: dict[str, Any], spoken_to: str) -> dict[
     return {"session_id": session, "kind": "question", "question": tool_input}
 
 
-def _ask_phone(body: dict[str, Any], bridge: Bridge, timeout: float) -> dict[str, Any] | None:
+def _ask_phone(
+    body: dict[str, Any], bridge: Bridge, timeout: float, missed: Callable[[dict[str, Any], str], None]
+) -> dict[str, Any] | None:
     """The phone's answer, or None when nobody is looking, none came in time, or the bridge failed."""
     try:
         opened = bridge.open(body)
-    except Exception:
+    except Exception as failed:
+        # RULE: a box that cannot reach the bridge leaves a line in the log
+        missed(body, type(failed).__name__)
         return None  # a bridge that is down or broken never stops a session
     prompt_id = str(opened.get("id"))
     try:
@@ -193,6 +206,28 @@ def spoken_to() -> str:
     return str(chosen.get("claude_session_id") or "")
 
 
+def unreached(body: dict[str, Any], why: str) -> None:
+    """Add one line to the log of prompts that never reached the bridge, so they can be counted.
+
+    The line holds the time, the session, the kind of prompt, the tool and why; never the
+    input, which may hold a secret. Writing it never stops the hook."""
+    base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
+    path = Path(base) / "claude-voice" / "hook-unreached.jsonl"
+    # RULE: the log of unreached boxes never holds their input
+    line = {
+        "at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "session": body.get("session_id"),
+        "kind": body.get("kind"),
+        "tool": body.get("tool", "AskUserQuestion"),
+        "why": why,
+    }
+    with contextlib.suppress(OSError):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as log:
+            log.write(json.dumps(line) + "\n")
+
+
 def _token() -> str:
     token = os.environ.get("CLAUDE_VOICE_TOKEN", "")
     if token:
@@ -264,9 +299,13 @@ def main() -> int:
         return 0
     token = _token()
     if not token:
+        # RULE: a box the hook has no token for leaves a line in the log
+        if (body := _prompt(hook_input, "")) is not None:
+            unreached(body, "no token")
         return 0
     port = os.environ.get("CLAUDE_VOICE_PORT", "8811")
-    out = handle(hook_input, HttpBridge(f"http://127.0.0.1:{port}", token), spoken_to=spoken_to())
+    bridge = HttpBridge(f"http://127.0.0.1:{port}", token)
+    out = handle(hook_input, bridge, spoken_to=spoken_to(), missed=unreached)
     if out:
         sys.stdout.write(json.dumps(out))
     return 0

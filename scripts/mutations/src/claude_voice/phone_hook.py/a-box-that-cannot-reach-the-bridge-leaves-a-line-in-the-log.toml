@@ -1,0 +1,5 @@
+[[rule]]
+name = "a box that cannot reach the bridge leaves a line in the log"
+file = "src/claude_voice/phone_hook.py"
+find = 'missed\(body, type\(failed\)\.__name__\)'
+replace = 'pass'
