@@ -189,6 +189,14 @@ rule. Looking at a device, such as `garage_status` or `vacuum_where`, does not
 ask. A new plugin whose tools move something adds them to `device tools.tools`
 in the same pull request as the plugin.
 
+Some confirms only the voice may call, after the owner's spoken yes. They are
+listed under `voice only`, and they are refused to every session, never asked.
+The first is the phone's `sms_send_confirm`, offered as
+`phone-a_sms_send_confirm`. It sends a text the voice has read back. The bridge
+writes it under both names, as for the device tools. Drafting a text
+(`phone-a_sms_send_request`) and stopping it (`phone-a_sms_send_cancel`) are not
+refused: a draft sends nothing, and a stop can only keep a text from going.
+
 ### Forced pushes to a session's own branch
 
 The owner decided that a session may rebase its own pull-request branch and push
