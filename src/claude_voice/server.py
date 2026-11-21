@@ -608,16 +608,16 @@ def _approver_id(store: Store) -> str:
     return str(held.get("id") or "") if isinstance(held, dict) else ""
 
 
-def _approver_process(store: Store, live_dir: Path) -> tuple[str, int, str | None] | None:
-    """The approver's session id, claude pid and start ticks, from its live file."""
-    session = _approver_id(store)
-    rows = [row for row in events.read_live(live_dir) if session and row.get("sessionId") == session]
-    return (session, int(rows[0]["pid"]), str(rows[0].get("procStart") or "") or None) if rows else None
+def _approver_process(store: Store) -> tuple[str, int, str | None] | None:
+    """The approver's session id, claude pid and start ticks, as fixed when its role was launched.
+    The live files are never read again: any session can write one."""
+    held = store.get_setting("role:approver")
+    if not isinstance(held, dict) or not held.get("id") or not isinstance(held.get("pid"), int):
+        return None
+    return str(held["id"]), held["pid"], held.get("started")
 
 
-def _duty(
-    given: approver.Duty | None, repos: config.Config, manager: SessionManager, live_dir: Path = LIVE_DIR
-) -> approver.Duty:
+def _duty(given: approver.Duty | None, repos: config.Config, manager: SessionManager) -> approver.Duty:
     """The approver session's duty: the one given, or one on only once the owner switches it on."""
 
     def is_approver(session: str) -> bool:
@@ -629,7 +629,7 @@ def _duty(
         role=manager.store.is_role,
         approver=is_approver,
         clock=manager.clock,
-        process=lambda: _approver_process(manager.store, live_dir),
+        process=lambda: _approver_process(manager.store),
     )
 
 
@@ -738,7 +738,7 @@ def build_server(
     side_answer = side_answer or transcripts.shared_reader()
     host: doctor.Host = doctor_host or doctor.RealHost()
     repos = repo_config or config.load(config.FILE, own_clone=roles.own_clone())
-    duty = _duty(duty, repos, manager, live_dir)
+    duty = _duty(duty, repos, manager)
     start_settings = launch.Settings(manager.store, repos.sessions)
     desktop = os.environ if desktop_env is None else desktop_env
 
@@ -1500,7 +1500,11 @@ def build_server(
         except Exception as exc:
             raise ToolError(f"Claude Code could not start a session: {exc}") from None
         found = await appeared(name, folder)
-        store.set_setting(f"role:{role}", {"name": name, "id": str(found.get("sessionId"))})
+        pid = int(found.get("pid") or 0)
+        # The approver's process is fixed here, once; a session file written later cannot move it.
+        # RULE: a launched role keeps the process it started as
+        held = {"name": name, "id": str(found.get("sessionId")), "pid": pid, "started": procs.start_ticks(pid)}
+        store.set_setting(f"role:{role}", held)
         return {"role": role, "name": name, "claude_session_id": found.get("sessionId"), "status": found.get("status")}
 
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))

@@ -9,7 +9,7 @@ import pytest
 from fakes import FakeClaude
 from mcp.client import Client
 
-from claude_voice import guard, roles
+from claude_voice import guard, procs, roles
 from claude_voice.oauth import OAuthProvider
 from claude_voice.server import build_app, build_server
 from claude_voice.sessions import SessionManager
@@ -168,6 +168,16 @@ async def test_starting_the_contribute_role_runs_a_guarded_session_in_the_users_
     hook = json.loads(call["settings"])["hooks"]["PreToolUse"][0]
     assert hook["matcher"] == "Bash" and "claude_voice.guard" in hook["hooks"][0]["command"]
     assert stopped["status"] == "stopped"  # the bridge may stop what it started
+
+
+async def test_a_launched_role_keeps_the_process_it_started_as(tmp_path, world):
+    """The role's claude process is fixed once, as it starts; a session file written later cannot move it."""
+    ready_clone(world)
+    async with Client(bridge(tmp_path, world, Starter(world[2]))) as c:
+        out = (await c.call_tool("start_role", {"role": "contribute"})).structured_content
+    held = Store(tmp_path / "b.db").get_setting("role:contribute")
+    assert held["id"] == out["claude_session_id"]
+    assert held["pid"] == PID and held["started"] == procs.start_ticks(PID)
 
 
 async def test_an_unknown_role_is_refused(tmp_path, world):

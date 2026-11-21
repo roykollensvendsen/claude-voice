@@ -1,0 +1,5 @@
+[[rule]]
+name = "a launched role keeps the process it started as"
+file = "src/claude_voice/server.py"
+find = 'held = \{"name": name, "id": str\(found.get\("sessionId"\)\), "pid": pid, "started": procs.start_ticks\(pid\)\}'
+replace = 'held = {"name": name, "id": str(found.get("sessionId"))}'
