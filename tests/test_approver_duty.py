@@ -223,6 +223,14 @@ def test_the_approver_is_off_unless_the_config_says_true(tmp_path, text):
         config.load(file, own_clone=None, env={"HOME": str(tmp_path)})
 
 
+def test_the_approver_cannot_be_switched_on_before_its_caller_check(tmp_path):
+    """Until the bridge checks who calls the approver's tools, any session could answer its own box."""
+    file = tmp_path / "config.toml"
+    file.write_text("[approver]\non = true\n", encoding="utf-8")
+    with pytest.raises(config.ConfigError, match="caller check"):
+        config.load(file, own_clone=None, env={"HOME": str(tmp_path)})
+
+
 def test_only_a_session_started_as_a_role_waits_for_the_approver(tmp_path, repo, book):
     """A session the owner starts by voice and then works in keeps today's behaviour (design f2)."""
     (tmp_path / "home").mkdir()
