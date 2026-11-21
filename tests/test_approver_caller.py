@@ -321,7 +321,32 @@ async def test_the_bridge_reads_who_sent_a_report_from_its_socket(book, repo, du
         await server.wait_closed()
 
 
-def test_only_the_session_launched_as_the_approver_role_is_the_approver(tmp_path):
+@pytest.fixture
+def forger():
+    """A second process outside this test's tree: the one a planted session file names."""
+    child = subprocess.Popen(["sleep", "30"])
+    yield child.pid
+    child.kill()
+    child.wait()
+
+
+def test_only_the_session_launched_as_the_approver_role_is_the_approver(tmp_path, stranger):
+    (tmp_path / "home").mkdir()
+    store = Store(tmp_path / "b.db")
+    manager = SessionManager(store, project_root=tmp_path / "home", client_factory=FakeClaude())
+    (tmp_path / "config.toml").write_text("", encoding="utf-8")
+    repos = config.load(tmp_path / "config.toml", own_clone=None, env={"HOME": str(tmp_path)})
+    duty = _duty(None, dataclasses.replace(repos, approver_on=True), manager)
+    assert not duty.approver(APPROVER)  # no approver launched yet: nobody is it
+    assert duty.process() is None
+    store.set_setting("role:builder", {"name": "builder", "id": WORKER})
+    pinned = {"name": "approver", "id": APPROVER, "pid": stranger, "started": procs.start_ticks(stranger)}
+    store.set_setting("role:approver", pinned)  # as launch_role records it
+    assert duty.approver(APPROVER) and not duty.approver(WORKER)
+    assert duty.process() == (APPROVER, stranger, procs.start_ticks(stranger))
+
+
+def test_a_session_file_written_after_launch_does_not_move_the_approver(tmp_path, stranger, forger):
     (tmp_path / "home").mkdir()
     store = Store(tmp_path / "b.db")
     manager = SessionManager(store, project_root=tmp_path / "home", client_factory=FakeClaude())
@@ -329,14 +354,10 @@ def test_only_the_session_launched_as_the_approver_role_is_the_approver(tmp_path
     repos = config.load(tmp_path / "config.toml", own_clone=None, env={"HOME": str(tmp_path)})
     live = tmp_path / "live"
     live.mkdir()
-    duty = _duty(None, dataclasses.replace(repos, approver_on=True), manager, live)
-    assert not duty.approver(APPROVER)  # no approver launched yet: nobody is it
-    assert duty.process() is None
-    store.set_setting("role:builder", {"name": "builder", "id": WORKER})
-    store.set_setting("role:approver", {"name": "approver", "id": APPROVER})
-    assert duty.approver(APPROVER) and not duty.approver(WORKER)
-    assert duty.process() is None  # launched, but its live file is not there yet
-    me = {"sessionId": APPROVER, "pid": os.getpid(), "procStart": procs.start_ticks(os.getpid())}
-    (live / "1.json").write_text(json.dumps(me), encoding="utf-8")
-    (live / "2.json").write_text(json.dumps({**me, "sessionId": WORKER}), encoding="utf-8")
-    assert duty.process() == (APPROVER, os.getpid(), procs.start_ticks(os.getpid()))
+    pinned = {"name": "approver", "id": APPROVER, "pid": stranger, "started": procs.start_ticks(stranger)}
+    store.set_setting("role:approver", pinned)
+    planted = {"sessionId": APPROVER, "pid": forger, "procStart": procs.start_ticks(forger)}
+    (live / "0.json").write_text(json.dumps(planted), encoding="utf-8")  # sorts first, and its pid is alive
+    duty = _duty(None, dataclasses.replace(repos, approver_on=True), manager)
+    assert duty.process() == (APPROVER, stranger, procs.start_ticks(stranger))
+    assert not duty.prove(forger, TOOL, phone_hook.args_digest(call("p0")))
