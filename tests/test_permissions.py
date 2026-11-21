@@ -682,6 +682,25 @@ def test_sending_mail_asks_first():
         assert f"mcp__claude_ai_Gmail__{tool}" in asks
 
 
+#: The bridge's two names, as a session sees it: added with `claude mcp add`, or as a connector.
+BRIDGE_NAMES = ("claude-voice", "claude_ai_claude-voice")
+
+
+@pytest.mark.parametrize("server", BRIDGE_NAMES)
+def test_a_confirm_only_the_voice_may_call_is_refused_to_every_session_by_every_name(server):
+    """The phone's confirm is offered as phone-a_sms_send_confirm; no session may call it."""
+    rules = permissions.load()
+    assert f"mcp__{server}__phone-a_sms_send_confirm" in rules.deny
+    assert f"mcp__{server}__phone-a_sms_send_confirm" not in rules.ask + rules.allow
+
+
+@pytest.mark.parametrize("server", BRIDGE_NAMES)
+@pytest.mark.parametrize("tool", ["phone-a_sms_send_request", "phone-a_sms_send_cancel"])
+def test_drafting_a_text_or_stopping_it_is_never_denied(server, tool):
+    """A draft sends nothing, and a stop can only keep a text from going."""
+    assert f"mcp__{server}__{tool}" not in permissions.load().deny
+
+
 # -- which folders, and the command ----------------------------------------------------
 
 

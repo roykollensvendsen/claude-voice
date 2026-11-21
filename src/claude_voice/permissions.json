@@ -193,6 +193,12 @@
       "vacuum_confirm"
     ]
   },
+  "voice only": {
+    "servers": ["claude-voice", "claude_ai_claude-voice"],
+    "tools": [
+      "phone-a_sms_send_confirm"
+    ]
+  },
   "deny": {
     "stopping processes by name, which ends other sessions' work too": [
       "Bash(pkill)",
