@@ -39,6 +39,7 @@ from . import (
     activity,
     answers,
     api,
+    approver,
     calllog,
     config,
     detail,
@@ -600,6 +601,11 @@ def updater_command(python: str, folder: Path, log: Path, port: int) -> list[str
     return [python, "-I", "-m", "claude_voice.updater", "--repo", str(folder), "--log", str(log), "--port", str(port)]
 
 
+def _duty(given: approver.Duty | None, repos: config.Config, manager: SessionManager) -> approver.Duty:
+    """The approver session's duty: the one given, or one on only once the owner switches it on."""
+    return given or approver.Duty(on=repos.approver_on, started=manager.store.was_started, clock=manager.clock)
+
+
 def build_server(
     manager: SessionManager,
     oauth: OAuthProvider | None = None,
@@ -651,6 +657,7 @@ def build_server(
     terminals: Terminals | None = None,
     org_folders: list[Path] | None = None,
     sessions_file: Path | None = None,
+    duty: approver.Duty | None = None,
 ) -> MCPServer:
     auth = None
     if oauth is not None:
@@ -704,6 +711,7 @@ def build_server(
     side_answer = side_answer or transcripts.shared_reader()
     host: doctor.Host = doctor_host or doctor.RealHost()
     repos = repo_config or config.load(config.FILE, own_clone=roles.own_clone())
+    duty = _duty(duty, repos, manager)
     start_settings = launch.Settings(manager.store, repos.sessions)
     desktop = os.environ if desktop_env is None else desktop_env
 
@@ -2423,6 +2431,22 @@ def build_server(
         When answered is false, read 'say' aloud (it is on the screen), or ask again from 'options'."""
         return answers.answer(prompt_book, question_id, choice, own_words)[1]
 
+    @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
+    def approver_boxes() -> Any:
+        """The approval boxes the approver may answer, for the approver role only.
+        Each box says whether the approver may answer it, and why not. Looking is the
+        approver's check-in: a box waits for it only while it looks at least every two minutes."""
+        names = {str(row.get("sessionId")): row.get("name") for row in events.read_live(live_dir)}
+        return approver.boxes(prompt_book, duty, names)
+
+    @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+    def approver_answer(id: str, decision: str, reason: str) -> dict[str, Any]:
+        """Answer one routine approval box as the approver, for the approver role only.
+        Give allow or deny and a short reason. The bridge refuses any box that is not
+        answerable. An allow counts for this one call, never for later ones."""
+        settle = lambda prompt, body: answers.settle(prompt, body, "approver", api.HUB.publish)  # noqa: E731
+        return approver.answer(prompt_book, duty, id, decision, reason, settle)
+
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
     def approve(approval_id: str) -> dict[str, Any]:
         """Allow one pending tool call. Only after the user has clearly said yes to it."""
@@ -2671,6 +2695,7 @@ def build_server(
             away=lambda app_open: PRESENCE[0].away(app_open=app_open),
             route=_router(route, across),
             activity=activity_view,
+            duty=duty,
         ).routes(mcp)
 
     mcp.prompt_book = prompt_book  # type: ignore[attr-defined]  # for tests
