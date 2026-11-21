@@ -1,0 +1,5 @@
+[[rule]]
+name = "an approval read to the voice carries only words known to be plain"
+file = "src/claude_voice/answers.py"
+find = 'if plain:'
+replace = 'if True:'

@@ -682,6 +682,21 @@ def test_sending_mail_asks_first():
         assert f"mcp__claude_ai_Gmail__{tool}" in asks
 
 
+VOICE_ANSWERS = ("approve", "deny", "answer_question", "plugin_approve_confirm", "developer_mode_confirm")
+
+
+@pytest.mark.parametrize("server", ["claude-voice", "claude_ai_claude-voice"])
+def test_only_the_voice_answers_a_box_or_a_confirm(server, tmp_path):
+    """A session that reaches the bridge's connector could otherwise answer its own waiting box."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    assert main(["permissions", str(repo)], env={"HOME": str(tmp_path)}) == 0
+    applied = read(repo)["permissions"]
+    for tool in VOICE_ANSWERS:
+        assert f"mcp__{server}__{tool}" in applied["deny"]
+        assert f"mcp__{server}__{tool}" not in applied.get("allow", []) + applied.get("ask", [])
+
+
 # -- which folders, and the command ----------------------------------------------------
 
 

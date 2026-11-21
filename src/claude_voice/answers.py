@@ -7,8 +7,11 @@ so. A spoken choice is an option's number or label, several of them, or the
 owner's own words, and it must fit the question as the page's answers must.
 
 A terminal session's approval box reaches the voice the same way: listed while a
-hook waits on it, and allowed or refused by approve and deny. What it would run is
-read out short, with anything that looks like a secret hidden.
+hook waits on it, and allowed or refused by approve and deny. The line read out is
+built only from words known to be plain, since it leaves the machine for the voice's
+conversation: a command's program, up to two subcommand words, flags and plain paths.
+Every other word is left out and counted, and a box read out with anything left out
+can be refused by voice but not allowed.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -33,15 +37,13 @@ NOTHING_PICKED = "nothing was picked: give an option's number or label, or the o
 APPROVAL_ON_THE_SCREEN = (
     "That approval is not waiting for the voice any more. If it is still open, answer it on the computer's screen."
 )
+NOT_READ_IN_FULL = "too long or partly left out to read out; answer it on the screen or the phone page"
 SPOKEN_INPUT = 120  # characters of what an approval would run that the voice is given
-HIDDEN = "[hidden]"
-# A value after a word that names a secret: `API_KEY=x`, `--password x`, `token: x`.
-NAMED_SECRET = re.compile(
-    r"(?i)(?<![\w.-])([\w.-]*(?:token|secret|passw(?:or)?d|api[_-]?key|credential)[\w.-]*)(\s*[=:]\s*|\s+)(\S+)"
-)
-BEARER_VALUE = re.compile(r"(?i)\b(bearer)\s+[^\s'\"]+")
-# A long run of letters and digits, as keys and hashes look; a path's slashes and dots break it.
-LONG_RUN = re.compile(r"(?<![A-Za-z0-9_+=-])(?=[A-Za-z0-9_+=-]*\d)[A-Za-z0-9_+=-]{32,}")
+PATH_TOOLS = frozenset({"Read", "Edit", "Write", "NotebookEdit"})  # their box shows a file's path
+PROGRAM = re.compile(r"[A-Za-z0-9._/-]{1,40}")
+SUBCOMMAND = re.compile(r"[a-z][a-z0-9-]{0,23}")
+FLAG = re.compile(r"-[A-Za-z]|--[a-z][a-z0-9-]{0,30}")  # a bare flag, never one with its value joined on
+PATH = re.compile(r"[A-Za-z0-9._~/-]+")
 
 
 def fits(prompt: dict[str, Any], body: dict[str, Any]) -> str | None:
@@ -101,11 +103,59 @@ def waiting(book: prompts.Book, live: list[dict[str, Any]], session: str | None 
     ]
 
 
-def spoken_input(text: str) -> str:
-    """What an approval would run, as the voice is given it: short, and any secret hidden."""
-    # RULE: an approval read to the voice never carries what looks like a secret
-    hidden = LONG_RUN.sub(HIDDEN, BEARER_VALUE.sub(rf"\1 {HIDDEN}", NAMED_SECRET.sub(rf"\1\2{HIDDEN}", text)))
-    return hidden if len(hidden) <= SPOKEN_INPUT else hidden[:SPOKEN_INPUT].rstrip() + "…"
+def _keylike(word: str) -> bool:
+    """Whether a word looks like a key or a hash: long, and mixed case or letters with digits."""
+    for part in word.split("/"):
+        mixed = any(c.isupper() for c in part) and any(c.islower() for c in part)
+        digits = any(c.isdigit() for c in part) and any(c.isalpha() for c in part)
+        if (len(part) >= 16 and mixed) or (len(part) >= 20 and digits):
+            return True
+    return False
+
+
+def _plain_path(word: str) -> bool:
+    return ("/" in word or word.startswith(".")) and bool(PATH.fullmatch(word)) and not _keylike(word)
+
+
+def _plain_command(command: str) -> tuple[list[str], int]:
+    """The words of a command known to be plain, and how many others were left out."""
+    try:
+        words = shlex.split(command)
+    except ValueError:
+        return [], max(1, len(command.split()))
+    shown: list[str] = []
+    leading = True  # still in the words straight after the program
+    for i, word in enumerate(words):
+        if i == 0:
+            plain = bool(PROGRAM.fullmatch(word)) and not _keylike(word)
+        elif leading and i <= 2 and len(shown) == i and SUBCOMMAND.fullmatch(word):
+            plain = True  # up to two subcommand words, straight after the program
+        else:
+            leading = False
+            plain = bool(FLAG.fullmatch(word)) or _plain_path(word)
+        # RULE: an approval read to the voice carries only words known to be plain
+        if plain:
+            shown.append(word)
+    return shown, len(words) - len(shown)
+
+
+def spoken(tool: str, text: str, cut: bool = False) -> tuple[str, bool]:
+    """What an approval would run as the voice is given it, and whether that is all of it."""
+    if tool == "Bash":
+        shown, left_out = _plain_command(text)
+        line = " ".join(shown) + (f" and {left_out} more words" if left_out else "")
+        whole = not left_out and not cut
+    elif tool in PATH_TOOLS and _plain_path(text) and not cut:
+        line, whole = f"{tool} {text}", tool == "Read"  # an edit's new text is not read out
+    else:
+        line, whole = tool, False
+    if len(line) > SPOKEN_INPUT:
+        return line[:SPOKEN_INPUT].rstrip() + "…", False
+    return line, whole
+
+
+def _spoken_prompt(prompt: dict[str, Any]) -> tuple[str, bool]:
+    return spoken(str(prompt.get("tool", "")), str(prompt.get("input", "")), bool(prompt.get("cut")))
 
 
 def approvals_waiting(
@@ -119,10 +169,12 @@ def approvals_waiting(
             "session": p["session"],
             "session_name": names.get(p["session"]) or "a session",
             "tool": p.get("tool", ""),
-            "input": spoken_input(str(p.get("input", ""))),
+            "input": line,
+            "in_full": whole,
             "asked_at": p["asked_at"],
         }
         for p in book.items.values()
+        for line, whole in [_spoken_prompt(p)]
         # RULE: an approval a hook waits on is listed for the voice
         if p["kind"] == "approval" and p["answer"] is None and session in (None, p["session"]) and book.hook_waits(p)
     ]
@@ -138,6 +190,9 @@ def decide(
     # RULE: an approval no hook waits on is refused as on the screen
     if prompt is None or prompt["answer"] is not None or not book.hook_waits(prompt):
         return {"decided": None, "say": APPROVAL_ON_THE_SCREEN}
+    # RULE: the voice allows only an approval it could read out in full
+    if decision == "allow" and not _spoken_prompt(prompt)[1]:
+        return {"decided": None, "say": NOT_READ_IN_FULL}
     body: dict[str, Any] = {"decision": decision}
     if decision == "deny" and reason:
         body["reason"] = reason

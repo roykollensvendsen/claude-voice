@@ -361,28 +361,55 @@ async def test_an_approval_no_hook_waits_on_is_refused_as_on_the_screen(server):
     assert as_question["decided"] is None and "answer_question" in as_question["error"]
 
 
-@pytest.mark.parametrize(
-    ("command", "kept"),
-    [
-        ("curl -H 'Authorization: Bearer abc123def456' https://x.test", "curl -H 'Authorization: Bearer"),
-        ("gh auth login --with-token ghp_aaaaBBBBccccDDDDeeeeFFFFgggg1234", "gh auth login --with-token"),
-        ("export API_KEY=abc123 && make", "export API_KEY="),
-        ("deploy --password hunter2 --host x", "deploy --password"),
-        ("echo 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", "echo"),
-    ],
-)
-def test_an_approval_read_to_the_voice_never_carries_what_looks_like_a_secret(command, kept):
-    said = answers.spoken_input(command)
-    assert said.startswith(kept) and answers.HIDDEN in said
-    for secret in ("abc123def456", "ghp_aaaa", "abc123", "hunter2", "9f86d081"):
-        assert secret not in said
+#: Commands carrying a made-up secret, each with the secret's text.
+SECRETS = [
+    ("aws s3 ls --key AKIAIOSFODNN7EXAMPLE", "AKIAIOSFODNN7EXAMPLE"),
+    ("git clone https://someone:pa55word@git.example.test/r.git", "pa55word"),
+    ("mysql -pHunter2 -h db", "Hunter2"),
+    ("""curl -d '{"token":"tok3n-value"}' https://x.test""", "tok3n-value"),
+    ("curl -u admin:Pa55word! https://x.test", "Pa55word"),
+    ("aws configure set secret wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", "bPxRfiCYEXAMPLEKEY"),
+    ("psql postgres://app:hunter2@db/main", "hunter2"),
+    ("unlock --passphrase 'correct horse battery staple'", "battery"),
+    ("curl -H 'Authorization: Bearer abc123def456' https://x.test", "abc123def456"),
+    ("gh auth login --with-token ghp_aaaaBBBBccccDDDDeeeeFFFFgggg1234", "ghp_aaaa"),
+    ("API_KEY=abc123 make", "abc123"),
+    ("deploy --password hunter2 --host x", "hunter2"),
+]
 
 
-def test_an_approval_read_to_the_voice_is_short_and_keeps_plain_paths():
+@pytest.mark.parametrize(("command", "secret"), SECRETS)
+def test_an_approval_read_to_the_voice_carries_only_words_known_to_be_plain(command, secret):
+    line, whole = answers.spoken("Bash", command)
+    assert secret not in line and "more words" in line and whole is False
+
+
+def test_a_plain_command_is_read_out_whole_and_a_long_one_is_not():
     path = "/home/someone/projects/a-long-folder-name-for-work/src/module_name.py"
-    assert answers.spoken_input(f"cat {path}") == f"cat {path}"
-    long = answers.spoken_input("echo " + "word " * 100)
-    assert len(long) <= answers.SPOKEN_INPUT + 1 and long.endswith("…")
+    assert answers.spoken("Bash", f"uv run pytest -q {path}") == (f"uv run pytest -q {path}", True)
+    assert answers.spoken("Bash", "git push origin feat/x") == ("git push origin feat/x", True)
+    long, whole = answers.spoken("Bash", "cat " + " ".join(f"./f{i}.py" for i in range(40)))
+    assert len(long) <= answers.SPOKEN_INPUT + 1 and long.endswith("…") and whole is False
+    assert answers.spoken("Bash", "make", cut=True)[1] is False
+
+
+def test_a_file_tool_is_read_out_by_its_path_and_any_other_tool_by_its_name():
+    assert answers.spoken("Read", "./notes/plan.md") == ("Read ./notes/plan.md", True)
+    assert answers.spoken("Edit", "./src/app.py") == ("Edit ./src/app.py", False)
+    assert answers.spoken("WebFetch", '{"url": "https://u:p@x.test"}') == ("WebFetch", False)
+
+
+async def test_the_voice_allows_only_an_approval_it_could_read_out_in_full(server):
+    async with http(server) as h, Client(server) as c:
+        pid, wait = await opened_and_waiting(h, approval("deploy --password hunter2"))
+        listed = await call(c, "list_pending_approvals")
+        refused = await call(c, "approve", approval_id=pid)
+        denied = await call(c, "deny", approval_id=pid)
+        answered = (await wait).json()
+    (box,) = listed["approvals"]
+    assert box["in_full"] is False and "hunter2" not in box["input"]
+    assert refused["decided"] is None and refused["say"] == answers.NOT_READ_IN_FULL
+    assert denied["decided"] == "deny" and answered == {"decision": "deny"}
 
 
 def test_an_approval_is_news_once_a_hook_waits_on_it():
