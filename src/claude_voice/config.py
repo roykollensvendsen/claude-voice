@@ -37,7 +37,8 @@ runs from, so the file is only needed to change something:
 
     [approver]
     on = false                                  # true: the approver session answers routine boxes
-                                                # from started roles (src/claude_voice/approver.py)
+                                                # from started roles (src/claude_voice/approver.py);
+                                                # refused until the caller check is in
 """
 
 from __future__ import annotations
@@ -259,6 +260,11 @@ def _approver(raw: Any) -> bool:
     # RULE: the approver is off unless the config says true
     if not isinstance(on, bool):
         raise ConfigError(f"[approver] on = {on!r} is not true or false")
+    # Until the bridge checks who calls the approver's tools, any session could answer its own
+    # box. The part that adds that check lifts this.
+    # RULE: the approver cannot be switched on before its caller check
+    if on:
+        raise ConfigError("[approver] on = true waits for the caller check; the approver cannot be switched on yet")
     return on
 
 
