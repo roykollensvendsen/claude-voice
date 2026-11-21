@@ -603,7 +603,7 @@ def updater_command(python: str, folder: Path, log: Path, port: int) -> list[str
 
 def _duty(given: approver.Duty | None, repos: config.Config, manager: SessionManager) -> approver.Duty:
     """The approver session's duty: the one given, or one on only once the owner switches it on."""
-    return given or approver.Duty(on=repos.approver_on, started=manager.store.was_started, clock=manager.clock)
+    return given or approver.Duty(on=repos.approver_on, role=manager.store.is_role, clock=manager.clock)
 
 
 def build_server(

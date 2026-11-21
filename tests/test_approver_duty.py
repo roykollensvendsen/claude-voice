@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import sys
 from pathlib import Path
@@ -13,7 +14,7 @@ from fakes import FakeClaude
 
 from claude_voice import answers, api, approver, config, phone_hook, presence, prompts
 from claude_voice.oauth import OAuthProvider
-from claude_voice.server import build_app, build_server
+from claude_voice.server import _duty, build_app, build_server
 from claude_voice.sessions import SessionManager
 from claude_voice.store import Store
 
@@ -48,7 +49,7 @@ def repo(tmp_path):
 
 @pytest.fixture
 def duty(tmp_path, clock):
-    return approver.Duty(on=True, started=lambda s: s == ROLE, clock=clock, log=tmp_path / "approver" / "log.jsonl")
+    return approver.Duty(on=True, role=lambda s: s == ROLE, clock=clock, log=tmp_path / "approver" / "log.jsonl")
 
 
 @pytest.fixture
@@ -96,7 +97,7 @@ def test_a_box_waits_for_the_approver_only_while_it_is_on_duty(book, repo, duty,
     duty.check_in()
     assert not duty.covers(box(book, repo, session="owners-own-terminal"))  # f2: roles only
     assert not duty.covers({**prompt, "kind": "question"})
-    off = approver.Duty(on=False, started=lambda s: True, clock=clock, log=tmp_path / "off.jsonl")
+    off = approver.Duty(on=False, role=lambda s: True, clock=clock, log=tmp_path / "off.jsonl")
     off.check_in()
     assert not off.covers(prompt)
 
@@ -114,7 +115,7 @@ def test_the_approver_sees_each_open_box_and_whether_it_may_answer_it(book, repo
 
 
 def test_the_approver_is_refused_while_switched_off(book, repo, tmp_path, clock):
-    off = approver.Duty(on=False, started=lambda s: True, clock=clock, log=tmp_path / "off.jsonl")
+    off = approver.Duty(on=False, role=lambda s: True, clock=clock, log=tmp_path / "off.jsonl")
     prompt = box(book, repo)
     assert "refused" in approver.boxes(book, off, {})
     assert "refused" in approver.answer(book, off, prompt["id"], "allow", "ok", published()[1])
@@ -207,6 +208,26 @@ def test_the_approver_cannot_be_switched_on_before_its_caller_check(tmp_path):
     file.write_text("[approver]\non = true\n", encoding="utf-8")
     with pytest.raises(config.ConfigError, match="caller check"):
         config.load(file, own_clone=None, env={"HOME": str(tmp_path)})
+
+
+def test_only_a_session_started_as_a_role_waits_for_the_approver(tmp_path, repo, book):
+    """A session the owner starts by voice and then works in keeps today's behaviour (design f2)."""
+    (tmp_path / "home").mkdir()
+    store = Store(tmp_path / "b.db")
+    manager = SessionManager(store, project_root=tmp_path / "home", client_factory=FakeClaude())
+    (tmp_path / "config.toml").write_text("", encoding="utf-8")
+    repos = config.load(tmp_path / "config.toml", own_clone=None, env={"HOME": str(tmp_path)})
+    duty = _duty(None, dataclasses.replace(repos, approver_on=True), manager)
+    duty.log = tmp_path / "approver" / "log.jsonl"
+    store.record_started("by-voice", "helper", str(repo))  # how start_active_session records it
+    store.record_started(ROLE, "builder", str(repo))
+    store.set_setting("role:builder", {"name": "builder", "id": ROLE})  # how launch_role records it
+    duty.check_in()
+    assert duty.covers(box(book, repo, session=ROLE))
+    by_voice = box(book, repo, session="by-voice")
+    assert not duty.covers(by_voice)
+    duty.closed(by_voice, "timeout")
+    assert not duty.log.exists()  # a box that never waited for the approver is not its timeout
 
 
 def at_the_desk_bridge(tmp_path, duty):

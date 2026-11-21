@@ -22,7 +22,8 @@ judged as the file it would name, whatever the program does with it. `uv run`, `
 
 **On duty.** The approver works only while the owner has switched it on (`[approver] on`
 in the config) and it has looked at its boxes within the last two minutes. Only then does
-a box from a session the bridge started wait for it, even with the owner at the laptop. Its
+a box from a session the bridge launched as a role wait for it, even with the owner at the
+laptop. A session started by voice, which the owner may then work in, keeps today's way. Its
 answer counts once: the hook gives Claude Code a plain allow or deny, never an "always".
 An answer that comes after the box fell back to the screen is refused as too late. Each
 decision is one line in the approver's log, with a hash of the input but never its text.
@@ -193,11 +194,11 @@ class Duty:
     def __init__(
         self,
         on: bool,
-        started: Callable[[str], bool] = lambda session: False,
+        role: Callable[[str], bool] = lambda session: False,
         clock: Callable[[], float] = time.monotonic,
         log: Path = LOG,
     ) -> None:
-        self.on, self.started, self.clock, self.log = on, started, clock, log.expanduser()
+        self.on, self.role, self.clock, self.log = on, role, clock, log.expanduser()
         self.seen: float | None = None  # when the approver last looked at its boxes
 
     def check_in(self) -> None:
@@ -209,11 +210,11 @@ class Duty:
     def covers(self, prompt: dict[str, Any]) -> bool:
         """Whether this box waits for the approver, even with the owner at the laptop."""
         # RULE: a box waits for the approver only while it is on duty
-        return prompt.get("kind") == "approval" and self.on_duty() and self.started(str(prompt.get("session")))
+        return prompt.get("kind") == "approval" and self.on_duty() and self.role(str(prompt.get("session")))
 
     def closed(self, prompt: dict[str, Any], how: str) -> None:
         """A box left to the screen when its hook stopped waiting; a timeout is logged."""
-        covered = prompt.get("kind") == "approval" and self.started(str(prompt.get("session")))
+        covered = prompt.get("kind") == "approval" and self.role(str(prompt.get("session")))
         if self.on and how == "timeout" and covered and prompt.get("answer") is None:
             self.record(prompt, "timeout", "no answer in time", by="screen")
 
