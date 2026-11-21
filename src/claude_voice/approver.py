@@ -120,15 +120,22 @@ def _program(program: str, rest: list[str], cwd: Path) -> str | None:
     # RULE: git that reaches a named remote or runs a command goes to the owner
     if program == "git" and ((rest[0] == "fetch" and len(rest) > 1) or any(w.startswith(GIT_RUNS) for w in rest)):
         return "git that reaches a named remote or runs a command"
-    # RULE: uv run that fetches other code goes to the owner
-    if program == "uv" and any(w.startswith(UV_FETCHES) for w in rest):
-        return "uv that fetches code from outside the repo"
-    # RULE: uv runs only the repos own checks or its own python files
-    if program == "uv" and not _uv_runs_a_check(rest, cwd):
-        return "uv that runs a program off the approver's list"
+    if program == "uv":
+        return _uv(rest, cwd)
     # RULE: make that sets a variable goes to the owner
     if program == "make" and any("=" in w for w in rest):
         return "make that sets a variable"
+    return None
+
+
+def _uv(rest: list[str], cwd: Path) -> str | None:
+    """Why uv's own words are the owner's, or None."""
+    # RULE: uv run that fetches other code goes to the owner
+    if any(w.startswith(UV_FETCHES) for w in rest):
+        return "uv that fetches code from outside the repo"
+    # RULE: uv runs only the repos own checks or its own python files
+    if not _uv_runs_a_check(rest, cwd):
+        return "uv that runs a program off the approver's list"
     return None
 
 
