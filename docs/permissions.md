@@ -412,6 +412,13 @@ forms. The session hook refuses them in every form, including `git -c` and
 value it lets through is `git config core.hooksPath .githooks`, the setup line
 in CONTRIBUTING.
 
+The session hook also checks a push's arguments. It refuses a push that deletes
+or force-updates a branch on the remote, in every spelling git accepts:
+shortened and stuck-together options, a refspec that starts with `:` or `+`, and
+settings given with `git -c` for that one push. A branch is deleted only on the
+owner's yes, asked through the manager. `--force-with-lease` and `HEAD:<branch>`
+keep the rules they had.
+
 The bridge runs git itself too, in folders a session can write to: to sort a
 prompt, for the live view's git status, for the work cards, in the session hook
 and in the updater. Every such git runs with `core.fsmonitor` and hooks switched
