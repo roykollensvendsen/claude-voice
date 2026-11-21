@@ -28,7 +28,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from . import answers, prompts
+from . import answers, approver, prompts
 
 COOKIE = "cv_ui"
 SIGN_IN_SECONDS = 30 * 24 * 3600
@@ -269,6 +269,7 @@ class EventApi:
         away: Callable[[bool], bool] | None = None,
         route: Callable[[str, Any, str], dict[str, Any]] | None = None,
         activity: Any = None,
+        duty: approver.Duty | None = None,
     ) -> None:
         self.store = store
         self.login_secret = login_secret
@@ -304,6 +305,8 @@ class EventApi:
         self.route = route
         self._sorting: set[asyncio.Task[None]] = set()  # kept, so a running sort is not collected
         self.activity = activity  # where sessions wait or get stuck: activity.Activity, off by default
+        # The approver session, when the owner has switched it on: which boxes wait for it.
+        self.duty = duty or approver.Duty(on=False)
 
     def routes(self, mcp: Any) -> None:
         route = mcp.custom_route
@@ -616,6 +619,8 @@ class EventApi:
         """Fill in what an approval would run, and how it was sorted."""
         prompt["tool"] = str(body.get("tool", ""))
         prompt["input"], prompt["cut"] = self._readable(prompt["tool"], body.get("input"))
+        # What the approver judges: the whole input, and the folder it would run in. Never published.
+        prompt["raw_input"], prompt["cwd"] = body.get("input"), str(body.get("cwd") or "")
         if self.route is not None:
             # Sorting may walk folders, so it runs in a thread and lands on the prompt later.
             task = asyncio.get_running_loop().create_task(self._sort(prompt, body))
@@ -633,7 +638,7 @@ class EventApi:
         prompt["routed"] = routed
 
     def _public(self, prompt: dict[str, Any]) -> dict[str, Any]:
-        return {k: v for k, v in prompt.items() if k not in ("done", "answer", "raw_input", "hook")}
+        return {k: v for k, v in prompt.items() if k not in ("done", "answer", "raw_input", "cwd", "hook")}
 
     async def prompts_route(self, request: Request) -> Response:
         if request.method == "GET":
@@ -655,17 +660,7 @@ class EventApi:
             "done": asyncio.Event(),
         }
         if kind == "question":
-            first = ((body.get("question") or {}).get("questions") or [{}])[0]
-            prompt["question"] = {
-                "text": str(first.get("question", "")),
-                "header": str(first.get("header", "")),
-                "options": [
-                    {"label": str(o.get("label", "")), "description": str(o.get("description", ""))}
-                    for o in first.get("options") or []
-                    if isinstance(o, dict)
-                ],
-                "multi": bool(first.get("multiSelect")),
-            }
+            prompt["question"] = self._question(body)
         elif kind == "approval":
             self._approval(prompt, body)
         else:
@@ -673,7 +668,23 @@ class EventApi:
         self.book.add(prompt)
         HUB.publish("prompt", self._public(prompt))
         # RULE: a question waits for the phone only while the owner is away from the laptop
-        return JSONResponse({"id": prompt["id"], "wait": await self._away()})
+        wait = self.duty.covers(prompt) or await self._away()
+        return JSONResponse({"id": prompt["id"], "wait": wait})
+
+    @staticmethod
+    def _question(body: dict[str, Any]) -> dict[str, Any]:
+        """The first question the hook sent, with its options, in the form the phone shows."""
+        first = ((body.get("question") or {}).get("questions") or [{}])[0]
+        return {
+            "text": str(first.get("question", "")),
+            "header": str(first.get("header", "")),
+            "options": [
+                {"label": str(o.get("label", "")), "description": str(o.get("description", ""))}
+                for o in first.get("options") or []
+                if isinstance(o, dict)
+            ],
+            "multi": bool(first.get("multiSelect")),
+        }
 
     async def _away(self) -> bool:
         """Whether the owner is away; the desktop may take seconds to say, so it is asked aside."""
@@ -726,7 +737,7 @@ class EventApi:
             if prompt["answer"] is not None:
                 return False
             # RULE: a waiting prompt goes back to the screen once the owner is back
-            if step == RECHECK and not await self._away():
+            if step == RECHECK and not self.duty.covers(prompt) and not await self._away():
                 return True
         return False
 
@@ -737,6 +748,7 @@ class EventApi:
         prompt = self.book.close(request.path_params["prompt"], how)
         if prompt is not None:
             log.info("prompt %s for %s left to the %s", prompt["id"], prompt["session"], how)
+            self.duty.closed(prompt, how)
         return Response(status_code=204)
 
     # -- roles -----------------------------------------------------------------------

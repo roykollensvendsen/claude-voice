@@ -1,5 +1,5 @@
 [[rule]]
 name = "a waiting prompt goes back to the screen once the owner is back"
 file = "src/claude_voice/api.py"
-find = 'if step == RECHECK and not await self._away\(\):'
+find = 'if step == RECHECK and not self.duty.covers\(prompt\) and not await self._away\(\):'
 replace = 'if False:'

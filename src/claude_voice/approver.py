@@ -19,16 +19,27 @@ never by its own judgement. It is a short allow-list, and anything else is the o
 The last rule is why `cat ~/.config/...` or a symlink to a secret never passes: a word is
 judged as the file it would name, whatever the program does with it. `uv run`, `make` and
 `npm` still run the repo's own code; the sandbox is the boundary there.
+
+**On duty.** The approver works only while the owner has switched it on (`[approver] on`
+in the config) and it has looked at its boxes within the last two minutes. Only then does
+a box from a session the bridge started wait for it, even with the owner at the laptop. Its
+answer counts once: the hook gives Claude Code a plain allow or deny, never an "always".
+An answer that comes after the box fell back to the screen is refused as too late. Each
+decision is one line in the approver's log, with a hash of the input but never its text.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
-from collections.abc import Iterable
+import re
+import time
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
-from . import routing
+from . import prompts, routing, session_hook
 
 READERS = frozenset({"ls", "cat", "head", "tail", "grep", "wc"})
 #: The subcommands each program may run (approver-v1 v1.3); `make` takes any target.
@@ -166,3 +177,151 @@ def _as_paths(word: str) -> list[str]:
         # RULE: a value glued to a short flag is judged as a path
         return [word[i:] for i in range(2, len(word))]
     return [word]
+
+
+# -- on duty ------------------------------------------------------------------------------
+
+CHECK_IN = 120.0  # seconds after its last look that the approver still counts as on duty
+LOG = Path("~/.local/state/claude-voice/approver/log.jsonl")
+TOO_LATE = "too late: the box is on the screen"
+OFF = "the approver is switched off; the owner turns it on in the bridge's config"
+
+
+class Duty:
+    """Whether the approver is on duty, and its log of decisions."""
+
+    def __init__(
+        self,
+        on: bool,
+        started: Callable[[str], bool] = lambda session: False,
+        clock: Callable[[], float] = time.monotonic,
+        log: Path = LOG,
+    ) -> None:
+        self.on, self.started, self.clock, self.log = on, started, clock, log.expanduser()
+        self.seen: float | None = None  # when the approver last looked at its boxes
+
+    def check_in(self) -> None:
+        self.seen = self.clock()
+
+    def on_duty(self) -> bool:
+        return self.on and self.seen is not None and self.clock() - self.seen < CHECK_IN
+
+    def covers(self, prompt: dict[str, Any]) -> bool:
+        """Whether this box waits for the approver, even with the owner at the laptop."""
+        # RULE: a box waits for the approver only while it is on duty
+        return prompt.get("kind") == "approval" and self.on_duty() and self.started(str(prompt.get("session")))
+
+    def closed(self, prompt: dict[str, Any], how: str) -> None:
+        """A box left to the screen when its hook stopped waiting; a timeout is logged."""
+        covered = prompt.get("kind") == "approval" and self.started(str(prompt.get("session")))
+        if self.on and how == "timeout" and covered and prompt.get("answer") is None:
+            self.record(prompt, "timeout", "no answer in time", by="screen")
+
+    def record(self, prompt: dict[str, Any], decision: str, reason: str, by: str = "approver") -> None:
+        """One line in the log. It holds a hash of the input, never the input itself."""
+        routed = _routed(prompt)
+        given = json.dumps(prompt.get("raw_input"), sort_keys=True, ensure_ascii=False)
+        # RULE: the approver log keeps each decision without the input text
+        held = hashlib.sha256(given.encode()).hexdigest()
+        line = {
+            "at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "session": prompt.get("session"),
+            "folder": prompt.get("cwd"),
+            "tool": prompt.get("tool"),
+            "input_sha256": held,
+            "lines": routed.get("lines"),
+            "shape": routed.get("shape"),
+            "decision": decision,
+            "by": by,
+            "reason": reason,
+        }
+        self.log.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(self.log, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as out:
+            out.write(json.dumps(line, ensure_ascii=False) + "\n")
+
+
+def _routed(prompt: dict[str, Any]) -> dict[str, Any]:
+    """How the bridge sorted the box, or nothing while it is still being sorted."""
+    routed = prompt.get("routed")
+    return routed if isinstance(routed, dict) else {}
+
+
+def place_of(prompt: dict[str, Any]) -> routing.Place | None:
+    """The asking session's folder and its scratchpad, or None when the hook sent no folder."""
+    cwd = str(prompt.get("cwd") or "")
+    if not os.path.isabs(cwd):
+        return None
+    project = re.sub(r"[^A-Za-z0-9]", "-", cwd)
+    scratch = session_hook._tmp_root() / project / str(prompt.get("session")) / "scratchpad"
+    return routing.Place(repo=Path(cwd), scratchpad=scratch, home=Path.home(), owner="")
+
+
+def judge(prompt: dict[str, Any]) -> str | None:
+    """None when the approver may answer this box; otherwise why it is the owner's."""
+    place = place_of(prompt)
+    if place is None:
+        return "no folder to judge it in"
+    routed = prompt.get("routed")
+    lines = routed.get("lines") if isinstance(routed, dict) else None
+    given = prompt.get("raw_input")
+    return why_owner(str(prompt.get("tool")), given, lines, place, cwd=place.repo, cut=bool(prompt.get("cut")))
+
+
+def boxes(book: prompts.Book, duty: Duty, names: dict[str, Any]) -> list[dict[str, Any]] | dict[str, str]:
+    """The approval boxes a hook waits on now, each with whether the approver may answer it.
+    Looking is the approver's check-in."""
+    if not duty.on:
+        return {"refused": OFF}
+    duty.check_in()
+    out = []
+    for prompt in book.items.values():
+        if prompt.get("kind") != "approval" or prompt.get("answer") is not None or not book.hook_waits(prompt):
+            continue
+        why = judge(prompt)
+        routed = _routed(prompt)
+        out.append(
+            {
+                "id": prompt["id"],
+                "session": prompt.get("session"),
+                "session_name": names.get(str(prompt.get("session"))),
+                "folder": prompt.get("cwd"),
+                "tool": prompt.get("tool"),
+                "input": prompt.get("input"),
+                "lines": routed.get("lines"),
+                "shape": routed.get("shape"),
+                "asked_at": prompt.get("asked_at"),
+                "answerable": why is None,
+                "why_owner": why,
+            }
+        )
+    return out
+
+
+def answer(
+    book: prompts.Book,
+    duty: Duty,
+    prompt_id: str,
+    decision: str,
+    reason: str,
+    settle: Callable[[dict[str, Any], dict[str, Any]], None],
+) -> dict[str, Any]:
+    """Answer one box as the approver, once, or say why not. `settle` gives the box its
+    answer (answers.settle). Nothing here awaits, so the hook's own timeout cannot slip in
+    between the check and the answer."""
+    if not duty.on:
+        return {"refused": OFF}
+    if decision not in ("allow", "deny"):
+        return {"refused": "decision is allow or deny"}
+    prompt = book.items.get(prompt_id)
+    # RULE: an answer after the box fell back to the screen is refused as too late
+    if prompt is None or prompt.get("answer") is not None or not book.hook_waits(prompt):
+        duty.record(prompt or {"id": prompt_id}, "late", reason)
+        return {"refused": TOO_LATE}
+    # RULE: the approver never answers a box the owner holds
+    if why := judge(prompt):
+        duty.record(prompt, "refused", why)
+        return {"refused": f"this box is the owner's: {why}"}
+    settle(prompt, {"decision": decision, "reason": reason})
+    duty.record(prompt, decision, reason)
+    return {"decided": decision, "id": prompt_id, "session": prompt.get("session")}
