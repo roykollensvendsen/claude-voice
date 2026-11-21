@@ -1,0 +1,5 @@
+[[rule]]
+name = "no session may start the support role"
+file = "src/claude_voice/origin.py"
+find = '^\s*if role == ROLE and caller not in \(\*VOICE, PAGE\):$'
+replace = 'if False:'

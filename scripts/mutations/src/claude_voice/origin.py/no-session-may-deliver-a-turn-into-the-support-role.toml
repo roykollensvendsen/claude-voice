@@ -1,0 +1,5 @@
+[[rule]]
+name = "no session may deliver a turn into the support role"
+file = "src/claude_voice/origin.py"
+find = '^\s*if named or same:$'
+replace = 'if False:'

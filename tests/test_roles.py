@@ -194,6 +194,22 @@ async def test_the_event_api_lists_the_roles_and_starts_one(tmp_path, world):
     assert started.status_code == 200 and after["roles"][0]["session"]["name"] == started.json()["name"]
 
 
+async def test_the_owners_phone_page_may_start_support_and_its_first_turn_says_so(tmp_path, world):
+    home, clone, live, table = world
+    table.write_text(f"[roles.support]\nfolder = '{clone}'\n")
+    starter = Starter(live)
+
+    def oauth(store):
+        return OAuthProvider(store, SECRET, "http://127.0.0.1:8811", static_token=SECRET)
+
+    app = build_app(bridge(tmp_path, world, starter, oauth=oauth))
+    auth = {"Authorization": f"Bearer {SECRET}"}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:8811") as c:
+        started = await c.post("/api/v1/roles/support/start", json={"task": "Hello"}, headers=auth)
+    assert started.status_code == 200, started.text
+    assert starter.calls[0]["prompt"].startswith("origin: owner page\n")
+
+
 class ReadyHost:
     """A computer with every tool a contribute session needs, signed in and trusting every folder."""
 

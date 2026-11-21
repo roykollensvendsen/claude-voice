@@ -208,6 +208,18 @@
       "Bash(killall *)",
       "Bash(xargs*kill*)"
     ],
+    "resuming another session from the shell, which would put words into it as if typed": [
+      "Bash(claude --resume*)",
+      "Bash(claude * --resume*)",
+      "Bash(claude -r *)",
+      "Bash(claude * -r *)",
+      "Bash(claude -c)",
+      "Bash(claude -c *)",
+      "Bash(claude * -c)",
+      "Bash(claude * -c *)",
+      "Bash(claude --continue*)",
+      "Bash(claude * --continue*)"
+    ],
     "history that cannot be got back": [
       "Bash(git reset --hard*)",
       "Bash(git checkout -- *)",

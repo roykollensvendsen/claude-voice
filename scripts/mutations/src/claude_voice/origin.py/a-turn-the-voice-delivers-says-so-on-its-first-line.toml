@@ -1,0 +1,5 @@
+[[rule]]
+name = "a turn the voice delivers says so on its first line"
+file = "src/claude_voice/origin.py"
+find = '^\s*if caller in VOICE:$'
+replace = 'if False:'

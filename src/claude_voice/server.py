@@ -54,6 +54,7 @@ from . import (
     mailbox,
     metrics,
     org,
+    origin,
     plugin_desk,
     plugins,
     procs,
@@ -876,6 +877,14 @@ def build_server(
         mcp.custom_route("/oauth/consent", methods=["POST"])(oauth.consent_submit)
     store = manager.store
 
+    def into(name: Any, sid: Any, text: str) -> str:
+        """`text` stamped with where it came from, once the caller may send it into that session."""
+        caller = transcripts.current_client.get()
+        why = origin.refused(caller, {"name": name, "id": sid}, store.get_setting(f"role:{origin.ROLE}"))
+        if why:
+            raise ToolError(why)
+        return origin.stamp(caller, text)
+
     def by_number(session: str) -> str:
         """`session`, or the id of the session its number names: "3", "nr 3", "nummer 3"."""
         match = SPOKEN_NUMBER.fullmatch(str(session).strip())
@@ -958,8 +967,10 @@ def build_server(
         Poll session_recap for progress. When the session waits on a box, the task is queued,
         waiting_on says what the box asks, and 'say' is read aloud."""
         session_id = known(session_id)
+        mine = store.get_session(session_id)
+        stamped = into(mine.get("label"), mine.get("claude_session_id"), prompt)
         try:
-            sent = await manager.send(session_id, prompt)
+            sent = await manager.send(session_id, prompt, delivered=stamped)
             claude_id = store.get_session(session_id).get("claude_session_id")
             row = next((d for d in events.read_live(live_dir) if claude_id and d.get("sessionId") == claude_id), None)
             return {**sent, **answers.queued_behind(row, prompt_book, projects_dir)}
@@ -1436,7 +1447,10 @@ def build_server(
             await asyncio.sleep(0.2)
         raise ToolError(f"{name} was started but did not appear among the running sessions")
 
-    async def launch_role(role: str, task: str | None) -> dict[str, Any]:
+    async def launch_role(role: str, task: str | None, caller: str | None = None) -> dict[str, Any]:
+        caller = caller or transcripts.current_client.get()
+        if why := origin.refused_role(caller, role):
+            raise ToolError(why)
         table = role_table()
         if role not in table:
             raise LookupError(f"No role {role!r}; there are: {', '.join(sorted(table))}")
@@ -1454,7 +1468,7 @@ def build_server(
             await start_background(
                 str(folder),
                 name,
-                prompt=roles.first_message(spec, folder, task),
+                prompt=origin.stamp(caller, roles.first_message(spec, folder, task)),
                 settings=roles.guard_settings(spec),
                 **how,
             )
@@ -1909,9 +1923,10 @@ def build_server(
         if moved:
             return {"session": target["name"], "delivered": False, "status": "moved", "moved_to": moved}
         sid = str(target["sessionId"])
+        stamped = into(target.get("name"), sid, message)
         budget = repos.budgets.seconds(transcripts.current_client.get())
         behind = answers.queued_behind(target, prompt_book, projects_dir)  # a box it waits on, if any
-        delivery = asyncio.ensure_future(deliver(address(target), message))
+        delivery = asyncio.ensure_future(deliver(address(target), stamped))
         try:
             out = await asyncio.wait_for(asyncio.shield(delivery), budget)
         except TimeoutError:
@@ -2124,9 +2139,10 @@ def build_server(
         if blocked:
             # A message would only queue behind what it waits for; send nothing.
             return _not_sent(target, blocked)
+        stamped = into(target.get("name"), target.get("sessionId"), message)
         before = len(numbered_turns(target))
         was_busy = target.get("status") in BUSY
-        out = await deliver(address(target), message)
+        out = await deliver(address(target), stamped)
         if not out.get("delivered"):
             raise ToolError(f"Could not deliver: {out.get('detail') or 'unknown reason'}")
 
@@ -2655,7 +2671,7 @@ def build_server(
                 "warning": usage.warning(current),
                 "voice": usage.voice(store),
             },
-            start_role=launch_role,
+            start_role=functools.partial(launch_role, caller=origin.PAGE),
             settings=start_settings,
             software=software_report.answer,
             work=lambda: {**board.report(), "developer_mode": developer_mode.state()},
