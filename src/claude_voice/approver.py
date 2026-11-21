@@ -124,7 +124,7 @@ def _program(program: str, rest: list[str], cwd: Path) -> str | None:
     if program == "uv" and any(w.startswith(UV_FETCHES) for w in rest):
         return "uv that fetches code from outside the repo"
     # RULE: uv runs only the repos own checks or its own python files
-    if False:
+    if program == "uv" and not _uv_runs_a_check(rest, cwd):
         return "uv that runs a program off the approver's list"
     # RULE: make that sets a variable goes to the owner
     if program == "make" and any("=" in w for w in rest):
