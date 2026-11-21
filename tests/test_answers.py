@@ -311,3 +311,111 @@ def test_a_wait_goes_on_and_is_counted_off_when_its_news_fails():
     with book.waiting(prompt):
         inside = prompt["hook"]["waiting"]
     assert inside == 1 and prompt["hook"]["waiting"] == 0
+
+
+# -- a terminal session's approval box, which the hook holds for the phone or the voice --------
+
+
+def approval(command="pytest -q tests/test_x.py", session="c-1"):
+    return {"session_id": session, "kind": "approval", "tool": "Bash", "input": {"command": command}, "cwd": "/w"}
+
+
+async def test_an_approval_a_hook_waits_on_is_listed_for_the_voice(server):
+    async with http(server) as h, Client(server) as c:
+        unwaited = (await h.post("/api/v1/prompts", json=approval("ls"), headers=BEARER)).json()["id"]
+        pid, wait = await opened_and_waiting(h, approval())
+        listed = await call(c, "list_pending_approvals")
+        await call(c, "deny", approval_id=pid)
+        await wait
+    (box,) = listed["approvals"]
+    assert box["id"] == pid != unwaited and box["session_name"] == "painter"
+    assert box["tool"] == "Bash" and box["input"] == "pytest -q tests/test_x.py"
+    assert listed["questions"] == []
+
+
+async def test_the_voice_allows_or_refuses_an_approval_a_hook_waits_on(server):
+    async with http(server) as h, Client(server) as c:
+        pid, wait = await opened_and_waiting(h, approval())
+        allowed = await call(c, "approve", approval_id=pid)
+        first = (await wait).json()
+        pid, wait = await opened_and_waiting(h, approval())
+        refused = await call(c, "deny", approval_id=pid, reason="not now")
+        second = (await wait).json()
+        after = await call(c, "list_pending_approvals")
+    assert allowed["decided"] == "allow" and first == {"decision": "allow"}
+    assert refused["decided"] == "deny" and second == {"decision": "deny", "reason": "not now"}
+    assert after["approvals"] == []
+
+
+async def test_an_approval_no_hook_waits_on_is_refused_as_on_the_screen(server):
+    async with http(server) as h, Client(server) as c:
+        gone = await c.call_tool("approve", {"approval_id": "0123456789abcdef"})
+        unwaited = (await h.post("/api/v1/prompts", json=approval(), headers=BEARER)).json()["id"]
+        not_held = await call(c, "approve", approval_id=unwaited)
+        asked_id, wait = await opened_and_waiting(h, question())
+        as_question = await call(c, "approve", approval_id=asked_id)
+        await call(c, "answer_question", question_id=asked_id, choice="1")
+        await wait
+    assert gone.is_error and "screen" in gone.content[0].text
+    assert not_held["decided"] is None and "screen" in not_held["say"]
+    assert as_question["decided"] is None and "answer_question" in as_question["error"]
+
+
+#: Commands carrying a made-up secret, each with the secret's text.
+SECRETS = [
+    ("aws s3 ls --key AKIAIOSFODNN7EXAMPLE", "AKIAIOSFODNN7EXAMPLE"),
+    ("git clone https://someone:pa55word@git.example.test/r.git", "pa55word"),
+    ("mysql -pHunter2 -h db", "Hunter2"),
+    ("""curl -d '{"token":"tok3n-value"}' https://x.test""", "tok3n-value"),
+    ("curl -u admin:Pa55word! https://x.test", "Pa55word"),
+    ("aws configure set secret wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", "bPxRfiCYEXAMPLEKEY"),
+    ("psql postgres://app:hunter2@db/main", "hunter2"),
+    ("unlock --passphrase 'correct horse battery staple'", "battery"),
+    ("curl -H 'Authorization: Bearer abc123def456' https://x.test", "abc123def456"),
+    ("gh auth login --with-token ghp_aaaaBBBBccccDDDDeeeeFFFFgggg1234", "ghp_aaaa"),
+    ("API_KEY=abc123 make", "abc123"),
+    ("deploy --password hunter2 --host x", "hunter2"),
+    ("vault login s3cr3tpass", "s3cr3tpass"),
+    ("echo hunter2", "hunter2"),
+]
+
+
+@pytest.mark.parametrize(("command", "secret"), SECRETS)
+def test_an_approval_read_to_the_voice_carries_only_words_known_to_be_plain(command, secret):
+    line, whole = answers.spoken("Bash", command)
+    assert secret not in line and "more words" in line and whole is False
+
+
+def test_a_plain_command_is_read_out_whole_and_a_long_one_is_not():
+    path = "/home/someone/projects/a-long-folder-name-for-work/src/module_name.py"
+    assert answers.spoken("Bash", f"uv run pytest -q {path}") == (f"uv run pytest -q {path}", True)
+    assert answers.spoken("Bash", "git push origin feat/x") == ("git push origin feat/x", True)
+    long, whole = answers.spoken("Bash", "cat " + " ".join(f"./f{i}.py" for i in range(40)))
+    assert len(long) <= answers.SPOKEN_INPUT + 1 and long.endswith("…") and whole is False
+    assert answers.spoken("Bash", "make", cut=True)[1] is False
+
+
+def test_a_file_tool_is_read_out_by_its_path_and_any_other_tool_by_its_name():
+    assert answers.spoken("Read", "./notes/plan.md") == ("Read ./notes/plan.md", True)
+    assert answers.spoken("Edit", "./src/app.py") == ("Edit ./src/app.py", False)
+    assert answers.spoken("WebFetch", '{"url": "https://u:p@x.test"}') == ("WebFetch", False)
+
+
+async def test_the_voice_allows_only_an_approval_it_could_read_out_in_full(server):
+    async with http(server) as h, Client(server) as c:
+        pid, wait = await opened_and_waiting(h, approval("deploy --password hunter2"))
+        listed = await call(c, "list_pending_approvals")
+        refused = await call(c, "approve", approval_id=pid)
+        denied = await call(c, "deny", approval_id=pid)
+        answered = (await wait).json()
+    (box,) = listed["approvals"]
+    assert box["in_full"] is False and "hunter2" not in box["input"]
+    assert refused["decided"] is None and refused["say"] == answers.NOT_READ_IN_FULL
+    assert denied["decided"] == "deny" and answered == {"decision": "deny"}
+
+
+def test_an_approval_is_news_once_a_hook_waits_on_it():
+    prompt = {"id": "p1", "session": "c-1", "kind": "approval", "tool": "Bash", "input": "rm -rf build"}
+    who, kind, text = answers.news(prompt, [{"sessionId": "c-1", "name": "painter"}])
+    assert (who, kind) == ("painter", "needs_answer")
+    assert text == "painter asks to run Bash" and "rm" not in text

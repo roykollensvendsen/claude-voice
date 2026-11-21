@@ -1,0 +1,5 @@
+[[rule]]
+name = "the voice allows only an approval it could read out in full"
+file = "src/claude_voice/answers.py"
+find = 'if decision == "allow" and not _spoken_prompt\(prompt\)\[1\]:'
+replace = 'if False:'

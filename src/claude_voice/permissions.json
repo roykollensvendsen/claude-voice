@@ -247,6 +247,18 @@
       "Bash(gh pr review* -a*)",
       "Bash(gh api*APPROVE*)"
     ],
+    "answering a box or a confirm, which only the owner's voice does": [
+      "mcp__claude-voice__approve",
+      "mcp__claude_ai_claude-voice__approve",
+      "mcp__claude-voice__deny",
+      "mcp__claude_ai_claude-voice__deny",
+      "mcp__claude-voice__answer_question",
+      "mcp__claude_ai_claude-voice__answer_question",
+      "mcp__claude-voice__plugin_approve_confirm",
+      "mcp__claude_ai_claude-voice__plugin_approve_confirm",
+      "mcp__claude-voice__developer_mode_confirm",
+      "mcp__claude_ai_claude-voice__developer_mode_confirm"
+    ],
     "accepting a repository's rights, which only the owner types": [
       "Bash(*claude-voice permissions*--accept*)"
     ],
