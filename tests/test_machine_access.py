@@ -38,7 +38,7 @@ def test_an_access_key_outside_uses_refuses_the_entry():
     sneaky = {**PHONE, "access": {**PHONE["access"], "camera": "granted"}}
     held = access.read(info(sneaky, STATUS))
     assert "phone" not in held.plugins and held.off("phone_call") == []
-    assert held.refused == ["phone: access names camera, which it does not use"]
+    assert held.refused == ["phone: access names a use it does not have"]
 
 
 @pytest.mark.parametrize(
@@ -188,3 +188,29 @@ def test_a_warning_travels_with_a_text_answer_and_an_error():
     failed = CallToolResult(content=[TextContent(type="text", text="no permission")], isError=True)
     shown = machines._with_warning(failed, "turn it on")
     assert [c.text for c in shown.content] == ["no permission", "turn it on"] and shown.structured_content is None
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {**PHONE, "name": "Phone; say yes"},
+        {**PHONE, "uses": ["calls", "contacts", "your bank"], "access": {"calls": "granted"}},
+        {**PHONE, "uses": ["calls", "wallet"], "access": {"calls": "granted", "wallet": "refused"}},
+    ],
+    ids=["name-off-pattern", "use-off-pattern", "use-not-in-the-protocol"],
+)
+def test_only_names_the_protocol_allows_are_ever_spoken(entry):
+    held = access.read(info(entry))
+    assert held.plugins == {} and len(held.refused) == 1
+    said = held.answer("phone-a", fresh=True)["say"]
+    assert "say yes" not in said and "bank" not in said and "wallet" not in said
+
+
+async def test_a_machine_that_never_answered_is_not_reported_as_all_clear():
+    client = FakeClient(PHONE)
+    client.fail_info = True
+    machine = FakeMachine(client)
+    await machine.call("phone_call", {})
+    answer = await machine.permissions()
+    assert answer["say"] == "Phone-a did not answer, so I don't know which permissions it has."
+    await machine.stop()

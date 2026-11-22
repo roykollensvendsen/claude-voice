@@ -12,14 +12,31 @@ counts as unknown and gives no warning, so a later value breaks nothing.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
 STATES = ("granted", "refused", "never_asked")
+#: A plugin's name, as protocol v1 allows it; nothing else is spoken.
+NAME = re.compile(r"[a-z][a-z0-9_]{0,31}")
+#: The private things the protocol names: version 1's, and `messages` from the next version.
+USES = (
+    "microphone",
+    "camera",
+    "location",
+    "calls",
+    "contacts",
+    "notifications",
+    "media",
+    "sensors",
+    "usage",
+    "messages",
+)
 #: The states the voice warns about. The app asks for nothing when it opens, so both get one fix.
 OFF = ("refused", "never_asked")
 TURN_ON = "turn on {use} for claude-voice in the phone's settings"
 LAST = "Last I heard, "
+NO_ANSWER = "did not answer, so I don't know which permissions it has."
 
 
 @dataclass
@@ -27,6 +44,7 @@ class Held:
     plugins: dict[str, dict[str, str]] = field(default_factory=dict)  # plugin -> use -> state
     tools: dict[str, str] = field(default_factory=dict)  # the machine's tool name -> its plugin
     refused: list[str] = field(default_factory=list)  # entries whose access was ignored, and why
+    answered: bool = False  # whether the machine's agent_info was read at all
 
     def off(self, tool: str) -> list[str]:
         """The uses of the tool's plugin last reported as off."""
@@ -43,6 +61,9 @@ class Held:
 
     def answer(self, machine: str, fresh: bool) -> dict[str, Any]:
         """The answer to "which permissions does <machine> have?"."""
+        # RULE: a machine that never answered is not reported as all clear
+        if not self.answered:
+            return {"machine": machine, "plugins": {}, "say": f"{machine[:1].upper()}{machine[1:]} {NO_ANSWER}"}
         parts = [_off(machine, name, uses) for name, uses in self._each(OFF)]
         parts += [
             f"{machine} has not said whether {', '.join(uses)} is on for {name}."
@@ -64,7 +85,7 @@ def _off(machine: str, plugin: str, uses: list[str]) -> str:
 
 def read(info: Any) -> Held:
     """The access each plugin entry reports. Anything malformed is read as nothing known."""
-    held = Held()
+    held = Held(answered=isinstance(info, dict))
     entries = info.get("plugins") if isinstance(info, dict) else None
     for entry in entries if isinstance(entries, list) else ():
         if isinstance(entry, dict) and isinstance(entry.get("name"), str):
@@ -78,10 +99,16 @@ def _entry(held: Held, entry: dict[str, Any]) -> None:
     uses = [u for u in entry.get("uses") or () if isinstance(u, str)]
     given = entry.get("access")
     given = given if isinstance(given, dict) else {}
-    extra = [key for key in given if key not in uses]
+    # RULE: only names the protocol allows are ever spoken
+    if not NAME.fullmatch(name):
+        held.refused.append("an entry with a name the protocol does not allow")
+        return
+    if any(use not in USES for use in uses):
+        held.refused.append(f"{name}: a use the protocol does not name")
+        return
     # RULE: an access key outside uses refuses the entry
-    if extra:
-        held.refused.append(f"{name}: access names {extra[0]}, which it does not use")
+    if any(key not in uses for key in given):
+        held.refused.append(f"{name}: access names a use it does not have")
         return
     # RULE: an unknown access value gives no warning
     held.plugins[name] = {use: given[use] if given.get(use) in STATES else "unknown" for use in uses}
