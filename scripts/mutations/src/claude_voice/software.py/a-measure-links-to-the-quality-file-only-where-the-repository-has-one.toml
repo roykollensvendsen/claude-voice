@@ -1,0 +1,5 @@
+[[rule]]
+name = "a measure links to the quality file only where the repository has one"
+file = "src/claude_voice/software.py"
+find = '^\s*has_file = folder is not None and \(folder / FILE\)\.is_file\(\)$'
+replace = 'has_file = True'
