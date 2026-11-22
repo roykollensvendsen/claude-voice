@@ -415,7 +415,10 @@ def repo_report(
     """One repository's measures, each with its value, status and trend, and its latest
     mutation report rule by rule (None when it keeps none)."""
     past = _measured(folder, kept)
-    link = f"{url}/actions/workflows/checks.yml?query=branch%3A{branch}" if kept else f"{url}/blob/{branch}/{FILE}"
+    has_file = folder is not None and (folder / FILE).is_file()
+    # RULE: a measure links to the quality file only where the repository has one
+    checks = f"{url}/actions/workflows/checks.yml?query=branch%3A{branch}"
+    link = f"{url}/blob/{branch}/{FILE}" if has_file and not kept else checks
     exempt = exemptions(folder)
     # RULE: a measure only some repositories publish is left out where none is kept
     shown = [m for m in MEASURES if m[0] not in PUBLISHED_ONLY or any(m[0] in q for q in past)]
