@@ -99,7 +99,7 @@ GIT_COMMANDS = frozenset(
 )
 #: Git's own subcommands left off that list on purpose, so each is taken as a push. A test holds
 #: the list and these together against `git --list-cmds=builtins` and `--list-cmds=main`, so a git
-#: with a new subcommand turns the tests red.
+#: with a new subcommand turns the tests red. The last line is Git for Windows' own.
 LEFT_OUT = frozenset(
     """
     push send-pack for-each-repo submodule--helper http-push subtree filter-branch
@@ -107,6 +107,7 @@ LEFT_OUT = frozenset(
     gui--askyesno http-backend http-fetch imap-send merge-octopus merge-one-file merge-resolve p4
     quiltimport remote-ftp remote-ftps remote-http remote-https shell sh-i18n--envsubst svn
     web--browse
+    credential-wincred gui.tcl survey update
     """.split()
 )
 #: Forms of a listed subcommand that run a command or shell text named on the line, by the
