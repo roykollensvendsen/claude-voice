@@ -155,6 +155,18 @@ The messages are counted from the transcripts the session tree already reads,
 from where each stopped, at most every ten seconds. The hints only suggest: the
 chart still changes in its file and nowhere else.
 
+## Running a programme day to day
+
+The habits that keep a programme moving are in the org-chart skill's
+[patterns](../.claude/skills/org-chart/references/patterns.md#running-a-programme-day-to-day).
+One of them is for every session:
+
+- **Take an item the moment you start on it.** Assign its issue at once:
+  `gh issue edit N --repo R --add-assignee @me`. If there is no issue, open a
+  draft PR with your first commit. Unassign if you drop it. The board sync
+  (`claude-voice tracker sync`) puts an assigned issue and a draft PR under
+  In progress.
+
 ## Who reads it
 
 - The voice: the `org_chart` tool gives the whole chart in a few short lines,

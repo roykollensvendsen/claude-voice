@@ -40,7 +40,7 @@ def pr(node: str, *, state="OPEN", draft=False, requested=0, reviews=0, repo=REP
     }
 
 
-def issue(node: str, *, state="OPEN", author=OWNER, labels=0, commenters=(), repo=REPO) -> dict[str, Any]:
+def issue(node: str, *, state="OPEN", author=OWNER, labels=0, commenters=(), repo=REPO, assignees=0) -> dict[str, Any]:
     return {
         "__typename": "Issue",
         "id": node,
@@ -49,6 +49,7 @@ def issue(node: str, *, state="OPEN", author=OWNER, labels=0, commenters=(), rep
         "author": {"login": author},
         "labels": {"totalCount": labels},
         "comments": {"nodes": [{"author": {"login": who}} for who in commenters]},
+        "assignees": {"totalCount": assignees},
     }
 
 
@@ -186,10 +187,39 @@ def test_an_outside_issue_leaves_waiting_once_it_is_triaged(tmp_path):
     assert _set(fake) == {"i1": OPTIONS["Backlog"], "i2": OPTIONS["Backlog"]}
 
 
+@pytest.mark.parametrize(
+    "work",
+    [issue("I1", assignees=1), issue("I1", author="someone-else", assignees=2)],
+    ids=["owners-issue", "outside-issue-not-yet-triaged"],
+)
+def test_an_open_issue_someone_has_taken_is_in_progress(work, tmp_path):
+    """A session assigns an issue the moment it starts on it, so the board shows the work running."""
+    fake = Fake(open_work=[work])
+    _run(fake, tmp_path)
+    assert _set(fake) == {"item_I1": OPTIONS["In progress"]}
+    on_board = Fake(
+        board_items=[("w", OPTIONS["Waiting on owner"], work), ("b", OPTIONS["Backlog"], work | {"id": "I2"})]
+    )
+    _run(on_board, tmp_path)
+    assert _set(on_board) == {"w": OPTIONS["In progress"], "b": OPTIONS["In progress"]}
+
+
+def test_the_sync_reads_whether_an_issue_is_assigned():
+    assert "assignees(first: 1) { totalCount }" in sync.READ_OPEN
+    assert "assignees(first: 1) { totalCount }" in sync.READ_BOARD
+
+
 def test_an_open_issue_moved_by_hand_stays_where_it_was_put(tmp_path):
-    fake = Fake(board_items=[("i1", OPTIONS["In progress"], issue("I1"))])
+    fake = Fake(board_items=[("i1", OPTIONS["In review"], issue("I1"))])
     _run(fake, tmp_path)
     assert fake.writes == []
+
+
+def test_a_dropped_issue_leaves_in_progress(tmp_path):
+    """Nobody is assigned any more, so the item must not look as if work on it were running."""
+    fake = Fake(board_items=[("i1", OPTIONS["In progress"], issue("I1"))])
+    _run(fake, tmp_path)
+    assert _set(fake) == {"i1": OPTIONS["Backlog"]}
 
 
 def test_an_unchanged_status_makes_no_write(tmp_path):

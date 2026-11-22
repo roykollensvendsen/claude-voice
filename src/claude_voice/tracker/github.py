@@ -18,9 +18,11 @@ What a piece of work becomes:
 - a pull request with a review asked for or given on GitHub, or with a reviewer's verdict file
   in the bridge's state folder (`reviews/<repo>-<number>.<reviewer>.json`): In review;
 - merged or closed, a pull request or an issue: Done;
-- an open issue: Backlog, or the waiting column when someone other than the owner opened it
+- an open issue with someone assigned: In progress, whoever opened it. A session assigns an
+  issue the moment it starts on it, so the board shows the work while it runs;
+- any other open issue: Backlog, or the waiting column when someone other than the owner opened it
   and the owner has neither labelled nor answered it yet. An open issue moved by hand stays
-  where it was put.
+  where it was put, except in In progress: once nobody is assigned, it goes back to Backlog.
 
 The waiting column's name is a setting, since a board names its owner there. Under a
 rate-limit floor a run does nothing, and says so once, so it never starves the sessions
@@ -59,6 +61,7 @@ _WORK = """
       ... on Issue {
         __typename id state repository { nameWithOwner } author { login }
         labels(first: 1) { totalCount } comments(last: 50) { nodes { author { login } } }
+        assignees(first: 1) { totalCount }
       }"""
 
 READ_BOARD = (
@@ -243,6 +246,9 @@ def column(work: dict[str, Any], owner: str, verdicts: AbstractSet[tuple[str, in
         repo = work["repository"]["nameWithOwner"].split("/", 1)[-1]
         asked = work["reviewRequests"]["totalCount"] or work["reviews"]["totalCount"]
         return "review" if asked or (repo, work.get("number")) in verdicts else "progress"
+    # RULE: an open issue someone has taken is in progress
+    if (work.get("assignees") or {}).get("totalCount"):
+        return "progress"
     author = (work.get("author") or {}).get("login")
     answered = any((c.get("author") or {}).get("login") == owner for c in work["comments"]["nodes"])
     if author != owner and not work["labels"]["totalCount"] and not answered:
@@ -271,6 +277,7 @@ def plan(
             seen[work["id"]] = work
     writes: list[Write] = []
     waiting = board.options.get(settings.names["waiting"])
+    progress = board.options.get(settings.names["progress"])
     for content, work in seen.items():
         kind = column(work, settings.owner, verdicts)
         name = settings.names[kind]
@@ -282,8 +289,10 @@ def plan(
             item, now = board.items[content]
             if now == option:
                 continue
-            # An open issue the owner placed by hand stays, unless it leaves the waiting column.
-            if work["__typename"] == "Issue" and kind == "backlog" and now is not None and now != waiting:
+            # An open issue the owner placed by hand stays, unless it leaves the waiting column,
+            # or sits in In progress with nobody assigned any more.
+            # RULE: a dropped issue leaves in progress
+            if work["__typename"] == "Issue" and kind == "backlog" and now not in (None, waiting, progress):
                 continue
             writes.append(Write(SET, {"item": item, "option": option}, f"set {where} to {name}"))
         elif work["state"] == "OPEN":
