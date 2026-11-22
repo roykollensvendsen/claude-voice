@@ -240,17 +240,29 @@ class Machine(plugins.Plugin):
 def _with_warning(answer: Any, warning: str) -> Any:
     """The answer with the warning added: as a field of its object, or a line of its text."""
     shown = copy.copy(answer)
-    if answer.structured_content is not None and not answer.is_error:
+    if answer.is_error:
+        shown.content = _with_line(answer, warning)
+        return shown
+    if answer.structured_content is not None:
         shown.structured_content = {**answer.structured_content, "warning": warning}
         return shown
-    from mcp.types import TextContent
-
-    text = "\n".join(getattr(c, "text", "") for c in answer.content or [] if getattr(c, "text", None))
-    found = plugins.as_object(text) if not answer.is_error else {}
-    shown.content = [*(answer.content or []), TextContent(type="text", text=warning)]
-    if found and not answer.is_error:
+    shown.content = _with_line(answer, warning)
+    found = plugins.as_object(_text(answer))
+    if found:
         shown.structured_content = {**found, "warning": warning}
     return shown
+
+
+def _with_line(answer: Any, line: str) -> list[Any]:
+    """The answer's content with one more line of text after it."""
+    from mcp.types import TextContent
+
+    return [*(answer.content or []), TextContent(type="text", text=line)]
+
+
+def _text(answer: Any) -> str:
+    """The text of the answer's content, one line per part."""
+    return "\n".join(getattr(c, "text", "") for c in answer.content or [] if getattr(c, "text", None))
 
 
 def without_numbers(body: Any) -> Any:
