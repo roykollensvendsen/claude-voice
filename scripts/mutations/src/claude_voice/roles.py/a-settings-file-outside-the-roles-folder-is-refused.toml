@@ -1,0 +1,5 @@
+[[rule]]
+name = "a settings file outside the roles folder is refused"
+file = "src/claude_voice/roles.py"
+find = 'if not real.is_relative_to\(folder\):'
+replace = 'if False:'

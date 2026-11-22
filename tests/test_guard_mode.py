@@ -371,7 +371,6 @@ def test_a_plain_push_to_a_fork_goes(tmp_path, command):
         "git push origin feat/x\n",
         "FOO=1 git push origin feat/x",
         "git push origin $BRANCH",
-        "git push origin :feat/x",
         "git push origin +feat/x",
     ],
 )

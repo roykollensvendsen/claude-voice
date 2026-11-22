@@ -1,0 +1,5 @@
+[[rule]]
+name = "a role with its own settings and no guard gets the delete check"
+file = "src/claude_voice/roles.py"
+find = '    if only_deletes:'
+replace = '    if False:'

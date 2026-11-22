@@ -63,6 +63,10 @@ SHAPE = (
 #: Shells that run a command line given to them with -c.
 SHELLS = frozenset({"sh", "bash", "dash", "zsh", "ksh"})
 OWN_CLONE = "own-clone"
+#: The mode for a role that brings its own settings and no guard: only branch deletes are judged.
+NO_DELETES = "no-deletes"
+#: Options of a push that delete branches on the remote.
+DELETING = frozenset({"--delete", "--prune", "--mirror"})
 ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
 #: The ways of writing a GitHub address, each leaving `owner/name` after it.
 GITHUB = re.compile(r"(?:git@github\.com:|ssh://git@github\.com/|https://github\.com/)(.+)")
@@ -377,6 +381,15 @@ def _git_push(words: list[str], alias: Alias | None, base: str | None, seen: fro
     return Push([]) if _pushes(line, alias, folder, seen | {name}) else None
 
 
+def _deletes(push: Push) -> bool:
+    """Whether a push deletes a branch: by option, or by a refspec with nothing before its colon."""
+    flags = [a for a in push.args if a.startswith("-")]
+    short = "".join(f[1:] for f in flags if not f.startswith("--"))
+    if DELETING & {f.split("=", 1)[0] for f in flags} or "d" in short:
+        return True
+    return any(word.lstrip("+").startswith(":") for word in _positional(push.args)[1:])
+
+
 def same_repository(url: str, repository: str) -> bool:
     """Whether a push address is the GitHub repository `owner/name`: the owner compared as
     GitHub does, without case, the name exactly, and the whole path, never a part of it."""
@@ -474,14 +487,21 @@ def decide(
     default_remote: Callable[[], str],
     in_folder: Callable[[str], Reader | None] | None = None,
     alias: Alias | None = None,
+    only_deletes: bool = False,
 ) -> tuple[str, str] | None:
     """("deny" or "ask", why) for a command with a push in it, or None when it may run.
     `in_folder` reads another folder's remotes, or answers None when it cannot; `alias` reads
-    what a git alias runs."""
+    what a git alias runs. With `only_deletes`, a readable push is judged only on whether it
+    deletes a branch."""
     pushes = _pushes(command, alias)
     if not pushes:
         return None
+    # RULE: a push that deletes a branch is refused in every mode
+    if any(_deletes(push) for push in pushes):
+        return ("deny", "This push would delete a branch, and sessions never delete branches. Ask the owner.")
     plain, folder = _shape(command)
+    if only_deletes:
+        return None if plain else ("ask", f"This push is not in a plain shape the guard can judge, such as {SHAPE}.")
     # RULE: only a push in the plain shape is judged by its remotes
     if not plain:
         if own_clone:
@@ -544,7 +564,9 @@ def _reader(path: str) -> Reader:
     return (lambda name: git("remote", "get-url", "--push", "--all", name)), default_remote
 
 
-def answer(hook_input: dict[str, Any], upstream: str, own_clone: bool = False) -> dict[str, Any]:
+def answer(
+    hook_input: dict[str, Any], upstream: str, own_clone: bool = False, only_deletes: bool = False
+) -> dict[str, Any]:
     """Claude Code's hook answer: a refusal, a question, or nothing so the command runs."""
     if hook_input.get("tool_name") != "Bash":
         return {}
@@ -560,7 +582,9 @@ def answer(hook_input: dict[str, Any], upstream: str, own_clone: bool = False) -
         return _git_at(path)("config", "--get", f"alias.{name}")
 
     remote_url, default_remote = _reader(cwd)
-    verdict = decide(command, upstream, own_clone, remote_url, default_remote, in_folder, alias)
+    verdict = decide(
+        command, upstream, own_clone, remote_url, default_remote, in_folder, alias=alias, only_deletes=only_deletes
+    )
     if verdict is None:
         return {}
     return {
@@ -581,7 +605,8 @@ def main() -> int:
         hook_input = json.load(sys.stdin)
     except ValueError:
         return 0
-    out = answer(hook_input, options.upstream, own_clone=options.push_mode == OWN_CLONE)
+    mode = options.push_mode
+    out = answer(hook_input, options.upstream, own_clone=mode == OWN_CLONE, only_deletes=mode == NO_DELETES)
     if out:
         sys.stdout.write(json.dumps(out))
     return 0

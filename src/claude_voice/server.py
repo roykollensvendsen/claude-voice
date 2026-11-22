@@ -1580,13 +1580,14 @@ def build_server(
         name = unused_name(str(spec.get("name") or role))
         if role == boxed.CLIENT:
             return await launch_approver(spec, folder, name, task)
+        settings = roles.settings_for(spec, role)  # a role whose settings file is refused does not start
         how, _, _ = how_to_start(str(folder), name, None, None)
         try:
             await start_background(
                 str(folder),
                 name,
                 prompt=roles.first_message(spec, folder, task),
-                settings=roles.guard_settings(spec),
+                settings=settings,
                 **how,
             )
         except Exception as exc:
