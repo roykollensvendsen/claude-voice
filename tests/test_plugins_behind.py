@@ -69,20 +69,21 @@ async def offered(client, name, seconds=10.0):
 
 async def test_a_slow_plugin_never_delays_the_bridge_listening(tmp_path):
     fake, _ = stand_in()
-    gate = threading.Event()
+    gate, started = threading.Event(), threading.Event()
 
     def slow(params):
-        gate.wait(5)  # the plugin takes its time to start
+        gate.wait(5)  # the plugin is held until the test lets it go, or else gives up waiting
+        started.set()
         return Client(fake)
 
-    began = time.monotonic()
     server = behind_bridge(tmp_path, [(GARAGE, lambda p: Client(fake))], slow)
-    built = time.monotonic() - began
+    # Proven by order, not by a clock: a bridge that waited for the plugin is built only once
+    # the plugin has started, which the hold above lets happen only after its five seconds.
     async with Client(server) as c:
-        answered = "health" in await tool_names(c)  # the bridge answers while the plugin starts
+        answered = "health" in await tool_names(c) and not started.is_set()
         gate.set()
         came = await offered(c, "garage_status")
-    assert built < 2.0 and answered
+    assert answered  # the bridge answers while the plugin is still held
     assert came  # and the plugin's tools follow once it has started
 
 
