@@ -1,0 +1,5 @@
+[[rule]]
+name = "a push spelled in the shells own quoting is found"
+file = "src/claude_voice/guard.py"
+find = '^    for segment in PARTS\.split\(REDIRECTION\.sub\(" ", _unquoted\(command\)\)\)\[::2\]:$'
+replace = '    for segment in PARTS.split(REDIRECTION.sub(" ", command))[::2]:'

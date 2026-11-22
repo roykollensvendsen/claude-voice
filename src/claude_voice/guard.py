@@ -69,6 +69,12 @@ GITHUB = re.compile(r"(?:git@github\.com:|ssh://git@github\.com/|https://github\
 #: Options of `env` that take a word after them.
 ENV_VALUES = frozenset({"-u", "--unset", "-C", "--chdir", "-S", "--split-string"})
 TURN_ON = f'push_mode = "{OWN_CLONE}"'
+#: Options before git's subcommand that take the next word as their value.
+GIT_VALUES = ("-C", "-c", "--config-env", "--git-dir", "--work-tree")
+#: The shell's own quoting, `$'...'` with escapes and `$"..."`, which bash turns into plain text.
+ANSI_C = re.compile(r"\$'((?:[^'\\]|\\.)*)'", re.DOTALL)
+ESCAPE = re.compile(r"\\(x[0-9A-Fa-f]{1,2}|u[0-9A-Fa-f]{1,4}|U[0-9A-Fa-f]{1,8}|[0-7]{1,3}|c.|.)", re.DOTALL)
+SIMPLE_ESCAPES = {"a": "\a", "b": "\b", "e": "\x1b", "E": "\x1b", "f": "\f", "n": "\n", "r": "\r", "t": "\t", "v": "\v"}
 
 
 @dataclass
@@ -82,6 +88,28 @@ class Push:
 #: How the guard reads one folder: a remote's push addresses by name, and the remote a bare
 #: `git push` goes to.
 Reader = tuple[Callable[[str], "str | None"], Callable[[], str]]
+#: What a git alias runs, by its name and the folder git runs in (None for the session's own), or
+#: None when there is no such alias.
+Alias = Callable[[str, "str | None"], "str | None"]
+
+
+def _escape(match: re.Match[str]) -> str:
+    """The character one escape in `$'...'` stands for."""
+    code = match.group(1)
+    if code[0] in "xuU" and len(code) > 1:
+        number = int(code[1:], 16)
+        return chr(number) if number <= sys.maxunicode else ""
+    if code[0] in "01234567":
+        return chr(int(code, 8) & 0xFF)
+    if code[0] == "c" and len(code) > 1:
+        return chr(ord(code[1]) & 0x1F)
+    return SIMPLE_ESCAPES.get(code, code)
+
+
+def _unquoted(command: str) -> str:
+    """The command with the shell's own quoting turned into plain quoting, as bash reads it."""
+    plain = ANSI_C.sub(lambda match: shlex.quote(ESCAPE.sub(_escape, match.group(1))), command)
+    return plain.replace('$"', '"')
 
 
 def _without_environment(words: list[str]) -> tuple[list[str], bool]:
@@ -193,28 +221,72 @@ def _shape(command: str) -> tuple[bool, str | None]:
     return True, folder
 
 
-def _pushes(command: str) -> list[Push]:
+def _pushes(
+    command: str, alias: Alias | None = None, base: str | None = None, seen: frozenset[str] = frozenset()
+) -> list[Push]:
     """Every `git push` in a command line, `git -C dir push` and `NAME=value git push` included.
-    A push behind any other wrapper is found too, with no words, as one the guard could not read
-    word by word."""
+    A push behind any other wrapper or a git alias is found too, with no words, as one the guard
+    could not read word by word. `alias` reads what an alias runs; `base` is the folder the line
+    starts in."""
     found = []
-    for segment in PARTS.split(REDIRECTION.sub(" ", command))[::2]:
+    # RULE: a push spelled in the shells own quoting is found
+    for segment in PARTS.split(REDIRECTION.sub(" ", _unquoted(command)))[::2]:
         try:
             words = shlex.split(segment)
         except ValueError:
             words = segment.split()
         words, _ = _without_environment(words)
-        if not words or not _is_git(words[0]):
+        if len(words) == 2 and words[0] == "cd":
+            base = _join(base, words[1])
+        elif not words or not _is_git(words[0]):
             # RULE: a push behind a wrapper is never let through unjudged
             if _hidden(words):
                 found.append(Push([]))
         else:
-            rest = words[1:]
-            while rest and rest[0].startswith("-"):  # options before the subcommand, such as -C dir
-                rest = rest[2:] if rest[0] in ("-C", "-c", "--config-env", "--git-dir", "--work-tree") else rest[1:]
-            if rest and rest[0] == "push":
-                found.append(Push(rest[1:]))
+            push = _git_push(words[1:], alias, base, seen)
+            if push is not None:
+                found.append(push)
     return found
+
+
+def _git_options(rest: list[str], folder: str | None) -> tuple[list[str], str | None, dict[str, str]]:
+    """The words from git's subcommand on, the folder git runs in, and the aliases the line sets
+    with -c or --config-env. An alias whose value the line does not show is taken as a push."""
+    inline = {}
+    while rest and rest[0].startswith("-"):
+        option, joined, value = rest[0].partition("=")
+        if not joined:
+            value = rest[1] if option in GIT_VALUES and len(rest) > 1 else ""
+        if option in ("-C", "--git-dir"):
+            folder = _join(folder, value)
+        if option in ("-c", "--config-env") and value.lower().startswith("alias."):
+            name, has_value, setting = value[len("alias.") :].partition("=")
+            inline[name.lower()] = setting if option == "-c" and has_value else "push"
+        rest = rest[2:] if not joined and option in GIT_VALUES else rest[1:]
+    return rest, folder, inline
+
+
+def _git_push(words: list[str], alias: Alias | None, base: str | None, seen: frozenset[str]) -> Push | None:
+    """The push one `git` command runs, with the words after `push`, or None when it runs none.
+    A push through an alias comes back with no words, so it is never in the plain shape."""
+    rest, folder, inline = _git_options(words, base)
+    if not rest:
+        return None
+    if rest[0] == "push":
+        return Push(rest[1:])
+    name = rest[0].lower()
+
+    def lookup(key: str, where: str | None) -> str | None:
+        if key.lower() in inline:
+            return inline[key.lower()]
+        return alias(key, where) if alias is not None else None
+
+    runs = None if name in seen else lookup(rest[0], folder)
+    if runs is None:
+        return None
+    line = runs[1:] if runs.startswith("!") else f"git {runs}"
+    # RULE: a git alias is judged by what it runs
+    return Push([]) if _pushes(line, lookup, folder, seen | {name}) else None
 
 
 def same_repository(url: str, repository: str) -> bool:
@@ -313,10 +385,12 @@ def decide(
     remote_url: Callable[[str], str | None],
     default_remote: Callable[[], str],
     in_folder: Callable[[str], Reader | None] | None = None,
+    alias: Alias | None = None,
 ) -> tuple[str, str] | None:
     """("deny" or "ask", why) for a command with a push in it, or None when it may run.
-    `in_folder` reads another folder's remotes, or answers None when it cannot."""
-    pushes = _pushes(command)
+    `in_folder` reads another folder's remotes, or answers None when it cannot; `alias` reads
+    what a git alias runs."""
+    pushes = _pushes(command, alias)
     if not pushes:
         return None
     plain, folder = _shape(command)
@@ -358,8 +432,8 @@ def refusal(
     return verdict[1] if verdict else None
 
 
-def _reader(path: str) -> Reader:
-    """How to read the remotes of the clone at `path`, through the bridge's safe git."""
+def _git_at(path: str) -> Callable[..., str | None]:
+    """Git in the clone at `path`, through the bridge's safe git: its output, or None."""
 
     def git(*args: str) -> str | None:
         try:
@@ -367,6 +441,13 @@ def _reader(path: str) -> Reader:
         except (OSError, subprocess.SubprocessError):
             return None
         return out.stdout.strip() or None
+
+    return git
+
+
+def _reader(path: str) -> Reader:
+    """How to read the remotes of the clone at `path`, through the bridge's safe git."""
+    git = _git_at(path)
 
     def default_remote() -> str:
         pushed = git("rev-parse", "--abbrev-ref", "@{push}")
@@ -386,8 +467,12 @@ def answer(hook_input: dict[str, Any], upstream: str, own_clone: bool = False) -
         path = os.path.join(cwd, os.path.expanduser(folder))
         return _reader(path) if os.path.isdir(path) else None
 
+    def alias(name: str, folder: str | None) -> str | None:
+        path = cwd if folder is None else os.path.join(cwd, os.path.expanduser(folder))
+        return _git_at(path)("config", "--get", f"alias.{name}")
+
     remote_url, default_remote = _reader(cwd)
-    verdict = decide(command, upstream, own_clone, remote_url, default_remote, in_folder)
+    verdict = decide(command, upstream, own_clone, remote_url, default_remote, in_folder, alias)
     if verdict is None:
         return {}
     return {
