@@ -33,7 +33,10 @@ NOWHERE = CHECKOUT / ".claude-voice-guard-probe-that-never-exists"  # in the che
         lambda: os.symlink(NOWHERE, PROBE),
         lambda: sqlite3.connect(PROBE),
         lambda: os.utime(PROBE),
-        lambda: os.chown(PROBE, -1, -1),
+        pytest.param(
+            lambda: os.chown(PROBE, -1, -1),
+            marks=pytest.mark.skipif(not hasattr(os, "chown"), reason="Windows has no chown"),
+        ),
     ],
 )
 def test_a_test_that_writes_under_the_owners_home_is_refused_and_fails(no_writes_to_the_owners_home, write):
@@ -72,6 +75,7 @@ def test_a_python_installed_in_the_owners_home_opens_only_its_compiled_files(mon
     monkeypatch.setattr(conftest, "PYTHON", (REAL_HOME / ".local",))
     assert conftest._owners(REAL_HOME / ".local" / "lib" / "__pycache__" / "x.pyc") is None
     assert conftest._owners(REAL_HOME / ".local" / "lib" / "__pycache__" / "x.pyc.140") is None
+    assert conftest._owners(REAL_HOME / ".local" / "lib" / "http" / "__pycache__") is None
     state = REAL_HOME / ".local" / "state" / "claude-voice"
     for name in ("restarts", "__pycache__/restarts.json", "__pycache__x/x.pyc"):
         assert conftest._owners(state / name) is not None, name

@@ -70,9 +70,10 @@ def _owners(target: object, folder: object = None) -> Path | None:
 
 def _open(path: Path) -> bool:
     """Whether a write to `path` is open: in the checkout, temp or uv's cache, or a compiled file
-    of the Python running the suite."""
+    of the Python running the suite, or the folder it goes in."""
     # A compiled file, or the temporary one Python writes it as first: <name>.pyc or <name>.pyc.<n>
     named = path.parent.name == "__pycache__" and re.fullmatch(r".+\.pyc(\.\d+)?", path.name) is not None
+    named = named or path.name == "__pycache__"  # made the first time a module there is imported
     compiled = named and any(path.is_relative_to(p) for p in PYTHON)
     return compiled or any(path.is_relative_to(a) for a in ALLOWED)
 
