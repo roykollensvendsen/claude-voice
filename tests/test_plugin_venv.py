@@ -302,6 +302,23 @@ def test_a_sync_still_running_when_the_bridge_stops_is_stopped_with_everything_i
 
 
 @posix
+def test_a_sync_already_ended_is_never_stopped_by_its_number(tmp_path, uv, monkeypatch):
+    """Once reaped, a sync's number may be another process's: the stop must pass it over."""
+    import subprocess
+
+    folder = tmp_path / "gizmo"
+    gizmo(folder, "run", "gizmo-mcp")
+    plugin_venv._sync(str(uv), folder, 60)
+    assert not plugin_venv._running  # a sync that ends on its own leaves nothing counted
+    ended = subprocess.Popen([sys.executable, "-c", "pass"])
+    ended.wait()  # and one reaped while still counted is passed over
+    killed: list[int] = []
+    monkeypatch.setattr(plugin_venv.os, "killpg", lambda pid, sig: killed.append(pid))
+    monkeypatch.setattr(plugin_venv, "_running", {ended})
+    assert plugin_venv.stop_running() == 0 and killed == []
+
+
+@posix
 def test_a_stopped_sync_never_waits_on_output_a_helper_outside_its_group_holds(tmp_path, uv, monkeypatch, caplog):
     monkeypatch.setattr(plugin_venv, "SYNC_SECONDS", 1.0)
     monkeypatch.setattr(plugin_venv, "DRAIN_SECONDS", 0.5)
