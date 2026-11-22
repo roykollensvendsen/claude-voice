@@ -1,0 +1,5 @@
+[[rule]]
+name = "the item is still at the sha it was asked about"
+file = "src/claude_voice/decisions.py"
+find = '^\s*if sha != head:$'
+replace = 'if False:'

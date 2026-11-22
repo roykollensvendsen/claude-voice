@@ -32,6 +32,7 @@ def test_the_command_has_these_verbs_in_this_order():
         "roles",
         "set",
         "tracker",
+        "decisions",
     )
 
 

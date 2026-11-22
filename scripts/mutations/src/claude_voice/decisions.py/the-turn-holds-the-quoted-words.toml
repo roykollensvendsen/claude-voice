@@ -1,0 +1,5 @@
+[[rule]]
+name = "the turn holds the quoted words"
+file = "src/claude_voice/decisions.py"
+find = '^\s*if not quote or quote not in \(plain_text\(turn\) or ""\):$'
+replace = 'if False:'

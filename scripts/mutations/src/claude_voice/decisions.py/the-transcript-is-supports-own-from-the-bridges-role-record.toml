@@ -1,0 +1,5 @@
+[[rule]]
+name = "the transcript is supports own from the bridges role record"
+file = "src/claude_voice/decisions.py"
+find = '^\s*if not support or not support\.get\("id"\) or line\.get\("session"\) != support\.get\("id"\):$'
+replace = 'if False:'

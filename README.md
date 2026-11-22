@@ -392,6 +392,23 @@ claude-voice: Refused: give your own verdict file's name, --by with your reviewe
 When fewer than 500 GraphQL points are left, a run does nothing, and the journal
 (`journalctl --user -u claude-voice-board`) says so once.
 
+### Check a yes the support role recorded
+
+A support session records each decision of yours as one line in
+`~/.local/state/claude-voice/decisions.jsonl`, with the uuid of the turn that holds your words.
+Before acting on one, the manager checks it against support's own transcript:
+
+```console
+$ claude-voice decisions check no-such-uuid --head 0000000
+claude-voice: Refused: there is no decision line with that uuid.
+```
+
+The check accepts a line only when the turn is yours: typed in support's own window, or
+stamped `origin: voice` on its first line. The turn must hold the quoted words and answer a
+question that named the same sha. The item must still be at that sha, and each uuid counts
+once. Every check is logged to `decision-checks.jsonl` beside it, for you to read after.
+The reasons are in `src/claude_voice/decisions.py`.
+
 ## Answer questions and approvals from the phone
 
 With the companion app open, a session's choice box or permission prompt can be

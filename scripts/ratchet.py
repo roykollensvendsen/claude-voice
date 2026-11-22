@@ -116,6 +116,7 @@ LAYERS = {
             "activity",
             "boxed",
             "approver_token",
+            "decisions",
         ),
         1,
     ),  # parts, each about one thing
