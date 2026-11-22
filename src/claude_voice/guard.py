@@ -71,8 +71,9 @@ ENV_VALUES = frozenset({"-u", "--unset", "-C", "--chdir", "-S", "--split-string"
 TURN_ON = f'push_mode = "{OWN_CLONE}"'
 #: Git's own subcommands that never send a branch anywhere, from `git --list-cmds=builtins` and
 #: `--list-cmds=main` of git 2.55. Git never lets an alias stand in for one of them. Left out on
-#: purpose: push, send-pack, http-push and subtree, which push, and filter-branch, which runs
-#: shell text. Any other subcommand is an alias, a known extension, or taken as a push.
+#: purpose: push, send-pack, http-push and subtree, which push; filter-branch, which runs shell
+#: text; and for-each-repo and submodule--helper, which run a git command named on the line.
+#: Any other subcommand is an alias, a known extension, or taken as a push.
 GIT_COMMANDS = frozenset(
     """
     add am annotate apply archive backfill bisect blame branch bugreport bundle cat-file check-attr
@@ -80,7 +81,7 @@ GIT_COMMANDS = frozenset(
     cherry-pick clean clone column commit commit-graph commit-tree config count-objects credential
     credential-cache credential-cache--daemon credential-store describe diagnose diff diff-files
     diff-index diff-pairs difftool diff-tree fast-export fast-import fetch fetch-pack fmt-merge-msg
-    for-each-ref for-each-repo format-patch format-rev fsck fsck-objects fsmonitor--daemon gc
+    for-each-ref format-patch format-rev fsck fsck-objects fsmonitor--daemon gc
     get-tar-commit-id grep hash-object help history hook index-pack init init-db interpret-trailers
     last-modified log ls-files ls-remote ls-tree mailinfo mailsplit maintenance merge merge-base
     merge-file merge-index merge-ours merge-recursive merge-recursive-ours merge-recursive-theirs
@@ -88,7 +89,7 @@ GIT_COMMANDS = frozenset(
     pack-redundant pack-refs patch-id pickaxe prune prune-packed pull range-diff read-tree rebase
     receive-pack reflog refs remote remote-ext remote-fd repack replace replay repo rerere reset
     restore revert rev-list rev-parse rm shortlog show show-branch show-index show-ref
-    sparse-checkout stage stash status stripspace submodule--helper switch symbolic-ref tag
+    sparse-checkout stage stash status stripspace switch symbolic-ref tag
     unpack-file unpack-objects update-index update-ref update-server-info upload-archive
     upload-archive--writer upload-pack url-parse var verify-commit verify-pack verify-tag version
     whatchanged worktree write-tree
@@ -96,6 +97,17 @@ GIT_COMMANDS = frozenset(
     lfs
     """.split()
 )
+#: Git's own subcommands left off that list on purpose. A test holds the list and these together
+#: against `git --list-cmds=builtins`, so a git with a new subcommand turns the tests red.
+LEFT_OUT = frozenset({"push", "send-pack", "for-each-repo", "submodule--helper"})
+#: Forms of a listed subcommand that run a command or shell text named on the line, by the
+#: subcommand: an option, or the word that chooses the action.
+RUNS_A_COMMAND = {
+    "rebase": ("-x", "--exec"),
+    "bisect": ("run",),
+    "submodule": ("foreach",),
+    "difftool": ("-x", "--extcmd"),
+}
 #: Options before git's subcommand that take the next word as their value.
 GIT_VALUES = ("-C", "-c", "--config-env", "--git-dir", "--work-tree")
 #: The shell's own quoting, `$'...'` with escapes and `$"..."`, which bash turns into plain text.
@@ -317,6 +329,19 @@ def _git_options(rest: list[str], folder: str | None) -> tuple[list[str], str | 
     return rest, folder, configured
 
 
+def _runs_a_command(rest: list[str]) -> bool:
+    """Whether git's own subcommand, with its words, runs a command or shell text from the line:
+    `rebase -x`, `bisect run`, `submodule foreach` or `difftool --extcmd`, in any spelling."""
+    forms = RUNS_A_COMMAND.get(rest[0], ())
+    for word in rest[1:]:
+        name = word.partition("=")[0]
+        # a short `-x` may be joined to other letters or to its value, as in `-ix` or `-xmake`
+        short = "-x" in forms and word.startswith("-") and not word.startswith("--") and "x" in word
+        if name in forms or short:
+            return True
+    return False
+
+
 def _git_push(words: list[str], alias: Alias | None, base: str | None, seen: frozenset[str]) -> Push | None:
     """The push one `git` command runs, with the words after `push`, or None when it runs none.
     `alias` is None when the line may have set up an alias the guard cannot read. A push through
@@ -328,7 +353,8 @@ def _git_push(words: list[str], alias: Alias | None, base: str | None, seen: fro
     if rest[0] == "push":
         return Push(rest[1:])
     if rest[0] in GIT_COMMANDS:
-        return None
+        # RULE: a git subcommand that runs a command named on the line is taken as a push
+        return Push([]) if _runs_a_command(rest) else None
     name = rest[0].lower()
     runs = alias(rest[0], folder) if alias is not None and not configured and name not in seen else None
     # RULE: a subcommand the guard cannot place is taken as a push

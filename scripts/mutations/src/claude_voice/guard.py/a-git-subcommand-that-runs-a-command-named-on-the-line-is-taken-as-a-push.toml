@@ -1,0 +1,5 @@
+[[rule]]
+name = "a git subcommand that runs a command named on the line is taken as a push"
+file = "src/claude_voice/guard.py"
+find = '^        return Push\(\[\]\) if _runs_a_command\(rest\) else None$'
+replace = '        return None'
