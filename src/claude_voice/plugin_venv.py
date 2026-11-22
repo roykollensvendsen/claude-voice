@@ -81,7 +81,10 @@ def _sync(uv: str, folder: Path, seconds: float) -> subprocess.CompletedProcess[
     ) as sync:
         try:
             out, err = sync.communicate(timeout=seconds)
-        except subprocess.TimeoutExpired:
+        # A sync in a session of its own never sees the Ctrl-C the bridge gets, so the bridge
+        # stops it just as it stops one that runs too long.
+        # RULE: a sync cut short by ctrl c is stopped with everything it started
+        except (subprocess.TimeoutExpired, KeyboardInterrupt):
             if sys.platform == "win32":
                 sync.kill()
             else:

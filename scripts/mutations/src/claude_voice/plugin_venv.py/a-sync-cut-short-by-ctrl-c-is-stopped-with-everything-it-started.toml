@@ -1,0 +1,5 @@
+[[rule]]
+name = "a sync cut short by ctrl c is stopped with everything it started"
+file = "src/claude_voice/plugin_venv.py"
+find = '^        except \(subprocess\.TimeoutExpired, KeyboardInterrupt\):$'
+replace = '        except subprocess.TimeoutExpired:'
