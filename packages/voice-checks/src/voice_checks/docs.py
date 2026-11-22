@@ -5,6 +5,8 @@
 - each step is a heading ``### <number>. <what it does>``, with a fenced command block and a
   line starting ``Check:`` that names the command whose output proves the step worked;
 - a block runs in the tests only when the line above its fence is ``<!-- safe-to-run -->``;
+- a fence is three backticks at the start of a line; a ``~~~`` or indented fence is not seen, so
+  the guides use only the first kind;
 - the steps under ``## Steps only the owner can do`` are marked ``<!-- owner -->``, and each
   says ``Why:`` only the owner can do it, or the heading says ``None.``.
 
