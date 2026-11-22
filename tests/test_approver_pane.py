@@ -73,3 +73,24 @@ async def test_the_window_holds_no_token_in_tmux(tmux, tmp_path):
         )
         out, _ = await shown.communicate()
         assert b"CLAUDE_VOICE_APPROVER_TOKEN" not in out
+
+
+def test_the_window_runs_the_fixed_starter_then_claude_by_its_absolute_path():
+    argv = approver_pane.command("/py", "/abs/claude", "approver", 8811, {"hooks": 1}, "hi")
+    assert argv[:4] == ["/py", "-I", "-m", "claude_voice.approver_start"]
+    assert argv[4] == "/abs/claude"
+    assert "--strict-mcp-config" in argv and argv[-1] == "hi"
+
+
+async def test_the_approver_is_pinned_the_moment_its_window_opens(tmux, tmp_path):
+    keeper = approver_token.Keeper()
+    pid, ticks = await approver_pane.launch(tmux, keeper, "approver", str(tmp_path), [SLEEP, "30"], SLEEP, 5)
+    assert ticks == lineage.start_ticks(pid)
+    assert keeper.hand(pid)  # the token waits for this window's process, and only it
+
+
+async def test_a_window_that_never_becomes_claude_leaves_no_token(tmux, tmp_path):
+    keeper = approver_token.Keeper()
+    with pytest.raises(RuntimeError, match="did not become claude"):
+        await approver_pane.launch(tmux, keeper, "approver", str(tmp_path), [SH, "-c", f"{SLEEP} 30; true"], SLEEP, 1)
+    assert keeper.hand(os.getpid()) is None
