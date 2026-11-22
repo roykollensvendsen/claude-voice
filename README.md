@@ -256,6 +256,7 @@ also the default.
 | `CLAUDE_VOICE_UI_ORIGINS` | — | comma-separated origins of a companion app served elsewhere, allowed to call the [event API](docs/event-api.md) across sites |
 | `CLAUDE_VOICE_UI_DIR` | — | a folder with a companion app's built files, served at `/ui/` |
 | `CLAUDE_VOICE_DB` | `~/.local/state/claude-voice/bridge.db` | where sessions and events are kept |
+| `CLAUDE_VOICE_PROOF` | — | `1` marks a bridge started for a test or a proof. It starts no plugins, whatever the settings list, and its health answer says `proof: true`. Give it a spare port and a database of its own, such as `CLAUDE_VOICE_PROOF=1 CLAUDE_VOICE_PORT=8899 CLAUDE_VOICE_DB=/tmp/proof.db claude-voice serve --transport http` |
 | `CLAUDE_VOICE_ENV_FILE` | `~/.config/claude-voice/env` | the environment file `check` and the bridge look over for lines a shell would misread |
 | `CLAUDE_VOICE_ACCESS_TOKEN_SECONDS` | `3600` | how long a sign-in's access token lasts before the app must refresh it; set it to a week (`604800`) on a computer that sleeps, since the Claude app gives a connector up after about an hour of failed refreshes |
 

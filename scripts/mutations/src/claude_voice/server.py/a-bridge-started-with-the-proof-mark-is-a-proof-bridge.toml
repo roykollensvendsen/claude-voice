@@ -1,0 +1,5 @@
+[[rule]]
+name = "a bridge started with the proof mark is a proof bridge"
+file = "src/claude_voice/server.py"
+find = '^    cfg\.proof = env\.get\("CLAUDE_VOICE_PROOF", ""\)\.strip\(\) == "1"$'
+replace = '    cfg.proof = False'
