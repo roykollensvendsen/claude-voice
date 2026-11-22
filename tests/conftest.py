@@ -11,7 +11,10 @@ import pytest
 #: the machine's temporary folder may be written under it.
 REAL_HOME = Path.home().resolve()
 UV_CACHE = Path(os.environ.get("UV_CACHE_DIR") or REAL_HOME / ".cache" / "uv").resolve()
-ALLOWED = (Path(__file__).resolve().parents[1], Path(tempfile.gettempdir()).resolve(), UV_CACHE)
+#: The Python running the suite writes its own compiled files where it is installed, which uv
+#: puts under the home: that is Python's own folder, not the owner's.
+PYTHON = tuple({Path(p).resolve() for p in (sys.base_prefix, sys.base_exec_prefix, sys.prefix)})
+ALLOWED = (Path(__file__).resolve().parents[1], Path(tempfile.gettempdir()).resolve(), UV_CACHE, *PYTHON)
 WRITE_FLAGS = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_TRUNC
 CHANGES = {"os.remove", "os.rename", "os.mkdir", "os.rmdir", "os.symlink", "os.link", "os.truncate", "os.chmod"}
 _watching: list[list[str]] = []  # the writes seen during the running test, while one runs
