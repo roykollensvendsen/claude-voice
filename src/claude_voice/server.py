@@ -18,7 +18,7 @@ import threading
 import time
 import weakref
 from collections.abc import Awaitable, Callable, Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
@@ -710,6 +710,7 @@ def build_server(
     manager_delivery_seconds: float = 60.0,
     stalled_watch: stalled.Watch | None = None,
     stalled_tmux: Callable[[list[str]], str] | None = None,
+    proof: bool = False,  # a bridge for a test or a proof: it starts no plugins, whatever its settings
 ) -> MCPServer:
     auth = None
     keeper = approver_token.Keeper()  # the approver's own token, minted when it is launched
@@ -768,6 +769,11 @@ def build_server(
     side_answer = side_answer or transcripts.shared_reader()
     host: doctor.Host = doctor_host or doctor.RealHost()
     repos = repo_config or config.load(config.FILE, own_clone=roles.own_clone())
+    if proof:
+        # A proof bridge runs beside the owner's, so the plugins it lists would run twice.
+        # RULE: a proof bridge starts no plugins
+        repos = replace(repos, plugins=[])
+        log.info("a proof bridge starts no plugins")
     duty = _duty(duty, repos, manager)
     start_settings = launch.Settings(manager.store, repos.sessions)
     desktop = os.environ if desktop_env is None else desktop_env
@@ -1122,7 +1128,7 @@ def build_server(
     def plugin_specs() -> list[config.PluginSpec]:
         """The plugins as the settings file names them now, so a tool added there is seen
         without restarting the bridge; the ones read at start when it is given or unreadable."""
-        if repo_config is not None:
+        if repo_config is not None or proof:
             return repos.plugins
         try:
             return config.load(config.FILE, own_clone=roles.own_clone()).plugins
