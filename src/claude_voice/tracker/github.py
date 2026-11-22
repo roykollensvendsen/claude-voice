@@ -226,6 +226,13 @@ def _new_board(data: dict[str, Any]) -> Board:
     )
 
 
+def _item(node: dict[str, Any]) -> Item:
+    status = (node.get("status") or {}).get("optionId")
+    health = (node.get("health") or {}).get("optionId")
+    reason = str((node.get("reason") or {}).get("text") or "")
+    return Item(node["id"], status, health, reason)
+
+
 def read_board(client: Client, settings: Settings) -> Board:
     """The board: its id, its Status and Health fields and options, its repositories and items."""
     board: Board | None = None
@@ -239,10 +246,7 @@ def read_board(client: Client, settings: Settings) -> Board:
         for node in items["nodes"]:
             content = node.get("content") or {}
             if content.get("id") and content.get("repository"):
-                status = (node.get("status") or {}).get("optionId")
-                health = (node.get("health") or {}).get("optionId")
-                reason = str((node.get("reason") or {}).get("text") or "")
-                board.items[content["id"]] = Item(node["id"], status, health, reason)
+                board.items[content["id"]] = _item(node)
                 board.work.append(content)
     assert board is not None
     return board
