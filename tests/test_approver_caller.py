@@ -15,7 +15,7 @@ import httpx
 import pytest
 from fakes import FakeClaude
 
-from claude_voice import answers, approver, config, phone_hook, procs, prompts
+from claude_voice import answers, approver, config, lineage, phone_hook, prompts
 from claude_voice.oauth import OAuthProvider
 from claude_voice.server import _duty, build_app, build_server
 from claude_voice.sessions import SessionManager
@@ -258,7 +258,7 @@ def stranger():
 
 def under(pid):
     """A duty whose approver is the claude process `pid`, as its live file names it."""
-    return lambda: (APPROVER, pid, procs.start_ticks(pid))
+    return lambda: (APPROVER, pid, lineage.start_ticks(pid))
 
 
 def test_a_report_from_outside_the_approvers_process_tree_is_refused(book, repo, duty, stranger):
@@ -280,20 +280,20 @@ def test_a_report_from_under_the_approvers_process_is_taken(book, repo, duty):
 
 def test_a_dead_or_reused_approver_pid_proves_nothing():
     parent = os.getppid()
-    assert procs.descends(os.getpid(), parent, procs.start_ticks(parent))
-    assert not procs.descends(os.getpid(), parent, "1")  # same pid, another start: reused
+    assert lineage.descends(os.getpid(), parent, lineage.start_ticks(parent))
+    assert not lineage.descends(os.getpid(), parent, "1")  # same pid, another start: reused
     gone = subprocess.Popen(["true"])
     gone.wait()
-    assert procs.start_ticks(gone.pid) is None
-    assert not procs.descends(os.getpid(), gone.pid, "1")
+    assert lineage.start_ticks(gone.pid) is None
+    assert not lineage.descends(os.getpid(), gone.pid, "1")
 
 
 def test_without_the_kernels_word_on_the_sender_no_report_is_taken(monkeypatch):
     left, right = socket.socketpair()
     with left, right:
-        assert procs.peer_pid(left) == os.getpid()
+        assert lineage.peer_pid(left) == os.getpid()
         monkeypatch.delattr(socket, "SO_PEERCRED")
-        assert procs.peer_pid(left) is None
+        assert lineage.peer_pid(left) is None
 
 
 async def test_without_peer_credentials_nothing_listens(monkeypatch, duty, tmp_path):
@@ -351,10 +351,10 @@ def test_only_the_session_launched_as_the_approver_role_is_the_approver(tmp_path
     assert not duty.approver(APPROVER)  # no approver launched yet: nobody is it
     assert duty.process() is None
     store.set_setting("role:builder", {"name": "builder", "id": WORKER})
-    pinned = {"name": "approver", "id": APPROVER, "pid": stranger, "started": procs.start_ticks(stranger)}
+    pinned = {"name": "approver", "id": APPROVER, "pid": stranger, "started": lineage.start_ticks(stranger)}
     store.set_setting("role:approver", pinned)  # as launch_role records it
     assert duty.approver(APPROVER) and not duty.approver(WORKER)
-    assert duty.process() == (APPROVER, stranger, procs.start_ticks(stranger))
+    assert duty.process() == (APPROVER, stranger, lineage.start_ticks(stranger))
 
 
 def test_a_session_file_written_after_launch_does_not_move_the_approver(tmp_path, stranger, forger):
@@ -365,10 +365,10 @@ def test_a_session_file_written_after_launch_does_not_move_the_approver(tmp_path
     repos = config.load(tmp_path / "config.toml", own_clone=None, env={"HOME": str(tmp_path)})
     live = tmp_path / "live"
     live.mkdir()
-    pinned = {"name": "approver", "id": APPROVER, "pid": stranger, "started": procs.start_ticks(stranger)}
+    pinned = {"name": "approver", "id": APPROVER, "pid": stranger, "started": lineage.start_ticks(stranger)}
     store.set_setting("role:approver", pinned)
-    planted = {"sessionId": APPROVER, "pid": forger, "procStart": procs.start_ticks(forger)}
+    planted = {"sessionId": APPROVER, "pid": forger, "procStart": lineage.start_ticks(forger)}
     (live / "0.json").write_text(json.dumps(planted), encoding="utf-8")  # sorts first, and its pid is alive
     duty = _duty(None, dataclasses.replace(repos, approver_on=True), manager)
-    assert duty.process() == (APPROVER, stranger, procs.start_ticks(stranger))
+    assert duty.process() == (APPROVER, stranger, lineage.start_ticks(stranger))
     assert not duty.prove(forger, TOOL, phone_hook.args_digest(call("p0")))

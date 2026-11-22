@@ -1,5 +1,5 @@
 [[rule]]
 name = "a dead or reused approver pid proves nothing"
-file = "src/claude_voice/procs.py"
+file = "src/claude_voice/lineage.py"
 find = 'if started is None or start_ticks\(ancestor\) != started:'
 replace = 'if started is None:'
