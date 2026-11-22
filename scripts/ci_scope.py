@@ -67,6 +67,7 @@ WINDOWS = (
             "session_hook",
             "shipped",
             "software",
+            "stalled",
             "tailnet",
             "terminals*",
             "transcripts",
