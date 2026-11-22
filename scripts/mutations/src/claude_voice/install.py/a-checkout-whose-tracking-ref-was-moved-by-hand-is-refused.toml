@@ -1,0 +1,5 @@
+[[rule]]
+name = "a checkout whose tracking ref was moved by hand is refused"
+file = "src/claude_voice/install.py"
+find = 'why = why or plugin_tip\.refusal\(spec, tip_of=plugin_tip\.github_tip\)'
+replace = 'why = why'

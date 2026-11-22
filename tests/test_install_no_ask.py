@@ -8,7 +8,7 @@ import tomllib
 import pytest
 from test_install import bridge_file, env, git, home_file, plugin_config
 
-from claude_voice import cli, plugins
+from claude_voice import cli, plugin_tip, plugins
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes, as in test_install")
 
@@ -53,6 +53,8 @@ def home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(folder))
     monkeypatch.setattr(cli, "_terminal", lambda env: False)
     monkeypatch.setattr(plugins, "APPROVALS", folder / ".config/claude-voice/plugins-approved.json")
+    # GitHub agrees with the checkout: its branch's tip is the commit the checkout has out.
+    monkeypatch.setattr(plugin_tip, "github_tip", lambda repo, branch: plugin_tip.head(str(folder / "fuel-mcp")))
     return folder
 
 
@@ -121,3 +123,40 @@ def test_without_no_ask_install_still_asks_only_in_a_real_terminal(home, capsys)
     known_checkout(home)
     assert cli.main(["plugins", "install", "fuel"], env=env(home)) == 1
     assert "terminal" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://evil.example/github.com/roykollensvendsen/fuel-mcp",
+        "git@evil.example:github.com/roykollensvendsen/fuel-mcp.git",
+        "ext::sh -c x github.com/roykollensvendsen/fuel-mcp",
+    ],
+)
+def test_only_a_github_address_of_the_plugins_own_repository_counts(home, capsys, url):
+    git(known_checkout(home), "remote", "set-url", "origin", url)
+    assert no_ask(home) == 1
+    assert "push" in capsys.readouterr().err
+    assert not bridge_file(home).exists()
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://github.com/roykollensvendsen/fuel-mcp",
+        "ssh://git@github.com/roykollensvendsen/fuel-mcp.git",
+        "git@github.com:roykollensvendsen/fuel-mcp.git/",
+    ],
+)
+def test_each_github_address_form_of_the_plugins_own_repository_is_accepted(home, url):
+    git(known_checkout(home), "remote", "set-url", "origin", url)
+    assert no_ask(home) == 0
+
+
+def test_a_checkout_whose_tracking_ref_was_moved_by_hand_is_refused(home, capsys, monkeypatch):
+    """A local origin/main moved to match HEAD passes the level check; GitHub's tip does not."""
+    known_checkout(home)
+    monkeypatch.setattr(plugin_tip, "github_tip", lambda repo, branch: "a" * 40)
+    assert no_ask(home) == 1
+    assert "GitHub" in capsys.readouterr().err
+    assert not bridge_file(home).exists()

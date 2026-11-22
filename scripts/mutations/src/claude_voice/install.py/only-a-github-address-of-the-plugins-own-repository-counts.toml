@@ -1,0 +1,5 @@
+[[rule]]
+name = "only a github address of the plugins own repository counts"
+file = "src/claude_voice/install.py"
+find = 'found = \[ORIGIN\.fullmatch\(line\.strip\(\)\) for line in out\.stdout\.splitlines\(\)\] if out\.returncode == 0 else \[\]'
+replace = 'found = [re.search(r"github\.com[:/]([\w.-]+)/([\w.-]+?)(?:\.git)?/?$", line.strip()) for line in out.stdout.splitlines()] if out.returncode == 0 else []'

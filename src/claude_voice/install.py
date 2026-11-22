@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import copy
 import difflib
+import re
 import tomllib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -382,10 +383,13 @@ def _answers(count: int) -> str:
 # -- with no one asked (plugin-config-commands-v1, 2.4) ---------------------------------------
 
 
+#: A GitHub address, whole: https, ssh or scp form, then owner/name. Anything else is refused.
+ORIGIN = re.compile(r"(?:https://github\.com/|ssh://git@github\.com/|git@github\.com:)([\w.-]+)/([\w.-]+?)(?:\.git)?/?")
+
+
 def _pushes_to(folder: Path) -> list[str]:
     """Every address `origin` pushes to, as owner/name in lower case, or the raw text."""
     from . import safe_git
-    from .work import GITHUB
 
     try:
         out = safe_git.run(
@@ -394,7 +398,8 @@ def _pushes_to(folder: Path) -> list[str]:
         )  # fmt: skip
     except OSError:
         return []
-    found = [GITHUB.search(line.strip()) for line in out.stdout.splitlines()] if out.returncode == 0 else []
+    # RULE: only a github address of the plugins own repository counts
+    found = [ORIGIN.fullmatch(line.strip()) for line in out.stdout.splitlines()] if out.returncode == 0 else []
     return [f"{m[1]}/{m[2]}".lower() if m else "?" for m in found]
 
 
@@ -412,6 +417,8 @@ def no_ask_refusal(plan: Plan) -> str | None:
     """Why this plugin may not be installed with no one asked, or None when it may: a known
     plugin, from its own folder, clean, level with its branch, pushing only to its known
     repository, and with nothing to ask."""
+    from . import plugin_tip
+    from .config import PluginSpec
     from .plugins import checkout_refusal
 
     found = known().get(plan.manifest.name)
@@ -422,7 +429,11 @@ def no_ask_refusal(plan: Plan) -> str | None:
     # RULE: a checkout not clean level and pushing to its known repository is refused
     if set(_pushes_to(plan.folder)) != {found.repo.lower()}:
         return f"its checkout's origin does not push only to {found.repo}"
-    why = checkout_refusal(gitstatus.read(plan.folder), plan.manifest.branch)
+    m = plan.manifest
+    why = checkout_refusal(gitstatus.read(plan.folder), m.branch)
+    # RULE: a checkout whose tracking ref was moved by hand is refused
+    spec = PluginSpec(m.name, m.command, list(m.args), str(plan.folder), [], branch=m.branch)
+    why = why or plugin_tip.refusal(spec, tip_of=plugin_tip.github_tip)
     # RULE: a plugin that would ask the owner anything is refused before anything is written
     return why or _would_ask(plan)
 
