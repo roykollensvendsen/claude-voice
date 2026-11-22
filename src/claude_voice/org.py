@@ -411,15 +411,19 @@ def idle_warnings(chart: Chart, state: Path) -> list[str]:
         ]
         if p.builders() and not any(r.code == "manager" for r in p.roles):
             out.append(f"{p.code}: no role with code manager, so nobody is told of idle builders")
-        if not p.backlog:
-            if p.builders():
-                out.append(f"{p.code}: no backlog named, so its idle builders are never flagged")
-            continue
-        try:
-            backlog.path(state, p.backlog)
-        except backlog.Outside as exc:
-            out.append(f"{p.code}: {exc}")
+        out += _backlog_warnings(p, state)
     return out
+
+
+def _backlog_warnings(p: Programme, state: Path) -> list[str]:
+    """A programme's work list: missing while it has builders, or outside `state`."""
+    if not p.backlog:
+        return [f"{p.code}: no backlog named, so its idle builders are never flagged"] if p.builders() else []
+    try:
+        backlog.path(state, p.backlog)
+    except backlog.Outside as exc:
+        return [f"{p.code}: {exc}"]
+    return []
 
 
 def check(chart: Chart, running: set[str], state: Path | None = None) -> list[str]:
