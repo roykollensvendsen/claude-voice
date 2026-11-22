@@ -1,0 +1,5 @@
+[[rule]]
+name = "the approver has no tools of its own"
+file = "src/claude_voice/boxed.py"
+find = '"--tools",'
+replace = '"--allowedTools",'
