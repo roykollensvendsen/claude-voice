@@ -1,0 +1,5 @@
+[[rule]]
+name = "the quote is the owners whole answer"
+file = "src/claude_voice/decisions.py"
+find = '^\s*if not line\.get\("quote"\) or str\(line\.get\("quote"\)\)\.strip\(\) != said\[1\]:$'
+replace = 'if False:'

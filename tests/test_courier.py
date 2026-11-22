@@ -2,7 +2,9 @@
 
 import asyncio
 import json
+import sys
 
+import pytest
 from claude_agent_sdk import (
     AssistantMessage,
     PermissionResultAllow,
@@ -14,6 +16,7 @@ from claude_agent_sdk import (
     UserMessage,
 )
 
+from claude_voice import lineage
 from claude_voice.transcripts import Courier
 
 
@@ -449,3 +452,45 @@ async def test_a_carried_message_says_the_voice_reads_the_reply(monkeypatch):
     assert message.startswith("Is the build green?")
     assert message.endswith("Your reply is read by the voice.")
     await transcripts._courier.close()
+
+
+class StartsAProcess(FakeCourierClient):
+    """Like the SDK: opening the client starts a real helper process in the courier's folder."""
+
+    async def __aenter__(self):
+        self.proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-c", "import time; time.sleep(30)", cwd=self.options.cwd
+        )
+        return self
+
+    async def __aexit__(self, *exc):
+        self.proc.kill()
+        await self.proc.wait()
+        self.closed = True
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="read from /proc")
+async def test_each_courier_process_the_bridge_starts_is_reported():
+    """The receiving session's transcript names the sender's pid and start ticks, as the
+    kernel gave them; the bridge must know which of those were its own courier."""
+    clients = []
+
+    def factory(options):
+        clients.append(StartsAProcess(options, [ok("m0")]))
+        return clients[-1]
+
+    opened = []
+    courier = Courier(client_factory=factory, on_open=lambda pid, started: opened.append((pid, started)))
+    await courier.deliver("billing", "m0")
+    pid = clients[0].proc.pid
+    assert opened == [(pid, lineage.start_ticks(pid))]
+    assert opened[0][1] is not None
+    await courier.close()
+
+
+async def test_a_helper_with_no_process_of_its_own_reports_nothing():
+    opened = []
+    courier = Courier(client_factory=Factory([ok("m0")]), on_open=lambda pid, started: opened.append(pid))
+    await courier.deliver("billing", "m0")
+    assert opened == []
+    await courier.close()

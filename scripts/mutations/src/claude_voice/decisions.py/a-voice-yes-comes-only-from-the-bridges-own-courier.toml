@@ -1,0 +1,5 @@
+[[rule]]
+name = "a voice yes comes only from the bridges own courier"
+file = "src/claude_voice/decisions.py"
+find = '^\s*if entry\.get\("type"\) != "user" or origin\.get\("kind"\) != "peer" or sender not in known:$'
+replace = 'if False:'

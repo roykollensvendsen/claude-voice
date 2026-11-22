@@ -1,0 +1,5 @@
+[[rule]]
+name = "the question named the item and the action"
+file = "src/claude_voice/decisions.py"
+find = '^\s*if not item or not action or item not in question or action\.lower\(\) not in question\.lower\(\):$'
+replace = 'if False:'

@@ -45,6 +45,7 @@ from . import (
     boxed,
     calllog,
     config,
+    decisions,
     detail,
     devmode,
     doctor,
@@ -735,6 +736,9 @@ def build_server(
     # An answer sent back to the courier would otherwise reach nobody; it waits until it is read out.
     # RULE: a reply to the courier is news the voice reads
     transcripts.hear_replies(heard)
+    # A yes the voice gave support is told from a peer's by the courier process that carried it.
+    # RULE: the bridge keeps the processes its courier ran as
+    transcripts.hear_opens(lambda pid, started: decisions.remember_courier(manager.store, pid, started))
     tmux = tmux or renames.Tmux()
 
     def renamed(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

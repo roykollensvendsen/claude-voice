@@ -1,5 +1,5 @@
 [[rule]]
 name = "the yes answers the question that named the sha"
 file = "src/claude_voice/decisions.py"
-find = '^\s*if len\(sha\) < SHORT or sha\[:SHORT\] not in question_before\(entries, at\):$'
+find = '^\s*if len\(sha\) < SHORT or sha\[:SHORT\] not in question:$'
 replace = 'if False:'

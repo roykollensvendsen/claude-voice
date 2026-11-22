@@ -1,0 +1,5 @@
+[[rule]]
+name = "a stamped turn counts only when the courier carried it"
+file = "src/claude_voice/decisions.py"
+find = '^\s*if text is None or text\.startswith\(FIRST\):$'
+replace = 'if text is None:'

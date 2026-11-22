@@ -1,4 +1,5 @@
-"""Lineage: which process is on the other end of a socket, and whose child it is.
+"""Lineage: which process is on the other end of a socket, whose child it is, and which
+children the bridge itself started.
 
 Which process sent something over a Unix socket, and whether it runs under another one, is
 read from the kernel. Where the system cannot say (Windows, or no /proc), the answer is no.
@@ -8,10 +9,13 @@ It is not a wall between users: one user can still look inside its own processes
 
 from __future__ import annotations
 
+import contextlib
 import socket
 import struct
 from pathlib import Path
 from typing import Any
+
+import psutil
 
 #: How deep a process tree is walked before giving up; real trees are far shallower.
 MAX_DEPTH = 64
@@ -31,6 +35,17 @@ def start_ticks(pid: int) -> str | None:
     live file writes it in procStart. A pid used again by a new process has another one."""
     fields = _stat(pid)
     return fields[19] if fields else None
+
+
+def children_in(folder: str) -> list[int]:
+    """The pids of this process's own children that work in `folder`."""
+    want = Path(folder).resolve()
+    found = []
+    for child in psutil.Process().children():
+        with contextlib.suppress(psutil.Error, OSError):
+            if Path(child.cwd()).resolve() == want:
+                found.append(child.pid)
+    return found
 
 
 def descends(pid: int, ancestor: int, started: str | None) -> bool:
