@@ -1,0 +1,5 @@
+[[rule]]
+name = "the command takes tools only from the manifest"
+file = "src/claude_voice/cli.py"
+find = 'if not name or options\.values or not options\.from_manifest:'
+replace = 'if not name:'

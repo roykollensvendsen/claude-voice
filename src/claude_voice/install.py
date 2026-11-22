@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import copy
 import difflib
+import re
 import tomllib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -29,9 +30,9 @@ from . import config as settings
 from . import fields, gitstatus, safefile
 from . import home as homes
 from . import manifest as manifests
+from .known_plugins import Known, known, known_folders
 from .manifest import Manifest
 
-KNOWN = Path(__file__).with_name("known_plugins.toml")
 MASK = "•••"  # a personal value in a dry run
 MASKED_HOME = "lat = ••.••\nlon = ••.••\n"
 
@@ -77,31 +78,6 @@ class Outcome:
     steps: int = 0
     stopped: bool = False
     error: str | None = None
-
-
-@dataclass(frozen=True)
-class Known:
-    """One of the owner's own plugins: its repository, and the folder its checkout had
-    before the repository was renamed, if it was."""
-
-    repo: str
-    formerly: str | None = None
-
-    @property
-    def folder(self) -> str:
-        return self.repo.split("/")[1]
-
-
-def known() -> dict[str, Known]:
-    """The owner's own plugins, by name."""
-    raw = tomllib.loads(KNOWN.read_text(encoding="utf-8"))
-    return {name: Known(str(body["repo"]), body.get("formerly")) for name, body in raw.items()}
-
-
-def known_folders() -> set[str]:
-    """The config folders the known plugins use: each one's name and its repository's,
-    old and new."""
-    return {*known(), *(k.folder for k in known().values()), *(k.formerly for k in known().values() if k.formerly)}
 
 
 def _expand(text: str, home: Path) -> Path:
@@ -402,6 +378,73 @@ class Run:
 
 def _answers(count: int) -> str:
     return "1 answer" if count == 1 else f"{count} answers"
+
+
+# -- with no one asked (plugin-config-commands-v1, 2.4) ---------------------------------------
+
+
+#: A GitHub address, whole: https, ssh or scp form, then owner/name. Anything else is refused.
+ORIGIN = re.compile(r"(?:https://github\.com/|ssh://git@github\.com/|git@github\.com:)([\w.-]+)/([\w.-]+?)(?:\.git)?/?")
+
+
+def _pushes_to(folder: Path) -> list[str]:
+    """Every address `origin` pushes to, as owner/name in lower case, or the raw text."""
+    from . import safe_git
+
+    try:
+        out = safe_git.run(
+            "-C", str(folder), "remote", "get-url", "--push", "--all", "origin",
+            capture_output=True, text=True, timeout=10, check=False,
+        )  # fmt: skip
+    except OSError:
+        return []
+    # RULE: only a github address of the plugins own repository counts
+    found = [ORIGIN.fullmatch(line.strip()) for line in out.stdout.splitlines()] if out.returncode == 0 else []
+    return [f"{m[1]}/{m[2]}".lower() if m else "?" for m in found]
+
+
+def _would_ask(plan: Plan) -> str | None:
+    """What install would ask the owner, or None when every answer is in place already."""
+    if "home" in plan.manifest.uses and not homes.path(plan.home).exists():
+        return "it asks you for your home position"
+    wanted = plan.manifest.config
+    if wanted and plan.plugin_config and not plan.plugin_config.exists() and (wanted.personal or not plan.known_folder):
+        return "it asks you for its own settings"
+    return None
+
+
+def no_ask_refusal(plan: Plan) -> str | None:
+    """Why this plugin may not be installed with no one asked, or None when it may: a known
+    plugin, from its own folder, clean, level with its branch, pushing only to its known
+    repository, and with nothing to ask."""
+    from . import plugin_tip
+    from .config import PluginSpec
+    from .plugins import checkout_refusal
+
+    found = known().get(plan.manifest.name)
+    if found is None:
+        return f"{plan.manifest.name} is not a known plugin"
+    if plan.folder != (plan.home / found.folder).absolute():
+        return f"its checkout is not at ~/{found.folder}"
+    # RULE: a checkout not clean level and pushing to its known repository is refused
+    if set(_pushes_to(plan.folder)) != {found.repo.lower()}:
+        return f"its checkout's origin does not push only to {found.repo}"
+    m = plan.manifest
+    why = checkout_refusal(gitstatus.read(plan.folder), m.branch)
+    # RULE: a checkout whose tracking ref was moved by hand is refused
+    spec = PluginSpec(m.name, m.command, list(m.args), str(plan.folder), [], branch=m.branch)
+    why = why or plugin_tip.refusal(spec, tip_of=plugin_tip.github_tip)
+    # RULE: a plugin that would ask the owner anything is refused before anything is written
+    return why or _would_ask(plan)
+
+
+def _never_asked(question: str) -> str:
+    raise InstallError(f"it asks you something ({question.strip()}), so you install it in a terminal")
+
+
+def no_asker(say: Callable[[str], None]) -> Asker:
+    """An asker for an install with no one at the terminal: any question stops the install."""
+    return Asker(say, _never_asked, _never_asked)
 
 
 def run(plan: Plan, asker: Asker, dry: bool = False, anywhere: bool = False, now: datetime | None = None) -> Outcome:

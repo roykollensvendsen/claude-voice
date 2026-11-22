@@ -50,20 +50,14 @@ def _approve(config: Path, approvals: Path, name: str, home: Path) -> None:
     plugins.approve(spec, {}, approvals)
 
 
-def test_plugins_set_changes_a_list_of_tools(files, tmp_path):
+def test_plugins_set_never_takes_a_typed_list_of_tools(files, tmp_path):
+    """The tools come only from the plugin's manifest (plugin-config-commands-v1, 2.1)."""
     config, approvals = files
-    settings_edit.set_plugin(
-        config, approvals, "vacuum", "tools", '["vacuum_status", "vacuum_rooms", "vacuum_clean_rooms"]', home=tmp_path
-    )
-    assert _read(config)["plugins"]["vacuum"]["tools"][-1] == "vacuum_clean_rooms"
-
-
-def test_plugins_set_renames_a_tool(files, tmp_path):
-    config, approvals = files
-    settings_edit.set_plugin(
-        config, approvals, "vacuum", "tools", '["vacuum_status", "vacuum_clean_all"]', home=tmp_path
-    )
-    assert _read(config)["plugins"]["vacuum"]["tools"] == ["vacuum_status", "vacuum_clean_all"]
+    before = _read(config)["plugins"]["vacuum"]["tools"]
+    for typed in ('["vacuum_status", "vacuum_rooms", "vacuum_clean_rooms"]', '["vacuum_status"]'):
+        with pytest.raises(settings_edit.Refused, match="plugins tools vacuum --from-manifest"):
+            settings_edit.set_plugin(config, approvals, "vacuum", "tools", typed, home=tmp_path)
+    assert _read(config)["plugins"]["vacuum"]["tools"] == before
 
 
 def test_plugins_set_refuses_each_key_a_plugin_runs_with_unless_the_owner_approved_it(files, tmp_path):
@@ -218,7 +212,6 @@ tools = ["mister_status"]
 def test_every_command_keeps_the_files_comments_and_order(tmp_path):
     config = tmp_path / "config.toml"
     config.write_text(COMMENTED)
-    settings_edit.set_plugin(config, None, "vacuum", "tools", '["vacuum_status", "vacuum_clean_all"]', home=tmp_path)
     settings_edit.set_plugin(config, None, "mister", "timeout", "45", home=tmp_path)
     settings_edit.add_machine(config, "demo-laptop", "100.64.0.9")
     settings_edit.set_top(config, "voice_instructions_file", "~/new.md")
@@ -227,7 +220,6 @@ def test_every_command_keeps_the_files_comments_and_order(tmp_path):
         assert kept in text, kept
     assert text.index("[plugins.vacuum]") < text.index("[plugins.mister]") < text.index("[machines.demo-laptop]")
     raw = _read(config)
-    assert raw["plugins"]["vacuum"]["tools"] == ["vacuum_status", "vacuum_clean_all"]
     assert raw["plugins"]["mister"]["timeout"] == 45
     assert raw["voice_instructions_file"] == "~/new.md"
 

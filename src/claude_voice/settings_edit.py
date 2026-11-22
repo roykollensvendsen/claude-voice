@@ -79,11 +79,18 @@ def set_plugin(config: Path, approvals: Path | None, name: str, key: str, text: 
     table = raw.get("plugins", {}).get(name)
     if not isinstance(table, dict):
         raise Refused(f"no plugin {name!r} in {config}; add one with claude-voice plugins install")
+    _not_tools(name, key)
     value = value_of(text)
     if key in RUN_KEYS and table.get(key) != value:
         _check_run_key(name, {**table, key: value}, key, approvals, home)
     table[key] = value
     _save(config, raw)
+
+
+def _not_tools(name: str, key: str) -> None:
+    # RULE: plugins set never takes a typed list of tools
+    if key == "tools":
+        raise Refused(f"a plugin's tools come only from its manifest; use plugins tools {name} --from-manifest")
 
 
 def _check_run_key(name: str, table: dict[str, Any], key: str, approvals: Path | None, home: Path) -> None:

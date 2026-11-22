@@ -1,0 +1,5 @@
+[[rule]]
+name = "the repository comes from the bridges own list of plugins"
+file = "src/claude_voice/plugin_tip.py"
+find = 'if found is None:'
+replace = 'if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a tool added in the settings waits while the others run"
+file = "src/claude_voice/plugins.py"
+find = 'ready = \[tool for tool in spec\.tools if each\.get\(tool\) == now\[tool\]\]'
+replace = 'ready = list(spec.tools)'

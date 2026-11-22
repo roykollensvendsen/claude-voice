@@ -1,0 +1,5 @@
+[[rule]]
+name = "a tip that cannot be read means typed"
+file = "src/claude_voice/plugin_tip.py"
+find = 'if tip is None:'
+replace = 'if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "the branch is given once and a second start changes nothing"
+file = "src/claude_voice/plugins.py"
+find = 'if not isinstance\(found, dict\) or "migrated_branch" in found:'
+replace = 'if not isinstance(found, dict):'

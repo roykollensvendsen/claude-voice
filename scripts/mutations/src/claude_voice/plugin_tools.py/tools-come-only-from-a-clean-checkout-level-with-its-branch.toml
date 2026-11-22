@@ -1,0 +1,5 @@
+[[rule]]
+name = "tools come only from a clean checkout level with its branch"
+file = "src/claude_voice/plugin_tools.py"
+find = 'why = plugins\.checkout_refusal\(git\(spec\.cwd\), spec\.branch\)'
+replace = 'why = None'

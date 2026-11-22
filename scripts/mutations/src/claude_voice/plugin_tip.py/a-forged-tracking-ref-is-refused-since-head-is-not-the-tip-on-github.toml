@@ -1,0 +1,5 @@
+[[rule]]
+name = "a forged tracking ref is refused since head is not the tip on github"
+file = "src/claude_voice/plugin_tip.py"
+find = 'if head_of\(spec\.cwd\) != tip:'
+replace = 'if False:'

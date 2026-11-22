@@ -23,6 +23,8 @@ import logging
 import os
 import threading
 from collections.abc import AsyncIterator, Callable
+from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -65,14 +67,25 @@ def _hash(shape: Any) -> str:
     return hashlib.sha256(json.dumps(shape, sort_keys=True).encode()).hexdigest()
 
 
+def _place(spec: PluginSpec, branch: bool = True) -> dict[str, Any]:
+    """Where the plugin runs from. The branch is left out on main, so an approval made before
+    the branch counted still matches a plugin on main."""
+    shape: dict[str, Any] = {"command": spec.command, "args": spec.args, "cwd": spec.cwd}
+    # RULE: a change of branch stops the plugin
+    if branch and spec.branch != "main":
+        shape["branch"] = spec.branch
+    return shape
+
+
 def fingerprint(spec: PluginSpec) -> str:
-    """What the owner approved to run: the command, folder and tools, never anything secret."""
-    return _hash({"command": spec.command, "args": spec.args, "cwd": spec.cwd, "tools": sorted(spec.tools)})
+    """What the owner approved to run: the command, folder, branch and tools, never anything
+    secret."""
+    return _hash({**_place(spec), "tools": sorted(spec.tools)})
 
 
 def place_fingerprint(spec: PluginSpec) -> str:
-    """Where the plugin runs from: its command and folder, without its tools."""
-    return _hash({"command": spec.command, "args": spec.args, "cwd": spec.cwd})
+    """Where the plugin runs from: its command, folder and branch, without its tools."""
+    return _hash(_place(spec))
 
 
 def input_fingerprint(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> str:
@@ -117,9 +130,77 @@ def _approval(spec: PluginSpec, path: Path | None) -> dict[str, Any]:
     return found if isinstance(found, dict) else {}  # an approval from before inputs counted is none
 
 
+def _each(found: dict[str, Any]) -> dict[str, str] | None:
+    """Each approved tool's fingerprint, or None for an approval from before tools counted one
+    by one."""
+    each = found.get("tools")
+    return each if isinstance(each, dict) and each else None
+
+
 def approved(spec: PluginSpec, path: Path | None = None) -> bool:
-    # RULE: a plugin runs only as the owner approved it
-    return _approval(spec, path).get("runs") == fingerprint(spec)
+    """Whether the plugin runs: everything but its tools is as the owner approved it. An
+    approval from before tools counted one by one needs its tools unchanged too."""
+    found = _approval(spec, path)
+    each = _each(found)
+    if each is None:
+        # RULE: a plugin runs only as the owner approved it
+        return _approval(spec, path).get("runs") == fingerprint(spec)
+    # RULE: a move together with a tools change still stops the plugin
+    return found.get("runs") == _hash({**_place(spec), "tools": sorted(each)})
+
+
+def ready_and_waiting(
+    spec: PluginSpec, listing: dict[str, dict[str, Any]], path: Path | None = None
+) -> tuple[list[str], dict[str, str]]:
+    """The configured tools approved as they are now, and the others with their fingerprints:
+    new ones, and ones whose inputs, words, mark or the plugin's rules changed."""
+    each = _each(_approval(spec, path)) or {}
+    now = tool_fingerprints(spec, listing)
+    # RULE: a tool added in the settings waits while the others run
+    ready = [tool for tool in spec.tools if each.get(tool) == now[tool]]
+    return ready, {tool: now[tool] for tool in spec.tools if tool not in ready}
+
+
+def waiting_news(plugin: Plugin) -> str:
+    """The owner's sentence for a plugin's waiting tools."""
+    count = len(plugin.waiting)
+    tools = "tool" if count == 1 else "tools"
+    return f"{plugin.spec.name} has {count} {tools} waiting for your approval: {', '.join(plugin.waiting)}"
+
+
+def announce_waiting(plugin: Plugin, told: Path) -> str | None:
+    """The sentence to announce when a tool waits that was not waiting as it is now at the last
+    look, else None. What was told is kept in `told`, so a restart does not repeat it."""
+    target = told.expanduser()
+    body = _approvals(target)
+    before = body.get(plugin.spec.name) or {}
+    # RULE: a waiting tool is announced once per state
+    fresh = [tool for tool, mark in plugin.waiting.items() if before.get(tool) != mark]
+    if plugin.waiting != before:
+        _save(target, {**body, plugin.spec.name: dict(plugin.waiting)})
+    return waiting_news(plugin) if fresh else None
+
+
+def waiting_items(running: list[Plugin]) -> list[dict[str, Any]]:
+    """One item on the work page for each plugin with tools waiting for the owner."""
+    return [
+        {
+            "id": f"plugin-waiting-{plugin.spec.name}",
+            "text": waiting_news(plugin),
+            "command": f"{invocation.command()} plugins approve {plugin.spec.name}",
+            "since": plugin.waiting_since,
+            "repo": None,
+            "session": None,
+            "prompt": None,
+        }
+        for plugin in running
+        if plugin.waiting
+    ]
+
+
+def waiting_said(waiting: dict[str, str]) -> str:
+    """In a few words, how a running plugin stands."""
+    return f"running, with {len(waiting)} waiting: {', '.join(waiting)}" if waiting else "started"
 
 
 def inputs_approved(spec: PluginSpec, listing: dict[str, dict[str, Any]], path: Path | None = None) -> bool:
@@ -194,9 +275,64 @@ def _record(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> dict[str, A
     }
 
 
+def _manifest_tools(spec: PluginSpec) -> dict[str, list[str]]:
+    """The tools in the plugin's own manifest as it is at the approval, kept so a later change
+    to the manifest adds only tools new since then; nothing for a plugin with no manifest."""
+    from . import manifest
+
+    try:
+        found = manifest.read(Path(spec.cwd))
+    except manifest.ManifestError:
+        return {}
+    return {"manifest_tools": list(found.tools)} if found.name == spec.name else {}
+
+
 def approve(spec: PluginSpec, listing: dict[str, dict[str, Any]], path: Path | None = None) -> None:
-    _write(spec.name, _record(spec, listing), path)
+    _write(spec.name, {**_record(spec, listing), **_manifest_tools(spec)}, path)
     log.info("plugin %s approved", spec.name)
+
+
+def migrate_branches(specs: list[PluginSpec], path: Path | None = None) -> list[tuple[str, str]]:
+    """Give each approval from before the branch counted the branch its settings name now, once,
+    so no plugin stops at the upgrade. Only an approval whose place still matches gets one.
+    Returns each plugin given a branch other than main, with that branch."""
+    target = (path or APPROVALS).expanduser()
+    body = _approvals(target)
+    frozen: list[tuple[str, str]] = []
+    changed = False
+    for spec in specs:
+        found = body.get(spec.name)
+        # RULE: the branch is given once and a second start changes nothing
+        if not isinstance(found, dict) or "migrated_branch" in found:
+            continue
+        before = _place(spec, branch=False)
+        # RULE: an approval that did not match is not given a branch
+        if found.get("place") != _hash(before):
+            continue
+        kept = sorted(_each(found) or spec.tools)  # the tools approved, not those configured now
+        if found.get("runs") == _hash({**before, "tools": kept}):
+            found["runs"] = _hash({**_place(spec), "tools": kept})
+        found["place"] = place_fingerprint(spec)
+        found["migrated_branch"] = {"value": spec.branch, "at": datetime.now(UTC).isoformat(timespec="seconds")}
+        changed = True
+        if spec.branch != "main":
+            frozen.append((spec.name, spec.branch))
+            log.info("plugin %s's approval now includes its branch, %s, from the settings", spec.name, spec.branch)
+    if changed:
+        _save(target, body)
+    return sorted(frozen)
+
+
+def frozen_branches_said(frozen: list[tuple[str, str]]) -> str | None:
+    """One line for the owner naming every plugin whose approval was given a branch other than
+    main, or None when there is none."""
+    if not frozen:
+        return None
+    named = ", ".join(f"{name}: {branch}" for name, branch in frozen)
+    return (
+        f"These plugins' approvals now include the branch your settings name ({named}). "
+        "Say take back and the plugin's name if one is wrong."
+    )
 
 
 def revoke(name: str, path: Path | None = None) -> bool:
@@ -264,6 +400,8 @@ class Plugin:
         self.spec, self.client_factory = spec, client_factory
         self.state = "not started"
         self.offered: list[str] = []
+        self.waiting: dict[str, str] = {}  # each tool waiting for the owner, with its fingerprint
+        self.waiting_since: str | None = None  # when it was checked with tools waiting
         self.unlisted: str | None = None  # why the latest listing got no answer, or None
         self.refused: str | None = None  # why its start was refused, with what fixes it, or None
         self._failure: Exception | None = None
@@ -417,7 +555,12 @@ class Plugin:
                 raise RuntimeError(self.trouble(exc)) from None
 
     def status(self) -> dict[str, Any]:
-        return {"name": self.spec.name, "state": self.state, "tools": list(self.spec.tools)}
+        return {
+            "name": self.spec.name,
+            "state": self.state,
+            "tools": list(self.spec.tools),
+            "waiting": list(self.waiting),
+        }
 
     def shown(self, answer: Any) -> Any:
         """The answer as the voice is given it; a plugin's is passed on as it came."""
@@ -572,10 +715,24 @@ def check_one(spec: PluginSpec, approvals: Path | None = None, client: Callable[
         log.info("plugin %s did not start in time, so it is not offered: %s", spec.name, plugin.unlisted)
         # RULE: a plugin refused at start says why and what fixes it
         return None, {}, f"not started: {plugin.refused}" if plugin.refused else "not started"
-    if not inputs_approved(spec, listing, approvals):
-        log.info("plugin %s's tools changed; run: %s plugins approve %s", spec.name, invocation.command(), spec.name)
-        return None, listing, "tools changed"
-    return plugin, listing, "started"
+    if _each(_approval(spec, approvals)) is None:  # an approval from before tools counted one by one
+        if not inputs_approved(spec, listing, approvals):
+            return _changed(spec, listing)
+        return plugin, listing, "started"
+    ready, waiting = ready_and_waiting(spec, listing, approvals)
+    if not ready:
+        return _changed(spec, listing)
+    # A waiting tool is left out of the spec the plugin runs with, so no `next` can name it.
+    plugin.spec, plugin.waiting = replace(spec, tools=ready), waiting
+    if waiting:
+        plugin.waiting_since = datetime.now(UTC).isoformat(timespec="seconds")
+        log.info("plugin %s: %s wait for approval", spec.name, ", ".join(waiting))
+    return plugin, {tool: listing[tool] for tool in ready if tool in listing}, waiting_said(waiting)
+
+
+def _changed(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> Checked:
+    log.info("plugin %s's tools changed; run: %s plugins approve %s", spec.name, invocation.command(), spec.name)
+    return None, listing, "tools changed"
 
 
 def present(server: Any, plugin: Plugin, listing: dict[str, dict[str, Any]], commit: str | None) -> None:

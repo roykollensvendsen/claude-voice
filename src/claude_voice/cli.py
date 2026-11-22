@@ -157,12 +157,20 @@ def main(
         "plugins", help="list plugins, install one from its checkout, approve one by typing its name, or revoke one"
     )
     plugin_cmd.add_argument(
-        "action", nargs="?", choices=["list", "install", "approve", "revoke", "set"], default="list"
+        "action", nargs="?", choices=["list", "install", "approve", "revoke", "set", "tools"], default="list"
     )
     plugin_cmd.add_argument("name", nargs="?")
     plugin_cmd.add_argument("values", nargs="*", help="with set: the key and its new value")
+    plugin_cmd.add_argument(
+        "--from-manifest", action="store_true", help="with tools: take the tools from the plugin's own manifest"
+    )
     plugin_cmd.add_argument("--from", dest="source", help="with install: the plugin's checkout (default ~/<its repo>)")
     plugin_cmd.add_argument("--dry-run", action="store_true", help="with install: show each change, write nothing")
+    plugin_cmd.add_argument(
+        "--no-ask",
+        action="store_true",
+        help="with install: a known plugin that needs no answer from you, with no terminal; it never approves",
+    )
     plugin_cmd.add_argument("--anywhere", action="store_true", help="with install: allow a home outside Norway")
     home_cmd = sub.add_parser("home", help="set the home position plugins share, typed without showing it")
     home_cmd.add_argument("action", nargs="?", choices=["set"], default="set")
@@ -424,19 +432,39 @@ def _show_approved(spec: PluginSpec, listing: dict[str, dict[str, Any]]) -> None
         sys.stdout.write(f"  {spec.name}'s rules for the voice: {rules}\n")
 
 
+def _tools_command(name: str | None, options: Any, env: Mapping[str, str]) -> int:
+    """Set a plugin's tools from its own manifest; a list typed on the command line is never
+    taken."""
+    from . import plugin_tools, safefile, settings_edit
+
+    # RULE: the command takes tools only from the manifest
+    if not name or options.values or not options.from_manifest:
+        sys.stderr.write("claude-voice: plugins tools: give the plugin's name and --from-manifest, and no tools\n")
+        return 1
+    setting, approvals, _ = settings_edit.files(env)
+    try:
+        said = plugin_tools.from_manifest(setting, approvals, name, home=Path(env.get("HOME") or Path.home()))
+    except (settings_edit.Refused, safefile.Unsafe, OSError) as exc:
+        sys.stderr.write(f"claude-voice: plugins tools: {exc}\n")
+        return 1
+    sys.stdout.write("".join(f"{line}\n" for line in said))
+    return 0
+
+
 def plugins_command(action: str, name: str | None, env: Mapping[str, str], options: Any = None) -> int:
     """List the plugins in the settings file, install one, approve one (the owner types its
     name), or take an approval back."""
     from . import config as settings
+    from . import settings_edit
 
-    if action == "revoke":
-        return _revoke(name)
-    if action == "set":
-        from . import settings_edit
-
-        return settings_edit.command("plugins set", [w for w in (name, *options.values) if w], env)
-    if action == "install":
-        return install_command(name, options, env)
+    early: dict[str, Callable[[], int]] = {
+        "revoke": lambda: _revoke(name),
+        "set": lambda: settings_edit.command("plugins set", [w for w in (name, *options.values) if w], env),
+        "install": lambda: install_command(name, options, env),
+        "tools": lambda: _tools_command(name, options, env),
+    }
+    if action in early:
+        return early[action]()
     try:
         specs = settings.load(settings.FILE, env=env).plugins
     except settings.ConfigError as exc:
@@ -457,6 +485,8 @@ def install_command(name: str | None, options: Any, env: Mapping[str, str]) -> i
 
     from . import install
 
+    if options.no_ask:
+        return _install_no_ask(name, options, env)
     # RULE: plugins install asks only in a real terminal
     if _refuse_outside_a_terminal("plugins install", env):
         return 1
@@ -477,6 +507,33 @@ def install_command(name: str | None, options: Any, env: Mapping[str, str]) -> i
     for line in install.summary(outcome, plan, options.dry_run):
         _say(line)
     return code
+
+
+def _install_no_ask(name: str | None, options: Any, env: Mapping[str, str]) -> int:
+    """Install a known plugin that needs no answer from the owner, with no one at a terminal.
+    It never approves: the owner types that, as for any new plugin."""
+    from . import install
+
+    if not name or options.source:
+        sys.stderr.write("claude-voice: --no-ask installs a known plugin from ~/<its repository>; leave out --from\n")
+        return 1
+    owners = f"{invocation.command()} plugins install {name}"
+    try:
+        plan = install.plan(name, None, env)
+        why = install.no_ask_refusal(plan)
+    except install.InstallError as exc:
+        why = str(exc)
+    if why:
+        sys.stderr.write(f"claude-voice: {why}. The owner installs it in a terminal: {owners}\n")
+        return 1
+    outcome = install.run(plan, install.no_asker(_say), options.dry_run)
+    if outcome.error:
+        sys.stderr.write(f"claude-voice: {outcome.error}. The owner installs it in a terminal: {owners}\n")
+    for line in install.summary(outcome, plan, options.dry_run):
+        _say(line)
+    if not outcome.stopped:
+        _say(f"  next     the owner approves it, typed: {invocation.command()} plugins approve {name}")
+    return 1 if outcome.stopped else 0
 
 
 def _install_approval(plan: Any, outcome: Any, dry_run: bool, env: Mapping[str, str]) -> int:

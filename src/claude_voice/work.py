@@ -179,9 +179,11 @@ class Board:
         login_expiry: Callable[[], datetime | None] | None = None,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
         board_url: str | None = None,
+        bridge_items: Callable[[], list[dict[str, Any]]] = list,
     ) -> None:
         self.repos = repos
         self.board_url = board_url  # the project board the page links to, already checked as https
+        self.bridge_items = bridge_items  # what the bridge itself knows waits, such as a plugin's tools
         self.waiting_file = waiting_file
         self.run = run
         self.clock = clock
@@ -194,7 +196,7 @@ class Board:
         if self._prs is None or self.clock() - self._prs[0] >= PR_SECONDS:
             self._prs = (self.clock(), *open_prs(self.repos, self.run))
         body = {
-            "waiting_on_owner": self._sign_in() + waiting(self.waiting_file),
+            "waiting_on_owner": self._sign_in() + self.bridge_items() + waiting(self.waiting_file),
             "open_prs": self._prs[1],
             "unreadable": self._prs[2],
             "board_url": self.board_url,

@@ -80,6 +80,7 @@ LAYERS = {
             "session_hook",
             "literal_gh",
             "org_rules",
+            "known_plugins",
         ),
         0,
     ),
@@ -115,6 +116,7 @@ LAYERS = {
             "routing",
             "calllog",
             "activity",
+            "plugin_tip",
         ),
         1,
     ),  # parts, each about one thing
@@ -138,6 +140,7 @@ LAYERS = {
         2,
     ),
     **dict.fromkeys(("api", "phone_hook", "agent", "fleet"), 3),  # the doors in from outside
+    "plugin_tools": 3,  # writes the settings file through settings_edit, for the command line
     "server": 4,  # where it is all put together
     **dict.fromkeys(("cli", "cv"), 5),  # the command lines: one starts the bridge, one reads its files
 }
