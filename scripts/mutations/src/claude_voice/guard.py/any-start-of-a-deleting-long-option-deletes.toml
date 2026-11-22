@@ -1,0 +1,5 @@
+[[rule]]
+name = "any start of a deleting long option deletes"
+file = "src/claude_voice/guard.py"
+find = 'if any\(name and full\.startswith\(name\) for name in names for full in DELETING\)'
+replace = '    if any(name == full for name in names for full in DELETING) or "d" in short:'

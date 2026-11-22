@@ -1,0 +1,5 @@
+[[rule]]
+name = "a settings file that differs from the owners pin is refused"
+file = "src/claude_voice/roles.py"
+find = 'if digest != pin\.strip\(\)\.lower\(\):'
+replace = '    if False:'

@@ -1,5 +1,5 @@
 [[rule]]
 name = "a push that deletes a branch is refused in every mode"
 file = "src/claude_voice/guard.py"
-find = 'if any\(_deletes\(push\) for push in pushes\):'
-replace = 'if False:'
+find = 'if any\(_deletes\(push\) for push in pushes\) or _set_up_to_delete\('
+replace = '    if _set_up_to_delete(plain, folder, pushes[0], deletes_set_up):'

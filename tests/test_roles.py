@@ -1,5 +1,6 @@
 """Roles: a background session started for a set purpose, such as contributing back to claude-voice."""
 
+import hashlib
 import json
 import os
 import subprocess
@@ -186,8 +187,12 @@ async def test_a_roles_own_settings_file_reaches_its_session(tmp_path, world, mo
     folder = tmp_path / ".local/state/claude-voice/roles"
     folder.mkdir(parents=True)
     (folder / "builder.json").write_text(json.dumps({"permissions": {"deny": ["Bash(gh pr merge:*)"]}}))
+    pin = hashlib.sha256((folder / "builder.json").read_bytes()).hexdigest()
     _, clone, live, table = world
-    table.write_text(f"[roles.builder]\nfolder = '{clone}'\nguard = false\nsettings = '{folder / 'builder.json'}'\n")
+    table.write_text(
+        f"[roles.builder]\nfolder = '{clone}'\nguard = false\nsettings = '{folder / 'builder.json'}'\n"
+        f"settings_sha256 = '{pin}'\n"
+    )
     ready_clone(world)
     starter = Starter(live)
     async with Client(bridge(tmp_path, world, starter)) as c:

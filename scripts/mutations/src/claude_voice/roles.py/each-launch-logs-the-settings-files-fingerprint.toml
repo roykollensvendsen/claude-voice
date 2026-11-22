@@ -1,5 +1,5 @@
 [[rule]]
 name = "each launch logs the settings files fingerprint"
 file = "src/claude_voice/roles.py"
-find = '    logger.info\($'
-replace = '    logger.debug('
+find = 'logger\.info\("role %s starts with settings'
+replace = '    logger.debug("role %s starts with settings %s (sha256 %s)", name, path, digest)'

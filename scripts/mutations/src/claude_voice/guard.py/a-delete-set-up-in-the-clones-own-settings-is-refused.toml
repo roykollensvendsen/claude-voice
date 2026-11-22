@@ -1,0 +1,5 @@
+[[rule]]
+name = "a delete set up in the clones own settings is refused"
+file = "src/claude_voice/guard.py"
+find = 'return deletes_set_up\(folder, positional\[0\] if positional else None\)'
+replace = '    return False'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a deleting setting given before push deletes"
+file = "src/claude_voice/guard.py"
+find = 'if any\(DELETING_SETTING\.fullmatch\(name\) for name in push\.settings\):'
+replace = '    if False:'

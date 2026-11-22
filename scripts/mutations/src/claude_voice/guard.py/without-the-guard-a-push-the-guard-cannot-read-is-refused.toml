@@ -1,0 +1,5 @@
+[[rule]]
+name = "without the guard a push the guard cannot read is refused"
+file = "src/claude_voice/guard.py"
+find = 'return None if plain else \("deny", f"This push is not in a plain shape'
+replace = '        return None if plain else ("ask", f"This push is not in a plain shape the guard can judge. Run {SHAPE}.")'

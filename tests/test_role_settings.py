@@ -37,7 +37,86 @@ DELETES = [
     "git push --mirror origin",
     "git -C /home/someone/clone push origin :feat/x",
     "git -C /home/someone/clone push origin --delete feat/x",
+    # git takes any unambiguous start of a long option (#459 review b1)
+    "git push --del origin feat/x",
+    "git push --dele origin feat/x",
+    "git push --pru origin",
+    "git push --mir origin",
+    "git push --m origin",
+    # a setting given on the command line deletes with no delete word (#459 review b2)
+    "git -c remote.origin.push=:feat/x push origin",
+    "git -c remote.origin.push=+:feat/x push -q origin",
+    "git -c remote.origin.mirror=true push origin",
+    "git -c Remote.Origin.Mirror=true push origin",
+    "git --config-env=remote.origin.push=REFSPEC push origin",
+    "git --config-env remote.origin.mirror=MIRROR push origin",
+    "git -c push.default=matching push origin",
 ]
+
+
+@pytest.mark.parametrize("flag", ["--d", "--del", "--delete", "--pru", "--prune", "--m", "--mir", "--mirror"])
+def test_any_start_of_a_deleting_long_option_deletes(flag):
+    assert guard._deletes(guard._pushes(f"git push {flag} origin feat/x")[0]) is True
+
+
+@pytest.mark.parametrize(
+    "words", ["-c remote.origin.push=:x", "-c remote.fork.mirror=true", "--config-env=push.default=V", "-c push.x=y"]
+)
+def test_a_deleting_setting_given_before_push_deletes(words):
+    assert guard._deletes(guard._pushes(f"git {words} push origin")[0]) is True
+    assert guard._deletes(guard._pushes("git -c user.name=x push origin feat/x")[0]) is False
+
+
+@pytest.mark.parametrize("command", ["git push --dry-run origin feat/x", "git push --porcelain origin feat/x"])
+def test_a_long_option_that_starts_no_delete_word_still_pushes(command):
+    assert guard._deletes(guard._pushes(command)[0]) is False
+
+
+@pytest.mark.parametrize("mode", ["fork-only", "own-clone", "no-deletes"])
+def test_a_delete_set_up_in_the_clones_own_settings_is_refused(mode):
+    asked = []
+
+    def set_up(folder, remote):
+        asked.append((folder, remote))
+        return remote == "origin"
+
+    urls = {"origin": OWNERS}
+    verdict = guard.decide(
+        "git push origin",
+        UPSTREAM,
+        mode == "own-clone",
+        urls.get,
+        lambda: "origin",
+        only_deletes=mode == "no-deletes",
+        deletes_set_up=set_up,
+    )
+    assert verdict is not None and verdict[0] == "deny" and "delete" in verdict[1]
+    assert asked == [(None, "origin")]
+
+
+def test_the_hook_reads_a_delete_set_up_earlier_in_the_clone(tmp_path):
+    import subprocess
+
+    def git(*args):
+        subprocess.run(["git", "-C", str(tmp_path), *args], check=True, capture_output=True)
+
+    git("init", "-q")
+    git("remote", "add", "origin", OWNERS)
+    hook = {"tool_name": "Bash", "tool_input": {"command": "git push origin"}, "cwd": str(tmp_path)}
+    assert guard.answer(hook, UPSTREAM, only_deletes=True) == {}
+    git("config", "--add", "remote.origin.push", ":refs/heads/feat/x")
+    out = guard.answer(hook, UPSTREAM, only_deletes=True)
+    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+    git("config", "--unset-all", "remote.origin.push")
+    git("config", "remote.origin.mirror", "true")
+    out = guard.answer(hook, UPSTREAM, only_deletes=True)
+    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_without_the_guard_a_push_the_guard_cannot_read_is_refused():
+    """#459 review f1: an unreadable shape can hide a delete, so it is refused, naming the shape."""
+    verdict = decide("git push origin feat/x; true", "no-deletes")
+    assert verdict is not None and verdict[0] == "deny" and "git push <remote> <branch>" in verdict[1]
 
 
 @pytest.mark.parametrize("mode", ["fork-only", "own-clone", "no-deletes"])
@@ -84,12 +163,55 @@ def _file(home, name, body):
 
 
 def _role(home, name, guard=True):
+    """A role entry naming the file, pinned to the file's bytes as they are now."""
+    import hashlib
+
+    path = home / ".local/state/claude-voice/roles" / name
+    pin = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else "0" * 64
     return {
         "upstream": UPSTREAM,
         "guard": guard,
-        "settings": str(home / ".local/state/claude-voice/roles" / name),
+        "settings": str(path),
+        "settings_sha256": pin,
         "push_mode": "own-clone",
     }
+
+
+# -- the owner pins the file's bytes in the roles entry (#459 review b2) -----------------------
+
+
+def test_a_settings_file_that_differs_from_the_owners_pin_is_refused(tmp_path, monkeypatch):
+    home = _home(tmp_path, monkeypatch)
+    _file(home, "b.json", {"permissions": {"deny": ["Bash(gh pr merge:*)"]}})
+    role = _role(home, "b.json")
+    _file(home, "b.json", {"permissions": {"allow": ["Bash(*)"]}})
+    with pytest.raises(LookupError, match="settings_sha256"):
+        roles.settings_for(role)
+
+
+def test_a_settings_file_with_no_pin_is_refused(tmp_path, monkeypatch):
+    home = _home(tmp_path, monkeypatch)
+    _file(home, "b.json", {})
+    role = {k: v for k, v in _role(home, "b.json").items() if k != "settings_sha256"}
+    with pytest.raises(LookupError, match="settings_sha256"):
+        roles.settings_for(role)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"permissions": ["Bash(*)"]},
+        {"hooks": ["x"]},
+        {"hooks": {"PreToolUse": "x"}},
+        {"permissions": {"deny": "Bash(rm *)"}},
+    ],
+)
+def test_a_settings_value_of_the_wrong_kind_names_the_fix(tmp_path, monkeypatch, body):
+    """#459 review f3 (architect): a wrong type is refused with the fix, never a crash."""
+    home = _home(tmp_path, monkeypatch)
+    _file(home, "b.json", body)
+    with pytest.raises(LookupError, match="must be"):
+        roles.settings_for(_role(home, "b.json"))
 
 
 def test_a_roles_own_settings_file_reaches_its_session(tmp_path, monkeypatch):
@@ -138,6 +260,8 @@ def test_a_missing_settings_file_refuses_the_role(tmp_path, monkeypatch):
         {"permissions": {"defaultMode": "acceptEdits"}},
         {"defaultMode": "bypassPermissions"},
         {"disableAllHooks": True},
+        {"permissions": {"defaultMode": "dontAsk"}},
+        {"skipDangerousModePermissionPrompt": True},
     ],
 )
 def test_a_settings_file_that_skips_checks_is_refused(tmp_path, monkeypatch, body):
