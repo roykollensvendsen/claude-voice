@@ -61,6 +61,7 @@ LAYERS = {
         (
             "procs",
             "lineage",
+            "boxed",
             "held_folder",
             "config",
             "store",

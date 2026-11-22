@@ -1,0 +1,5 @@
+[[rule]]
+name = "the approver may call only its two tools"
+file = "src/claude_voice/boxed.py"
+find = 'allow = \[f"mcp__\{SERVER\}__\{tool\}" for tool in TOOLS\]'
+replace = 'allow = [f"mcp__{SERVER}__*"]'

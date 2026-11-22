@@ -1,0 +1,5 @@
+[[rule]]
+name = "the approver loads none of the owners settings files"
+file = "src/claude_voice/boxed.py"
+find = '"--setting-sources",'
+replace = '"--add-dir",'
