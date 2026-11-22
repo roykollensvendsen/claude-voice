@@ -4,6 +4,7 @@ restart record in the owner's state folder. The suite now refuses such a write, 
 """
 
 import os
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -38,6 +39,15 @@ def test_reading_the_owners_home_and_writing_in_the_checkout_or_temp_still_work(
     (tmp_path / "f").write_text("x")
 
 
+def test_python_may_write_its_own_compiled_files_where_it_is_installed():
+    import sys
+
+    from conftest import _owners
+
+    cached = Path(sys.base_prefix) / "lib" / "__pycache__" / "pty.cpython-312.pyc.1"
+    assert _owners(cached) is None
+
+
 def test_a_process_a_test_starts_has_a_home_of_its_own():
     """The hook cannot see another process, so the home it is handed must not be the owner's."""
     import subprocess
@@ -45,10 +55,9 @@ def test_a_process_a_test_starts_has_a_home_of_its_own():
 
     code = "import os, pathlib; print(pathlib.Path.home()); print(os.environ.get('XDG_STATE_HOME', ''))"
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True).stdout
+    temp = Path(tempfile.gettempdir()).resolve()  # on Windows it lies under the home
     for line in out.splitlines():
-        assert not Path(line).resolve().is_relative_to(REAL_HOME) or Path(line).resolve().is_relative_to(
-            Path(__file__).resolve().parents[1]
-        )
+        assert not Path(line).resolve().is_relative_to(REAL_HOME) or Path(line).resolve().is_relative_to(temp)
     assert Path(out.splitlines()[0]).resolve() != REAL_HOME
 
 
