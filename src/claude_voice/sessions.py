@@ -115,7 +115,9 @@ class SessionManager:
 
     # -- turns ---------------------------------------------------------------
 
-    async def send(self, session_id: str, prompt: str) -> dict[str, Any]:
+    async def send(self, session_id: str, prompt: str, delivered: str | None = None) -> dict[str, Any]:
+        """Start a turn with `prompt`. `delivered` is what Claude gets instead, when the bridge
+        adds to it (the line saying where it came from); the session's history keeps `prompt`."""
         s = self.store.get_session(session_id)
         if s["status"] == "closed":
             raise SessionClosed(session_id)
@@ -126,7 +128,9 @@ class SessionManager:
 
         self.store.update_session(session_id, status="running", last_error=None)
         self.store.add_event(session_id, "prompt", {"text": prompt})
-        self._tasks[session_id] = asyncio.create_task(self._run(session_id, prompt), name=f"claude-turn:{session_id}")
+        self._tasks[session_id] = asyncio.create_task(
+            self._run(session_id, delivered or prompt), name=f"claude-turn:{session_id}"
+        )
         return {"session_id": session_id, "status": "running"}
 
     async def wait(self, session_id: str) -> None:

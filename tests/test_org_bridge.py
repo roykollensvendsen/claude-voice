@@ -200,14 +200,14 @@ async def test_a_message_reaches_a_session_by_its_address(tmp_path, world):
     server, deliver = voice(tmp_path, world)
     res = await call(server, "message_active_session", session="acme/manager", message="hello")
     assert not res.is_error, res.content
-    assert deliver.sent == [("acme-robots", "hello")]
+    assert deliver.sent == [("acme-robots", "origin: session in_process\nhello")]
 
 
 async def test_the_end_of_an_address_reaches_its_session_when_it_names_only_one(tmp_path, world):
     server, deliver = voice(tmp_path, world)
     res = await call(server, "message_active_session", session="Robot arm", message="hi")
     assert not res.is_error, res.content
-    assert deliver.sent == [("fix-gripper", "hi")]
+    assert deliver.sent == [("fix-gripper", "origin: session in_process\nhi")]
 
 
 async def test_words_that_fit_several_sessions_are_answered_with_the_choices_to_ask(tmp_path, world):

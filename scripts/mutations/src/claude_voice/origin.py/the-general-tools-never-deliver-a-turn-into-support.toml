@@ -1,0 +1,5 @@
+[[rule]]
+name = "the general tools never deliver a turn into support"
+file = "src/claude_voice/origin.py"
+find = '^\s*if named or same:$'
+replace = 'if False:'

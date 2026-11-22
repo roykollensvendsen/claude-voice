@@ -17,6 +17,11 @@ async def hub_with_laptop(tmp_path, http=None):
     return laptop, deliver
 
 
+def unstamped(sent):
+    """What arrived on the other machine, without the origin line that machine stamps on it."""
+    return [(name, text.split("\n", 1)[1]) for name, text in sent]
+
+
 def the_hub(tmp_path, laptop, http=None):
     return bridge_with(
         tmp_path / "hub-home",
@@ -46,7 +51,7 @@ async def test_a_session_on_another_machine_is_reached_by_the_machine_name_in_fr
         hub = the_hub(tmp_path, laptop)
         sent = await call(hub, "message_active_session", session="laptop-a/mod", message="hei")
         read = await call(hub, "read_session_output", session="laptop-a/mod")
-    assert not sent.is_error and deliver.sent == [("mod", "hei")]
+    assert not sent.is_error and unstamped(deliver.sent) == [("mod", "hei")]
     assert not read.is_error and read.structured_content["session"] == "laptop-a/mod"
 
 
@@ -112,7 +117,7 @@ async def test_a_session_on_another_machine_gets_its_number_from_the_same_pool_a
         sent = await call(hub, "message_active_session", session=f"nummer {there['number']}", message="hei")
     assert isinstance(there["number"], int)
     assert [s["number"] for s in again] == [s["number"] for s in listed]
-    assert not sent.is_error and deliver.sent == [("mod", "hei")]
+    assert not sent.is_error and unstamped(deliver.sent) == [("mod", "hei")]
 
 
 def _numbers_in(body):
