@@ -87,3 +87,11 @@ def test_a_base_that_cannot_be_read_fails_closed(repo, capsys):
     status = main(["gate-files", "--root", str(repo), "--base", "no-such-branch"])
     assert status == 1
     assert "could not" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("name", ["ø.yml", "a b.yml", "a\tb.yml", 'a"b.yml'])
+def test_a_gate_file_with_a_name_git_would_quote_still_fails_and_is_named(repo, capsys, name):
+    _commit(repo, {f".github/workflows/{name}": "on: push\n"})
+    status, said = _run(repo, capsys)
+    assert status == 1, said
+    assert f".github/workflows/{name}" in said

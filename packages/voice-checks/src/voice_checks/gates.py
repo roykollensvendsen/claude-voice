@@ -143,9 +143,9 @@ def _at(root: pathlib.Path, ref: str, path: str) -> str:
 def judge(root: pathlib.Path, base: str) -> list[str]:
     """Every way the changes since `base` touch a gate: by path, and by mutation row."""
     since = _git(root, "merge-base", base, "HEAD").strip()
-    changed = [
-        line.split("\t", 1) for line in _git(root, "diff", "--no-renames", "--name-status", since, "HEAD").splitlines()
-    ]
+    # RULE: a gate file with a name git would quote still fails and is named
+    fields = _git(root, "diff", "-z", "--no-renames", "--name-status", since, "HEAD").split("\0")[:-1]
+    changed = list(zip(fields[::2], fields[1::2], strict=True))  # -z: status, path, each as git has it
     head = {path: _at(root, "HEAD", path) for status, path in changed if status != "D"}
     was = {path: _at(root, since, path) for status, path in changed if status != "A"}
     judges = paths_from(

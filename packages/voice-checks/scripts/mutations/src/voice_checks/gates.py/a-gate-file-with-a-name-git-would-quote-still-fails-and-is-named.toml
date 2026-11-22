@@ -1,0 +1,5 @@
+[[rule]]
+name = "a gate file with a name git would quote still fails and is named"
+file = "src/voice_checks/gates.py"
+find = 'fields = _git\(root, "diff", "-z", "--no-renames", "--name-status", since, "HEAD"\)\.split\("\\0"\)\[:-1\]'
+replace = 'fields = [x for line in _git(root, "diff", "--no-renames", "--name-status", since, "HEAD").splitlines() for x in line.split("\t", 1)]'
