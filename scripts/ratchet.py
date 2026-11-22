@@ -116,6 +116,7 @@ LAYERS = {
             "calllog",
             "activity",
             "boxed",
+            "approver_pane",
             "approver_token",
         ),
         1,

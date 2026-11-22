@@ -1,0 +1,5 @@
+[[rule]]
+name = "the approvers window counts only while its own process is claude"
+file = "src/claude_voice/approver_pane.py"
+find = 'return os.path.realpath\(f"/proc/\{pid\}/exe"\) == os.path.realpath\(claude\)'
+replace = 'return True'
