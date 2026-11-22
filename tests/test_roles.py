@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import subprocess
+from pathlib import Path
 
 import httpx
 import pytest
@@ -181,11 +182,11 @@ async def test_a_launched_role_keeps_the_process_it_started_as(tmp_path, world):
     assert held["pid"] == PID and held["started"] == lineage.start_ticks(PID)
 
 
-async def test_a_roles_own_settings_file_reaches_its_session(tmp_path, world, monkeypatch):
-    """builder-role-v1: the file's rules, and the guard's check on deletes beside them."""
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("USERPROFILE", str(tmp_path))  # where Windows looks for `~`
-    folder = tmp_path / ".local/state/claude-voice/roles"
+async def test_a_roles_own_settings_file_reaches_its_session(tmp_path, world):
+    """builder-role-v1: the file's rules, and the guard's check on deletes beside them. The home
+    is the short one every test gets, so the bridge's report socket stays within the length a
+    Unix socket's path may have."""
+    folder = Path.home() / ".local/state/claude-voice/roles"
     folder.mkdir(parents=True)
     (folder / "builder.json").write_text(json.dumps({"permissions": {"deny": ["Bash(gh pr merge:*)"]}}))
     pin = hashlib.sha256((folder / "builder.json").read_bytes()).hexdigest()
@@ -203,11 +204,9 @@ async def test_a_roles_own_settings_file_reaches_its_session(tmp_path, world, mo
     assert "--push-mode no-deletes" in sent["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
 
 
-async def test_a_role_whose_settings_file_is_missing_does_not_start(tmp_path, world, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("USERPROFILE", str(tmp_path))  # where Windows looks for `~`
+async def test_a_role_whose_settings_file_is_missing_does_not_start(tmp_path, world):
     _, clone, live, table = world
-    gone = tmp_path / ".local/state/claude-voice/roles/gone.json"
+    gone = Path.home() / ".local/state/claude-voice/roles/gone.json"
     table.write_text(f"[roles.builder]\nfolder = '{clone}'\nsettings = '{gone}'\n")
     starter = Starter(live)
     async with Client(bridge(tmp_path, world, starter)) as c:
