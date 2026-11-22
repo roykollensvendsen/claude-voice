@@ -278,6 +278,12 @@ def test_the_board_sync_sends_only_its_three_fixed_writes():
         guard.write(fake, other, {"project": PROJECT, "content": "P1"})
     with pytest.raises(sync.Refused):
         guard.write(fake, sync.ADD + "\nmutation { deleteRepository }", {"project": PROJECT, "content": "P1"})
+    # A status the sync may set does not carry another write past the guard.
+    fake = Fake(board_items=[("item1", None, pr("P1"))])
+    guard = sync.Guard(sync.read_board(fake, SETTINGS), {"P1"})
+    status = {"project": PROJECT, "item": "item1", "field": FIELD, "option": OPTIONS["Done"]}
+    with pytest.raises(sync.Refused):
+        guard.write(fake, sync.SET + "\nmutation { deleteRepository }", status)
     assert fake.writes == []
 
 
@@ -300,6 +306,12 @@ def test_the_board_sync_writes_only_to_the_configured_board(tmp_path):
     said = _run(fake, tmp_path)
     assert fake.writes == []
     assert any("not the board the settings name" in line for line in said)
+    # The guard refuses another board on its own, not only through the run's first check.
+    fake = Fake()
+    guard = sync.Guard(sync.read_board(fake, SETTINGS), {"P1"})
+    with pytest.raises(sync.Refused):
+        guard.write(fake, sync.ADD, {"project": "PVT_someone_elses", "content": "P1"})
+    assert fake.writes == []
 
 
 def test_the_board_sync_writes_only_work_it_read_from_the_board_s_own_repositories(tmp_path):

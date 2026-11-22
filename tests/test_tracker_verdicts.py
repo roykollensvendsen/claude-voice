@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -170,8 +171,10 @@ def test_a_claim_on_a_new_file_starts_it(tmp_path):
     }
 
 
-def test_claude_voice_tracker_claim_starts_a_review_in_the_reviewers_own_file(tmp_path, capsys):
+def test_claude_voice_tracker_claim_starts_a_review_in_the_reviewers_own_file(tmp_path, capsys, monkeypatch):
     from claude_voice import cli
+
+    monkeypatch.setattr(cli, "STATE_DIR", Path("~/.local/state/claude-voice"))
 
     reviews = tmp_path / ".local" / "state" / "claude-voice" / "reviews"
     reviews.mkdir(parents=True)
@@ -210,10 +213,18 @@ def test_a_claim_never_writes_through_a_link(tmp_path):
     with pytest.raises(verdicts.NotPlain):
         verdicts.claim(link, "quality-claude-voice", HEAD, at="2026-11-22T11:00:00+01:00")
     assert json.loads(elsewhere.read_text())["verdict"] == "changes" and link.is_symlink()
+    # A link to a file not there yet is refused too, so the claim never creates its target.
+    dangling = reviews / "demo-13.quality.json"
+    dangling.symlink_to(tmp_path / "made.json")
+    with pytest.raises(verdicts.NotPlain):
+        verdicts.claim(dangling, "quality-claude-voice", HEAD, at="2026-11-22T11:00:00+01:00")
+    assert not (tmp_path / "made.json").exists()
 
 
-def test_a_claim_on_a_link_is_refused_by_the_command(tmp_path, capsys):
+def test_a_claim_on_a_link_is_refused_by_the_command(tmp_path, capsys, monkeypatch):
     from claude_voice import cli
+
+    monkeypatch.setattr(cli, "STATE_DIR", Path("~/.local/state/claude-voice"))
 
     reviews = tmp_path / ".local" / "state" / "claude-voice" / "reviews"
     reviews.mkdir(parents=True)
