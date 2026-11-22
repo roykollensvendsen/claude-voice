@@ -96,13 +96,13 @@ def test_the_range_is_read_from_git(tmp_path):
 def test_a_message_file_is_read_the_way_the_hook_sees_it(tmp_path):
     """The commit-msg hook passes a file, not a range, and comments come first."""
     message = tmp_path / "COMMIT_EDITMSG"
-    message.write_text("# Please enter the commit message\n\ndocs: Added a thing\n\nA body.\n")
+    message.write_text("# Please enter the commit message\n\ndocs: Added a thing\n\nA body.\n", encoding="utf-8")
     assert imperative.from_file(str(message)) == [("COMMIT_EDITMSG", "docs: Added a thing")]
 
 
 def test_an_empty_message_file_offends_nothing(tmp_path):
     message = tmp_path / "COMMIT_EDITMSG"
-    message.write_text("# only comments\n")
+    message.write_text("# only comments\n", encoding="utf-8")
     assert imperative.from_file(str(message)) == []
 
 

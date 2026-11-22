@@ -56,7 +56,7 @@ def test_a_very_long_body_is_named():
 def test_it_never_refuses(capsys, tmp_path):
     """A gate that refuses a message nobody can shorten teaches --no-verify."""
     path = tmp_path / "COMMIT_EDITMSG"
-    path.write_text(LONG_SENTENCE)
+    path.write_text(LONG_SENTENCE, encoding="utf-8")
     sys.argv = ["readable.py", "--file", str(path)]
     assert readable.main() == 0
     assert capsys.readouterr().out

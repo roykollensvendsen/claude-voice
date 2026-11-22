@@ -227,7 +227,7 @@ def test_a_run_holds_its_lock_until_it_ends(tmp_path):
 
 def test_anything_a_run_leaves_in_its_root_fails_the_run(tmp_path):
     (tmp_path / "pytest").mkdir()
-    (tmp_path / "left.txt").write_text("x")
+    (tmp_path / "left.txt").write_text("x", encoding="utf-8")
     assert temproot.leftovers(tmp_path, {"pytest"}) == [tmp_path / "left.txt"]
     assert temproot.leftovers(tmp_path / "missing", set()) == []
 
@@ -236,10 +236,10 @@ def test_removing_never_changes_a_folder_a_link_points_to(tmp_path):
     outside = tmp_path / "outside"
     outside.mkdir()
     outside.chmod(0o755)
-    (outside / "kept.txt").write_text("x")
+    (outside / "kept.txt").write_text("x", encoding="utf-8")
     run = tmp_path / "run-1"
     (run / "shut").mkdir(parents=True)
-    (run / "shut" / "inside.txt").write_text("x")
+    (run / "shut" / "inside.txt").write_text("x", encoding="utf-8")
     (run / "link").symlink_to(outside)
     (run / "shut").chmod(0)
     temproot.remove(run)

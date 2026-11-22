@@ -39,7 +39,7 @@ def marked_rules() -> set[str]:
     """Every rule the source marks, by the words the marker gives it."""
     found = set()
     for source in [*sorted((ROOT / "src").rglob("*.py")), *OWN_SCRIPTS]:
-        for line in source.read_text().splitlines():
+        for line in source.read_text(encoding="utf-8").splitlines():
             match = MARKER.search(line)
             if match:
                 found.add(match.group(1))
@@ -60,7 +60,7 @@ def defined_test_names() -> set[str]:
     """
     found = set()
     for module in sorted((ROOT / "tests").rglob("test_*.py")):
-        found.update(re.findall(r"^(?:async )?def (test_\w+)", module.read_text(), re.MULTILINE))
+        found.update(re.findall(r"^(?:async )?def (test_\w+)", module.read_text(encoding="utf-8"), re.MULTILINE))
     return found
 
 
@@ -122,7 +122,7 @@ def _row(name, file="src/gizmo_mcp/server.py"):
 
 def _place(folder, path, text):
     (folder / path).parent.mkdir(parents=True, exist_ok=True)
-    (folder / path).write_text(text)
+    (folder / path).write_text(text, encoding="utf-8")
 
 
 def test_every_row_is_read_from_a_file_of_its_own(tmp_path):

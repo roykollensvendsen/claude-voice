@@ -20,7 +20,9 @@ def _pages():
 
 def test_no_sentence_on_any_page_is_over_thirty_words():
     long = [
-        f"{page.relative_to(ROOT)}: {s[:60]}..." for page in _pages() for s in readable.long_sentences(page.read_text())
+        f"{page.relative_to(ROOT)}: {s[:60]}..."
+        for page in _pages()
+        for s in readable.long_sentences(page.read_text(encoding="utf-8"))
     ]
     assert long == [], "split these sentences: " + "; ".join(long)
 
@@ -34,7 +36,7 @@ def test_the_sentence_check_sees_a_long_one_and_skips_code():
 def _recipes():
     """Each recipe in the justfile, by name, with its command lines."""
     recipes, name = {}, None
-    for line in (ROOT / "justfile").read_text().splitlines():
+    for line in (ROOT / "justfile").read_text(encoding="utf-8").splitlines():
         if line.startswith("    ") and name:
             recipes[name].append(line.strip())
         elif match := re.match(r"^([a-z][a-z-]*)(?:\s[^:]*)?:(?!=)", line):
@@ -45,7 +47,7 @@ def _recipes():
 
 def test_every_gate_in_the_justfile_runs_in_continuous_integration():
     """A local recipe that CI does not run, or runs otherwise, would let the two drift apart."""
-    workflows = "\n".join(p.read_text() for p in sorted((ROOT / ".github/workflows").glob("*.yml")))
+    workflows = "\n".join(p.read_text(encoding="utf-8") for p in sorted((ROOT / ".github/workflows").glob("*.yml")))
     recipes = _recipes()
     assert set(GATES) <= set(recipes), f"the justfile lost a gate: {set(GATES) - set(recipes)}"
     missing = []
@@ -61,14 +63,14 @@ def test_every_gate_in_the_justfile_runs_in_continuous_integration():
 
 
 def test_check_runs_every_gate_a_pull_request_needs_offline():
-    check = (ROOT / "justfile").read_text().split("\ncheck:", 1)[1].splitlines()[0].split()
+    check = (ROOT / "justfile").read_text(encoding="utf-8").split("\ncheck:", 1)[1].splitlines()[0].split()
     assert check == ["lint", "types", "private", "tests", "mutation"]
 
 
 def test_no_job_that_runs_the_mutation_run_or_the_ratchet_has_a_time_limit():
     """A run cut short proves nothing, so neither is ever capped."""
-    text = (ROOT / ".github/workflows/checks.yml").read_text()
+    text = (ROOT / ".github/workflows/checks.yml").read_text(encoding="utf-8")
     for job in ("mutation", "quality"):
         body = text.split(f"\n  {job}:\n", 1)[1].split("\n  # ", 1)[0]
         assert "timeout-minutes" not in body, job
-    assert "timeout-minutes" not in (ROOT / ".github/workflows/red-first.yml").read_text()
+    assert "timeout-minutes" not in (ROOT / ".github/workflows/red-first.yml").read_text(encoding="utf-8")

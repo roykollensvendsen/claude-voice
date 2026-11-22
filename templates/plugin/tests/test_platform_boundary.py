@@ -85,7 +85,9 @@ def _sources():
 
 def test_nothing_outside_the_platform_place_names_the_operating_system():
     device = _ratchet().DEVICE
-    allowed = set(tomllib.loads((ROOT / "pyproject.toml").read_text())["tool"]["platform-boundary"]["allow"])
+    allowed = set(
+        tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["platform-boundary"]["allow"]
+    )
     found = []
     for path in _sources():
         sends = device["sends"] if path == PACKAGE / device["file"] else ()
@@ -103,7 +105,8 @@ def test_the_check_sees_each_kind_of_mark(tmp_path):
         'B = os.environ["XDG_STATE_HOME"]\n'
         'C = ["systemctl", "--user", "restart"]\n'
         'D = "sudo apt install thing"\n'
-        "E = sys.platform\n"
+        "E = sys.platform\n",
+        encoding="utf-8",
     )
     found = breaches(source)
     assert found == [
@@ -117,7 +120,9 @@ def test_the_check_sees_each_kind_of_mark(tmp_path):
 
 def test_a_device_s_own_command_passes_only_through_its_send_function(tmp_path):
     source = tmp_path / "device.py"
-    source.write_text('def read(link):\n    link.send("cat /proc/uptime")\n    return "/proc/uptime"\n')
+    source.write_text(
+        'def read(link):\n    link.send("cat /proc/uptime")\n    return "/proc/uptime"\n', encoding="utf-8"
+    )
     assert breaches(source, sends=("send",)) == ["device.py: /proc"]
 
 

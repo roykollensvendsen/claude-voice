@@ -12,7 +12,7 @@ def test_status_says_what_the_voice_would_hear(capsys):
 
 def test_with_no_real_gizmo_set_up_status_says_so(tmp_path, monkeypatch, capsys):
     config = tmp_path / "config.toml"
-    config.write_text("[device]\nsimulate = false\n")
+    config.write_text("[device]\nsimulate = false\n", encoding="utf-8")
     monkeypatch.setenv("GIZMO_MCP_CONFIG", str(config))
     assert cli.main(["status"]) == 0
     assert capsys.readouterr().out == "No real gizmo is set up yet, so nothing was asked.\n"
@@ -20,7 +20,7 @@ def test_with_no_real_gizmo_set_up_status_says_so(tmp_path, monkeypatch, capsys)
 
 def test_a_broken_config_stops_the_command_with_the_fix(tmp_path, monkeypatch, capsys):
     config = tmp_path / "config.toml"
-    config.write_text("[device\n")
+    config.write_text("[device\n", encoding="utf-8")
     monkeypatch.setenv("GIZMO_MCP_CONFIG", str(config))
     assert cli.main(["status"]) == 2
     assert "delete it to use the defaults" in capsys.readouterr().err
