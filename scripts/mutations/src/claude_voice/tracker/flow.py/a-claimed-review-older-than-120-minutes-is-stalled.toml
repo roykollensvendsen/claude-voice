@@ -1,0 +1,5 @@
+[[rule]]
+name = "a claimed review older than 120 minutes is stalled"
+file = "src/claude_voice/tracker/flow.py"
+find = '^\s*return any\(clock - v\.at > QUIET_REVIEW for v in claims\)$'
+replace = 'return False'

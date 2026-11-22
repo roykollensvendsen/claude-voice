@@ -1,0 +1,5 @@
+[[rule]]
+name = "an unchanged status makes no write"
+file = "src/claude_voice/tracker/github.py"
+find = '^\s*if held\.status != option:$'
+replace = 'if True:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "the board sync sets only the status field to one of its options or health to stalled"
+file = "src/claude_voice/tracker/github.py"
+find = '^\s*if not \(status or \(health and \(query == CLEAR or option == board\.stalled\)\)\) or \(query == CLEAR and not health\):$'
+replace = 'if False:'

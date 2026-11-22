@@ -1,0 +1,5 @@
+[[rule]]
+name = "a reviewer who approved this head does not claim it again"
+file = "src/claude_voice/tracker/verdicts.py"
+find = '^\s*if body\.get\("verdict"\) == "approve" and body\.get\("head"\) == head:$'
+replace = 'if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "an unassigned issue that was in progress goes back to to do"
+file = "src/claude_voice/tracker/flow.py"
+find = '^\s*if now in \("todo", "progress"\):$'
+replace = 'if now == "todo":'

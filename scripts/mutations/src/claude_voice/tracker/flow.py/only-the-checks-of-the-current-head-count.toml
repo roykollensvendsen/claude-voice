@@ -1,0 +1,5 @@
+[[rule]]
+name = "only the checks of the current head count"
+file = "src/claude_voice/tracker/flow.py"
+find = '^\s*if commit\.get\("oid"\) != work\.get\("headRefOid"\) or state is None or state in PENDING:$'
+replace = 'if state is None or state in PENDING:'

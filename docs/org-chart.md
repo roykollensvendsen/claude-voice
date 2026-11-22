@@ -159,13 +159,17 @@ chart still changes in its file and nowhere else.
 
 The habits that keep a programme moving are in the org-chart skill's
 [patterns](../.claude/skills/org-chart/references/patterns.md#running-a-programme-day-to-day).
-One of them is for every session:
+Two of them are for every session:
 
 - **Take an item the moment you start on it.** Assign its issue at once:
   `gh issue edit N --repo R --add-assignee @me`. If there is no issue, open a
   draft PR with your first commit. Unassign if you drop it. The board sync
   (`claude-voice tracker sync`) puts an assigned issue and a draft PR under
-  In progress.
+  In progress, and a dropped issue back under To do.
+- **Keep the board true by doing the step, not by moving cards.** The sync owns
+  every column but Backlog, To do and Blocked. A reviewer claims a review with
+  `claude-voice tracker claim`. A stuck role moves its item to Blocked and fills
+  in "Blocked by". Nobody merges because of a column.
 
 ## Who reads it
 

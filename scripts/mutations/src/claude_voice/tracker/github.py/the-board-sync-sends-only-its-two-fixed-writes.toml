@@ -1,5 +1,0 @@
-[[rule]]
-name = "the board sync sends only its two fixed writes"
-file = "src/claude_voice/tracker/github.py"
-find = 'if query not in \(ADD, SET\):'
-replace = 'if False:'

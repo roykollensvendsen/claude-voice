@@ -1,0 +1,5 @@
+[[rule]]
+name = "every stamp in with checks pending is being reviewed"
+file = "src/claude_voice/tracker/flow.py"
+find = '^\s*if head:$'
+replace = 'if False:'

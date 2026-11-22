@@ -1,0 +1,5 @@
+[[rule]]
+name = "a claim is refused for another reviewers file or a short head"
+file = "src/claude_voice/tracker/verdicts.py"
+find = '^\s*if not match or match\["suffix"\] not in REVIEWERS\.get\(by, \(\)\) or not HEAD\.fullmatch\(head\):$'
+replace = 'if not match:'

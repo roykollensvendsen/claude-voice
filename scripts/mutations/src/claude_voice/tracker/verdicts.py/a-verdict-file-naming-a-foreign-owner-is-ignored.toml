@@ -1,0 +1,5 @@
+[[rule]]
+name = "a verdict file naming a foreign owner is ignored"
+file = "src/claude_voice/tracker/verdicts.py"
+find = '^\s*if not _names_item\(body, match, owner\):$'
+replace = 'if False:'
