@@ -646,6 +646,13 @@ def _idle_watch(given: idle.Watch | None, clock: Callable[[], float]) -> idle.Wa
     return given or idle.Watch(config.STATE_DIR.expanduser(), clock=clock)
 
 
+def _stalled_parts(
+    given: stalled.Watch | None, tmux: Callable[[list[str]], str] | None, after_min: float, clock: Callable[[], float]
+) -> tuple[stalled.Watch, Callable[[list[str]], str]]:
+    """The watch and the pane reader a test hands in, or the bridge's own."""
+    return given or stalled.Watch(after_min, clock=clock), tmux or stalled.run_tmux
+
+
 def build_server(
     manager: SessionManager,
     oauth: OAuthProvider | None = None,
@@ -1209,8 +1216,7 @@ def build_server(
         sent.add_done_callback(done)
 
     stalled_settings = repos.stalled_prompt
-    watching_stalled = stalled_watch or stalled.Watch(stalled_settings.after_min, clock=manager.clock)
-    read_tmux = stalled_tmux or stalled.run_tmux
+    watching_stalled, read_tmux = _stalled_parts(stalled_watch, stalled_tmux, stalled_settings.after_min, manager.clock)
     panes = renames.Tmux(run=read_tmux)  # only ever asked where a session runs, never to type
     approvals_seen: dict[str, float] = {}  # when each of the bridge's own approvals was first seen
 
