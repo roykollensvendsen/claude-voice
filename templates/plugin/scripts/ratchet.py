@@ -12,8 +12,8 @@ has a line of its own
 naming the measure. Main keeps its levels: continuous integration measures them after every
 push to main and keeps them with that run, so a pull request never records them (after
 claude-voice's ADR-CV-009). When those levels are missing, the base is measured in a copy of
-it, which takes as long again. `quality.json` holds only the suite's time budget, a limit set
-by hand.
+it, which takes as long again. The time the suite takes is shown, never judged: a slow run
+fails nothing (claude-voice's ADR-CV-021).
 
 Every tool runs on the interpreter this script runs on, so a local run, CI and any other CI
 measure alike, and a run needs no network once the environment is installed.
@@ -53,7 +53,6 @@ if TYPE_CHECKING:
 
 # The tree to measure: this one, or a copy of the base named by RATCHET_ROOT (see measure_at).
 ROOT = Path(os.environ.get("RATCHET_ROOT") or Path(__file__).resolve().parent.parent)
-FILE = ROOT / "quality.json"
 SOURCE = ROOT / "src"
 PACKAGE = SOURCE / "gizmo_mcp"
 COVERAGE_WOBBLE = 0.5  # percentage points: coverage differs slightly between machines and versions
@@ -61,7 +60,6 @@ HIGHER = ("coverage", "mutation", "tests")
 LOWER = ("lint_errors", "type_errors", "cycles", "layer_violations", "duplication")
 #: Where each run keeps its folder, held by a lock and removed at its end (scripts/temproot.py).
 RATCHET_TMP = temproot.parent_for("ratchet", ROOT)
-DEFAULT_BUDGET = {"seconds": 60, "tolerance": 0.25}
 NEW_MODULE_CEILING = 15  # the most tangled function a new module may have
 BLOCK = 6  # lines in a row that count as a copied block
 EXCEPTION = re.compile(r"^\s*ratchet-exception:\s*([a-z_]+)", re.IGNORECASE | re.MULTILINE)
@@ -372,7 +370,6 @@ def measure(*, skip_mutation: bool = False, recorded: dict[str, Any] | None = No
         "duplication": duplication(SOURCE),
         "complexity": complexity(SOURCE),
         "test_seconds": seconds,
-        "test_budget": None,
     }
 
 
@@ -403,10 +400,11 @@ def _complexity_problems(base: dict[str, int], now: dict[str, int]) -> list[str]
     return found
 
 
-def compare(base: dict[str, Any], now: dict[str, Any], allowed: set[str], budget: dict[str, Any]) -> list[str]:
-    """What is wrong: a measure worse than the base without an exception, or the suite over its budget.
+def compare(base: dict[str, Any], now: dict[str, Any], allowed: set[str]) -> list[str]:
+    """What is wrong: a measure worse than the base without an exception.
 
-    Better levels need no recording: main measures its own.
+    Better levels need no recording: main measures its own. The time the suite takes is
+    shown, never judged (claude-voice's ADR-CV-021).
     """
     found = []
     for metric in (*HIGHER, *LOWER):
@@ -417,12 +415,6 @@ def compare(base: dict[str, Any], now: dict[str, Any], allowed: set[str], budget
             found.append(f"{metric} got worse: {base[metric]} -> {now[metric]}")
     if "complexity" not in allowed:
         found += _complexity_problems(base.get("complexity", {}), now["complexity"])
-    limit = budget["seconds"] * (1 + budget["tolerance"])
-    if now["test_seconds"] > limit:
-        found.append(
-            f"test_seconds is {now['test_seconds']}, over the budget of {budget['seconds']}"
-            f" (+{budget['tolerance']:.0%})",
-        )
     return found
 
 
@@ -431,18 +423,9 @@ def exceptions(text: str | None) -> set[str]:
     return {m.lower() for m in EXCEPTION.findall(text or "")}
 
 
-def budget(path: Path) -> dict[str, Any]:
-    """The suite's time budget, the one thing `quality.json` keeps."""
-    try:
-        return dict(json.loads(path.read_text(encoding="utf-8"))["test_budget"])
-    except (OSError, ValueError, KeyError, TypeError):
-        return dict(DEFAULT_BUDGET)
-
-
 def write_levels(path: Path, now: dict[str, Any]) -> None:
     """Write the measured levels, for main to keep with its run."""
-    levels = {k: v for k, v in now.items() if k != "test_budget"}
-    path.write_text(json.dumps(levels, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(now, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def base_levels(kept: Path | None, measure_base: Callable[[], dict[str, Any]]) -> dict[str, Any]:
@@ -541,7 +524,7 @@ def main() -> int:
     now = measure(skip_mutation=args.skip_mutation, recorded=base)
     if args.out:
         write_levels(args.out, now)
-    found = compare(base, now, exceptions(os.environ.get("RATCHET_EXCEPTIONS")), budget(FILE))
+    found = compare(base, now, exceptions(os.environ.get("RATCHET_EXCEPTIONS")))
     for problem in found:
         sys.stderr.write(problem + "\n")
     if not found:

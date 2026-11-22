@@ -41,9 +41,7 @@ BASE = {
     "duplication": 2.0,
     "complexity": {"pkg/a.py": 10, "pkg/b.py": 5},
     "test_seconds": 40.0,
-    "test_budget": {"seconds": 100, "tolerance": 0.25},
 }
-BUDGET = {"seconds": 100, "tolerance": 0.25}
 
 
 def measured(**changes):
@@ -51,7 +49,7 @@ def measured(**changes):
 
 
 def problems(base, now, exceptions=()):
-    return ratchet.compare(base, now, set(exceptions), BUDGET)
+    return ratchet.compare(base, now, set(exceptions))
 
 
 # -- what gets worse ----------------------------------------------------------------------
@@ -122,25 +120,16 @@ def test_a_pull_request_need_not_record_the_levels_it_reached():
     assert problems(BASE, better) == []
 
 
-def test_the_suite_must_stay_inside_its_time_budget():
-    assert problems(BASE, measured(test_seconds=124.0)) == []  # inside the tolerance
-    found = problems(BASE, measured(test_seconds=126.0))
-    assert found
-    assert "test_seconds" in found[0]
-
-
-def test_the_time_budget_is_the_one_thing_quality_json_keeps(tmp_path):
-    path = tmp_path / "quality.json"
-    path.write_text(json.dumps({"test_budget": {"seconds": 90, "tolerance": 0.1}}), encoding="utf-8")
-    assert ratchet.budget(path) == {"seconds": 90, "tolerance": 0.1}
-    assert ratchet.budget(tmp_path / "missing.json") == ratchet.DEFAULT_BUDGET
-    assert set(json.loads((ROOT / "quality.json").read_text(encoding="utf-8"))) == {"test_budget"}
+def test_the_time_the_suite_takes_never_fails_the_check():
+    """The suite has no time cap: a slow run is shown, never judged (claude-voice's ADR-CV-021)."""
+    assert problems(BASE, measured(test_seconds=5000.0)) == []
+    assert not (ROOT / "quality.json").exists()
 
 
 def test_measured_levels_are_written_for_main_to_keep(tmp_path):
     out = tmp_path / "levels.json"
-    ratchet.write_levels(out, {**measured(), "test_budget": None})
-    assert json.loads(out.read_text(encoding="utf-8")) == {k: v for k, v in BASE.items() if k != "test_budget"}
+    ratchet.write_levels(out, measured())
+    assert json.loads(out.read_text(encoding="utf-8")) == BASE
 
 
 def test_the_levels_main_kept_are_the_base_when_they_are_there(tmp_path):
