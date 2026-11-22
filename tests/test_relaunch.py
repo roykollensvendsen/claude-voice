@@ -2,11 +2,14 @@
 never replayed from the record (worker-on-demand-v1, v1.1 b1, b2 and f1)."""
 
 import os
+import sys
 import threading
 
 import pytest
 
 from claude_voice import relaunch
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="cv up starts claude in tmux, which is Unix only")
 
 ID = "0f8fad5b-d9cb-469f-a165-70867728950e"
 CLAUDE = "/opt/claude/bin/claude"

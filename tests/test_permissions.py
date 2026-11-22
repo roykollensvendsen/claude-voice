@@ -316,7 +316,7 @@ def test_everything_refused_before_is_still_refused():
 
 def test_the_bridge_s_records_of_its_sessions_cannot_be_edited_by_a_session(tmp_path):
     """cv up trusts the bridge's role records (worker-on-demand-v1, v1.4 §3)."""
-    rules = permissions.for_folder(permissions.load(), tmp_path / "repo", home=Path("/h"), uid=1000)
+    rules = _for_home()
     for tool in ("Edit", "Write"):
         assert f"{tool}(//h/.local/state/claude-voice/bridge.db*)" in rules.deny
         assert f"{tool}(//h/.local/state/claude-voice/sessions.toml)" in rules.deny

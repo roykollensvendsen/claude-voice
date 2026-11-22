@@ -3,11 +3,14 @@ the owner's role definition and never from what it last ran with (worker-on-dema
 
 import json
 import os
+import sys
 
 import pytest
 from claude_agent_sdk import project_key_for_directory
 
 from claude_voice import cv, org, roster
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="cv up starts claude in tmux, which is Unix only")
 
 ID = "0f8fad5b-d9cb-469f-a165-70867728950e"
 NOW = "2026-11-16T10:00+00:00"

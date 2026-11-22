@@ -6,12 +6,12 @@ session last ran with. What it last ran with is recorded only to say how it diff
 
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import re
 import sqlite3
 import stat
+import sys
 from collections.abc import Iterator, Sequence
 from contextlib import closing, contextmanager
 from pathlib import Path
@@ -168,6 +168,10 @@ def window(tmux: str, session: str, window: str, folder: str, argv: Sequence[str
 def starting(folder: Path, role: str) -> Iterator[None]:
     """Hold the role's start lock while it is checked and started. Raises Refused when
     another start of the same role holds it."""
+    if sys.platform == "win32":  # tmux, which cv up starts in, is Unix only
+        raise Refused("cv up needs tmux, which this system does not have")
+    import fcntl
+
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
     path = folder / f"start-{name(role)}.lock"
     fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
