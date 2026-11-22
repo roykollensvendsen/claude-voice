@@ -1025,7 +1025,9 @@ def test_the_owners_git_settings_are_still_refused_to_every_edit():
 
 
 def _for_home():
-    return permissions.for_folder(permissions.load(), Path("/h/repo"), home=Path("/h"), uid=1000)
+    """Fixed POSIX paths, as in for_a_folder, so the rule reads the same on every system."""
+    home = PurePosixPath("/h")
+    return permissions.for_folder(permissions.load(), home / "repo", home=home, uid=1000)
 
 
 @pytest.mark.parametrize(
