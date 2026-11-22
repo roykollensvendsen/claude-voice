@@ -83,6 +83,11 @@ ends with why it exists.
   keeps their status in the issue tracker. The tracker is the source of
   truth, not any session's notes.
   Why: a tracker outlives any session's memory.
+- **Take an item the moment you start on it.** Assign its issue at once:
+  `gh issue edit N --repo R --add-assignee @me`. If there is no issue, open a
+  draft PR with your first commit. Unassign if you drop it. The board sync
+  puts an assigned issue and a draft PR under In progress.
+  Why: otherwise the board's In progress column stays empty while work runs.
 - **Look in the tracker before creating anything there.** Search for the same
   task first. Write every script so a second run changes nothing.
   Why: a script run twice, or two sessions acting at once, fills the tracker

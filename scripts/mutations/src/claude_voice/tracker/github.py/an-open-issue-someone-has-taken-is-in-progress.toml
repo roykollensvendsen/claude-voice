@@ -1,0 +1,5 @@
+[[rule]]
+name = "an open issue someone has taken is in progress"
+file = "src/claude_voice/tracker/github.py"
+find = '^\s*if \(work\.get\("assignees"\) or \{\}\)\.get\("totalCount"\):$'
+replace = 'if False:'

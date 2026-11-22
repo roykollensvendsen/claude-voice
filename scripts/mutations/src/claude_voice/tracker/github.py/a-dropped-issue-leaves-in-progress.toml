@@ -1,0 +1,5 @@
+[[rule]]
+name = "a dropped issue leaves in progress"
+file = "src/claude_voice/tracker/github.py"
+find = '^\s*if work\["__typename"\] == "Issue" and kind == "backlog" and now not in \(None, waiting, progress\):$'
+replace = 'if work["__typename"] == "Issue" and kind == "backlog" and now not in (None, waiting):'
