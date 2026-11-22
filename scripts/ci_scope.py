@@ -106,6 +106,13 @@ def scope(event: str, paths: list[str]) -> dict[str, bool]:
 # Each job the scope can leave out, by the name it has in checks.yml.
 LEFT_OUT = {"windows": "windows", "template": "template"}
 
+# Each job the gate does not wait for, with why. gate is the check main's protection requires,
+# so a job here can fail without stopping the owner's merge.
+NOT_GATED = {
+    "gate-files": "it fails every change to the files that judge pull requests, which the owner "
+    "merges; a session's merge guard needs every check green, so it still stops a self-merge",
+}
+
 
 def gate(needs: dict[str, dict], actor: str = "") -> list[str]:
     """What keeps the run from passing, one line a job; none when it passes."""

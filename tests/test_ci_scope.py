@@ -147,8 +147,14 @@ def job(name):
 def test_the_gate_waits_for_every_other_job_and_runs_whatever_they_did():
     gate = job("gate")
     listed = re.search(r"needs: \[([^\]]*)\]", gate).group(1)
-    assert sorted(n.strip() for n in listed.split(",")) == sorted(n for n in jobs() if n != "gate")
+    waited = sorted(n for n in jobs() if n != "gate" and n not in ci_scope.NOT_GATED)
+    assert sorted(n.strip() for n in listed.split(",")) == waited
     assert "always()" in gate
+
+
+def test_a_job_the_gate_does_not_wait_for_is_named_with_why():
+    assert set(ci_scope.NOT_GATED) <= set(jobs()), "a job left out of the gate must exist"
+    assert all(len(why.split()) >= 5 for why in ci_scope.NOT_GATED.values())
 
 
 def test_the_slower_jobs_read_the_scope_and_still_report_when_left_out():
