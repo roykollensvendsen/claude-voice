@@ -39,6 +39,13 @@ FAKE_UV = textwrap.dedent(
         child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)", str(here)])
         (here / ".uv-child").write_text(str(child.pid))
         time.sleep(30)
+    if does == "orphan":  # a helper that leaves uv's group, yet keeps uv's output open
+        import subprocess
+        child = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(60)", str(here)], start_new_session=True
+        )
+        (here / ".uv-child").write_text(str(child.pid))
+        time.sleep(30)
     if does == "make":
         script = here / ".venv" / "bin" / "gizmo-mcp"
         script.parent.mkdir(parents=True, exist_ok=True)
@@ -260,6 +267,26 @@ def test_a_sync_that_runs_too_long_is_stopped_with_everything_it_started(tmp_pat
             time.sleep(0.05)
         assert not _runs(child, str(folder))
     finally:
+        if child is not None and _runs(child, str(folder)):
+            os.kill(child, 9)
+
+
+@posix
+def test_a_stopped_sync_never_waits_on_output_a_helper_outside_its_group_holds(tmp_path, uv, monkeypatch):
+    monkeypatch.setattr(plugin_venv, "SYNC_SECONDS", 1.0)
+    folder = tmp_path / "gizmo"
+    spec = gizmo(folder, "run", "gizmo-mcp")
+    (folder / ".uv-does").write_text("orphan")
+    child = None
+    try:
+        began = time.monotonic()
+        with pytest.raises(plugin_venv.Refused):
+            plugins.parameters(spec)
+        # the helper sleeps a minute with uv's output open; the sync must not wait for it
+        assert time.monotonic() - began < 15  # the time limit, the short last read, and slack
+    finally:
+        marker = folder / ".uv-child"
+        child = int(marker.read_text()) if marker.exists() else None
         if child is not None and _runs(child, str(folder)):
             os.kill(child, 9)
 

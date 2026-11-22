@@ -30,6 +30,8 @@ LOCK = STATE_DIR / "uv.lock"
 #: How long a sync may take, waiting for the lock included. A guess: a sync that has to fetch
 #: new packages after a pull takes tens of seconds; one with nothing to do, a fraction of one.
 SYNC_SECONDS = 300.0
+#: How long a stopped sync's last output is read: what uv wrote is there at once once it is gone.
+DRAIN_SECONDS = 5.0
 SCRIPT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,99}")
 UV = ("uv", "uv.exe")
 
@@ -86,7 +88,11 @@ def _sync(uv: str, folder: Path, seconds: float) -> subprocess.CompletedProcess[
                 with contextlib.suppress(ProcessLookupError):
                     # RULE: a sync that runs too long is stopped with everything it started
                     os.killpg(sync.pid, signal.SIGKILL)
-            sync.communicate()
+            # A helper that left the group, as a daemon does, can still hold uv's output open. So
+            # the last read gets a short limit of its own, and the pipes close as the sync is left.
+            # RULE: a stopped sync never waits on output a helper outside its group holds
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                sync.communicate(timeout=DRAIN_SECONDS)
             raise
     return subprocess.CompletedProcess(sync.args, sync.returncode, out, err)
 

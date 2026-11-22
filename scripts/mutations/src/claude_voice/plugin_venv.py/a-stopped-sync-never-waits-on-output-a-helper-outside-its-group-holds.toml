@@ -1,0 +1,5 @@
+[[rule]]
+name = "a stopped sync never waits on output a helper outside its group holds"
+file = "src/claude_voice/plugin_venv.py"
+find = '^                sync\.communicate\(timeout=DRAIN_SECONDS\)$'
+replace = '                sync.communicate()'
