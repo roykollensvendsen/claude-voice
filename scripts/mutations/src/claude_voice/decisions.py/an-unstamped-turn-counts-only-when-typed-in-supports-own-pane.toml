@@ -1,5 +1,5 @@
 [[rule]]
 name = "an unstamped turn counts only when typed in supports own pane"
 file = "src/claude_voice/decisions.py"
-find = '^\s*if typed_in_pane\(entry\):$'
-replace = 'if True:'
+find = '^\s*if not typed_in_pane\(entry\):$'
+replace = 'if False:'

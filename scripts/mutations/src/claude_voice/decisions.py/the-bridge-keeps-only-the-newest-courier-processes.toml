@@ -1,0 +1,5 @@
+[[rule]]
+name = "the bridge keeps only the newest courier processes"
+file = "src/claude_voice/decisions.py"
+find = '^\s*store\.set_setting\(COURIERS, rows\[-KEPT:\]\)$'
+replace = 'store.set_setting(COURIERS, rows)'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "each courier process the bridge starts is reported"
+file = "src/claude_voice/transcripts.py"
+find = '^\s*if self\.on_open is None:$'
+replace = 'if True:'

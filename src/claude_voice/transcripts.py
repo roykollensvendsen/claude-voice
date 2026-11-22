@@ -37,7 +37,7 @@ from claude_agent_sdk import (
     project_key_for_directory,
 )
 
-from . import held_folder, procs
+from . import held_folder, lineage, procs
 
 MESSAGING_TOOLS = frozenset({"ListAgents", "SendMessage", "ToolSearch"})
 
@@ -506,9 +506,11 @@ class Courier:
         fresh_after: int = 20,
         name: str = COURIER_NAME,
         on_reply: Callable[[str, str], None] | None = None,
+        on_open: Callable[[int, str | None], None] | None = None,
     ) -> None:
         self.name = name  # what the receiving session sees as the sender
         self.on_reply = on_reply  # (sender, text) of each answer sent back to the courier
+        self.on_open = on_open  # (pid, start ticks) of each helper process started
         self.client_factory = client_factory
         self.model = model
         self.fresh_after = fresh_after
@@ -560,6 +562,7 @@ class Courier:
         )
         client = self.client_factory(opts)
         await client.__aenter__()
+        self._opened(self._cwd.name)
         self._client, self._carried = client, 0
         self._said = asyncio.Queue()
         self._reader = asyncio.create_task(self._read(client, self._said))
@@ -577,6 +580,16 @@ class Courier:
                 said.put_nowait(m)
         except Exception as exc:  # the delivery waiting on it learns the helper broke
             said.put_nowait(exc)
+
+    def _opened(self, folder: str) -> None:
+        """Report the helper process just started, found as the bridge's own child in its folder.
+        A receiving session's transcript names the sender by the pid and start ticks the kernel
+        gave, so this is how a message can later be told to be the courier's."""
+        # RULE: each courier process the bridge starts is reported
+        if self.on_open is None:
+            return
+        for pid in lineage.children_in(folder):
+            self.on_open(pid, lineage.start_ticks(pid))
 
     def _heard(self, sender: str, body: str) -> None:
         log.info("courier reply from %s %d chars", sender, len(body))
@@ -1060,3 +1073,8 @@ async def deliver(name: str, text: str) -> dict[str, Any]:
 def hear_replies(on_reply: Callable[[str, str], None]) -> None:
     """Pass each answer a session sends back to the shared courier to `on_reply`."""
     _courier.on_reply = on_reply
+
+
+def hear_opens(on_open: Callable[[int, str | None], None]) -> None:
+    """Pass the pid and start ticks of each process the shared courier starts to `on_open`."""
+    _courier.on_open = on_open

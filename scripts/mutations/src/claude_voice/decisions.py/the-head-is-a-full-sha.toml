@@ -1,0 +1,5 @@
+[[rule]]
+name = "the head is a full sha"
+file = "src/claude_voice/decisions.py"
+find = '^\s*if not FULL_SHA\.fullmatch\(head\):$'
+replace = 'if False:'
