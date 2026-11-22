@@ -199,3 +199,40 @@ def test_a_claim_is_refused_for_another_reviewers_file_or_a_short_head(name, by,
     args = ["tracker", "claim", name, "--by", by, "--head", head]
     assert cli.main(args, env={"HOME": str(tmp_path)}) == 1
     assert "Refused" in capsys.readouterr().err
+
+
+def test_a_claim_never_writes_through_a_link(tmp_path):
+    elsewhere = write(tmp_path, "elsewhere.json", **stamp(verdict="changes", head=OLD))
+    reviews = tmp_path / "reviews"
+    reviews.mkdir()
+    link = reviews / "demo-12.quality.json"
+    link.symlink_to(elsewhere)
+    with pytest.raises(verdicts.NotPlain):
+        verdicts.claim(link, "quality-claude-voice", HEAD, at="2026-11-22T11:00:00+01:00")
+    assert json.loads(elsewhere.read_text())["verdict"] == "changes" and link.is_symlink()
+
+
+def test_a_claim_on_a_link_is_refused_by_the_command(tmp_path, capsys):
+    from claude_voice import cli
+
+    reviews = tmp_path / ".local" / "state" / "claude-voice" / "reviews"
+    reviews.mkdir(parents=True)
+    (reviews / "demo-12.quality.json").symlink_to(write(tmp_path, "elsewhere.json", **stamp()))
+    args = ["tracker", "claim", "demo-12.quality.json", "--by", "quality-claude-voice", "--head", OLD]
+    assert cli.main(args, env={"HOME": str(tmp_path)}) == 1
+    assert "Refused" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "content",
+    ["not json", "[1, 2]", json.dumps(stamp(notes="x" * verdicts.MAX_BYTES)), json.dumps(stamp(by="quality-2"))],
+    ids=["not-json", "not-an-object", "too-big", "another-reviewers"],
+)
+def test_a_claim_never_overwrites_a_file_it_cannot_read_or_another_reviewers(content, tmp_path):
+    reviews = tmp_path / "reviews"
+    reviews.mkdir()
+    path = reviews / "demo-12.quality.json"
+    path.write_text(content)
+    with pytest.raises(verdicts.NotPlain):
+        verdicts.claim(path, "quality-claude-voice", HEAD, at="2026-11-22T11:00:00+01:00")
+    assert path.read_text() == content
