@@ -1,0 +1,5 @@
+[[rule]]
+name = "a subcommand the guard cannot place is taken as a push"
+file = "src/claude_voice/guard.py"
+find = '^        return Push\(\[\]\)$'
+replace = '        return None'

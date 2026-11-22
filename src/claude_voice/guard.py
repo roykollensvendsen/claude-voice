@@ -69,12 +69,53 @@ GITHUB = re.compile(r"(?:git@github\.com:|ssh://git@github\.com/|https://github\
 #: Options of `env` that take a word after them.
 ENV_VALUES = frozenset({"-u", "--unset", "-C", "--chdir", "-S", "--split-string"})
 TURN_ON = f'push_mode = "{OWN_CLONE}"'
+#: Git's own subcommands that never send a branch anywhere, from `git --list-cmds=builtins` and
+#: `--list-cmds=main` of git 2.55. Git never lets an alias stand in for one of them. Left out on
+#: purpose: push, send-pack, http-push and subtree, which push, and filter-branch, which runs
+#: shell text. Any other subcommand is an alias, a known extension, or taken as a push.
+GIT_COMMANDS = frozenset(
+    """
+    add am annotate apply archive backfill bisect blame branch bugreport bundle cat-file check-attr
+    check-ignore check-mailmap checkout checkout-index checkout--worker check-ref-format cherry
+    cherry-pick clean clone column commit commit-graph commit-tree config count-objects credential
+    credential-cache credential-cache--daemon credential-store describe diagnose diff diff-files
+    diff-index diff-pairs difftool diff-tree fast-export fast-import fetch fetch-pack fmt-merge-msg
+    for-each-ref for-each-repo format-patch format-rev fsck fsck-objects fsmonitor--daemon gc
+    get-tar-commit-id grep hash-object help history hook index-pack init init-db interpret-trailers
+    last-modified log ls-files ls-remote ls-tree mailinfo mailsplit maintenance merge merge-base
+    merge-file merge-index merge-ours merge-recursive merge-recursive-ours merge-recursive-theirs
+    merge-subtree merge-tree mktag mktree multi-pack-index mv name-rev notes pack-objects
+    pack-redundant pack-refs patch-id pickaxe prune prune-packed pull range-diff read-tree rebase
+    receive-pack reflog refs remote remote-ext remote-fd repack replace replay repo rerere reset
+    restore revert rev-list rev-parse rm shortlog show show-branch show-index show-ref
+    sparse-checkout stage stash status stripspace submodule--helper switch symbolic-ref tag
+    unpack-file unpack-objects update-index update-ref update-server-info upload-archive
+    upload-archive--writer upload-pack url-parse var verify-commit verify-pack verify-tag version
+    whatchanged worktree write-tree
+    citool difftool--helper gui instaweb mergetool request-pull send-email submodule
+    lfs
+    """.split()
+)
 #: Options before git's subcommand that take the next word as their value.
 GIT_VALUES = ("-C", "-c", "--config-env", "--git-dir", "--work-tree")
 #: The shell's own quoting, `$'...'` with escapes and `$"..."`, which bash turns into plain text.
 ANSI_C = re.compile(r"\$'((?:[^'\\]|\\.)*)'", re.DOTALL)
 ESCAPE = re.compile(r"\\(x[0-9A-Fa-f]{1,2}|u[0-9A-Fa-f]{1,4}|U[0-9A-Fa-f]{1,8}|[0-7]{1,3}|c.|.)", re.DOTALL)
-SIMPLE_ESCAPES = {"a": "\a", "b": "\b", "e": "\x1b", "E": "\x1b", "f": "\f", "n": "\n", "r": "\r", "t": "\t", "v": "\v"}
+SIMPLE_ESCAPES = {
+    "a": "\a",
+    "b": "\b",
+    "e": "\x1b",
+    "E": "\x1b",
+    "f": "\f",
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+    "v": "\v",
+    "\\": "\\",
+    "'": "'",
+    '"': '"',
+    "?": "?",
+}
 
 
 @dataclass
@@ -103,7 +144,8 @@ def _escape(match: re.Match[str]) -> str:
         return chr(int(code, 8) & 0xFF)
     if code[0] == "c" and len(code) > 1:
         return chr(ord(code[1]) & 0x1F)
-    return SIMPLE_ESCAPES.get(code, code)
+    # bash keeps the backslash of an escape it does not know, such as `\x` with no digits
+    return SIMPLE_ESCAPES.get(code, "\\" + code)
 
 
 def _unquoted(command: str) -> str:
@@ -221,6 +263,18 @@ def _shape(command: str) -> tuple[bool, str | None]:
     return True, folder
 
 
+def _segments(command: str) -> list[list[str]]:
+    """The words of each command in a line, with the shell's own quoting read as bash reads it."""
+    out = []
+    # RULE: a push spelled in the shells own quoting is found
+    for segment in PARTS.split(REDIRECTION.sub(" ", _unquoted(command)))[::2]:
+        try:
+            out.append(shlex.split(segment))
+        except ValueError:
+            out.append(segment.split())
+    return out
+
+
 def _pushes(
     command: str, alias: Alias | None = None, base: str | None = None, seen: frozenset[str] = frozenset()
 ) -> list[Push]:
@@ -229,13 +283,12 @@ def _pushes(
     could not read word by word. `alias` reads what an alias runs; `base` is the folder the line
     starts in."""
     found = []
-    # RULE: a push spelled in the shells own quoting is found
-    for segment in PARTS.split(REDIRECTION.sub(" ", _unquoted(command)))[::2]:
-        try:
-            words = shlex.split(segment)
-        except ValueError:
-            words = segment.split()
-        words, _ = _without_environment(words)
+    segments = _segments(command)
+    # Another command on the line may set up an alias before git runs, so an alias is followed
+    # only on a line with no other command but `cd`.
+    alone = sum(1 for words in segments if words[:1] not in ([], ["cd"])) <= 1
+    for raw in segments:
+        words, set_here = _without_environment(raw)
         if len(words) == 2 and words[0] == "cd":
             base = _join(base, words[1])
         elif not words or not _is_git(words[0]):
@@ -243,50 +296,47 @@ def _pushes(
             if _hidden(words):
                 found.append(Push([]))
         else:
-            push = _git_push(words[1:], alias, base, seen)
+            push = _git_push(words[1:], alias if alone and not set_here else None, base, seen)
             if push is not None:
                 found.append(push)
     return found
 
 
-def _git_options(rest: list[str], folder: str | None) -> tuple[list[str], str | None, dict[str, str]]:
-    """The words from git's subcommand on, the folder git runs in, and the aliases the line sets
-    with -c or --config-env. An alias whose value the line does not show is taken as a push."""
-    inline = {}
+def _git_options(rest: list[str], folder: str | None) -> tuple[list[str], str | None, bool]:
+    """The words from git's subcommand on, the folder git runs in, and whether the line gives git
+    a setting of its own, which may define an alias the guard cannot read."""
+    configured = False
     while rest and rest[0].startswith("-"):
         option, joined, value = rest[0].partition("=")
         if not joined:
             value = rest[1] if option in GIT_VALUES and len(rest) > 1 else ""
         if option in ("-C", "--git-dir"):
             folder = _join(folder, value)
-        if option in ("-c", "--config-env") and value.lower().startswith("alias."):
-            name, has_value, setting = value[len("alias.") :].partition("=")
-            inline[name.lower()] = setting if option == "-c" and has_value else "push"
+        configured = configured or option in ("-c", "--config-env")
         rest = rest[2:] if not joined and option in GIT_VALUES else rest[1:]
-    return rest, folder, inline
+    return rest, folder, configured
 
 
 def _git_push(words: list[str], alias: Alias | None, base: str | None, seen: frozenset[str]) -> Push | None:
     """The push one `git` command runs, with the words after `push`, or None when it runs none.
-    A push through an alias comes back with no words, so it is never in the plain shape."""
-    rest, folder, inline = _git_options(words, base)
+    `alias` is None when the line may have set up an alias the guard cannot read. A push through
+    an alias, or through a subcommand the guard cannot place, comes back with no words, so it is
+    never in the plain shape."""
+    rest, folder, configured = _git_options(words, base)
     if not rest:
         return None
     if rest[0] == "push":
         return Push(rest[1:])
-    name = rest[0].lower()
-
-    def lookup(key: str, where: str | None) -> str | None:
-        if key.lower() in inline:
-            return inline[key.lower()]
-        return alias(key, where) if alias is not None else None
-
-    runs = None if name in seen else lookup(rest[0], folder)
-    if runs is None:
+    if rest[0] in GIT_COMMANDS:
         return None
+    name = rest[0].lower()
+    runs = alias(rest[0], folder) if alias is not None and not configured and name not in seen else None
+    # RULE: a subcommand the guard cannot place is taken as a push
+    if runs is None:
+        return Push([])
     line = runs[1:] if runs.startswith("!") else f"git {runs}"
     # RULE: a git alias is judged by what it runs
-    return Push([]) if _pushes(line, lookup, folder, seen | {name}) else None
+    return Push([]) if _pushes(line, alias, folder, seen | {name}) else None
 
 
 def same_repository(url: str, repository: str) -> bool:
