@@ -1,0 +1,5 @@
+[[rule]]
+name = "only the first line says where a turn came from"
+file = "src/claude_voice/decisions.py"
+find = '^\s*if first\.startswith\(FIRST\):$'
+replace = 'if False:'

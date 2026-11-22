@@ -36,6 +36,7 @@ COMMANDS: tuple[str, ...] = (
     "roles",
     "set",
     "tracker",
+    "decisions",
 )
 
 SIGN_IN = (
@@ -223,9 +224,16 @@ def main(
     tracker_cmd.add_argument("file", nargs="?", help="claim: your verdict file's name, <repo>-<number>.<name>.json")
     tracker_cmd.add_argument("--by", help="claim: the reviewer you are")
     tracker_cmd.add_argument("--head", help="claim: the pull request's full head sha")
+    decisions_cmd = sub.add_parser(
+        "decisions", help="for the manager: check a yes support recorded against the owner's own words"
+    )
+    decisions_cmd.add_argument("action", choices=["check"])
+    decisions_cmd.add_argument("uuid", help="the uuid in the decision line")
+    decisions_cmd.add_argument("--head", required=True, help="the sha the item is at now")
     parsed = parser.parse_args(args)
 
     verbs: dict[str, Callable[[], int]] = {
+        "decisions": lambda: _decisions(parsed.uuid, parsed.head),
         "tracker": lambda: (
             claim_command(parsed.file, parsed.by, parsed.head, env)
             if parsed.action == "claim"
@@ -254,6 +262,12 @@ def main(
         return 1
     serve(cfg)
     return 0
+
+
+def _decisions(uuid: str, head: str) -> int:
+    from . import decisions
+
+    return decisions.run(uuid, head)
 
 
 def _settings_edit(verb: str, words: list[str | None], env: Mapping[str, str]) -> int:

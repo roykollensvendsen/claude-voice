@@ -1,0 +1,5 @@
+[[rule]]
+name = "each uuid is used once"
+file = "src/claude_voice/decisions.py"
+find = '^\s*if uuid in used:$'
+replace = 'if False:'

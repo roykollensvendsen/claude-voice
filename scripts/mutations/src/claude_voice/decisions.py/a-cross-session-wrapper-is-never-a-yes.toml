@@ -1,0 +1,5 @@
+[[rule]]
+name = "a cross session wrapper is never a yes"
+file = "src/claude_voice/decisions.py"
+find = '^\s*if text is None or WRAPPER in text:$'
+replace = 'if text is None:'
