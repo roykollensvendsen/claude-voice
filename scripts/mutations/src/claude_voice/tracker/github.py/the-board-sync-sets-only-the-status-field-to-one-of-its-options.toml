@@ -1,5 +1,0 @@
-[[rule]]
-name = "the board sync sets only the status field to one of its options"
-file = "src/claude_voice/tracker/github.py"
-find = 'if variables\.get\("field"\) != self\.board\.field or variables\.get\("option"\) not in self\.board\.options\.values\(\):'
-replace = 'if False:'

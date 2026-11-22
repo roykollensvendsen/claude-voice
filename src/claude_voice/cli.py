@@ -218,12 +218,19 @@ def main(
     tracker_cmd = sub.add_parser(
         "tracker", help="bring the project board in step with the open pull requests and issues"
     )
-    tracker_cmd.add_argument("action", choices=["sync"])
+    tracker_cmd.add_argument("action", choices=["sync", "claim"])
     tracker_cmd.add_argument("--dry-run", action="store_true", help="say what would change, and change nothing")
+    tracker_cmd.add_argument("file", nargs="?", help="claim: your verdict file's name, <repo>-<number>.<name>.json")
+    tracker_cmd.add_argument("--by", help="claim: the reviewer you are")
+    tracker_cmd.add_argument("--head", help="claim: the pull request's full head sha")
     parsed = parser.parse_args(args)
 
     verbs: dict[str, Callable[[], int]] = {
-        "tracker": lambda: tracker_command(parsed.dry_run, env),
+        "tracker": lambda: (
+            claim_command(parsed.file, parsed.by, parsed.head, env)
+            if parsed.action == "claim"
+            else tracker_command(parsed.dry_run, env)
+        ),
         "setup": lambda: setup_command(parsed.check, parsed.json, env, login),
         "repos": lambda: repos_command(parsed.check, env),
         "restart": lambda: restart_command(parsed.why, parsed.dry_run, systemctl),
@@ -369,6 +376,29 @@ def tracker_command(dry_run: bool, env: Mapping[str, str], client: Any = None) -
     except github.SyncError as exc:
         sys.stderr.write(f"claude-voice: the board sync could not reach GitHub: {exc}. It tries again next run.\n")
         return 1
+
+
+def claim_command(name: str | None, by: str | None, head: str | None, env: Mapping[str, str]) -> int:
+    """Mark a review as started in the reviewer's own verdict file, keeping its notes."""
+    from datetime import datetime
+
+    from .tracker import verdicts
+
+    match = verdicts.claimable(name or "", by or "", head or "")
+    if match is None:
+        sys.stderr.write(
+            "claude-voice: Refused: give your own verdict file's name, --by with your reviewer name, "
+            "and --head with the full 40-character sha.\n"
+        )
+        return 1
+    home = env.get("HOME") or str(Path.home())
+    path = Path(home + str(STATE_DIR)[1:]) / "reviews" / match.group(0)
+    at = datetime.now().astimezone().isoformat(timespec="seconds")
+    if verdicts.claim(path, str(by), str(head), at):
+        sys.stdout.write(f"claude-voice: claimed {match.group(0)} as reviewing at {str(head)[:12]}\n")
+    else:
+        sys.stdout.write("claude-voice: you have approved this head already; nothing changed\n")
+    return 0
 
 
 def repos_command(check: bool, env: Mapping[str, str]) -> int:

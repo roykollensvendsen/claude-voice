@@ -5,63 +5,72 @@ owner, with the owner's own `gh` login. It runs outside the bridge, so a slow or
 never touches what the voice and the phone reach.
 
 The board only mirrors the work; nothing waits on it. A run reads the board and the open
-work in two queries, then sends only what changed. It writes no text: it adds a pull request
-or issue that already exists to the board, and sets its Status. Each write passes three
-bounds first:
-- the query is one of the two fixed mutations below, nothing assembled;
+work in two queries, then sends only what changed. It writes no text. It adds a pull request
+or issue that already exists to the board, sets its Status, and sets or clears its Health.
+Each write passes three bounds first:
+- the query is one of the three fixed mutations below, nothing assembled;
 - the board is the one the settings name, by its node id;
 - the work, the field and the option all come from this run's own reads, of the
-  repositories linked to that board.
+  repositories linked to that board. The field is Status, or Health with its one option.
 
-What a piece of work becomes:
-- a draft pull request, or one nobody has been asked to review: In progress;
-- a pull request with a review asked for or given on GitHub, or with a reviewer's verdict file
-  in the bridge's state folder (`reviews/<repo>-<number>.<reviewer>.json`): In review;
-- merged or closed, a pull request or an issue: Done;
-- an open issue with someone assigned: In progress, whoever opened it. A session assigns an
-  issue the moment it starts on it, so the board shows the work while it runs;
-- any other open issue: Backlog, or the waiting column when someone other than the owner opened it
-  and the owner has neither labelled nor answered it yet. An open issue moved by hand stays
-  where it was put, except in In progress: once nobody is assigned, it goes back to Backlog.
+Which column a piece of work belongs in is decided in `flow`, from facts: whether it is a
+draft or merged, the reviewers' verdict files at its current head (read in `verdicts`), its
+checks, and who is assigned. Backlog, To do and Blocked are moved by hand, and so is an
+owner's issue put in the waiting column. The sync leaves those where they are. Every other
+column is the sync's, and a hand move into one is put right on the next run.
+
+Health is Stalled when work has gone quiet, and when an item is in Blocked with no reason in
+its "Blocked by" field. The sync never writes that reason. It never sends a write that
+changes nothing either. GitHub keeps the time a Status last changed, so a write of the same
+value would reset the time an item has spent in its column.
 
 The waiting column's name is a setting, since a board names its owner there. Under a
 rate-limit floor a run does nothing, and says so once, so it never starves the sessions
-that share the same login.
+that share the same login. Design: board-flow-v1.
 """
 
 from __future__ import annotations
 
 import json
-import re
-import stat
 import subprocess
+import time
 import tomllib
-from collections.abc import Callable, Iterable
-from collections.abc import Set as AbstractSet
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from . import flow, verdicts
 
 #: The GraphQL points a run leaves for everyone else on the same login.
 FLOOR = 500
 #: The column for each kind of work; `waiting` is renamed in the settings.
 NAMES = {
-    "progress": "In progress",
-    "review": "In review",
-    "done": "Done",
     "backlog": "Backlog",
+    "todo": "To do",
+    "progress": "In progress",
+    "review": "Waiting for review",
+    "reviewing": "Being reviewed",
+    "changes": "Changes requested",
+    "ready": "Ready to merge",
     "waiting": "Waiting on owner",
+    "blocked": "Blocked",
+    "done": "Done",
 }
+#: The tiers whose ready pull requests wait on the owner rather than in Ready to merge.
+OWNER_MERGES = ("risky",)
+HEALTH = "Health"
+STALLED = "Stalled"
 
 _WORK = """
       ... on PullRequest {
-        __typename id number state isDraft repository { nameWithOwner } author { login }
-        reviewRequests(first: 1) { totalCount } reviews(first: 1) { totalCount }
+        __typename id number state isDraft headRefOid updatedAt repository { nameWithOwner }
+        author { login } commits(last: 1) { nodes { commit { oid statusCheckRollup { state } } } }
       }
       ... on Issue {
-        __typename id state repository { nameWithOwner } author { login }
+        __typename id state updatedAt repository { nameWithOwner } author { login }
         labels(first: 1) { totalCount } comments(last: 50) { nodes { author { login } } }
-        assignees(first: 1) { totalCount }
+        assignees(first: 1) { totalCount } closedByPullRequestsReferences(first: 1) { totalCount }
       }"""
 
 READ_BOARD = (
@@ -70,13 +79,16 @@ READ_BOARD = (
   user(login: $owner) {
     projectV2(number: $number) {
       id
-      field(name: "Status") { ... on ProjectV2SingleSelectField { id options { id name } } }
+      status: field(name: "Status") { ... on ProjectV2SingleSelectField { id options { id name } } }
+      health: field(name: "Health") { ... on ProjectV2SingleSelectField { id options { id name } } }
       repositories(first: 100) { nodes { nameWithOwner } }
       items(first: 100, after: $after) {
         pageInfo { hasNextPage endCursor }
         nodes {
           id
-          fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { optionId } }
+          status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { optionId } }
+          health: fieldValueByName(name: "Health") { ... on ProjectV2ItemFieldSingleSelectValue { optionId } }
+          reason: fieldValueByName(name: "Blocked by") { ... on ProjectV2ItemFieldTextValue { text } }
           content {"""
     + _WORK
     + """
@@ -110,6 +122,12 @@ SET = """mutation($project: ID!, $item: ID!, $field: ID!, $option: String!) {
   ) { projectV2Item { id } }
 }"""
 
+CLEAR = """mutation($project: ID!, $item: ID!, $field: ID!) {
+  clearProjectV2ItemFieldValue(input: {projectId: $project, itemId: $item, fieldId: $field}) {
+    projectV2Item { id }
+  }
+}"""
+
 Client = Callable[[str, dict[str, Any]], dict[str, Any]]
 
 
@@ -127,6 +145,15 @@ class Settings:
     number: int
     project_id: str
     names: dict[str, str] = field(default_factory=lambda: dict(NAMES))
+    owner_merges: tuple[str, ...] = OWNER_MERGES
+
+
+@dataclass
+class Item:
+    id: str
+    status: str | None  # option id
+    health: str | None  # option id
+    reason: str  # the "Blocked by" text
 
 
 @dataclass
@@ -135,9 +162,11 @@ class Board:
     field: str
     options: dict[str, str]  # column name -> option id
     repos: set[str]
-    items: dict[str, tuple[str, str | None]]  # content id -> (item id, option id)
+    items: dict[str, Item]  # content id -> the board's item for it
     work: list[dict[str, Any]]
     remaining: int
+    health: str | None = None  # the Health field's id, when the board has one
+    stalled: str | None = None  # its Stalled option's id
 
 
 def settings_from(path: Path) -> Settings | None:
@@ -151,7 +180,8 @@ def settings_from(path: Path) -> Settings | None:
     names = dict(NAMES)
     if table.get("waiting"):
         names["waiting"] = str(table["waiting"])
-    return Settings(str(table["owner"]), int(table["board"]), str(table["project_id"]), names)
+    merges = tuple(str(t) for t in table.get("owner_merges", OWNER_MERGES))
+    return Settings(str(table["owner"]), int(table["board"]), str(table["project_id"]), names, merges)
 
 
 def gh_graphql(query: str, variables: dict[str, Any], run: Callable[..., Any] = subprocess.run) -> dict[str, Any]:
@@ -178,8 +208,26 @@ def _pages(client: Client, query: str, variables: dict[str, Any], where: Callabl
         after = part["pageInfo"]["endCursor"]
 
 
+def _new_board(data: dict[str, Any]) -> Board:
+    project = data["user"]["projectV2"]
+    status = project["status"]
+    health = project.get("health") or {}
+    stalled = next((o["id"] for o in health.get("options") or () if o["name"] == STALLED), None)
+    return Board(
+        project=project["id"],
+        field=status["id"],
+        options={o["name"]: o["id"] for o in status["options"]},
+        repos={r["nameWithOwner"] for r in project["repositories"]["nodes"]},
+        items={},
+        work=[],
+        remaining=int(data["rateLimit"]["remaining"]),
+        health=health.get("id") if stalled else None,
+        stalled=stalled,
+    )
+
+
 def read_board(client: Client, settings: Settings) -> Board:
-    """The board: its id, its Status field and options, its repositories and its items."""
+    """The board: its id, its Status and Health fields and options, its repositories and items."""
     board: Board | None = None
     for data, items in _pages(
         client,
@@ -187,23 +235,14 @@ def read_board(client: Client, settings: Settings) -> Board:
         {"owner": settings.owner, "number": settings.number},
         lambda d: d["user"]["projectV2"]["items"],
     ):
-        project = data["user"]["projectV2"]
-        if board is None:
-            status = project["field"]
-            board = Board(
-                project=project["id"],
-                field=status["id"],
-                options={o["name"]: o["id"] for o in status["options"]},
-                repos={r["nameWithOwner"] for r in project["repositories"]["nodes"]},
-                items={},
-                work=[],
-                remaining=int(data["rateLimit"]["remaining"]),
-            )
+        board = board or _new_board(data)
         for node in items["nodes"]:
             content = node.get("content") or {}
             if content.get("id") and content.get("repository"):
-                value = node.get("fieldValueByName") or {}
-                board.items[content["id"]] = (node["id"], value.get("optionId"))
+                status = (node.get("status") or {}).get("optionId")
+                health = (node.get("health") or {}).get("optionId")
+                reason = str((node.get("reason") or {}).get("text") or "")
+                board.items[content["id"]] = Item(node["id"], status, health, reason)
                 board.work.append(content)
     assert board is not None
     return board
@@ -218,49 +257,6 @@ def read_open(client: Client, settings: Settings) -> list[dict[str, Any]]:
     return found
 
 
-#: A reviewer's verdict file, and nothing looser: <repo>-<number>.<reviewer>.json.
-VERDICT = re.compile(r"^(?P<repo>[A-Za-z0-9._-]+)-(?P<number>[0-9]+)\.(?P<reviewer>[a-z0-9-]+)\.json$")
-
-
-def stamped(reviews: Path, repos: AbstractSet[str]) -> set[tuple[str, int]]:
-    """The pull requests a reviewer has written a verdict for, by repository name and number.
-
-    Only the name counts; no file is read. A name that is not strictly a verdict file's, a
-    repository not on the board, and anything but a plain file (a link, say) are ignored.
-    """
-    found = set()
-    for path in reviews.iterdir() if reviews.is_dir() else ():
-        match = VERDICT.match(path.name)
-        if match and match["repo"] in repos and stat.S_ISREG(path.lstat().st_mode):
-            found.add((match["repo"], int(match["number"])))
-    return found
-
-
-def column(work: dict[str, Any], owner: str, verdicts: AbstractSet[tuple[str, int]] = frozenset()) -> str:
-    """Which kind of column a piece of work belongs in, from its own facts."""
-    if work["state"] != "OPEN":
-        return "done"
-    if work["__typename"] == "PullRequest":
-        return _pr_column(work, verdicts)
-    # RULE: an open issue someone has taken is in progress
-    if (work.get("assignees") or {}).get("totalCount"):
-        return "progress"
-    author = (work.get("author") or {}).get("login")
-    answered = any((c.get("author") or {}).get("login") == owner for c in work["comments"]["nodes"])
-    if author != owner and not work["labels"]["totalCount"] and not answered:
-        return "waiting"
-    return "backlog"
-
-
-def _pr_column(work: dict[str, Any], verdicts: AbstractSet[tuple[str, int]]) -> str:
-    """An open pull request: in review once a review was asked for, given or stamped."""
-    if work["isDraft"]:
-        return "progress"
-    repo = work["repository"]["nameWithOwner"].split("/", 1)[-1]
-    asked = work["reviewRequests"]["totalCount"] or work["reviews"]["totalCount"]
-    return "review" if asked or (repo, work.get("number")) in verdicts else "progress"
-
-
 @dataclass(frozen=True)
 class Write:
     query: str
@@ -268,40 +264,78 @@ class Write:
     said: str
 
 
+def column(work: dict[str, Any], now: str | None, settings: Settings, stamps: Sequence[verdicts.Verdict] = ()) -> str:
+    """Which kind of column a piece of work belongs in, from its own facts and where it is now."""
+    if work["__typename"] == "PullRequest":
+        return flow.pr_column(work, now, stamps, settings.owner_merges)
+    return flow.issue_column(work, now, settings.owner)
+
+
+def _health(board: Board, item: Item, stalled: bool, where: str) -> Write | None:
+    """The Health write an item needs, or None when it is already right."""
+    if board.health is None:
+        return None
+    flagged = item.health == board.stalled
+    # RULE: an item already flagged stalled gets no write
+    if stalled == flagged:
+        return None
+    if stalled:
+        return Write(SET, {"item": item.id, "field": board.health, "option": board.stalled}, f"flag {where} Stalled")
+    return Write(CLEAR, {"item": item.id, "field": board.health}, f"clear Stalled on {where}")
+
+
+def _item_writes(
+    board: Board,
+    settings: Settings,
+    kinds: dict[str, str],
+    content: str,
+    work: dict[str, Any],
+    stamps: Sequence[verdicts.Verdict],
+    clock: float,
+) -> list[Write]:
+    """The writes one piece of work needs: added with its Status, or its Status and Health set."""
+    held = board.items.get(content)
+    kind = column(work, kinds.get(held.status) if held and held.status else None, settings, stamps)
+    name = settings.names[kind]
+    option = board.options.get(name)
+    if option is None:
+        return []  # the board has no such column; nothing to set
+    where = f"{work['repository']['nameWithOwner']} {work['__typename']} {content}"
+    if held is None:
+        return (
+            [Write(ADD, {"content": content, "option": option}, f"add {where} as {name}")]
+            if work["state"] == "OPEN"
+            else []
+        )
+    writes = []
+    # RULE: an unchanged status makes no write
+    if held.status != option:
+        writes.append(Write(SET, {"item": held.id, "field": board.field, "option": option}, f"set {where} to {name}"))
+    health = _health(board, held, flow.stalled(work, kind, stamps, held.reason, clock), where)
+    return writes + ([health] if health else [])
+
+
 def plan(
     board: Board,
     open_work: Iterable[dict[str, Any]],
     settings: Settings,
-    verdicts: AbstractSet[tuple[str, int]] = frozenset(),
+    reading: verdicts.Reading | None = None,
+    clock: float | None = None,
 ) -> list[Write]:
     """The writes that bring the board in step: only what differs."""
+    files = reading.files if reading else {}
+    clock = time.time() if clock is None else clock
     seen: dict[str, dict[str, Any]] = {}
     for work in [*board.work, *open_work]:
         # RULE: an item from a repository outside the board is never touched
         if work["repository"]["nameWithOwner"] in board.repos:
             seen[work["id"]] = work
+    kinds = {board.options[name]: kind for kind, name in settings.names.items() if name in board.options}
     writes: list[Write] = []
-    waiting = board.options.get(settings.names["waiting"])
-    progress = board.options.get(settings.names["progress"])
     for content, work in seen.items():
-        kind = column(work, settings.owner, verdicts)
-        name = settings.names[kind]
-        option = board.options.get(name)
-        if option is None:
-            continue  # the board has no such column; nothing to set
-        where = f"{work['repository']['nameWithOwner']} {work['__typename']} {content}"
-        if content in board.items:
-            item, now = board.items[content]
-            if now == option:
-                continue
-            # An open issue the owner placed by hand stays, unless it leaves the waiting column,
-            # or sits in In progress with nobody assigned any more.
-            # RULE: a dropped issue leaves in progress
-            if work["__typename"] == "Issue" and kind == "backlog" and now not in (None, waiting, progress):
-                continue
-            writes.append(Write(SET, {"item": item, "option": option}, f"set {where} to {name}"))
-        elif work["state"] == "OPEN":
-            writes.append(Write(ADD, {"content": content, "option": option}, f"add {where} as {name}"))
+        repo = str(work["repository"]["nameWithOwner"]).rpartition("/")[2]
+        stamps = files.get((repo, int(work.get("number") or 0)), [])
+        writes += _item_writes(board, settings, kinds, content, work, stamps, clock)
     return writes
 
 
@@ -311,28 +345,34 @@ class Guard:
     def __init__(self, board: Board, contents: set[str]) -> None:
         self.board = board
         self.contents = contents
-        self.items = {item for item, _ in board.items.values()}
+        self.items = {item.id for item in board.items.values()}
 
     def write(self, client: Client, query: str, variables: dict[str, Any]) -> dict[str, Any]:
-        # RULE: the board sync sends only its two fixed writes
-        if query not in (ADD, SET):
-            raise Refused("not one of the sync's two writes")
+        # RULE: the board sync sends only its three fixed writes
+        if query not in (ADD, SET, CLEAR):
+            raise Refused("not one of the sync's three writes")
         # RULE: the board sync writes only to the configured board
         if variables.get("project") != self.board.project:
             raise Refused("not the board the settings name")
         # RULE: the board sync writes only work it read from the board's own repositories
         if query == ADD and variables.get("content") not in self.contents:
             raise Refused("work this run did not read from the board's repositories")
-        if query == SET:
-            # RULE: the board sync sets only the status field to one of its options
-            if variables.get("field") != self.board.field or variables.get("option") not in self.board.options.values():
-                raise Refused("not the Status field, or not one of its options")
-            if variables.get("item") not in self.items:
-                raise Refused("an item this run did not read or add")
+        if query != ADD:
+            self._field(query, variables)
         answer = client(query, variables)
         if query == ADD:
             self.items.add(answer["addProjectV2ItemById"]["item"]["id"])
         return answer
+
+    def _field(self, query: str, variables: dict[str, Any]) -> None:
+        board, chosen, option = self.board, variables.get("field"), variables.get("option")
+        status = chosen == board.field and option in board.options.values()
+        health = board.health is not None and chosen == board.health
+        # RULE: the board sync sets only the status field to one of its options or health to stalled
+        if not (status or (health and (query == CLEAR or option == board.stalled))) or (query == CLEAR and not health):
+            raise Refused("not Status with one of its options, nor Health's Stalled")
+        if variables.get("item") not in self.items:
+            raise Refused("an item this run did not read or add")
 
 
 def _low(state: Path, low: bool) -> bool:
@@ -348,6 +388,17 @@ def _low(state: Path, low: bool) -> bool:
     return low and not was
 
 
+def _send(client: Client, guard: Guard, board: Board, w: Write) -> None:
+    if w.query == ADD:
+        added = guard.write(client, ADD, {"project": board.project, "content": w.variables["content"]})
+        item = added["addProjectV2ItemById"]["item"]["id"]
+        guard.write(
+            client, SET, {"project": board.project, "item": item, "field": board.field, "option": w.variables["option"]}
+        )
+        return
+    guard.write(client, w.query, {"project": board.project, **w.variables})
+
+
 def sync(client: Client, settings: Settings, state: Path, say: Callable[[str], None] = print, dry: bool = False) -> int:
     """One run: read, compare, and send only what changed. Never fails on a low rate limit."""
     board = read_board(client, settings)
@@ -361,20 +412,15 @@ def sync(client: Client, settings: Settings, state: Path, say: Callable[[str], N
         return 0
     _low(state, False)
     open_work = read_open(client, settings)
-    short = {repo.split("/", 1)[-1] for repo in board.repos}
-    writes = plan(board, open_work, settings, stamped(state / "reviews", short))
+    short = {repo.rpartition("/")[2] for repo in board.repos}
+    reading = verdicts.read(state / "reviews", settings.owner, short)
+    if reading.ignored:
+        say(f"ignored {reading.ignored} verdict file(s) that were not a reviewer's plain, well-formed verdict")
+    writes = plan(board, open_work, settings, reading)
     read = [*board.work, *open_work]
     guard = Guard(board, {w["id"] for w in read if w["repository"]["nameWithOwner"] in board.repos})
     for w in writes:
         say(("would " if dry else "") + w.said)
-        if dry:
-            continue
-        if w.query == ADD:
-            added = guard.write(client, ADD, {"project": board.project, "content": w.variables["content"]})
-            item = added["addProjectV2ItemById"]["item"]["id"]
-        else:
-            item = w.variables["item"]
-        guard.write(
-            client, SET, {"project": board.project, "item": item, "field": board.field, "option": w.variables["option"]}
-        )
+        if not dry:
+            _send(client, guard, board, w)
     return 0

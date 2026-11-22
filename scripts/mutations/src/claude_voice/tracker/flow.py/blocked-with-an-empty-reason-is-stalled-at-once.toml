@@ -1,0 +1,5 @@
+[[rule]]
+name = "blocked with an empty reason is stalled at once"
+file = "src/claude_voice/tracker/flow.py"
+find = '^\s*return not reason\.strip\(\)$'
+replace = 'return False'

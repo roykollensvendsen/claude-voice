@@ -1,0 +1,5 @@
+[[rule]]
+name = "a pull request in blocked stays there"
+file = "src/claude_voice/tracker/flow.py"
+find = '^\s*if now == "blocked":$'
+replace = 'if False:'

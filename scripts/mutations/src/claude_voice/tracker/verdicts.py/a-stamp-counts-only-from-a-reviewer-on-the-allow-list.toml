@@ -1,0 +1,5 @@
+[[rule]]
+name = "a stamp counts only from a reviewer on the allow list"
+file = "src/claude_voice/tracker/verdicts.py"
+find = '^\s*if match\["suffix"\] not in REVIEWERS\.get\(by, \(\)\):$'
+replace = 'if not by:'

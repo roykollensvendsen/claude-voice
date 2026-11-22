@@ -1,0 +1,5 @@
+[[rule]]
+name = "an item already flagged stalled gets no write"
+file = "src/claude_voice/tracker/github.py"
+find = '^\s*if stalled == flagged:$'
+replace = 'if False:'

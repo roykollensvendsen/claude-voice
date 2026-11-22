@@ -86,8 +86,26 @@ ends with why it exists.
 - **Take an item the moment you start on it.** Assign its issue at once:
   `gh issue edit N --repo R --add-assignee @me`. If there is no issue, open a
   draft PR with your first commit. Unassign if you drop it. The board sync
-  puts an assigned issue and a draft PR under In progress.
+  puts an assigned issue and a draft PR under In progress, and a dropped
+  issue back under To do.
   Why: otherwise the board's In progress column stays empty while work runs.
+- **Keep the board true by doing the step, not by moving cards.** The board
+  sync owns every column but Backlog, To do and Blocked:
+  - a builder marks its PR ready when done, which moves it to Waiting for review;
+  - a reviewer claims a review with `claude-voice tracker claim <its verdict
+    file> --by <name> --head <full sha>`, which moves it to Being reviewed,
+    and its verdict later moves it on;
+  - a stuck role moves the item to Blocked and fills in "Blocked by" in the
+    same step: what is missing and from whom;
+  - the manager moves items between Backlog and To do, and parks a decision
+    with no PR in the waiting column;
+  - the manager's stall check reads the Stalled flag as a hint, and keeps its
+    own finding.
+
+  Nobody merges because of a column: the merge checks the verdicts and the
+  checks at the full head again.
+  Why: a card moved by hand into a column the sync owns is put back within
+  five minutes, and a column is a label, not permission.
 - **Look in the tracker before creating anything there.** Search for the same
   task first. Write every script so a second run changes nothing.
   Why: a script run twice, or two sessions acting at once, fills the tracker

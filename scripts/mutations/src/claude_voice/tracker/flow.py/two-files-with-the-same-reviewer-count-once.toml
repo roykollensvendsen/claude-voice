@@ -1,0 +1,5 @@
+[[rule]]
+name = "two files with the same reviewer count once"
+file = "src/claude_voice/tracker/flow.py"
+find = '^\s*approved = \{v\.by for v in head if v\.verdict == "approve"\}$'
+replace = 'approved = [v.by for v in head if v.verdict == "approve"]'

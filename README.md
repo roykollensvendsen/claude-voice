@@ -358,20 +358,36 @@ node id, which `gh project view <number> --owner <you> --format json` shows as `
 owner = "your-login"
 board = 7
 project_id = "PVT_..."
-waiting = "Waiting on you"  # the column for an outside issue nobody has looked at yet
+waiting = "Waiting on you"  # the column for what waits on you
+owner_merges = ["risky"]  # the tiers whose ready pull requests wait on you to merge
 ```
 
-The board needs a Status field with the columns Backlog, In progress, In review, Done, and
-the waiting column. A run reads the board and the open work in two queries, and sends only
-what changed. It writes no text: it adds existing pull requests and issues and sets their
-Status, on that board only.
+The board needs a Status field with the columns Backlog, To do, In progress, Waiting for
+review, Being reviewed, Changes requested, Ready to merge, the waiting column, Blocked and
+Done. It may have a Health field with one option, Stalled, and a "Blocked by" text field. A
+run reads the board and the open work in two queries, and sends only what changed. It writes
+no text: it adds existing pull requests and issues and sets their Status and Health, on that
+board only. A column the board does not have is left alone.
 
-- A draft pull request, or one nobody has been asked to review, goes in **In progress**.
-- A pull request with a review asked for or given goes in **In review**.
+- A draft pull request goes in **In progress**.
+- A ready pull request is placed by the reviewers' verdict files at its current head and by
+  its checks. It moves through **Waiting for review**, **Being reviewed** and **Changes
+  requested** to **Ready to merge**. A risky one goes in the waiting column instead, since
+  you merge it. Nobody merges because of a column: the merge checks the verdicts again.
+- An open issue with someone assigned goes in **In progress**. Unassigned again, it goes back
+  to **To do**.
+- An outside issue you have not labelled or answered yet goes in the waiting column.
+- **Backlog**, **To do** and **Blocked** are moved by hand, and stay. So does your own issue
+  moved to the waiting column.
 - Merged or closed work goes in **Done**.
-- An open issue goes in **Backlog**. If someone else opened it and you have not labelled or
-  answered it yet, it goes in the waiting column instead.
-- An open issue you moved by hand stays where you put it.
+- Work that has gone quiet is flagged **Stalled** in Health. So is Blocked work with no reason.
+
+A reviewer starting a review claims it in its own verdict file, keeping the file's notes:
+
+```console
+$ claude-voice tracker claim demo-12.quality.json --by nobody --head 0000000000000000000000000000000000000000
+claude-voice: Refused: give your own verdict file's name, --by with your reviewer name, and --head with the full 40-character sha.
+```
 
 When fewer than 500 GraphQL points are left, a run does nothing, and the journal
 (`journalctl --user -u claude-voice-board`) says so once.

@@ -1,0 +1,5 @@
+[[rule]]
+name = "the board sync sends only its three fixed writes"
+file = "src/claude_voice/tracker/github.py"
+find = '^\s*if query not in \(ADD, SET, CLEAR\):$'
+replace = 'if False:'
