@@ -32,12 +32,7 @@ WAITING = "Wait for the owner to say what they want changed."
 def load(user_file: Path | None, defaults: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
     """Every role by name: the built-in ones, with the user's file laid over them. A role's
     empty `folder` or `upstream` is taken from `defaults` (the repository settings)."""
-    with BUILT_IN.open("rb") as f:
-        found: dict[str, dict[str, Any]] = {k: dict(v) for k, v in tomllib.load(f).get("roles", {}).items()}
-    for name, role in found.items():
-        # RULE: a roles settings file is honoured only from the owners own roles file
-        if role.pop("settings", None) is not None:
-            logger.warning("the built-in role %s names a settings file; it is ignored", name)
+    found = _built_in()
     path = user_file.expanduser() if user_file else None
     if path and path.is_file():
         with path.open("rb") as f:
@@ -50,6 +45,17 @@ def load(user_file: Path | None, defaults: dict[str, Any] | None = None) -> dict
         for key, value in fill.items():
             if not role.get(key):
                 role[key] = str(value)
+    return found
+
+
+def _built_in() -> dict[str, dict[str, Any]]:
+    """The roles shipped with the bridge, without any settings file they name."""
+    with BUILT_IN.open("rb") as f:
+        found: dict[str, dict[str, Any]] = {k: dict(v) for k, v in tomllib.load(f).get("roles", {}).items()}
+    for name, role in found.items():
+        # RULE: a roles settings file is honoured only from the owners own roles file
+        if role.pop("settings", None) is not None:
+            logger.warning("the built-in role %s names a settings file; it is ignored", name)
     return found
 
 
