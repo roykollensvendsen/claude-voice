@@ -19,6 +19,23 @@ paths = [
     "committed.toml",
     "setup.cfg",
     "tox.ini",
+    # The test, lint, type and coverage settings, wherever they live: a conftest can deselect the
+    # whole suite, and a settings file can switch a check off.
+    "**/conftest.py",
+    "**/pytest.ini",
+    "**/ruff.toml",
+    "**/.ruff.toml",
+    "**/mypy.ini",
+    "**/.coveragerc",
+    "**/quality.json",
+    # What runs before any of it: Python's own start-up hooks, git's hooks and attributes, and
+    # the repository's Claude Code hooks, permissions and skills.
+    "**/sitecustomize.py",
+    "**/usercustomize.py",
+    "**/.githooks/**",
+    "**/.pre-commit-config.yaml",
+    "**/.gitattributes",
+    ".claude/**",
     # Every script a workflow runs, and the rows that prove the rules hold, wherever they live.
     "scripts/**",
     "**/scripts/mutations/**",
