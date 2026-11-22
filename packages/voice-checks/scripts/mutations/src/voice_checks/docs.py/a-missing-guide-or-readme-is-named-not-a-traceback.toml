@@ -1,0 +1,5 @@
+[[rule]]
+name = "a missing guide or readme is named not a traceback"
+file = "src/voice_checks/docs.py"
+find = 'return \[f"\{name\} is missing" for name in \(SETUP, README\) if not \(root / name\)\.is_file\(\)\]'
+replace = 'return []'

@@ -103,12 +103,20 @@ def steps(guide: str) -> list[Step]:
     title: str | None = None
     body: list[str] = []
     owner_section = False
+    fenced = False
 
     def close() -> None:
         if number is not None and title is not None:
             found.append(Step(number, title, tuple(_trimmed(body)), owner_section))
 
     for line in guide.splitlines():
+        if line.startswith("```"):
+            fenced = not fenced
+        # RULE: a heading inside a command block is not a step
+        if fenced or line.startswith("```"):
+            if number is not None:
+                body.append(line)
+            continue
         heading = STEP.match(line)
         if heading or line.startswith(("## ", "# ")):
             close()
@@ -172,7 +180,10 @@ def safe_blocks(guide: str) -> list[tuple[str, str]]:
 
 
 def isolated_env(folder: pathlib.Path) -> dict[str, str]:
-    """The environment a safe step runs in: every folder it could write lies in `folder`."""
+    """The environment a safe step runs in: every folder it could write lies in `folder`.
+
+    One folder is shared on purpose: uv's cache, so a step installs from it with no network.
+    """
     env = {k: os.environ[k] for k in PASSED_ON if k in os.environ}
     env["HOME"] = str(folder / "home")
     pathlib.Path(env["HOME"]).mkdir()
@@ -194,7 +205,8 @@ def _guide_problems(guide: str) -> list[str]:
     if f"\n{OWNER_HEADING}\n" not in f"\n{guide}":
         return [*problems, f"{SETUP} has no '{OWNER_HEADING}' heading"]
     under = [s for s in found if s.in_owner_section]
-    owner_part = guide.split(f"{OWNER_HEADING}\n", 1)[1].split("\n## ", 1)[0]
+    # RULE: the owner part starts at the owner heading itself
+    owner_part = f"\n{guide}".split(f"\n{OWNER_HEADING}\n", 1)[1].split("\n## ", 1)[0]
     # RULE: a guide whose owner part says none has nothing to say
     if not under and owner_part.strip() != "None.":
         problems.append(f"'{OWNER_HEADING}' holds no step and does not say None.")
@@ -208,8 +220,15 @@ def _guide_problems(guide: str) -> list[str]:
     return problems
 
 
+def _missing(root: pathlib.Path) -> list[str]:
+    # RULE: a missing guide or readme is named not a traceback
+    return [f"{name} is missing" for name in (SETUP, README) if not (root / name).is_file()]
+
+
 def problems(root: pathlib.Path) -> list[str]:
     """Everything wrong with a plugin's guide and the README block made from it."""
+    if gone := _missing(root):
+        return gone
     guide = (root / SETUP).read_text(encoding="utf-8")
     readme = (root / README).read_text(encoding="utf-8")
     found = _guide_problems(guide)
@@ -224,7 +243,9 @@ def problems(root: pathlib.Path) -> list[str]:
 
 
 def write(root: pathlib.Path) -> None:
-    """Write the README's block from the guide."""
+    """Write the README's block from the guide, with the same line ends on every system."""
+    if gone := _missing(root):
+        raise DocsError("; ".join(gone))
     readme = root / README
     guide = (root / SETUP).read_text(encoding="utf-8")
-    readme.write_text(updated(readme.read_text(encoding="utf-8"), guide), encoding="utf-8")
+    readme.write_text(updated(readme.read_text(encoding="utf-8"), guide), encoding="utf-8", newline="\n")

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a heading inside a command block is not a step"
+file = "src/voice_checks/docs.py"
+find = 'if fenced or line\.startswith\("```"\):'
+replace = 'if False:'

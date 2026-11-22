@@ -136,6 +136,37 @@ def test_a_safe_step_runs_with_home_and_its_folders_in_its_own_folder(tmp_path, 
     assert set(env) <= {*docs.PASSED_ON, *moved}, "a safe step is given only the variables it needs"
     assert "GH_TOKEN" not in env
     assert "SOME_API_KEY" not in env
-    for name in ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "TMPDIR"):
+    for name in moved:
         assert pathlib.Path(env[name]).is_relative_to(tmp_path), name
         assert pathlib.Path(env[name]).is_dir(), name
+
+
+def test_the_owner_part_starts_at_the_owner_heading_itself(tmp_path):
+    """A deeper heading with the same words earlier in the guide does not start the owner part."""
+    empty_owner = GUIDE.split("### A.", maxsplit=1)[0]
+    heading = "## Steps only the owner can do\n"
+    guide = empty_owner.replace(heading, f"#{heading}\nNone.\n\n{heading}")
+    found = docs.problems(_plugin(tmp_path, guide))
+    assert any("holds no step and does not say None." in line for line in found), found
+
+
+def test_a_heading_inside_a_command_block_is_not_a_step():
+    guide = GUIDE.replace("echo installed\n", "echo installed\n## not a heading\n### 9. not a step\n")
+    assert [s.number for s in docs.steps(guide)] == ["1", "2", "A"]
+    assert docs.safe_blocks(guide) == [("1", "echo installed\n## not a heading\n### 9. not a step")]
+
+
+@pytest.mark.parametrize("missing", ["docs/setup.md", "README.md"])
+def test_a_missing_guide_or_readme_is_named_not_a_traceback(tmp_path, capsys, missing):
+    root = _plugin(tmp_path)
+    (root / missing).unlink()
+    assert main(["docs", "--root", str(root)]) == 1
+    assert f"{missing} is missing" in capsys.readouterr().out
+    assert main(["docs", "--root", str(root), "--write"]) == 1
+
+
+def test_write_ends_each_line_the_same_on_every_system(tmp_path):
+    """Only red on Windows, where text mode would write CRLF and make the README stale on Linux."""
+    root = _plugin(tmp_path, readme="# A plugin\n\n<!-- steps:begin -->\nold\n<!-- steps:end -->\n")
+    docs.write(root)
+    assert b"\r\n" not in (root / "README.md").read_bytes()
