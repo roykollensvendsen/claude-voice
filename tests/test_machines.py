@@ -103,9 +103,11 @@ async def test_a_machine_is_approved_by_typing_its_pairing_code_and_then_its_nam
         assert out["approved"] and "laptop-host" in shown and "agent_info" in shown
         assert private(key)
         server, started = hub(laptop, folder)
-        assert [m.offered for m in started] == [["laptop-a_agent_info"]]
+        assert [m.offered for m in started] == [["laptop-a_agent_info", "laptop-a_permissions"]]
         res = await call(server, "laptop-a_agent_info")
         assert not res.is_error and res.structured_content["machine"] == "laptop-host"
+        res = await call(server, "laptop-a_permissions")
+        assert res.structured_content["say"] == "Everything laptop-a's plugins use is on."
 
 
 async def test_typing_another_name_approves_nothing(laptop, tmp_path):
