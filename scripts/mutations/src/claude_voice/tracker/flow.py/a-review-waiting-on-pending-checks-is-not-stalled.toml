@@ -1,0 +1,5 @@
+[[rule]]
+name = "a review waiting on pending checks is not stalled"
+file = "src/claude_voice/tracker/flow.py"
+find = '^\s*if kind == "reviewing" and checks\(work\) != "pending":$'
+replace = 'if kind == "reviewing":'
