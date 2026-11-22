@@ -65,8 +65,12 @@ SHELLS = frozenset({"sh", "bash", "dash", "zsh", "ksh"})
 OWN_CLONE = "own-clone"
 #: The mode for a role that brings its own settings and no guard: only branch deletes are judged.
 NO_DELETES = "no-deletes"
-#: Options of a push that delete branches on the remote.
-DELETING = frozenset({"--delete", "--prune", "--mirror"})
+#: Options of a push that delete branches on the remote, without their dashes. Git takes any
+#: start of a long option that names one option alone, so `--del` is `--delete`.
+DELETING = ("delete", "prune", "mirror")
+#: Settings that make a push delete with no delete word in it: a configured refspec or mirror,
+#: given on the command line with -c or --config-env, or set earlier in the clone.
+DELETING_SETTING = re.compile(r"remote\..+\.(push|mirror)|push\..+", re.IGNORECASE)
 ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
 #: The ways of writing a GitHub address, each leaving `owner/name` after it.
 GITHUB = re.compile(r"(?:git@github\.com:|ssh://git@github\.com/|https://github\.com/)(.+)")
@@ -150,6 +154,8 @@ class Push:
     wrapper, which the guard does not read word by word."""
 
     args: list[str]
+    #: The names of the settings given before `push` with -c or --config-env.
+    settings: tuple[str, ...] = ()
 
 
 #: How the guard reads one folder: a remote's push addresses by name, and the remote a bare
@@ -367,7 +373,7 @@ def _git_push(words: list[str], alias: Alias | None, base: str | None, seen: fro
     if not rest:
         return None
     if rest[0] == "push":
-        return Push(rest[1:])
+        return Push(rest[1:], _before_subcommand(words)[1])
     if rest[0] in GIT_COMMANDS:
         # RULE: a git subcommand that runs a command named on the line is taken as a push
         return Push([]) if _runs_a_command(rest) else None
@@ -381,13 +387,51 @@ def _git_push(words: list[str], alias: Alias | None, base: str | None, seen: fro
     return Push([]) if _pushes(line, alias, folder, seen | {name}) else None
 
 
+def _before_subcommand(rest: list[str]) -> tuple[list[str], tuple[str, ...]]:
+    """The words from git's subcommand on, and the names of the settings given before it."""
+    settings = []
+    while rest and rest[0].startswith("-"):  # options before the subcommand, such as -C dir
+        option, joined, value = rest[0].partition("=")
+        if option in ("-c", "--config-env"):
+            settings.append((value if joined else (rest[1:2] or [""])[0]).split("=", 1)[0])
+        takes_word = rest[0] in ("-C", "-c", "--config-env", "--git-dir", "--work-tree")
+        rest = rest[2:] if takes_word else rest[1:]
+    return rest, tuple(settings)
+
+
 def _deletes(push: Push) -> bool:
-    """Whether a push deletes a branch: by option, or by a refspec with nothing before its colon."""
+    """Whether a push deletes a branch: by option, by the start of one, by a setting given with
+    it, or by a refspec with nothing before its colon."""
     flags = [a for a in push.args if a.startswith("-")]
     short = "".join(f[1:] for f in flags if not f.startswith("--"))
-    if DELETING & {f.split("=", 1)[0] for f in flags} or "d" in short:
+    names = [f[2:].split("=", 1)[0] for f in flags if f.startswith("--")]
+    # RULE: any start of a deleting long option deletes
+    if any(name and full.startswith(name) for name in names for full in DELETING) or "d" in short:
+        return True
+    # RULE: a deleting setting given before push deletes
+    if any(DELETING_SETTING.fullmatch(name) for name in push.settings):
         return True
     return any(word.lstrip("+").startswith(":") for word in _positional(push.args)[1:])
+
+
+def _set_up_to_delete(
+    plain: bool, folder: str | None, push: Push, deletes_set_up: Callable[[str | None, str | None], bool] | None
+) -> bool:
+    """Whether the clone a plain push runs in has a deleting refspec or a mirror set up for its
+    remote. A push in any other shape is refused or asked on its shape alone."""
+    if not plain or deletes_set_up is None:
+        return False
+    positional = _positional(push.args)
+    # RULE: a delete set up in the clones own settings is refused
+    return deletes_set_up(folder, positional[0] if positional else None)
+
+
+def _configured_deletes(git: Callable[..., str | None], remote: str) -> bool:
+    """Whether a remote's settings make a push to it delete: a refspec with nothing before its
+    colon, or a mirror."""
+    refspecs = (git("config", "--get-all", f"remote.{remote}.push") or "").splitlines()
+    mirror = (git("config", "--bool", "--get", f"remote.{remote}.mirror") or "").strip()
+    return mirror == "true" or any(r.strip().lstrip("+").startswith(":") for r in refspecs)
 
 
 def same_repository(url: str, repository: str) -> bool:
@@ -488,20 +532,23 @@ def decide(
     in_folder: Callable[[str], Reader | None] | None = None,
     alias: Alias | None = None,
     only_deletes: bool = False,
+    deletes_set_up: Callable[[str | None, str | None], bool] | None = None,
 ) -> tuple[str, str] | None:
     """("deny" or "ask", why) for a command with a push in it, or None when it may run.
     `in_folder` reads another folder's remotes, or answers None when it cannot; `alias` reads
     what a git alias runs. With `only_deletes`, a readable push is judged only on whether it
-    deletes a branch."""
+    deletes a branch. `deletes_set_up(folder, remote)` says whether the clone's own settings
+    make a push delete."""
     pushes = _pushes(command, alias)
     if not pushes:
         return None
-    # RULE: a push that deletes a branch is refused in every mode
-    if any(_deletes(push) for push in pushes):
-        return ("deny", "This push would delete a branch, and sessions never delete branches. Ask the owner.")
     plain, folder = _shape(command)
+    # RULE: a push that deletes a branch is refused in every mode
+    if any(_deletes(push) for push in pushes) or _set_up_to_delete(plain, folder, pushes[0], deletes_set_up):
+        return ("deny", "This push would delete a branch, and sessions never delete branches. Ask the owner.")
     if only_deletes:
-        return None if plain else ("ask", f"This push is not in a plain shape the guard can judge, such as {SHAPE}.")
+        # RULE: without the guard a push the guard cannot read is refused
+        return None if plain else ("deny", f"This push is not in a plain shape the guard can judge. Run {SHAPE}.")
     # RULE: only a push in the plain shape is judged by its remotes
     if not plain:
         if own_clone:
@@ -581,9 +628,21 @@ def answer(
         path = cwd if folder is None else os.path.join(cwd, os.path.expanduser(folder))
         return _git_at(path)("config", "--get", f"alias.{name}")
 
+    def deletes_set_up(folder: str | None, remote: str | None) -> bool:
+        path = cwd if folder is None else os.path.join(cwd, os.path.expanduser(folder))
+        return _configured_deletes(_git_at(path), remote or _reader(path)[1]())
+
     remote_url, default_remote = _reader(cwd)
     verdict = decide(
-        command, upstream, own_clone, remote_url, default_remote, in_folder, alias=alias, only_deletes=only_deletes
+        command,
+        upstream,
+        own_clone,
+        remote_url,
+        default_remote,
+        in_folder,
+        alias=alias,
+        only_deletes=only_deletes,
+        deletes_set_up=deletes_set_up,
     )
     if verdict is None:
         return {}

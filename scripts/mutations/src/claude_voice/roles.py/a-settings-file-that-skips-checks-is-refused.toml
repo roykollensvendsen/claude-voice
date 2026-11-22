@@ -1,5 +1,5 @@
 [[rule]]
 name = "a settings file that skips checks is refused"
 file = "src/claude_voice/roles.py"
-find = 'if any\(mode in SKIPS\["defaultMode"\] for mode in modes\):'
-replace = 'if False:'
+find = 'if any\(mode in SKIPS for mode in modes\):'
+replace = '    if False:'

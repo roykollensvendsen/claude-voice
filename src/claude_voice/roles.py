@@ -22,8 +22,10 @@ BUILT_IN = Path(__file__).with_name("roles.toml")
 USER_FILE = Path("~/.config/claude-voice/roles.toml")
 #: The only folder a role's own settings file may live in.
 SETTINGS_DIR = Path("~/.local/state/claude-voice/roles")
-#: Settings that would let a role's session skip the checks, never accepted from a role's file.
-SKIPS = {"defaultMode": ("bypassPermissions", "acceptEdits")}
+#: Permission modes that would let a role's session skip the checks, never accepted from a role's file.
+SKIPS = ("bypassPermissions", "acceptEdits", "dontAsk")
+#: The rule lists in a settings file's permissions.
+RULE_LISTS = ("allow", "ask", "deny")
 WAITING = "Wait for the owner to say what they want changed."
 
 
@@ -99,11 +101,9 @@ def settings_for(role: dict[str, Any], name: str = "") -> str | None:
     guard = guard_settings(role)
     if not role.get("settings"):
         return guard
-    path, own = _read_settings(str(role["settings"]))
+    path, own, digest = _read_settings(str(role["settings"]), str(role.get("settings_sha256") or ""))
     # RULE: each launch logs the settings files fingerprint
-    logger.info(
-        "role %s starts with settings %s (sha256 %s)", name, path, hashlib.sha256(path.read_bytes()).hexdigest()
-    )
+    logger.info("role %s starts with settings %s (sha256 %s)", name, path, digest)
     extra = json.loads(guard) if guard else {}
     hooks = {**own.get("hooks", {})}
     for event, entries in extra.get("hooks", {}).items():
@@ -112,8 +112,9 @@ def settings_for(role: dict[str, Any], name: str = "") -> str | None:
     return json.dumps({**own, **({"hooks": hooks} if hooks else {})})
 
 
-def _read_settings(given: str) -> tuple[Path, dict[str, Any]]:
-    """The role's settings file and what it says, or LookupError naming the fix."""
+def _read_settings(given: str, pin: str) -> tuple[Path, dict[str, Any], str]:
+    """The role's settings file, what it says and its sha256, or LookupError naming the fix.
+    The bytes that are hashed against the owner's pin are the bytes that are parsed."""
     folder = SETTINGS_DIR.expanduser().resolve()
     path = Path(given).expanduser()
     if not path.is_file():
@@ -122,23 +123,42 @@ def _read_settings(given: str) -> tuple[Path, dict[str, Any]]:
     # RULE: a settings file outside the roles folder is refused
     if not real.is_relative_to(folder):
         raise LookupError(f"The role's settings file {path} is outside {folder}: move the file under {folder}.")
+    data = real.read_bytes()
+    digest = hashlib.sha256(data).hexdigest()
+    # RULE: a settings file that differs from the owners pin is refused
+    if digest != pin.strip().lower():
+        raise LookupError(
+            f"The role's settings file {path} does not match the settings_sha256 in the role's entry. "
+            f"Read the file, then set settings_sha256 to the output of `sha256sum {path}` in {USER_FILE}."
+        )
     try:
-        own = json.loads(real.read_text(encoding="utf-8"))
+        own = json.loads(data.decode("utf-8"))
     except ValueError as exc:
         raise LookupError(f"The role's settings file {path} is not JSON ({exc}).") from None
-    if not isinstance(own, dict):
-        raise LookupError(f"The role's settings file {path} must hold a JSON object.")
+    _check_kinds(own, path)
     _refuse_skips(own, path)
-    return real, own
+    return real, own, digest
+
+
+def _check_kinds(own: Any, path: Path) -> None:
+    """LookupError naming the fix when a value the merge reads is of the wrong kind."""
+    if not isinstance(own, dict):
+        raise LookupError(f"The role's settings file {path} must be a JSON object.")
+    permissions, hooks = own.get("permissions", {}), own.get("hooks", {})
+    if not isinstance(permissions, dict) or not isinstance(hooks, dict):
+        raise LookupError(f"In the role's settings file {path}, permissions and hooks must be objects.")
+    if not all(isinstance(v, list) for v in [*hooks.values(), *(permissions.get(k, []) for k in RULE_LISTS)]):
+        raise LookupError(f"In the role's settings file {path}, each hook event and rule list must be a list.")
 
 
 def _refuse_skips(own: dict[str, Any], path: Path) -> None:
     # RULE: a settings file that skips checks is refused
-    modes = [own.get("defaultMode"), (own.get("permissions") or {}).get("defaultMode")]
-    if any(mode in SKIPS["defaultMode"] for mode in modes):
+    modes = [own.get("defaultMode"), own.get("permissions", {}).get("defaultMode")]
+    if any(mode in SKIPS for mode in modes):
         raise LookupError(f"The role's settings file {path} skips the permission checks: remove defaultMode from it.")
-    if own.get("disableAllHooks"):
-        raise LookupError(f"The role's settings file {path} turns hooks off: remove disableAllHooks from it.")
+    for key in ("disableAllHooks", "skipDangerousModePermissionPrompt"):
+        if own.get(key):
+            raise LookupError(f"The role's settings file {path} turns checks off: remove {key} from it.")
 
 
 def public(name: str, role: dict[str, Any]) -> dict[str, Any]:
