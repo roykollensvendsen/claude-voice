@@ -628,6 +628,17 @@ def _approver_process(store: Store) -> tuple[str, int, str | None] | None:
     return str(held["id"]), held["pid"], held.get("started")
 
 
+def _repos(given: config.Config | None, proof: bool) -> config.Config:
+    """The settings a test hands in, or the settings file's; with no plugins on a proof bridge."""
+    repos = given or config.load(config.FILE, own_clone=roles.own_clone())
+    if proof:
+        # A proof bridge runs beside the owner's, so the plugins it lists would run twice.
+        # RULE: a proof bridge starts no plugins
+        repos = replace(repos, plugins=[])
+        log.info("a proof bridge starts no plugins")
+    return repos
+
+
 def _duty(given: approver.Duty | None, repos: config.Config, manager: SessionManager) -> approver.Duty:
     """The approver session's duty: the one given, or one on only once the owner switches it on."""
 
@@ -771,12 +782,7 @@ def build_server(
     )
     side_answer = side_answer or transcripts.shared_reader()
     host: doctor.Host = doctor_host or doctor.RealHost()
-    repos = repo_config or config.load(config.FILE, own_clone=roles.own_clone())
-    if proof:
-        # A proof bridge runs beside the owner's, so the plugins it lists would run twice.
-        # RULE: a proof bridge starts no plugins
-        repos = replace(repos, plugins=[])
-        log.info("a proof bridge starts no plugins")
+    repos = _repos(repo_config, proof)
     duty = _duty(duty, repos, manager)
     start_settings = launch.Settings(manager.store, repos.sessions)
     desktop = os.environ if desktop_env is None else desktop_env
