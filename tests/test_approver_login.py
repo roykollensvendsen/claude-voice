@@ -72,3 +72,44 @@ async def test_a_dead_approvers_token_opens_no_door(tmp_path, pane, monkeypatch)
     token = _approver_token(server, pane)
     monkeypatch.setattr(approver_token.lineage, "start_ticks", lambda pid: None)  # the pane is gone
     assert await oauth.load_access_token(token) is None
+
+
+def _free_port() -> int:
+    import socket
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+async def test_an_approver_lists_exactly_its_two_tools_over_the_real_door(tmp_path, pane):
+    """Through the bridge's own HTTP door, as a real claude reaches it (the live proof's finding)."""
+    import asyncio
+
+    import httpx2
+    from mcp.client.session import ClientSession
+    from mcp.client.streamable_http import streamable_http_client
+
+    from claude_voice.server import web_server
+
+    server, _ = _bridge(tmp_path)
+    token = _approver_token(server, pane)
+    port = _free_port()
+    web = web_server(build_app(server), "127.0.0.1", port)
+    serving = asyncio.create_task(web.serve())
+    try:
+        for _ in range(200):  # up to ten seconds for the server to listen
+            if web.started:
+                break
+            await asyncio.sleep(0.05)
+        client = httpx2.AsyncClient(headers={"Authorization": f"Bearer {token}"}, timeout=30)
+        async with client, streamable_http_client(f"http://127.0.0.1:{port}/mcp", http_client=client) as (r, w):
+            async with ClientSession(r, w) as session:
+                await session.initialize()
+                listed = await session.list_tools()
+                refused = await session.call_tool("send_task", {})
+    finally:
+        web.should_exit = True
+        await serving
+    assert sorted(t.name for t in listed.tools) == ["approver_answer", "approver_boxes"]
+    assert refused.is_error and "Not open to the approver" in refused.content[0].text
