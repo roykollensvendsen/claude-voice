@@ -1,0 +1,5 @@
+[[rule]]
+name = "the owners question reads access fresh"
+file = "src/claude_voice/machines.py"
+find = '^\s*fresh = await self\._refresh\(\)$'
+replace = 'fresh = True'

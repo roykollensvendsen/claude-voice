@@ -1,0 +1,5 @@
+[[rule]]
+name = "an unknown access value gives no warning"
+file = "src/claude_voice/access.py"
+find = '^\s*held\.plugins\[name\] = \{use: given\[use\] if given\.get\(use\) in STATES else "unknown" for use in uses\}$'
+replace = 'held.plugins[name] = {use: given.get(use) for use in uses}'

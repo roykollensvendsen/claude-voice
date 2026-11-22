@@ -1,0 +1,5 @@
+[[rule]]
+name = "a call to a tool held as off reads access again"
+file = "src/claude_voice/machines.py"
+find = '^\s*fresh = await self\._refresh\(\) if self\.access\.off\(tool\) else True$'
+replace = 'fresh = True'

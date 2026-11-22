@@ -96,6 +96,20 @@ approved. If a call fails, the voice says why:
 - **"is not the machine you approved"**: another machine is at that address.
   Check the address in the settings against `tailscale status`.
 
+## What it allows now
+
+A machine may report, per plugin, whether each private thing it uses is allowed
+now, such as contacts on a phone. The hub reads that on every connection. When a
+tool's plugin has something off, its answer carries a `warning` with the fix:
+"turn on contacts for claude-voice in the phone's settings". The call is still
+made, and the tool's own answer decides. After such a call the hub reads again,
+since a permission given back may show late. A warning from an older read starts
+with "Last I heard".
+
+`<machine>_permissions` answers "which permissions does it have?", read fresh
+from the machine. An access list naming something the plugin does not use is
+ignored, and the answer says so.
+
 ## Answering questions from its sessions
 
 The voice can say yes or no only to sessions the agent's own bridge runs, the

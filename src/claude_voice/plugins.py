@@ -424,7 +424,7 @@ class Plugin:
         return answer
 
 
-def _as_object(text: str) -> dict[str, Any]:
+def as_object(text: str) -> dict[str, Any]:
     """A plugin's text answer as an object: its JSON when it is an object, else the text."""
     with contextlib.suppress(ValueError):
         parsed = json.loads(text)
@@ -511,7 +511,7 @@ def offer(server: Any, plugin: Plugin, listing: dict[str, dict[str, Any]]) -> li
             text = "\n".join(getattr(c, "text", "") for c in answer.content or [] if getattr(c, "text", None))
             if answer.is_error:
                 raise ToolError(text or f"{plugin.spec.name} refused")
-            result = answer.structured_content if answer.structured_content is not None else _as_object(text)
+            result = answer.structured_content if answer.structured_content is not None else as_object(text)
             result = follow_up(plugin.shown(result), plugin, listing, hop)
             return self.fn_metadata.convert_result(result) if convert_result else result
 

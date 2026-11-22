@@ -1,0 +1,5 @@
+[[rule]]
+name = "an access key outside uses refuses the entry"
+file = "src/claude_voice/access.py"
+find = '^\s*if extra:$'
+replace = 'if False:'
