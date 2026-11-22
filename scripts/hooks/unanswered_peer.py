@@ -21,6 +21,10 @@ A message that asks for nothing holds nothing back:
 Couriers named claude-voice-msg-* (and the older tmp-*) deliver one message for
 the claude-voice bridge and exit at once, so they cannot receive an answer. The
 answer to them belongs in the session's own reply, which the bridge reads.
+
+A message from the voice is answered the same way, in the turn's own reply text:
+a message carrying the bridge's "read by the voice" line, whatever the relay is
+called. A SendMessage could reach a relay session that no longer listens.
 """
 
 from __future__ import annotations
@@ -38,6 +42,8 @@ SESSIONS_DIR = pathlib.Path("~/.claude/sessions").expanduser()
 ENV_FILE = pathlib.Path("~/.config/claude-voice/env").expanduser()
 SOCKET_PID = re.compile(r"/(\d+)\.sock$")
 COURIERS = ("claude-voice-msg-", "tmp-")
+DEFAULT_COURIER = "Owner via claude-voice"  # the bridge's COURIER_NAME, pinned by a test
+VOICE_LINE = "Your reply is read by the voice."  # the start of the bridge's READ_BY_VOICE, pinned by a test
 MESSAGE = re.compile(
     r'<cross-session-message from="(?P<address>[^"]*)" from-name="(?P<name>[^"]*)"[^>]*>'
     r"\n?(?P<text>.*?)</cross-session-message>",
@@ -86,18 +92,19 @@ def _replies(entry: dict[str, Any]) -> list[str]:
     ]
 
 
-def _courier_name() -> str | None:
-    """The sender name the bridge gives its courier, from its settings, if any."""
+def _courier_name() -> str:
+    """The sender name the bridge gives its courier: from its settings, else the bridge's default."""
     name = os.environ.get("CLAUDE_VOICE_COURIER_NAME")
     if name:
         return name.strip()
     try:
         for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
             if line.startswith("CLAUDE_VOICE_COURIER_NAME="):
-                return line.split("=", 1)[1].strip() or None
+                return line.split("=", 1)[1].strip() or DEFAULT_COURIER
     except OSError:
         pass
-    return None
+    # RULE: the courier's default name is known when none is configured
+    return DEFAULT_COURIER
 
 
 def _is_courier(name: str, address: str) -> bool:
@@ -118,6 +125,12 @@ def _is_courier(name: str, address: str) -> bool:
     return pathlib.Path(str(cwd)).name.startswith(COURIERS)
 
 
+def _from_the_voice(message: dict[str, str]) -> bool:
+    """Whether the voice sent it, so the turn's own reply text is its answer."""
+    # RULE: a message from the voice is answered by the turn's own reply
+    return VOICE_LINE in message["text"]
+
+
 def unanswered(entries: list[dict[str, Any]]) -> list[dict[str, str]]:
     """Peer messages with no SendMessage to their sender after them, oldest first."""
     pending: dict[str, dict[str, str]] = {}
@@ -128,7 +141,11 @@ def unanswered(entries: list[dict[str, Any]]) -> list[dict[str, str]]:
         for text in _texts(entry):
             for match in MESSAGE.finditer(text):
                 message = {k: match.group(k).strip() for k in ("address", "name", "text")}
-                if _asks_nothing(message["text"]) or _is_courier(message["name"], message["address"]):
+                if (
+                    _asks_nothing(message["text"])
+                    or _is_courier(message["name"], message["address"])
+                    or _from_the_voice(message)
+                ):
                     continue
                 key = hashlib.sha256(json.dumps(message, sort_keys=True).encode()).hexdigest()
                 pending.setdefault(key, {**message, "key": key})

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a message from the voice is answered by the turn's own reply"
+file = "scripts/hooks/unanswered_peer.py"
+find = '^\s*return VOICE_LINE in message\["text"\]$'
+replace = 'return False'
