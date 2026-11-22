@@ -121,6 +121,21 @@ def test_a_polling_tool_is_counted_but_never_written_line_by_line(tmp_path, stor
     assert {row["tool"]: row["calls"] for row in log.today_rows()} == {"whats_new": 1, "get_active_session": 1}
 
 
+@pytest.mark.parametrize("name", ["sms_since", "sms_send_outcomes"])
+def test_a_phones_sms_since_and_sms_send_outcomes_count_as_polling(tmp_path, store, clock, name):
+    log = opened(tmp_path, store, clock)
+    call(log, clock, tool=f"phone-a_{name}")
+    assert lines(log) == []
+    assert {row["tool"]: row["calls"] for row in log.today_rows()} == {f"phone-a_{name}": 1}
+
+
+@pytest.mark.parametrize("tool", ["sms_since_report", "phone-a_sms_since_all", "phone-a_old_sms_send_outcomes_x"])
+def test_a_tool_with_those_words_only_inside_its_name_is_written(tmp_path, store, clock, tool):
+    log = opened(tmp_path, store, clock)
+    call(log, clock, tool=tool)
+    assert [line["tool"] for line in lines(log)] == [tool]
+
+
 def test_only_errors_and_timeouts_count_as_failures(tmp_path, store, clock):
     log = opened(tmp_path, store, clock)
     for outcome in ("ok", "error", "timeout", "refused", "cancelled"):
