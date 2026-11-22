@@ -30,6 +30,10 @@ runs from, so the file is only needed to change something:
     launch = "terminal"                         # or "background": where a started session runs
     terminal_command = "kitty --directory {cwd}"  # default: the first of gnome-terminal, kgx, konsole, xterm
 
+    [work]
+    board_url = "https://github.com/users/you/projects/1"  # the board the work page links to;
+                                                # https only; default: no link
+
     [budgets]                                   # seconds each client is answered within
     claude_app = 10                             # the Claude app drops a call after about 30 s
     voice_app = 120
@@ -51,6 +55,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 FILE = Path("~/.config/claude-voice/config.toml")
 STATE_DIR = Path("~/.local/state/claude-voice")  # what the bridge keeps between runs
@@ -204,6 +209,7 @@ class Config:
     activity_orgs: tuple[str, ...] = ()  # the programmes the activity view reads (docs/activity.md)
     activity_phone_orgs: tuple[str, ...] = ()  # of those, the ones served beyond this computer
     approver_on: bool = False  # whether the approver session may answer routine boxes
+    board_url: str | None = None  # [work] board_url: the project board the work page links to
 
 
 def _repo(value: Any, key: str) -> str:
@@ -244,7 +250,20 @@ def load(path: Path | None = FILE, own_clone: Path | None = None, env: Mapping[s
         _path(raw.get("personal_terms_file"), home),
         *_activity(raw.get("activity")),
         _approver(raw.get("approver")),
+        _board_url(raw.get("work")),
     )
+
+
+def _board_url(raw: Any) -> str | None:
+    """[work] board_url, passed on only as an https address with a host; anything else is none."""
+    value = raw.get("board_url") if isinstance(raw, dict) else None
+    if not isinstance(value, str):
+        return None
+    parts = urlsplit(value)
+    # RULE: only an https board link is passed on
+    if parts.scheme != "https" or not parts.hostname:
+        return None
+    return value
 
 
 def _codes(raw: dict[str, Any], key: str) -> tuple[str, ...]:

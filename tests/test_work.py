@@ -182,6 +182,32 @@ async def test_the_work_page_says_whether_developer_mode_is_on(tmp_path, monkeyp
     assert page["developer_mode"] == {"on": False, "until": None}
 
 
+async def test_the_work_page_carries_the_board_link_from_the_settings(tmp_path):
+    store = Store(tmp_path / "b.db")
+    m = SessionManager(store, project_root=tmp_path, client_factory=FakeClaude())
+    settings = config.Config(
+        config.Repos(), config.Paths(None, None, None, None), None, board_url="https://example.invalid/boards/7"
+    )
+    server = build_server(
+        m,
+        oauth=OAuthProvider(store, SECRET, HOST, static_token=SECRET),
+        conversations=lambda **k: [],
+        live_dir=tmp_path / "live",
+        repo_config=settings,
+        kept_levels=lambda repo, **_: [],
+    )
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=build_app(server)), base_url=HOST) as c:
+        page = (await c.get("/api/v1/work", headers=BEARER)).json()
+    assert page["board_url"] == "https://example.invalid/boards/7"
+
+
+def test_the_stream_sends_the_board_link_with_the_rest_of_the_work(tmp_path):
+    path = write_waiting(tmp_path / "waiting.json", [])
+    board = work.Board({}, lambda args: "[]", waiting_file=path, board_url="https://example.invalid/boards/7")
+    assert board.changed()["board_url"] == "https://example.invalid/boards/7"
+    assert work.Board({}, lambda args: "[]", waiting_file=path).report()["board_url"] is None
+
+
 NOW = datetime(2026, 11, 13, 9, 0, tzinfo=UTC)
 READ_LOGIN_EXPIRY = work.read_login_expiry  # the real one: the suite stands in for it everywhere else
 
