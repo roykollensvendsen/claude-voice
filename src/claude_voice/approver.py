@@ -45,7 +45,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
-from . import lineage, prompts, routing, session_hook
+from . import approver_token, lineage, prompts, routing, session_hook
 
 logger = logging.getLogger(__name__)
 
@@ -323,13 +323,16 @@ def judge(prompt: dict[str, Any]) -> str | None:
     return why_owner(str(prompt.get("tool")), given, lines, place, cwd=place.repo, cut=bool(prompt.get("cut")))
 
 
-async def serve_reports(duty: Duty, path: Path) -> asyncio.AbstractServer | None:
-    """Listen for the hooks' reports on a Unix socket only this user can open. Where the system
-    cannot name a socket's sender (Windows), nothing listens and every approver call is refused."""
-    if sys.platform == "win32" or not duty.on or not hasattr(socket, "SO_PEERCRED"):
+async def serve_reports(
+    duty: Duty, path: Path, keeper: approver_token.Keeper | None = None
+) -> asyncio.AbstractServer | None:
+    """Listen for the hooks' reports, and the approver window's ask for its token, on a Unix
+    socket only this user can open. Where the system cannot name a socket's sender (Windows),
+    nothing listens: every approver call is refused and no approver can start."""
+    if sys.platform == "win32" or not (duty.on or keeper) or not hasattr(socket, "SO_PEERCRED"):
         return None
     path = _clear(path)
-    server = await asyncio.start_unix_server(lambda r, w: _take_report(duty, r, w), path=str(path))
+    server = await asyncio.start_unix_server(lambda r, w: _take_report(duty, keeper, r, w), path=str(path))
     path.chmod(0o600)  # noqa: ASYNC240 - one quick call as the bridge starts
     return server
 
@@ -345,17 +348,34 @@ def _clear(path: Path) -> Path:
     return path
 
 
-async def _take_report(duty: Duty, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-    """One report: a line of JSON naming the tool and the hash of its arguments."""
+async def _take_report(
+    duty: Duty, keeper: approver_token.Keeper | None, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+) -> None:
+    """One line of JSON: a hook's report naming the tool and the hash of its arguments, or the
+    approver window's ask for its token. Each is its own kind, and neither stands in for the other."""
     with suppress(Exception):
         body = json.loads(await asyncio.wait_for(reader.readline(), 2) or b"null")
-        tool = body.get("tool") if isinstance(body, dict) else None
-        digest = body.get("args_sha256") if isinstance(body, dict) else None
-        if isinstance(tool, str) and isinstance(digest, str):
-            duty.prove(lineage.peer_pid(writer.get_extra_info("socket")), tool, digest)
-        writer.write(b"ok\n")  # the same answer either way; the hook only waits for it
+        # RULE: a token ask and a report never stand in for each other
+        if isinstance(body, dict) and body.get("ask") == "token":
+            writer.write(f"{_hand(keeper, writer) or 'no'}\n".encode())
+        else:
+            _prove(duty, body, writer)
+            writer.write(b"ok\n")  # the same answer either way; the hook only waits for it
         await writer.drain()
     writer.close()
+
+
+def _hand(keeper: approver_token.Keeper | None, writer: asyncio.StreamWriter) -> str | None:
+    """The approver's token, if the asker is its window's own process and it was not yet handed."""
+    return keeper.hand(lineage.peer_pid(writer.get_extra_info("socket"))) if keeper else None
+
+
+def _prove(duty: Duty, body: Any, writer: asyncio.StreamWriter) -> None:
+    """A hook's report, kept only if the kernel says it came from under the approver."""
+    tool = body.get("tool") if isinstance(body, dict) else None
+    digest = body.get("args_sha256") if isinstance(body, dict) else None
+    if isinstance(tool, str) and isinstance(digest, str):
+        duty.prove(lineage.peer_pid(writer.get_extra_info("socket")), tool, digest)
 
 
 def boxes(book: prompts.Book, duty: Duty, names: dict[str, Any], digest: str) -> list[dict[str, Any]] | dict[str, str]:

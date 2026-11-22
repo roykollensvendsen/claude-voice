@@ -3,13 +3,16 @@ while that process lives, and kept only as a hash (approver-v1 v1.7)."""
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import os
+import socket
 import subprocess
 import sys
 
 import pytest
 
-from claude_voice import approver_token
+from claude_voice import approver, approver_token
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="the approver needs /proc")
 
@@ -92,3 +95,52 @@ def test_a_token_never_handed_over_opens_nothing(pane):
     assert not keeper.valid("anything")
     keeper.revoke()
     assert keeper.hand(pane) is None
+
+
+# -- the token is handed over the report socket ------------------------------------------------
+
+
+def _ask(path, line: bytes) -> bytes:
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        s.settimeout(2)
+        s.connect(str(path))
+        s.sendall(line)
+        return s.recv(256)
+
+
+async def _served(tmp_path, keeper, on=False):
+    duty = approver.Duty(on=on, role=lambda s: True, approver=lambda s: True, log=tmp_path / "log.jsonl")
+    path = tmp_path / "approver" / "r.sock"
+    return duty, path, await approver.serve_reports(duty, path, keeper)
+
+
+async def test_the_approvers_window_gets_its_token_over_the_report_socket(tmp_path):
+    keeper = approver_token.Keeper()
+    keeper.mint(os.getpid())  # this test process stands in for the pane
+    _, path, server = await _served(tmp_path, keeper)
+    try:
+        token = (await asyncio.to_thread(_ask, path, b'{"ask": "token"}\n')).decode().strip()
+        again = (await asyncio.to_thread(_ask, path, b'{"ask": "token"}\n')).decode().strip()
+    finally:
+        server.close()
+        await server.wait_closed()
+    assert keeper.valid(token)
+    assert again == "no"
+
+
+async def test_a_token_ask_and_a_report_never_stand_in_for_each_other(tmp_path):
+    keeper = approver_token.Keeper()
+    keeper.mint(os.getpid())
+    duty, path, server = await _served(tmp_path, keeper, on=True)
+    duty.process = lambda: ("approver", os.getpid(), approver_token.lineage.start_ticks(os.getpid()))
+    report = b'{"session_id": "s", "tool": "mcp__x__approver_boxes", "args_sha256": "d"}\n'
+    try:
+        said = await asyncio.to_thread(_ask, path, report)
+        assert said.strip() == b"ok"  # a report never gets a token
+        assert len(duty.reports) == 1
+        token = (await asyncio.to_thread(_ask, path, b'{"ask": "token"}\n')).decode().strip()
+        assert keeper.valid(token)  # the report did not use the token up
+        assert len(duty.reports) == 1  # and the ask did not count as a report
+    finally:
+        server.close()
+        await server.wait_closed()
