@@ -860,7 +860,7 @@ def build_server(
         # The software report is built on a thread of its own, so the bridge listens at once.
         stop_software = software_report.start() if watch_interval else None
         # The hooks report approver calls here; nothing listens while the approver is off.
-        reports = await approver.serve_reports(duty, phone_hook.REPORT_SOCKET)
+        reports = await approver.serve_reports(duty, phone_hook.REPORT_SOCKET, keeper)
         starting = None
         if plugins_behind and not plugins_started:
             plugins_started.append(True)
