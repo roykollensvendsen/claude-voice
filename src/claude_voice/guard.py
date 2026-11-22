@@ -97,9 +97,18 @@ GIT_COMMANDS = frozenset(
     lfs
     """.split()
 )
-#: Git's own subcommands left off that list on purpose. A test holds the list and these together
-#: against `git --list-cmds=builtins`, so a git with a new subcommand turns the tests red.
-LEFT_OUT = frozenset({"push", "send-pack", "for-each-repo", "submodule--helper"})
+#: Git's own subcommands left off that list on purpose, so each is taken as a push. A test holds
+#: the list and these together against `git --list-cmds=builtins` and `--list-cmds=main`, so a git
+#: with a new subcommand turns the tests red.
+LEFT_OUT = frozenset(
+    """
+    push send-pack for-each-repo submodule--helper http-push subtree filter-branch
+    archimport credential-libsecret cvsexportcommit cvsimport cvsserver daemon gui--askpass
+    gui--askyesno http-backend http-fetch imap-send merge-octopus merge-one-file merge-resolve p4
+    quiltimport remote-ftp remote-ftps remote-http remote-https shell sh-i18n--envsubst svn
+    web--browse
+    """.split()
+)
 #: Forms of a listed subcommand that run a command or shell text named on the line, by the
 #: subcommand: an option, or the word that chooses the action.
 RUNS_A_COMMAND = {
@@ -337,7 +346,9 @@ def _runs_a_command(rest: list[str]) -> bool:
         name = word.partition("=")[0]
         # a short `-x` may be joined to other letters or to its value, as in `-ix` or `-xmake`
         short = "-x" in forms and word.startswith("-") and not word.startswith("--") and "x" in word
-        if name in forms or short:
+        # git takes any unambiguous start of a long option, so `--ex` is `--exec`; `--e` is not
+        shortened = name.startswith("--") and len(name) > 3 and any(form.startswith(name) for form in forms)
+        if name in forms or short or shortened:
             return True
     return False
 
