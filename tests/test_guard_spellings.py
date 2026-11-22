@@ -154,6 +154,11 @@ def test_an_alias_or_command_that_runs_no_push_is_left_alone(command, aliases):
         "git rebase --exec='git push origin feat/x' main",
         "git rebase -ix 'git push origin feat/x' main",
         "git rebase -x'git push origin feat/x' main",
+        "git rebase --ex 'git push origin feat/x' main",
+        "git rebase --exe 'git push origin feat/x' main",
+        "git rebase --exe='git push origin feat/x' main",
+        "git difftool --ext 'git push origin feat/x'",
+        "git difftool --extcm='git push origin feat/x'",
         "git bisect run git push origin feat/x",
         "git submodule foreach 'git push origin feat/x'",
         "git submodule --quiet foreach 'git push origin feat/x'",
@@ -167,14 +172,22 @@ def test_a_git_subcommand_that_runs_a_command_named_on_the_line_is_taken_as_a_pu
 
 @pytest.mark.parametrize(
     "command",
-    ["git rebase -i main", "git rebase -X theirs main", "git bisect start", "git submodule update", "git difftool -y"],
+    [
+        "git rebase -i main",
+        "git rebase -X theirs main",
+        "git rebase --empty=drop main",
+        "git bisect start",
+        "git submodule update",
+        "git difftool -y",
+    ],
 )
 def test_the_same_subcommands_without_a_command_are_left_alone(command):
     assert decide(command) is None
 
 
-def test_every_git_subcommand_is_listed_or_left_out_on_purpose():
-    listed = subprocess.run(["git", "--list-cmds=builtins"], capture_output=True, text=True, check=True)
+@pytest.mark.parametrize("kind", ["builtins", "main"])
+def test_every_git_subcommand_is_listed_or_left_out_on_purpose(kind):
+    listed = subprocess.run(["git", f"--list-cmds={kind}"], capture_output=True, text=True, check=True)
     unknown = set(listed.stdout.split()) - guard.GIT_COMMANDS - guard.LEFT_OUT
     assert not unknown, f"git has subcommands the guard has not sorted: {sorted(unknown)}"
 
