@@ -14,6 +14,7 @@ import json
 import os
 import socket
 import sys
+import time
 from pathlib import Path
 
 from . import boxed, phone_hook
@@ -31,16 +32,26 @@ def ask(path: Path) -> str | None:
     return None if said in ("", "no") else said
 
 
+def _wait_for_token(seconds: float = 10) -> str | None:
+    """Ask until the bridge has pinned this window and hands the token over, or the time is up."""
+    end = time.monotonic() + seconds
+    while True:
+        try:
+            token = ask(phone_hook.REPORT_SOCKET)
+        except OSError:
+            token = None
+        if token or time.monotonic() >= end:
+            return token
+        time.sleep(0.2)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     # RULE: the starter runs claude only by an absolute path
     if not args or not os.path.isabs(args[0]):
         print("approver_start: the first argument must be the absolute path of claude.", file=sys.stderr)
         return 2
-    try:
-        token = ask(phone_hook.REPORT_SOCKET)
-    except OSError:
-        token = None
+    token = _wait_for_token()
     if not token:
         print(REFUSED, file=sys.stderr)
         return 1

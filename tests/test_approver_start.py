@@ -43,6 +43,8 @@ def test_the_starter_runs_claude_only_by_an_absolute_path(monkeypatch, became):
 def test_the_starter_prints_no_token_and_no_environment(monkeypatch, capsys, became):
     monkeypatch.setenv("SOME_SECRET_OF_THE_OWNER", "do-not-print-me")
     monkeypatch.setattr(approver_start, "ask", lambda path: None)
+    monkeypatch.setattr(approver_start.time, "sleep", lambda s: None)
+    monkeypatch.setattr(approver_start.time, "monotonic", iter(range(0, 1000, 5)).__next__)
     assert approver_start.main([CLAUDE]) != 0
     monkeypatch.setattr(approver_start, "ask", lambda path: "the-token")
 

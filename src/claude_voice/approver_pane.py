@@ -12,8 +12,9 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+from typing import Any
 
-from . import lineage
+from . import approver_token, boxed, lineage
 
 SETTLE = 0.1  # how often to look again while the starter becomes claude
 
@@ -61,3 +62,26 @@ async def became(pid: int, claude: str, ticks: str | None, wait: float) -> bool:
         if time.monotonic() >= end:
             return False
         await asyncio.sleep(SETTLE)
+
+
+def command(python: str, claude: str, name: str, port: int, hooks: dict[str, Any], prompt: str) -> list[str]:
+    """The window's whole command: the fixed starter, isolated, then claude's boxed command line."""
+    return [python, "-I", "-m", "claude_voice.approver_start", *boxed.claude_args(claude, name, port, hooks, prompt)]
+
+
+async def launch(
+    tmux: list[str], keeper: approver_token.Keeper, name: str, cwd: str, argv: list[str], claude: str, wait: float
+) -> tuple[int, str | None]:
+    """Open the approver's window, pin its process at once, and hold the pin only if it becomes claude."""
+    keeper.revoke()
+    pid = await open_window(tmux, name, cwd, argv)
+    # RULE: the approver is pinned the moment its window opens
+    keeper.mint(pid)
+    ticks = lineage.start_ticks(pid)
+    if not await became(pid, claude, ticks, wait):
+        keeper.revoke()
+        raise RuntimeError(
+            f"The approver's window did not become claude ({claude}). "
+            "Fix: check that claude runs from that path, then start the approver again."
+        )
+    return pid, ticks
