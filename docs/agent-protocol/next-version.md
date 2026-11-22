@@ -30,6 +30,31 @@ until the owner approves version 2.
   one-time codes, so the owner should see this name before approving either
   plugin. The phone app accepts only the names the protocol lists, so it
   waits for this line.
+- **Whether each private thing is allowed now, per plugin: `access`.** In
+  version 1, `uses` says what a plugin may reach once approved. It does not say
+  whether the machine allows it now. The owner can turn contacts off in the
+  phone's settings, and the hub still sees `contacts` and cannot warn. Each
+  plugin entry gets an `access` object. It has one key per name in `uses`, and
+  each value is "granted", "refused" or "never_asked". "never_asked" means the
+  machine never asked the owner. The same holds for an OS permission or an
+  account login on a laptop. The rules:
+  - `access` never adds to `uses`. A key not in `uses` makes the hub refuse
+    the entry, as an unknown use does. A refusal changes `access`, never
+    `uses`, so turning something back on needs no new approval.
+  - Reporting it never asks the owner for anything. On Android it is read with
+    `checkSelfPermission`. "never_asked" comes from the app's own record that
+    it asked.
+  - It holds plain states only, never anything read with the access, such as a
+    contact.
+  - The hub reads it with `agent_info`, on every connection. Android kills an
+    app when a permission is taken away, so a refusal shows at the next
+    connection. A permission given back may show late. So the voice may warn
+    before a tool, and the voice may answer "which permissions does phone-a
+    have?", but the tool's own answer stays the authority.
+
+  Version 1 lets a newer sender add a field, so a phone may send it before
+  version 2 and an older hub ignores it. Until then, a read-only tool on the
+  phone can give the same answer within version 1.
 - **Not wanted for now: a yes from the phone's own screen.** The owner chose a
   spoken yes only for location triggers on 2026-11-15, so this waits for the
   owner to ask again. Version 1 lets only the voice confirm

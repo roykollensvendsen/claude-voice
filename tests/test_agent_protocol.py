@@ -248,3 +248,27 @@ def test_a_frozen_file_has_the_same_bytes_on_every_checkout():
         ["git", "check-attr", "text", "--", *names], cwd=ROOT, capture_output=True, text=True, check=True
     )
     assert all(line.endswith(": text: unset") for line in out.stdout.splitlines()), out.stdout
+
+
+def test_a_plugin_may_say_whether_each_thing_it_uses_is_allowed_now():
+    """`uses` is what the owner approved; whether the machine allows it now is apart from it.
+
+    Version 1 already carries an added field, so a newer phone breaks no hub. The next version
+    names it, with plain states only, so the voice can warn before a tool that cannot work.
+    """
+    data = {
+        "name": "sms_send",
+        "tools": ["sms_send_request"],
+        "uses": ["messages", "contacts"],
+        "access": {"messages": "granted", "contacts": "refused"},
+    }
+    validate(data, schema("plugin"))
+    text = " ".join((SCHEMAS / "next-version.md").read_text().split())
+    for guard in (
+        "`access`",
+        '"granted", "refused" or "never_asked"',
+        "never adds to `uses`",
+        "never asks the owner for anything",
+        "the tool's own answer stays the authority",
+    ):
+        assert guard in text, guard
