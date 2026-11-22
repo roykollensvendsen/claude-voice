@@ -95,7 +95,14 @@ async def gate(ctx: Any, call_next: Callable[[Any], Awaitable[Any]]) -> Any:
     if ctx.method == "tools/call" and tool not in TOOLS:
         return CallToolResult(content=[TextContent(type="text", text="Not open to the approver.")], is_error=True)
     result = await call_next(ctx)
-    if ctx.method == "tools/list" and isinstance(result, ListToolsResult):
-        # RULE: the approver sees only its two tools
+    return _narrowed(result) if ctx.method == "tools/list" else result
+
+
+def _narrowed(result: Any) -> Any:
+    """The tool list with only the approver's two tools, as a model or as the JSON the server sends."""
+    # RULE: the approver sees only its two tools
+    if isinstance(result, ListToolsResult):
         result.tools = [t for t in result.tools if t.name in TOOLS]
+    elif isinstance(result, dict) and isinstance(result.get("tools"), list):
+        result = {**result, "tools": [t for t in result["tools"] if isinstance(t, dict) and t.get("name") in TOOLS]}
     return result
