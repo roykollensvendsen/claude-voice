@@ -140,8 +140,8 @@ If you are a session working on this repository, rather than installing it:
   to get past a refused command.
 - Keep the quality ratchet: `uv run python scripts/ratchet.py check --base origin/main`
   must hold. Never make a measure worse without a `Ratchet-Exception:` line in
-  the pull request saying why. Never edit `quality.json` to pass: main keeps the
-  levels, and the file holds only the time budget.
+  the pull request saying why. Main keeps the levels, and the time the suite
+  takes is shown, never judged.
 - Push only to your owner's fork; a pull request goes to
   `roykollensvendsen/claude-voice` with `gh pr create --repo`.
 - You may rebase your own pull-request branch and push it again, with

@@ -178,6 +178,16 @@ def test_a_repository_with_no_time_budget_still_shows_how_long_its_tests_take(tm
     assert metrics["test_time"]["status"] == "unknown"
 
 
+def test_a_repository_whose_quality_file_is_gone_still_shows_its_recorded_trend(tmp_path):
+    repo = repo_with_history(tmp_path / "r", {**QUALITY, "tests": 450})
+    git(repo, "rm", "-q", "quality.json")
+    git(repo, "commit", "-q", "-m", "chore: Drop the time budget")
+    kept = [{**QUALITY, "tests": 470, "test_budget": None}]
+    metrics = by_id(software.repo_report("claude-voice", "https://github.com/o/claude-voice", repo, kept=kept))
+    assert metrics["tests"]["trend"] == [450, 470]
+    assert metrics["test_time"]["text"] == "103 s" and metrics["test_time"]["status"] == "unknown"
+
+
 def fake_gh(levels_by_run, calls):
     """GitHub's command line as far as kept_levels uses it: listing main's runs and downloading one's levels."""
 

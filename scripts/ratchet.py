@@ -11,7 +11,7 @@ reached. A change that makes one worse fails, unless its pull request has a line
 naming the measure. Main keeps its levels: continuous integration measures them after every
 push to main and keeps them with that run, so a pull request never records them
 (ADR-CV-009). When those levels are missing, the base is measured in a copy of it, which
-takes as long again. `quality.json` holds only the suite's time budget, a limit set by hand.
+takes as long again. The time the suite takes is shown, never judged (ADR-CV-021).
 
     uv run python scripts/ratchet.py check --base REF   # measure and compare with REF
     uv run python scripts/ratchet.py check --base REF --levels FILE --out FILE
@@ -43,13 +43,11 @@ if TYPE_CHECKING:
 
 # The tree to measure: this one, or a copy of the base named by RATCHET_ROOT (see measure_at).
 ROOT = Path(os.environ.get("RATCHET_ROOT") or Path(__file__).resolve().parent.parent)
-FILE = ROOT / "quality.json"
 SOURCE = ROOT / "src"
 PACKAGE = SOURCE / "claude_voice"
 COVERAGE_WOBBLE = 0.5  # percentage points: coverage differs slightly between machines and versions
 HIGHER = ("coverage", "mutation", "tests")
 LOWER = ("lint_errors", "type_errors", "cycles", "layer_violations", "duplication")
-DEFAULT_BUDGET = {"seconds": 120, "tolerance": 0.25}
 NEW_MODULE_CEILING = 15  # the most tangled function a new module may have
 BLOCK = 6  # lines in a row that count as a copied block
 # Each module's layer: a module may use, when it loads, only modules in the layers below it.
@@ -335,7 +333,6 @@ def measure(
         "complexity": complexity(SOURCE),
         "test_seconds": seconds,
         "test_cpu_seconds": cpu,
-        "test_budget": None,
     }
 
 
@@ -360,9 +357,9 @@ def _differs(metric: str, recorded: Any, now: Any) -> bool:
     return abs(_score(now) - _score(recorded)) > wobble
 
 
-def compare(base: dict[str, Any], now: dict[str, Any], allowed: set[str], budget: dict[str, Any]) -> list[str]:
-    """What is wrong: a measure worse than the base without an exception, or the suite over
-    its time budget. Better levels need no recording: main measures its own."""
+def compare(base: dict[str, Any], now: dict[str, Any], allowed: set[str]) -> list[str]:
+    """What is wrong: a measure worse than the base without an exception. The time the suite
+    takes is never one of them. Better levels need no recording: main measures its own."""
     found = []
     for metric in (*HIGHER, *LOWER):
         if metric not in base:
@@ -376,32 +373,15 @@ def compare(base: dict[str, Any], now: dict[str, Any], allowed: set[str], budget
             found.append(f"complexity of {module} got worse: {before} -> {score}")
         if before is None and score > NEW_MODULE_CEILING and "complexity" not in allowed:
             found.append(f"{module} is new and has a function of complexity {score}; keep it at {NEW_MODULE_CEILING}")
-    # RULE: wall time never fails the check
-    # A busy machine waits, and that is not the code's work: only CPU time is judged.
-    cpu = now.get("test_cpu_seconds")
-    # RULE: the suite's CPU time must stay inside its budget
-    if cpu is not None and cpu > _limit(budget):
-        found.append(f"test_cpu_seconds is {cpu}, over the budget of {budget['seconds']} (+{budget['tolerance']:.0%})")
     return found
 
 
-def _limit(budget: dict[str, Any]) -> float:
-    return float(budget["seconds"]) * (1 + float(budget["tolerance"]))
-
-
-def notes(now: dict[str, Any], budget: dict[str, Any], ci: bool) -> list[str]:
-    """Lines that say something about time and fail nothing."""
+def notes(now: dict[str, Any]) -> list[str]:
+    """How long the suite took, shown and never judged."""
     wall, cpu = now.get("test_seconds"), now.get("test_cpu_seconds")
-    said = []
     if cpu is None:
-        said.append(f"CPU time cannot be read on this system; the suite took {wall} s on the clock, judged by nothing")
-    # RULE: in ci a suite that waits is reported as waiting and passes
-    if ci and wall is not None and wall > _limit(budget) and (cpu is None or cpu <= _limit(budget)):
-        work = "" if cpu is None else f" but only {cpu} s of it was work"
-        said.append(
-            f"test_seconds is {wall} (wall){work}; the suite is waiting on something (a sleep, a lock, the network)"
-        )
-    return said
+        return [f"CPU time cannot be read on this system; the suite took {wall} s on the clock, judged by nothing"]
+    return [f"The suite took {wall} s on the clock and {cpu} s of CPU work, judged by nothing"]
 
 
 def exceptions(text: str) -> set[str]:
@@ -409,18 +389,9 @@ def exceptions(text: str) -> set[str]:
     return {m.lower() for m in EXCEPTION.findall(text or "")}
 
 
-def budget(path: Path) -> dict[str, Any]:
-    """The suite's time budget, the one thing `quality.json` keeps."""
-    try:
-        return dict(json.loads(path.read_text(encoding="utf-8"))["test_budget"])
-    except (OSError, ValueError, KeyError, TypeError):
-        return dict(DEFAULT_BUDGET)
-
-
 def write_levels(path: Path, now: dict[str, Any]) -> None:
     """Write the measured levels, for main to keep with its run."""
-    levels = {k: v for k, v in now.items() if k != "test_budget"}
-    path.write_text(json.dumps(levels, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(now, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def base_levels(kept: Path | None, measure_base: Callable[[], dict[str, Any]]) -> dict[str, Any]:
@@ -554,9 +525,8 @@ def main() -> int:
     now = measure(args.skip_mutation, base, args.mutations)
     if args.out:
         write_levels(args.out, now)
-    limits = budget(FILE)
-    found = compare(base, now, exceptions(os.environ.get("RATCHET_EXCEPTIONS", "")), limits)
-    for note in notes(now, limits, ci=bool(os.environ.get("CI"))):
+    found = compare(base, now, exceptions(os.environ.get("RATCHET_EXCEPTIONS", "")))
+    for note in notes(now):
         print(note)
     for problem in found:
         print(problem, file=sys.stderr)

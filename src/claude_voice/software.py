@@ -2,9 +2,10 @@
 
 Read from the levels main keeps with each run of its checks on GitHub (ADR-CV-009), and,
 for the time before that or a repository that still records them, from each clone's
-``quality.json`` and its git history. The time budget is read from ``quality.json``. So the
-trend is what was measured change by change. Nothing is estimated: a repository with
-nothing recorded says so.
+``quality.json`` and its git history, kept after the file is gone. A time budget is read
+from ``quality.json`` where a repository still sets one; claude-voice sets none
+(ADR-CV-021). So the trend is what was measured change by change. Nothing is
+estimated: a repository with nothing recorded says so.
 """
 
 from __future__ import annotations
@@ -363,7 +364,8 @@ def _measured(folder: Path | None, kept: list[dict[str, Any]] | None) -> list[di
     except (OSError, ValueError):
         recorded = None
     budget = (recorded or {}).get("test_budget")
-    past = [q for q in history(folder) if "coverage" in q] if folder and recorded is not None else []
+    # RULE: a repository whose quality file is gone still shows its recorded trend
+    past = [q for q in history(folder) if "coverage" in q] if folder else []
     return past + [{**q, "test_budget": budget} for q in kept or []]
 
 

@@ -1,5 +1,0 @@
-[[rule]]
-name = "in ci a suite that waits is reported as waiting and passes"
-file = "scripts/ratchet.py"
-find = '^\s*if ci and wall is not None and wall > _limit\(budget\) and \(cpu is None or cpu <= _limit\(budget\)\):$'
-replace = 'if False:'

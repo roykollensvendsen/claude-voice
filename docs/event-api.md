@@ -286,7 +286,7 @@ run of the checks on main; kept for ten minutes. The measures, by `id`:
 `coverage`, `mutation` (rules proven by a test, in percent), `tests`, `problems`
 (lint and type errors), `cycles`, `layers` (imports that break the layer order),
 `duplication` (the share of lines in repeated blocks), `complexity` (the most tangled function),
-`test_time` (against its budget) and `ci` (the checks on main, with the run as
+`test_time` (judged against a budget only where a repository sets one) and `ci` (the checks on main, with the run as
 `url`). The same ids, in the order sent and with their units, are in
 [`event-api/measures.json`](event-api/measures.json), for a program that has to
 know every one; a test keeps that file the same as what the bridge sends. The trend is each measured version, oldest first, so it moves change by

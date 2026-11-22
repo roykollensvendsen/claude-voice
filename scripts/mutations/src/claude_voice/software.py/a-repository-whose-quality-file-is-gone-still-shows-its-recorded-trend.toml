@@ -1,0 +1,5 @@
+[[rule]]
+name = "a repository whose quality file is gone still shows its recorded trend"
+file = "src/claude_voice/software.py"
+find = '^\s*past = \[q for q in history\(folder\) if "coverage" in q\] if folder else \[\]$'
+replace = 'past = [q for q in history(folder) if "coverage" in q] if folder and recorded is not None else []'
