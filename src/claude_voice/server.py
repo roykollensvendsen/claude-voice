@@ -217,6 +217,7 @@ class Config:
     access_ttl: int = ACCESS_TTL
     ui_origins: list[str] = field(default_factory=list)
     ui_dir: Path | None = None
+    proof: bool = False  # a bridge for a test or a proof, which starts no plugins
 
 
 MAKE_TOKEN = (
@@ -292,6 +293,8 @@ def load_config(env: Mapping[str, str], transport: str) -> Config:
         public_hosts=[h for h in env.get("CLAUDE_VOICE_PUBLIC_HOSTS", "").split(",") if h],
     )
     cfg.courier_name = env.get("CLAUDE_VOICE_COURIER_NAME", "").strip() or transcripts.COURIER_NAME
+    # RULE: a bridge started with the proof mark is a proof bridge
+    cfg.proof = env.get("CLAUDE_VOICE_PROOF", "").strip() == "1"
     cfg.ui_origins = [o.strip().rstrip("/") for o in env.get("CLAUDE_VOICE_UI_ORIGINS", "").split(",") if o.strip()]
     ui_folder = _ui_folder(env)
     if ui_folder is not None:
@@ -2649,6 +2652,7 @@ def build_server(
         # RULE: a plugin offered after it failed is no longer listed as failed
         failed = [f for f in plugin_failures if f["name"] not in {p["name"] for p in offered}]
         return {
+            **({"proof": True} if proof else {}),  # a proof bridge says so; the owner's says nothing
             "plugins": offered + failed,
             "developer_mode": developer_mode.state(),
             "now": {
@@ -3074,7 +3078,7 @@ def serve_forever(cfg: Config) -> None:
     store = Store(cfg.db)
     manager = SessionManager(store, project_root=cfg.root, approvals=ApprovalBroker(store))
     if cfg.transport == "stdio":
-        build_server(manager).run("stdio")
+        build_server(manager, proof=cfg.proof).run("stdio")
         return
 
     token = cfg.token or ""
@@ -3094,6 +3098,7 @@ def serve_forever(cfg: Config) -> None:
         sessions_file=roster.FILE.expanduser(),
         activity_file=config.STATE_DIR.expanduser() / activity.FILE,
         plugins_behind=True,
+        proof=cfg.proof,
     )
     app = build_app(server, cfg.public_hosts, ui_origins=cfg.ui_origins, ui_dir=cfg.ui_dir)
     configure_logging(cfg.db.parent / LOG_FILE)
