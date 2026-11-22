@@ -48,6 +48,7 @@ decision nobody writes down.
 | [ADR-CV-017](ADR-CV-017-a-profile-is-an-allow-listed-shape-without-values.md) | A profile is an allow-listed shape, and the values stay with the user | Accepted |
 | [ADR-CV-018](ADR-CV-018-a-paired-machine-powers-off-only-on-a-yes-the-hub-signed.md) | A paired machine powers off only on a yes the hub signed, through a helper of its own | Accepted |
 | [ADR-CV-019](ADR-CV-019-sessions-live-in-tmux-and-a-private-file-lists-them.md) | Sessions live in tmux, and a private file lists them for recovery | Accepted |
+| [ADR-CV-021](ADR-CV-021-the-test-suite-has-no-time-cap.md) | The test suite has no time cap: its time is shown, never judged | Proposed |
 
 What is deliberately left undone, and what would make each worth doing, is
 [`deferred.md`](deferred.md). A thing left undone with no trigger is a thing

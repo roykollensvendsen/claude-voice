@@ -23,7 +23,7 @@ the worst cell test-first, land it.
 | Copied code | under 3 % of lines | up to 6 % | more |
 | Lint and type errors | 0 | | any |
 | Import cycles | 0 | any | |
-| Time the tests take | inside the budget | inside budget plus tolerance | over |
+| Time the tests take | shown, never judged | | |
 | Checks on main | passing | running | failed |
 
 The limits are in `src/claude_voice/software.py`, `MEASURES`; read them there if
@@ -60,8 +60,9 @@ uv run ruff check . && uv run mypy src                  # lint and type errors
 The complexity, layer, cycle and duplication counts are functions in
 `scripts/ratchet.py` (`complexity`, `layer_breaches`, `cycles`, `duplication`);
 the `measure` output lists the worst function's score per module, so the module
-to open first is the one with the highest number. The time budget is the one
-thing in `quality.json`, and it changes only by hand, with the owner's yes.
+to open first is the one with the highest number. The time the tests take has
+no limit: it is shown, never judged
+([ADR-CV-021](../../../decisions/ADR-CV-021-the-test-suite-has-no-time-cap.md)).
 
 ## 3. Fix the worst cell, test-first
 
@@ -118,10 +119,10 @@ appear more than once, ignoring indentation. Put the block in one function both
 places call, with the tests green before and after, as `refactor:`. Copied
 tests count too; a shared fixture or helper in the test folder is the fix.
 
-**Tests over their budget.** Find the slowest with `--durations=15`. The usual
-cause is a real wait: a sleep, a timeout, a subprocess. Make the wait
-injectable and pass a fake clock or a short timeout in the test. Raising the
-budget is the owner's decision, not a fix.
+**Slow tests.** Nothing fails on time, but a slow suite costs every change.
+Find the slowest with `--durations=15`. The usual cause is a real wait: a
+sleep, a timeout, a subprocess. Make the wait injectable and pass a fake clock
+or a short timeout in the test.
 
 **Lint, type errors or a cycle.** Fix them as they are reported; a cycle is
 broken the same way as a layer breach, by moving shared code down.

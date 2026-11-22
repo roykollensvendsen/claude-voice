@@ -1,5 +1,0 @@
-[[rule]]
-name = "wall time never fails the check"
-file = "scripts/ratchet.py"
-find = '^\s*cpu = now\.get\("test_cpu_seconds"\)$'
-replace = 'cpu = now.get("test_seconds")'

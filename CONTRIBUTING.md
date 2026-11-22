@@ -70,7 +70,7 @@ worse, so the ratchet compares these levels with the ones main has reached:
 | `layer_violations`: imports, made when a module loads, that reach a module in the same or a higher layer (`LAYERS` in `scripts/ratchet.py`), plus modules given no layer | lower |
 | `duplication`: the share of non-blank source lines, in percent, in a block of six or more lines that appears more than once, ignoring indentation | lower |
 | `complexity`: per module, the McCabe count of its most tangled function, not counting functions defined inside it; a new module keeps every function at 15 or below | lower |
-| `test_seconds`: how long the suite takes, against `test_budget` | inside the budget plus its tolerance |
+| `test_seconds`, `test_cpu_seconds`: how long the suite takes, on the clock and in CPU work | shown, never judged |
 
 The layers, from the bottom: foundations (`procs`, `config`, `store`, `metrics`,
 `titles`); parts, each about one thing; parts built from parts (`events`,
@@ -92,8 +92,8 @@ worse says so in its pull request, on a line of its own:
 Ratchet-Exception: coverage - the module it covered was deleted
 ```
 
-The time budget is a limit, not a level: it is the one thing in `quality.json`,
-and it changes only by hand.
+The suite has no time cap. The ratchet prints how long it took and fails
+nothing on it ([ADR-CV-021](decisions/ADR-CV-021-the-test-suite-has-no-time-cap.md)).
 
 ## How a change is made
 
