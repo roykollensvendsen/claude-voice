@@ -149,6 +149,12 @@ def test_no_record_and_no_difference_say_nothing():
     assert relaunch.difference_line("builder-8d", []) is None
 
 
+def test_the_window_s_command_is_always_more_than_one_word():
+    for argv in ([], ["claude --resume x"]):
+        with pytest.raises(ValueError, match="more than one word"):
+            relaunch.window("/usr/bin/tmux", "shop", "builder-8d", "/work", argv)
+
+
 def test_the_window_is_opened_with_an_argument_list_and_no_shell():
     argv = relaunch.build(CLAUDE, ID, None)
     assert relaunch.window("/usr/bin/tmux", "claude-voice", "builder-8d", "/work/cv", argv) == [

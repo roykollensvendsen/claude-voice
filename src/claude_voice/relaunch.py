@@ -7,11 +7,16 @@ session last ran with. What it last ran with is recorded only to say how it diff
 from __future__ import annotations
 
 import fcntl
+import json
 import os
 import re
+import sqlite3
+import stat
 from collections.abc import Iterator, Sequence
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
+
+from claude_agent_sdk import project_key_for_directory
 
 MODEL = "claude-opus-5-5"
 CONVERSATION = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
@@ -43,6 +48,57 @@ def conversation(role: str, value: str) -> str:
     if not CONVERSATION.fullmatch(value):
         raise Refused(f"row for {role} has no valid conversation id; start it fresh with start_role")
     return value
+
+
+@contextmanager
+def read_only(db: Path) -> Iterator[sqlite3.Connection]:
+    """The bridge's database, opened so that nothing can be written through the handle."""
+    with closing(sqlite3.connect(f"{db.resolve().as_uri()}?mode=ro", uri=True)) as handle:
+        yield handle
+
+
+def recorded_conversation(db: Path, role: str) -> str | None:
+    """The conversation the bridge itself recorded when it started `role`; None when it has
+    no record, or no database. Only the bridge's launchers write this record (v1.4 §1)."""
+    try:
+        with read_only(db) as handle:
+            found = handle.execute("SELECT value FROM settings WHERE key = ?", (f"role:{role}",)).fetchone()
+    except sqlite3.Error:
+        return None
+    held = json.loads(found[0]) if found else None
+    return str(held["id"]) if isinstance(held, dict) and held.get("id") else None
+
+
+def transcript(projects: Path, folder: Path, conversation: str) -> Path:
+    """The conversation's transcript, when it is a plain file under the folder's own project key
+    and began in that folder. Raises Refused naming what failed."""
+    path = projects / project_key_for_directory(str(folder)) / f"{conversation}.jsonl"
+    try:
+        mode = os.lstat(path).st_mode
+    except OSError:
+        raise Refused(
+            f"conversation {conversation[:8]} has no transcript in {folder}; start it fresh with start_role"
+        ) from None
+    # RULE: a transcript that is a link is refused
+    if not stat.S_ISREG(mode):
+        raise Refused(f"the transcript of {conversation[:8]} is not a plain file; start it fresh with start_role")
+    # RULE: a conversation that began in another folder is refused
+    if _first_cwd(path) != str(folder):
+        raise Refused(f"conversation {conversation[:8]} began in another folder; start it fresh with start_role")
+    return path
+
+
+def _first_cwd(path: Path) -> str | None:
+    """The folder given by the first record in a transcript that carries one."""
+    with path.open(encoding="utf-8", errors="replace") as lines:
+        for line in lines:
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(record, dict) and "cwd" in record:
+                return str(record["cwd"])
+    return None
 
 
 def name(value: str) -> str:
@@ -100,7 +156,11 @@ def difference_line(role: str, found: Sequence[str]) -> str | None:
 
 def window(tmux: str, session: str, window: str, folder: str, argv: Sequence[str]) -> list[str]:
     """The tmux command that opens the role's window, as an argument list: no shell reads it,
-    and no keys are typed into any pane."""
+    and no keys are typed into any pane. tmux hands a single word to a shell, so a command of
+    one word is refused."""
+    # RULE: the window's command is always more than one word
+    if len(argv) < 2:
+        raise ValueError("a window's command must be more than one word, or tmux runs it through a shell")
     return [tmux, "new-window", "-d", "-t", f"{session}:", "-n", window, "-c", folder, "--", *argv]
 
 

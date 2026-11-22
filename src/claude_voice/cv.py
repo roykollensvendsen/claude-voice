@@ -116,19 +116,35 @@ class Start:
     locks: Path
     live: Callable[[], set[str]]  # the conversations running now
     wait: Callable[[str], None]  # returns once the conversation runs, or after START_SECONDS
+    projects: Path  # where Claude Code keeps each folder's transcripts
+    record: Callable[[str], str | None]  # the conversation the bridge recorded starting a role with
+
+
+def _bound(how: Start, role: str, conversation: str) -> None:
+    """Refuse unless the bridge itself recorded starting `role` with this conversation (v1.4 §1)."""
+    recorded = how.record(role)
+    if recorded is None:
+        raise Refused(f"start {role} once with start_role, so the bridge records its conversation")
+    # RULE: a row pointing at another role's conversation is refused
+    if recorded != conversation:
+        raise Refused(
+            f"{role}: the role's conversation changed since start_role ({conversation[:8]} in the sessions file, "
+            f"{recorded[:8]} recorded); start it fresh with start_role"
+        )
 
 
 def _session(chart: org.Chart, folder: Path, role: str) -> str:
     """The tmux session a role starts in: its programme's code. Raises Refused unless the
     role's name and its folder place it in exactly one programme."""
-    by_name, by_folder = chart.place(None, [role]).programme, chart.place(str(folder), []).programme
+    named = {p.code for p in chart.programmes for r in p.roles if role in r.sessions}
+    by_folder = chart.place(str(folder), []).programme
+    codes = sorted(named | ({by_folder.code} if by_folder else set()))
     # RULE: a role started by cv up sits in exactly one programme
-    if by_name and by_folder and by_name.code != by_folder.code:
-        raise Refused(f"{role} is placed in both {by_folder.code} and {by_name.code}; fix the org files")
-    found = by_name or by_folder
-    if found is None:
+    if len(codes) > 1:
+        raise Refused(f"{role} is placed in more than one programme ({', '.join(codes)}); fix the org files")
+    if not codes:
         raise Refused(f"{role} is in no programme, so it has no tmux session to start in; add it to an org file")
-    return relaunch.name(found.code)
+    return relaunch.name(codes[0])
 
 
 def _definition(how: Start, row: roster.Row) -> tuple[Path, str | None]:
@@ -151,7 +167,9 @@ def up(row: roster.Row, how: Start, run: Run) -> list[str]:
         # RULE: a conversation that is running is not started again
         if conversation in how.live():
             raise Refused(f"{row.role} is running; see it with `cv peek {row.role}`")
+        _bound(how, row.role, conversation)
         folder, settings = _definition(how, row)
+        relaunch.transcript(how.projects, folder, conversation)
         session = _session(how.chart, folder, row.role)
         if not how.claude or not how.tmux:
             raise Refused("cv up needs tmux and claude on this machine")
@@ -200,14 +218,18 @@ def _start(home: Path, env: Mapping[str, str]) -> Start:
         while conversation not in _running(sessions) and time.monotonic() < deadline:
             time.sleep(0.5)
 
+    state = home / roster.FILE.parent.relative_to("~")
+    db = Path(env.get("CLAUDE_VOICE_DB") or state / "bridge.db").expanduser()
     return Start(
         table,
         chart,
         procs.find("claude"),
         procs.find("tmux"),
-        home / roster.FILE.parent.relative_to("~") / "locks",
+        state / "locks",
         lambda: _running(sessions),
         wait,
+        home / ".claude" / "projects",
+        lambda role: relaunch.recorded_conversation(db, role),
     )
 
 

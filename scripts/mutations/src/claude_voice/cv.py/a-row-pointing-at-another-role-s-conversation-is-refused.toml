@@ -1,0 +1,5 @@
+[[rule]]
+name = "a row pointing at another role's conversation is refused"
+file = "src/claude_voice/cv.py"
+find = '^\s*if recorded != conversation:$'
+replace = 'if False:'

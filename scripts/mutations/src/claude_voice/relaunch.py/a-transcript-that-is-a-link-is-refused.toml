@@ -1,0 +1,5 @@
+[[rule]]
+name = "a transcript that is a link is refused"
+file = "src/claude_voice/relaunch.py"
+find = '^\s*if not stat\.S_ISREG\(mode\):$'
+replace = 'if False:'

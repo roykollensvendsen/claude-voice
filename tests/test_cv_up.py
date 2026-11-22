@@ -1,9 +1,11 @@
 """cv up: a role whose session has ended is brought back in its own tmux window, started from
 the owner's role definition and never from what it last ran with (worker-on-demand-v1, PR 1)."""
 
+import json
 import os
 
 import pytest
+from claude_agent_sdk import project_key_for_directory
 
 from claude_voice import cv, org, roster
 
@@ -41,8 +43,31 @@ class Tmux:
         return ""
 
 
-def start(tmp_path, folder, table=None, the_chart=None, claude="/opt/claude", tmux="/usr/bin/tmux", live=()):
+def transcript(tmp_path, folder, conversation, cwd=None, key_folder=None):
+    """A conversation's transcript where Claude Code keeps it: a record with no cwd, then the
+    first record that carries one."""
+    key = project_key_for_directory(str(key_folder or folder))
+    path = tmp_path / "projects" / key / f"{conversation}.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [{"type": "custom-title", "customTitle": "x"}, {"type": "user", "cwd": str(cwd or folder)}]
+    lines += [{"type": "user", "cwd": "/somewhere/else"}]
+    path.write_text("".join(json.dumps(line) + "\n" for line in lines), encoding="utf-8")
+    return path
+
+
+def start(
+    tmp_path,
+    folder,
+    table=None,
+    the_chart=None,
+    claude="/opt/claude",
+    tmux="/usr/bin/tmux",
+    live=(),
+    recorded=None,
+):
     waited = []
+    transcript(tmp_path, folder, ID)
+    records = {"builder-8d": ID} if recorded is None else recorded
     how = cv.Start(
         table={"builder-8d": {"folder": str(folder)}} if table is None else table,
         chart=chart(folder) if the_chart is None else the_chart,
@@ -51,6 +76,8 @@ def start(tmp_path, folder, table=None, the_chart=None, claude="/opt/claude", tm
         locks=tmp_path / "locks",
         live=lambda: set(live),
         wait=waited.append,
+        projects=tmp_path / "projects",
+        record=records.get,
     )
     return how, waited
 
@@ -150,8 +177,112 @@ def test_a_role_started_by_cv_up_sits_in_exactly_one_programme(tmp_path, folder)
         '[programme]\ncode = "acme"\n[roles.builder]\nsessions = ["builder-8d"]\n', encoding="utf-8"
     )
     how, _ = start(tmp_path, folder, the_chart=chart(other, folder))
-    with pytest.raises(cv.Refused, match="both shop and acme"):
+    with pytest.raises(cv.Refused, match=r"more than one programme \(acme, shop\)"):
         cv.up(row(), how, Tmux())
+
+
+def test_a_role_named_by_two_programmes_is_refused_even_outside_their_folders(tmp_path, folder):
+    lone = tmp_path / "lone"
+    lone.mkdir()
+    for code in ("acme", "zeta"):
+        repo = tmp_path / "src" / code
+        (repo / ".claude").mkdir(parents=True)
+        (repo / ".claude" / "org.toml").write_text(
+            f'[programme]\ncode = "{code}"\n[roles.builder]\nsessions = ["builder-8d"]\n', encoding="utf-8"
+        )
+    the_chart = chart(tmp_path / "src" / "acme", tmp_path / "src" / "zeta")
+    how, _ = start(tmp_path, lone, the_chart=the_chart)
+    with pytest.raises(cv.Refused, match=r"more than one programme \(acme, zeta\)"):
+        cv.up(row(), how, Tmux())
+
+
+# -- the conversation is the role's own (quality's b1) --------------------------------------
+
+
+OTHER = "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed"
+
+
+def test_a_row_pointing_at_another_role_s_conversation_is_refused(tmp_path, folder):
+    how, _ = start(tmp_path, folder)
+    transcript(tmp_path, folder, OTHER)
+    tmux = Tmux()
+    with pytest.raises(cv.Refused, match="conversation changed since start_role .*1b9d6bcd.*0f8fad5b.*start it fresh"):
+        cv.up(row(conversation=OTHER), how, tmux)
+    assert tmux.ran == []
+
+
+def test_a_role_with_no_record_is_refused(tmp_path, folder):
+    how, _ = start(tmp_path, folder, recorded={})
+    with pytest.raises(
+        cv.Refused, match="start builder-8d once with start_role, so the bridge records its conversation"
+    ):
+        cv.up(row(), how, Tmux())
+
+
+def test_a_conversation_with_no_transcript_in_the_role_s_folder_is_refused(tmp_path, folder):
+    elsewhere = tmp_path / "src" / "other"
+    elsewhere.mkdir()
+    how, _ = start(tmp_path, folder, recorded={"builder-8d": OTHER})
+    transcript(tmp_path, elsewhere, OTHER)
+    with pytest.raises(cv.Refused, match="no transcript"):
+        cv.up(row(conversation=OTHER), how, Tmux())
+
+
+def test_a_transcript_that_is_a_link_is_refused(tmp_path, folder):
+    elsewhere = tmp_path / "src" / "other"
+    elsewhere.mkdir()
+    how, _ = start(tmp_path, folder, recorded={"builder-8d": OTHER})
+    real = transcript(tmp_path, elsewhere, OTHER, cwd=folder)
+    (tmp_path / "projects" / project_key_for_directory(str(folder)) / f"{OTHER}.jsonl").symlink_to(real)
+    with pytest.raises(cv.Refused, match="not a plain file"):
+        cv.up(row(conversation=OTHER), how, Tmux())
+
+
+def test_a_conversation_that_began_in_another_folder_is_refused(tmp_path, folder):
+    how, _ = start(tmp_path, folder)
+    transcript(tmp_path, folder, ID, cwd="/somewhere/else")
+    with pytest.raises(cv.Refused, match="began in another folder"):
+        cv.up(row(), how, Tmux())
+
+
+def test_only_launch_role_and_launch_approver_write_a_role_record():
+    """The record cv up trusts is written by the bridge's own launchers alone (v1.4 §1)."""
+    import ast
+    from pathlib import Path
+
+    writers = set()
+
+    def visit(node, where, module):
+        for child in ast.iter_child_nodes(node):
+            inner = child.name if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) else where
+            if (
+                isinstance(child, ast.Call)
+                and getattr(child.func, "attr", "") == "set_setting"
+                and child.args
+                and "role:" in ast.unparse(child.args[0])
+            ):
+                writers.add(f"{module}:{where}")
+            visit(child, inner, module)
+
+    for path in Path(cv.__file__).parent.glob("*.py"):
+        visit(ast.parse(path.read_text(encoding="utf-8")), "<module>", path.name)
+    assert writers and writers <= {"server.py:launch_role", "server.py:launch_approver"}
+
+
+def test_the_bridge_record_is_read_without_being_able_to_write(tmp_path):
+    import sqlite3
+
+    from claude_voice import relaunch
+
+    db = tmp_path / "bridge.db"
+    with sqlite3.connect(db) as made:
+        made.execute("CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at REAL NOT NULL)")
+        made.execute("INSERT INTO settings VALUES ('role:builder-8d', ?, 0)", (json.dumps({"id": ID, "pid": 1}),))
+    assert relaunch.recorded_conversation(db, "builder-8d") == ID
+    assert relaunch.recorded_conversation(db, "builder-9") is None
+    assert relaunch.recorded_conversation(tmp_path / "none.db", "builder-8d") is None
+    with relaunch.read_only(db) as handle, pytest.raises(sqlite3.OperationalError, match="readonly"):
+        handle.execute("DELETE FROM settings")
 
 
 def test_without_claude_or_tmux_nothing_is_started(tmp_path, folder):
