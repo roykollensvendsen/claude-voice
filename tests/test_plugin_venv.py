@@ -272,8 +272,39 @@ def test_a_sync_that_runs_too_long_is_stopped_with_everything_it_started(tmp_pat
 
 
 @posix
-def test_a_stopped_sync_never_waits_on_output_a_helper_outside_its_group_holds(tmp_path, uv, monkeypatch):
+def test_a_sync_still_running_when_the_bridge_stops_is_stopped_with_everything_it_started(tmp_path, uv):
+    """A sync in a worker thread never sees a Ctrl-C, so the bridge stops it as it stops itself."""
+    import threading
+
+    folder = tmp_path / "gizmo"
+    gizmo(folder, "run", "gizmo-mcp")
+    (folder / ".uv-does").write_text("spawn")
+    ended: list[object] = []
+    worker = threading.Thread(target=lambda: ended.append(plugin_venv._sync(str(uv), folder, 60)), daemon=True)
+    worker.start()
+    child = None
+    try:
+        deadline = time.monotonic() + 5
+        while not (folder / ".uv-child").exists() and time.monotonic() < deadline:
+            time.sleep(0.05)  # until the sync has started its own helper
+        child = int((folder / ".uv-child").read_text())
+        assert plugin_venv.stop_running() == 1
+        worker.join(5)
+        assert ended and not worker.is_alive()  # the sync's thread is let go at once
+        deadline = time.monotonic() + 5
+        while _runs(child, str(folder)) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert not _runs(child, str(folder))
+        assert plugin_venv.stop_running() == 0  # an ended sync is no longer counted
+    finally:
+        if child is not None and _runs(child, str(folder)):
+            os.kill(child, 9)
+
+
+@posix
+def test_a_stopped_sync_never_waits_on_output_a_helper_outside_its_group_holds(tmp_path, uv, monkeypatch, caplog):
     monkeypatch.setattr(plugin_venv, "SYNC_SECONDS", 1.0)
+    monkeypatch.setattr(plugin_venv, "DRAIN_SECONDS", 0.5)
     folder = tmp_path / "gizmo"
     spec = gizmo(folder, "run", "gizmo-mcp")
     (folder / ".uv-does").write_text("orphan")
@@ -284,6 +315,8 @@ def test_a_stopped_sync_never_waits_on_output_a_helper_outside_its_group_holds(t
             plugins.parameters(spec)
         # the helper sleeps a minute with uv's output open; the sync must not wait for it
         assert time.monotonic() - began < 15  # the time limit, the short last read, and slack
+        # the helper keeps running, so the log says one was left
+        assert "left a helper that still holds its output" in caplog.text
     finally:
         marker = folder / ".uv-child"
         child = int(marker.read_text()) if marker.exists() else None

@@ -103,6 +103,19 @@ async def test_the_plugins_start_side_by_side(tmp_path):
         assert await offered(c, "garage_status") and await offered(c, "tv_status")
 
 
+async def test_a_bridge_that_stops_stops_the_plugin_syncs_still_running(tmp_path, monkeypatch):
+    from claude_voice import plugin_venv
+
+    stops: list[bool] = []
+    monkeypatch.setattr(plugin_venv, "stop_running", lambda: stops.append(True) or 1)
+    fake, _ = stand_in()
+    server = behind_bridge(tmp_path, [(GARAGE, lambda p: Client(fake))], lambda p: Client(fake))
+    async with Client(server) as c:
+        assert await offered(c, "garage_status")
+        assert not stops  # nothing is stopped while the bridge runs
+    assert stops  # and the syncs still running are stopped as it stops
+
+
 async def test_a_plugin_that_cannot_be_offered_never_stops_the_others(tmp_path, monkeypatch, caplog):
     garage, _ = stand_in()
     tv = tv_stand_in()
