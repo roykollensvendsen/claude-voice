@@ -403,6 +403,14 @@ def _send(client: Client, guard: Guard, board: Board, w: Write) -> None:
     guard.write(client, w.query, {"project": board.project, **w.variables})
 
 
+def _say_skipped(reading: verdicts.Reading, say: Callable[[str], None]) -> None:
+    """Say how many files in the reviews folder the run left out, and why."""
+    if reading.ignored:
+        say(f"ignored {reading.ignored} verdict file(s) that were not a reviewer's plain, well-formed verdict")
+    if reading.unnamed:
+        say(f"skipped {reading.unnamed} file(s) whose name is not a verdict file's")
+
+
 def sync(client: Client, settings: Settings, state: Path, say: Callable[[str], None] = print, dry: bool = False) -> int:
     """One run: read, compare, and send only what changed. Never fails on a low rate limit."""
     board = read_board(client, settings)
@@ -418,8 +426,7 @@ def sync(client: Client, settings: Settings, state: Path, say: Callable[[str], N
     open_work = read_open(client, settings)
     short = {repo.rpartition("/")[2] for repo in board.repos}
     reading = verdicts.read(state / "reviews", settings.owner, short)
-    if reading.ignored:
-        say(f"ignored {reading.ignored} verdict file(s) that were not a reviewer's plain, well-formed verdict")
+    _say_skipped(reading, say)
     writes = plan(board, open_work, settings, reading)
     read = [*board.work, *open_work]
     guard = Guard(board, {w["id"] for w in read if w["repository"]["nameWithOwner"] in board.repos})

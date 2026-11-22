@@ -170,14 +170,17 @@ def test_an_unassigned_issue_that_was_in_progress_goes_back_to_to_do():
     assert where(issue(), now="progress") == "todo"
 
 
-def test_a_triaged_outside_issue_leaves_waiting():
-    assert where(issue(author="someone-else", labels=1), now="waiting") == "backlog"
-    assert where(issue(author="someone-else", commenters=[OWNER]), now="waiting") == "backlog"
+def test_a_triaged_outside_issue_goes_to_backlog_unless_it_is_in_waiting():
+    assert where(issue(author="someone-else", labels=1)) == "backlog"
+    assert where(issue(author="someone-else", commenters=[OWNER]), now="ready") == "backlog"
 
 
-def test_an_owners_issue_moved_to_waiting_by_hand_stays_there():
-    """The manager parks a decision with no pull request there, under the owner's login."""
+def test_an_issue_moved_to_waiting_by_hand_stays_there():
+    """The manager parks a decision with no pull request there, whoever opened the issue.
+    The sync cannot tell a parked issue from one it put there, so only a hand move takes it out."""
     assert where(issue(), now="waiting") == "waiting"
+    assert where(issue(author="someone-else", labels=1), now="waiting") == "waiting"
+    assert where(issue(author="someone-else", commenters=[OWNER]), now="waiting") == "waiting"
 
 
 # --- Stalled ----------------------------------------------------------------------------

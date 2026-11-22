@@ -206,6 +206,12 @@ def test_only_names_the_protocol_allows_are_ever_spoken(entry):
     assert "say yes" not in said and "bank" not in said and "wallet" not in said
 
 
+def test_a_use_the_protocol_does_not_name_refuses_the_entry():
+    held = access.read(info({**PHONE, "uses": ["calls", "wallet"], "access": {"calls": "refused"}}))
+    assert held.plugins == {} and held.refused == ["phone: a use the protocol does not name"]
+    assert "wallet" not in held.answer("phone-a", fresh=True)["say"]
+
+
 async def test_a_machine_that_never_answered_is_not_reported_as_all_clear():
     client = FakeClient(PHONE)
     client.fail_info = True

@@ -88,6 +88,15 @@ def test_a_verdict_file_naming_a_foreign_owner_is_ignored(tmp_path):
     assert found.files == {} and found.ignored == 1
 
 
+def test_a_file_whose_name_is_not_a_verdict_files_is_counted(tmp_path):
+    reviews = tmp_path / "reviews"
+    write(reviews, "notes.txt", text="x")
+    write(reviews, "demo-x12.quality.json", **stamp())
+    write(reviews, "other-12.quality.json", **stamp())  # a verdict file, for a repository off the board
+    found = read(reviews)
+    assert found.files == {} and found.unnamed == 2 and found.ignored == 0
+
+
 # c2: the verdicts in use, and the stray spelling mapped rather than dropped.
 
 
@@ -174,6 +183,8 @@ def test_a_claim_on_a_new_file_starts_it(tmp_path):
 def test_claude_voice_tracker_claim_starts_a_review_in_the_reviewers_own_file(tmp_path, capsys, monkeypatch):
     from claude_voice import cli
 
+    # The command puts the HOME it is given in place of "~", so this is tmp_path's folder,
+    # never the real home. The suite's own STATE_DIR is an absolute folder, with no "~".
     monkeypatch.setattr(cli, "STATE_DIR", Path("~/.local/state/claude-voice"))
 
     reviews = tmp_path / ".local" / "state" / "claude-voice" / "reviews"

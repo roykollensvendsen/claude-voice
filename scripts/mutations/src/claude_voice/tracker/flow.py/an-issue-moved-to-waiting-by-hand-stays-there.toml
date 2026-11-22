@@ -1,0 +1,5 @@
+[[rule]]
+name = "an issue moved to waiting by hand stays there"
+file = "src/claude_voice/tracker/flow.py"
+find = '^\s*if now in \("backlog", "waiting"\):$'
+replace = 'if now == "backlog":'

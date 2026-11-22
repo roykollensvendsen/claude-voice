@@ -89,8 +89,9 @@ def issue_column(work: dict[str, Any], now: str | None, owner: str) -> str:
     answered = any((c.get("author") or {}).get("login") == owner for c in work["comments"]["nodes"])
     if author != owner and not work["labels"]["totalCount"] and not answered:
         return "waiting"
-    # RULE: an owners issue moved to waiting by hand stays there
-    if now == "backlog" or (now == "waiting" and author == owner):
+    # RULE: an issue moved to waiting by hand stays there
+    # The sync cannot tell an issue the manager parked from one it put there itself.
+    if now in ("backlog", "waiting"):
         return now
     return "backlog"
 

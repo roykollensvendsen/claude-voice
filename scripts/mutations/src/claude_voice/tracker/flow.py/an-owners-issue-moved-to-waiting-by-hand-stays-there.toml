@@ -1,5 +1,0 @@
-[[rule]]
-name = "an owners issue moved to waiting by hand stays there"
-file = "src/claude_voice/tracker/flow.py"
-find = '^\s*if now == "backlog" or \(now == "waiting" and author == owner\):$'
-replace = 'if now == "backlog":'

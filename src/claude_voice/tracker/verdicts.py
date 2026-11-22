@@ -3,8 +3,8 @@
 Each reviewer keeps one file per pull request in the bridge's state folder:
 `reviews/<repo>-<number>.<name>.json`. The board sync reads a file only when it is a plain
 file under 64 KB, holds a JSON object, and has a known verdict and a 40-character head.
-Anything else is ignored and counted. Design: board-flow-v1 (a), with quality's c1, c1a, c2
-and c6.
+Anything else is ignored and counted, and so is a file whose name is not a verdict file's.
+Design: board-flow-v1 (a), with quality's c1, c1a, c2 and c6.
 
 Who stamped it is the file's `by`, never its name. It counts only when `by` is on the
 allow-list and the name's suffix is one that reviewer writes. Two files with the same `by`
@@ -65,6 +65,7 @@ class Verdict:
 class Reading:
     files: dict[tuple[str, int], list[Verdict]] = field(default_factory=dict)
     ignored: int = 0
+    unnamed: int = 0  # files whose name is not a verdict file's
 
 
 def read(reviews: Path, owner: str, repos: set[str]) -> Reading:
@@ -72,7 +73,11 @@ def read(reviews: Path, owner: str, repos: set[str]) -> Reading:
     out = Reading()
     for path in sorted(reviews.iterdir()) if reviews.is_dir() else ():
         match = NAME.match(path.name)
-        if not match or match["repo"] not in repos:
+        # RULE: a file whose name is not a verdict files is counted
+        if not match:
+            out.unnamed += 1
+            continue
+        if match["repo"] not in repos:
             continue
         verdict = _verdict(path, match, owner)
         if verdict is None:
