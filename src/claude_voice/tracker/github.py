@@ -241,11 +241,7 @@ def column(work: dict[str, Any], owner: str, verdicts: AbstractSet[tuple[str, in
     if work["state"] != "OPEN":
         return "done"
     if work["__typename"] == "PullRequest":
-        if work["isDraft"]:
-            return "progress"
-        repo = work["repository"]["nameWithOwner"].split("/", 1)[-1]
-        asked = work["reviewRequests"]["totalCount"] or work["reviews"]["totalCount"]
-        return "review" if asked or (repo, work.get("number")) in verdicts else "progress"
+        return _pr_column(work, verdicts)
     # RULE: an open issue someone has taken is in progress
     if (work.get("assignees") or {}).get("totalCount"):
         return "progress"
@@ -254,6 +250,15 @@ def column(work: dict[str, Any], owner: str, verdicts: AbstractSet[tuple[str, in
     if author != owner and not work["labels"]["totalCount"] and not answered:
         return "waiting"
     return "backlog"
+
+
+def _pr_column(work: dict[str, Any], verdicts: AbstractSet[tuple[str, int]]) -> str:
+    """An open pull request: in review once a review was asked for, given or stamped."""
+    if work["isDraft"]:
+        return "progress"
+    repo = work["repository"]["nameWithOwner"].split("/", 1)[-1]
+    asked = work["reviewRequests"]["totalCount"] or work["reviews"]["totalCount"]
+    return "review" if asked or (repo, work.get("number")) in verdicts else "progress"
 
 
 @dataclass(frozen=True)
