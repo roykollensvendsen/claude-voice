@@ -1,0 +1,5 @@
+[[rule]]
+name = "the guard hook is kept beside the files own hooks"
+file = "src/claude_voice/roles.py"
+find = 'hooks\[event\] = \[\*hooks.get\(event, \[\]\), \*entries\]'
+replace = 'hooks[event] = [*hooks.get(event, [])]'

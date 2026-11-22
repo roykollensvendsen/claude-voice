@@ -180,6 +180,35 @@ async def test_a_launched_role_keeps_the_process_it_started_as(tmp_path, world):
     assert held["pid"] == PID and held["started"] == lineage.start_ticks(PID)
 
 
+async def test_a_roles_own_settings_file_reaches_its_session(tmp_path, world, monkeypatch):
+    """builder-role-v1: the file's rules, and the guard's check on deletes beside them."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    folder = tmp_path / ".local/state/claude-voice/roles"
+    folder.mkdir(parents=True)
+    (folder / "builder.json").write_text(json.dumps({"permissions": {"deny": ["Bash(gh pr merge:*)"]}}))
+    _, clone, live, table = world
+    table.write_text(f"[roles.builder]\nfolder = '{clone}'\nguard = false\nsettings = '{folder / 'builder.json'}'\n")
+    ready_clone(world)
+    starter = Starter(live)
+    async with Client(bridge(tmp_path, world, starter)) as c:
+        await c.call_tool("start_role", {"role": "builder"})
+    sent = json.loads(starter.calls[0]["settings"])
+    assert sent["permissions"]["deny"] == ["Bash(gh pr merge:*)"]
+    assert "--push-mode no-deletes" in sent["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+
+
+async def test_a_role_whose_settings_file_is_missing_does_not_start(tmp_path, world, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    _, clone, live, table = world
+    gone = tmp_path / ".local/state/claude-voice/roles/gone.json"
+    table.write_text(f"[roles.builder]\nfolder = '{clone}'\nsettings = '{gone}'\n")
+    starter = Starter(live)
+    async with Client(bridge(tmp_path, world, starter)) as c:
+        out = await c.call_tool("start_role", {"role": "builder"})
+    assert out.is_error and "gone.json" in out.content[0].text
+    assert not starter.calls
+
+
 async def test_an_unknown_role_is_refused(tmp_path, world):
     async with Client(bridge(tmp_path, world, Starter(world[2]))) as c:
         bad = await c.call_tool("start_role", {"role": "nobody"})
