@@ -51,6 +51,7 @@ from . import (
     gitstatus,
     hints,
     launch,
+    lineage,
     machines,
     mailbox,
     metrics,
@@ -1503,7 +1504,7 @@ def build_server(
         pid = int(found.get("pid") or 0)
         # The approver's process is fixed here, once; a session file written later cannot move it.
         # RULE: a launched role keeps the process it started as
-        held = {"name": name, "id": str(found.get("sessionId")), "pid": pid, "started": procs.start_ticks(pid)}
+        held = {"name": name, "id": str(found.get("sessionId")), "pid": pid, "started": lineage.start_ticks(pid)}
         store.set_setting(f"role:{role}", held)
         return {"role": role, "name": name, "claude_session_id": found.get("sessionId"), "status": found.get("status")}
 

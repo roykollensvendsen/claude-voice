@@ -32,7 +32,6 @@ decision is one line in the approver's log, with a hash of the input but never i
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import hashlib
 import json
 import logging
@@ -42,10 +41,11 @@ import socket
 import sys
 import time
 from collections.abc import Callable, Iterable
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
-from . import procs, prompts, routing, session_hook
+from . import lineage, prompts, routing, session_hook
 
 logger = logging.getLogger(__name__)
 
@@ -226,7 +226,7 @@ class Duty:
         process or one it started. What the report claims about its session counts for nothing."""
         held = self.process()
         # RULE: a report from outside the approvers process tree is refused
-        if peer is None or held is None or not procs.descends(peer, held[1], held[2]):
+        if peer is None or held is None or not lineage.descends(peer, held[1], held[2]):
             logger.warning("an approver report from pid %s was refused: not under the approver", peer)
             return False
         self.report(held[0], tool, digest)
@@ -347,12 +347,12 @@ def _clear(path: Path) -> Path:
 
 async def _take_report(duty: Duty, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
     """One report: a line of JSON naming the tool and the hash of its arguments."""
-    with contextlib.suppress(Exception):
+    with suppress(Exception):
         body = json.loads(await asyncio.wait_for(reader.readline(), 2) or b"null")
         tool = body.get("tool") if isinstance(body, dict) else None
         digest = body.get("args_sha256") if isinstance(body, dict) else None
         if isinstance(tool, str) and isinstance(digest, str):
-            duty.prove(procs.peer_pid(writer.get_extra_info("socket")), tool, digest)
+            duty.prove(lineage.peer_pid(writer.get_extra_info("socket")), tool, digest)
         writer.write(b"ok\n")  # the same answer either way; the hook only waits for it
         await writer.drain()
     writer.close()

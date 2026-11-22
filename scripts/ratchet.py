@@ -60,6 +60,7 @@ LAYERS = {
     **dict.fromkeys(
         (
             "procs",
+            "lineage",
             "held_folder",
             "config",
             "store",
