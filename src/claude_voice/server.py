@@ -640,6 +640,11 @@ def _duty(given: approver.Duty | None, repos: config.Config, manager: SessionMan
     )
 
 
+def _idle_watch(given: idle.Watch | None, clock: Callable[[], float]) -> idle.Watch:
+    """The watch a test hands in, or one over the bridge's state folder."""
+    return given or idle.Watch(config.STATE_DIR.expanduser(), clock=clock)
+
+
 def build_server(
     manager: SessionManager,
     oauth: OAuthProvider | None = None,
@@ -1140,7 +1145,7 @@ def build_server(
         orgs=(repos.activity_orgs, repos.activity_phone_orgs),
         projects_dir=projects_dir,
     )
-    watching_idle = idle_watch or idle.Watch(config.STATE_DIR.expanduser(), clock=manager.clock)
+    watching_idle = _idle_watch(idle_watch, manager.clock)
 
     def idle_now() -> tuple[list[tuple[idle.Flag, list[str]]], list[idle.Flag]]:
         """Each flag for a manager with the names its sessions answer to, and each for the voice,
