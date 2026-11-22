@@ -1,0 +1,5 @@
+[[rule]]
+name = "a claim never writes through a link"
+file = "src/claude_voice/tracker/verdicts.py"
+find = '^\s*if path\.is_symlink\(\) or \(path\.exists\(\) and not path\.is_file\(\)\):$'
+replace = 'if False:'

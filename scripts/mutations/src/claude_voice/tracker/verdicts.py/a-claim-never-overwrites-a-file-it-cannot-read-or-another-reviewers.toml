@@ -1,0 +1,5 @@
+[[rule]]
+name = "a claim never overwrites a file it cannot read or another reviewers"
+file = "src/claude_voice/tracker/verdicts.py"
+find = '^\s*if body is None or body\.get\("by", by\) != by:$'
+replace = 'if body is None:'

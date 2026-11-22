@@ -29,6 +29,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from .. import safefile
+
 #: A verdict file's name, and nothing looser: <repo>-<number>.<reviewer>.json.
 NAME = re.compile(r"^(?P<repo>[A-Za-z0-9._-]+)-(?P<number>[0-9]+)\.(?P<suffix>[a-z0-9-]+)\.json$")
 #: The reviewers whose stamps count, and the name suffixes each writes under.
@@ -44,6 +46,10 @@ SAME_AS = {"changes_requested": "changes"}
 TIERS = {"low", "risky"}
 HEAD = re.compile(r"[0-9a-f]{40}")
 MAX_BYTES = 64 * 1024
+
+
+class NotPlain(ValueError):
+    """A verdict file that is a link or not a file; a claim never writes it."""
 
 
 @dataclass(frozen=True)
@@ -137,11 +143,16 @@ def claimable(name: str, by: str, head: str) -> re.Match[str] | None:
 def claim(path: Path, by: str, head: str, at: str) -> bool:
     """Mark `by`'s review of `head` as started, in its own file. False when it has already
     approved that head, so nothing changed."""
-    body = _body(path) if path.exists() else None
-    body = body or {"by": by}
+    # RULE: a claim never writes through a link
+    if path.is_symlink() or (path.exists() and not path.is_file()):
+        raise NotPlain(f"{path.name} is not a plain file; nothing was written")
+    body = _body(path) if path.exists() else {"by": by}
+    # RULE: a claim never overwrites a file it cannot read or another reviewers
+    if body is None or body.get("by", by) != by:
+        raise NotPlain(f"{path.name} is not a verdict file of {by}'s that can be read; nothing was written")
     # RULE: a reviewer who approved this head does not claim it again
     if body.get("verdict") == "approve" and body.get("head") == head:
         return False
     body.update(by=by, verdict="reviewing", head=head, at=at)
-    path.write_text(json.dumps(body, indent=2) + "\n", encoding="utf-8")
+    safefile.replace(path, json.dumps(body, indent=2) + "\n")
     return True

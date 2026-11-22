@@ -394,7 +394,12 @@ def claim_command(name: str | None, by: str | None, head: str | None, env: Mappi
     home = env.get("HOME") or str(Path.home())
     path = Path(home + str(STATE_DIR)[1:]) / "reviews" / match.group(0)
     at = datetime.now().astimezone().isoformat(timespec="seconds")
-    if verdicts.claim(path, str(by), str(head), at):
+    try:
+        claimed = verdicts.claim(path, str(by), str(head), at)
+    except verdicts.NotPlain as exc:
+        sys.stderr.write(f"claude-voice: Refused: {exc}.\n")
+        return 1
+    if claimed:
         sys.stdout.write(f"claude-voice: claimed {match.group(0)} as reviewing at {str(head)[:12]}\n")
     else:
         sys.stdout.write("claude-voice: you have approved this head already; nothing changed\n")
