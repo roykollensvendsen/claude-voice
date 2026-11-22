@@ -229,4 +229,6 @@ def test_the_hook_runs_isolated_from_the_sessions_folder(tmp_path):
 
 
 def test_the_packs_live_in_the_owners_settings_folder():
-    assert Path("~/.config/claude-voice/orgs").expanduser() == org_rules.PACKS
+    from conftest import REAL_HOME  # each test has a home of its own; the packs are in the owner's
+
+    assert org_rules.PACKS.resolve() == REAL_HOME / ".config" / "claude-voice" / "orgs"
