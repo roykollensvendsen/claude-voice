@@ -1,5 +1,5 @@
 [[rule]]
 name = "a git alias is judged by what it runs"
 file = "src/claude_voice/guard.py"
-find = '^    return Push\(\[\]\) if _pushes\(line, lookup, folder, seen \| \{name\}\) else None$'
+find = '^    return Push\(\[\]\) if _pushes\(line, alias, folder, seen \| \{name\}\) else None$'
 replace = '    return None'

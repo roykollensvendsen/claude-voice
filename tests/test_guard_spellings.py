@@ -70,6 +70,13 @@ def test_quoting_with_no_push_in_it_is_left_alone(command):
     assert decide(command) is None
 
 
+@pytest.mark.parametrize(
+    "quoted, plain", [("$'\\x67'", "g"), ("$'\\x'", "\\x"), ("$'\\q'", "\\q"), ("$'\\''", "'"), ("$'\\\\'", "\\")]
+)
+def test_the_shells_own_quoting_is_read_as_bash_reads_it(quoted, plain):
+    assert guard._segments(f"echo {quoted}") == [["echo", plain]]
+
+
 def test_a_plain_push_to_the_fork_still_goes_through():
     assert decide("git push origin feat/x") is None
 
@@ -89,10 +96,6 @@ def test_a_plain_push_to_the_fork_still_goes_through():
         ("git s", {"s": "-c remote.origin.url=x push"}),
         ("git p", {"p": "q", "q": "!git push origin feat/x"}),
         ("git -C . p origin feat/x", {"p": "push"}),
-        ("git -c alias.p=push p origin feat/x", {}),
-        ("git -c alias.q=push -c alias.p=q p origin feat/x", {}),
-        ("git --config-env alias.p=WHAT p origin feat/x", {}),
-        ("git --config-env=alias.p=WHAT p origin feat/x", {}),
     ],
 )
 def test_a_git_alias_is_judged_by_what_it_runs(command, aliases):
@@ -102,14 +105,42 @@ def test_a_git_alias_is_judged_by_what_it_runs(command, aliases):
 @pytest.mark.parametrize(
     "command, aliases",
     [
-        ("git st", {"st": "status -sb"}),
-        ("git lfs pull", {}),
+        ("git zz origin feat/x", {}),
+        ("git send-pack origin feat/x", {}),
         ("git p", {"p": "q", "q": "p"}),
-        ("git s", {"s": "!echo push"}),
-        ("git -c alias.st=status st", {}),
+        ("git -c alias.p=push p origin feat/x", {}),
+        ("git -c alias.st=status st", {"st": "status"}),
+        ("git -c include.path=FILE zz origin feat/x", {}),
+        ("git -c includeIf.onbranch:x.path=FILE zz origin feat/x", {}),
+        ("git --config-env alias.p=WHAT p origin feat/x", {}),
+        ("git --config-env=include.path=WHAT zz origin feat/x", {}),
+        ("git -c alias.p=push p origin feat/x", {"p": "status"}),
+        ("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0=push git p origin feat/x", {"p": "status"}),
+        ("GIT_CONFIG_PARAMETERS=\"'alias.p'='push'\" git p origin feat/x", {}),
+        ("GIT_CONFIG_GLOBAL=FILE git p origin feat/x", {"p": "status"}),
+        ("HOME=/elsewhere git p origin feat/x", {"p": "status"}),
+        ("env XDG_CONFIG_HOME=/elsewhere git p origin feat/x", {"p": "status"}),
+        ("git config alias.p push && git p origin feat/x", {"p": "status"}),
+        ("true; git p origin feat/x", {"p": "status"}),
     ],
 )
-def test_an_alias_that_runs_no_push_is_left_alone(command, aliases):
+def test_a_subcommand_the_guard_cannot_place_is_taken_as_a_push(command, aliases):
+    assert caught(command, aliases)
+
+
+@pytest.mark.parametrize(
+    "command, aliases",
+    [
+        ("git st", {"st": "status -sb"}),
+        ("cd . && git st", {"st": "status -sb"}),
+        ("git lfs pull", {}),
+        ("git s", {"s": "!echo push"}),
+        ("git -c core.pager=cat log", {}),
+        ("GIT_CONFIG_GLOBAL=FILE git status", {}),
+        ("git config alias.p push && git status", {}),
+    ],
+)
+def test_an_alias_or_command_that_runs_no_push_is_left_alone(command, aliases):
     assert decide(command, False, aliases) is None
 
 
