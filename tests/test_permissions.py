@@ -916,6 +916,8 @@ def test_the_by_name_kill_rules_reach_every_repo_without_the_owner_typing():
     raw = json.loads(Path(permissions.__file__).with_name("permissions.json").read_text(encoding="utf-8"))
     for rule in raw["deny"]["stopping processes by name, which ends other sessions' work too"]:
         assert not shipped.broad(rule), rule
+
+
 # -- allow rules narrowed to the forms that are used --------------------------------------
 
 #: Allow rules that matched more than the everyday form, each now taken out of every clone.
