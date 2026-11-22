@@ -37,7 +37,7 @@ def test_a_test_s_stop_handlers_are_gone_before_the_next_test(tmp_path):
     (project / "scripts").mkdir()
     shutil.copy(ROOT / "tests/conftest.py", project / "tests/conftest.py")
     shutil.copy(ROOT / "scripts/temproot.py", project / "scripts/temproot.py")
-    (project / "tests/test_scratch.py").write_text(TWO_TESTS)
+    (project / "tests/test_scratch.py").write_text(TWO_TESTS, encoding="utf-8")
     base = tmp_path / "tmp"
     base.mkdir()
     env = {k: v for k, v in os.environ.items() if k != "GIZMO_MCP_TEST_ROOT"} | {"TMPDIR": str(base)}

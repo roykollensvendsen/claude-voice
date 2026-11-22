@@ -33,7 +33,7 @@ def test_a_session_link_is_never_committed():
 
 def test_a_word_from_the_private_list_is_never_committed(tmp_path):
     words = tmp_path / "private.toml"
-    words.write_text('words = ["Garasje Bakgarden", "abc"]\n')
+    words.write_text('words = ["Garasje Bakgarden", "abc"]\n', encoding="utf-8")
     private = private_data_scan.private_words(words)
     assert private == {"Garasje Bakgarden"}, "a word shorter than four letters would match ordinary text"
     assert private_data_scan.offences("the gizmo in garasje bakgarden", private)
@@ -55,7 +55,7 @@ def test_a_private_list_that_cannot_be_read_refuses_the_commit(tmp_path, kind, s
     """A list that is there but unusable would check nothing and look like a pass; each says its fix."""
     words = tmp_path / "private.toml"
     if kind == "broken":
-        words.write_text("words = [unclosed\n")
+        words.write_text("words = [unclosed\n", encoding="utf-8")
     elif kind == "folder":
         words.mkdir()
     else:
@@ -70,17 +70,17 @@ def test_an_unreadable_list_fails_the_scan_and_says_why(tmp_path, capsys):
     words = tmp_path / "private.toml"
     words.mkdir()
     message = tmp_path / "MSG"
-    message.write_text("feat: Add a thing\n")
+    message.write_text("feat: Add a thing\n", encoding="utf-8")
     assert private_data_scan.main(["--message", str(message), "--words", str(words)]) == 1
     assert "is not a readable file" in capsys.readouterr().err
 
 
 def test_a_clean_message_passes_and_a_bad_one_is_named_by_kind_only(tmp_path, capsys):
     message = tmp_path / "MSG"
-    message.write_text("feat: Add a thing\n\n# a comment git drops: " + "10.0.0" + ".1\n")
+    message.write_text("feat: Add a thing\n\n# a comment git drops: " + "10.0.0" + ".1\n", encoding="utf-8")
     none = str(tmp_path / "none.toml")
     assert private_data_scan.main(["--message", str(message), "--words", none]) == 0
-    message.write_text("feat: Add a thing\n\nAt " + "Storgata" + " 12.\n")
+    message.write_text("feat: Add a thing\n\nAt " + "Storgata" + " 12.\n", encoding="utf-8")
     assert private_data_scan.main(["--message", str(message), "--words", none]) == 1
     said = capsys.readouterr().err
     assert "a street address" in said

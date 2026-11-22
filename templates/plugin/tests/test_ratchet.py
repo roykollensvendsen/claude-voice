@@ -131,28 +131,28 @@ def test_the_suite_must_stay_inside_its_time_budget():
 
 def test_the_time_budget_is_the_one_thing_quality_json_keeps(tmp_path):
     path = tmp_path / "quality.json"
-    path.write_text(json.dumps({"test_budget": {"seconds": 90, "tolerance": 0.1}}))
+    path.write_text(json.dumps({"test_budget": {"seconds": 90, "tolerance": 0.1}}), encoding="utf-8")
     assert ratchet.budget(path) == {"seconds": 90, "tolerance": 0.1}
     assert ratchet.budget(tmp_path / "missing.json") == ratchet.DEFAULT_BUDGET
-    assert set(json.loads((ROOT / "quality.json").read_text())) == {"test_budget"}
+    assert set(json.loads((ROOT / "quality.json").read_text(encoding="utf-8"))) == {"test_budget"}
 
 
 def test_measured_levels_are_written_for_main_to_keep(tmp_path):
     out = tmp_path / "levels.json"
     ratchet.write_levels(out, {**measured(), "test_budget": None})
-    assert json.loads(out.read_text()) == {k: v for k, v in BASE.items() if k != "test_budget"}
+    assert json.loads(out.read_text(encoding="utf-8")) == {k: v for k, v in BASE.items() if k != "test_budget"}
 
 
 def test_the_levels_main_kept_are_the_base_when_they_are_there(tmp_path):
     kept = tmp_path / "levels.json"
-    kept.write_text(json.dumps(BASE))
+    kept.write_text(json.dumps(BASE), encoding="utf-8")
     asked = []
     assert ratchet.base_levels(kept, lambda: asked.append(1) or {}) == BASE
     assert asked == []
 
 
 def test_when_the_levels_main_kept_are_missing_the_base_is_measured(tmp_path):
-    (tmp_path / "broken.json").write_text("{not json")
+    (tmp_path / "broken.json").write_text("{not json", encoding="utf-8")
     for kept in (None, tmp_path / "missing.json", tmp_path / "broken.json"):
         assert ratchet.base_levels(kept, lambda: BASE) == BASE
 
@@ -176,7 +176,7 @@ def test_complexity_is_counted_per_function_and_a_nested_function_counts_on_its_
             return 0
         """,
     )
-    (tmp_path / "m.py").write_text(source)
+    (tmp_path / "m.py").write_text(source, encoding="utf-8")
     assert ratchet.complexity(tmp_path) == {"m.py": 4}  # inner: 1 + for + if + and
 
 
@@ -184,7 +184,7 @@ def _package(root, files):
     for name, text in files.items():
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8")
 
 
 def test_a_cycle_among_the_modules_is_counted_and_a_lazy_import_is_not(tmp_path):
@@ -250,8 +250,10 @@ def test_a_module_with_no_layer_is_a_breach(tmp_path):
 
 def test_duplicated_code_is_the_share_of_lines_in_blocks_that_appear_twice(tmp_path):
     block = "\n".join(f"x{i} = compute({i})" for i in range(6))
-    (tmp_path / "a.py").write_text(block + "\n\nunique_a = 1\n" + "\n".join(f"y{i} = {i}" for i in range(3)) + "\n")
-    (tmp_path / "b.py").write_text("    " + block.replace("\n", "\n    ") + "\nunique_b = 2\n")
+    (tmp_path / "a.py").write_text(
+        block + "\n\nunique_a = 1\n" + "\n".join(f"y{i} = {i}" for i in range(3)) + "\n", encoding="utf-8"
+    )
+    (tmp_path / "b.py").write_text("    " + block.replace("\n", "\n    ") + "\nunique_b = 2\n", encoding="utf-8")
     assert ratchet.duplication(tmp_path) == round(100 * 12 / 17, 2)  # 12 of 17 non-blank lines
 
 
@@ -307,7 +309,7 @@ def test_the_base_may_be_a_commit_no_branch_points_at(tmp_path, monkeypatch):
     so the test sets the older one, as an old git or a person's own settings would.
     """
     settings = tmp_path / "gitconfig"
-    settings.write_text("[protocol]\n\tversion = 0\n")
+    settings.write_text("[protocol]\n\tversion = 0\n", encoding="utf-8")
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(settings))
     here = _clone(tmp_path)
     behind = _git(here, "rev-parse", "main~1")
@@ -385,7 +387,7 @@ def test_a_stopped_ratchet_lets_its_mutation_run_put_the_line_back(tmp_path):
     ratchet_run.send_signal(signal.SIGTERM)
     _, said = ratchet_run.communicate(timeout=30)
     assert ratchet_run.returncode == 143
-    assert mark.read_text() == "put-back"
+    assert mark.read_text(encoding="utf-8") == "put-back"
     assert "kill -9 -- -" in said
 
 

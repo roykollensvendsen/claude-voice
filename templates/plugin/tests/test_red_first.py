@@ -185,14 +185,14 @@ def test_the_before_tree_has_the_branch_s_tests_and_the_base_s_code(tmp_path):
     git(repo, "init", "-q", "-b", "main")
     git(repo, "config", "user.email", "a@b.c")
     git(repo, "config", "user.name", "A")
-    (repo / "code.py").write_text("OLD = 1\n")
-    (repo / "tests/test_code.py").write_text("def test_old():\n    pass\n")
+    (repo / "code.py").write_text("OLD = 1\n", encoding="utf-8")
+    (repo / "tests/test_code.py").write_text("def test_old():\n    pass\n", encoding="utf-8")
     git(repo, "add", ".")
     git(repo, "commit", "-q", "-m", "base")
     base = git(repo, "rev-parse", "HEAD").strip()
-    (repo / "code.py").write_text("NEW = 2\n")
-    (repo / "tests/test_code.py").write_text("def test_new():\n    pass\n")
-    (repo / "tests/data.txt").write_text("helper data\n")
+    (repo / "code.py").write_text("NEW = 2\n", encoding="utf-8")
+    (repo / "tests/test_code.py").write_text("def test_new():\n    pass\n", encoding="utf-8")
+    (repo / "tests/data.txt").write_text("helper data\n", encoding="utf-8")
     git(repo, "add", ".")
     git(repo, "commit", "-q", "-m", "head")
     head = git(repo, "rev-parse", "HEAD").strip()
@@ -201,23 +201,26 @@ def test_the_before_tree_has_the_branch_s_tests_and_the_base_s_code(tmp_path):
     before = tmp_path / "before"
     red_first.before_tree(base, head, before, cwd=repo)
     try:
-        assert (before / "code.py").read_text() == "OLD = 1\n"
-        assert "test_new" in (before / "tests/test_code.py").read_text()
-        assert (before / "tests/data.txt").read_text() == "helper data\n"
+        assert (before / "code.py").read_text(encoding="utf-8") == "OLD = 1\n"
+        assert "test_new" in (before / "tests/test_code.py").read_text(encoding="utf-8")
+        assert (before / "tests/data.txt").read_text(encoding="utf-8") == "helper data\n"
     finally:
         git(repo, "worktree", "remove", "--force", str(before))
 
 
 def test_the_outcomes_are_read_per_test_including_a_module_that_cannot_import(tmp_path):
     (tmp_path / "tests").mkdir()
-    (tmp_path / "tests/test_gone.py").write_text("from nowhere import thing\n\ndef test_needs_it():\n    pass\n")
+    (tmp_path / "tests/test_gone.py").write_text(
+        "from nowhere import thing\n\ndef test_needs_it():\n    pass\n", encoding="utf-8"
+    )
     (tmp_path / "tests/test_mixed.py").write_text(
         "import pytest\n\n"
         "class TestC:\n    def test_red(self):\n        assert 0\n\n"
         "@pytest.mark.parametrize('v', [1, 2])\ndef test_half(v):\n    assert v == 1\n\n"
         "def test_green():\n    pass\n\n"
         "def test_skipped():\n    pytest.skip('not here')\n\n"
-        "def test_not_asked_for():\n    assert 0\n"
+        "def test_not_asked_for():\n    assert 0\n",
+        encoding="utf-8",
     )
     ids = [
         "tests/test_gone.py::test_needs_it",
@@ -242,7 +245,7 @@ def test_the_summary_is_also_written_for_the_checks_page(tmp_path, monkeypatch):
     page = tmp_path / "summary.md"
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(page))
     red_first.publish(["nothing to prove: no new or changed tests"])
-    assert "nothing to prove" in page.read_text()
+    assert "nothing to prove" in page.read_text(encoding="utf-8")
 
 
 def test_a_new_script_and_its_test_are_red_before_the_change_and_green_on_the_branch(tmp_path):
@@ -256,15 +259,16 @@ def test_a_new_script_and_its_test_are_red_before_the_change_and_green_on_the_br
     git(repo, "init", "-q", "-b", "main")
     git(repo, "config", "user.email", "a@b.c")
     git(repo, "config", "user.name", "A")
-    (repo / "scripts/old.py").write_text("OLD = 1\n")
+    (repo / "scripts/old.py").write_text("OLD = 1\n", encoding="utf-8")
     git(repo, "add", ".")
     git(repo, "commit", "-q", "-m", "base")
     base = git(repo, "rev-parse", "HEAD").strip()
-    (repo / "scripts/red_first.py").write_text("ANSWER = 42\n")
+    (repo / "scripts/red_first.py").write_text("ANSWER = 42\n", encoding="utf-8")
     (repo / "tests/test_new_script.py").write_text(
         "import pathlib\nimport sys\n\n"
         "sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / 'scripts'))\n\n"
-        "import red_first\n\n\ndef test_it_answers():\n    assert red_first.ANSWER == 42\n"
+        "import red_first\n\n\ndef test_it_answers():\n    assert red_first.ANSWER == 42\n",
+        encoding="utf-8",
     )
     git(repo, "add", ".")
     git(repo, "commit", "-q", "-m", "head")
@@ -280,7 +284,7 @@ def test_a_test_marked_to_fail_that_passes_does_not_count_as_passed(tmp_path):
     """Pytest calls an expected failure that passes a pass. Its mark says it is not meant to."""
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests/test_x.py").write_text(
-        "import pytest\n\n\n@pytest.mark.xfail(reason='not yet')\ndef test_x():\n    pass\n"
+        "import pytest\n\n\n@pytest.mark.xfail(reason='not yet')\ndef test_x():\n    pass\n", encoding="utf-8"
     )
     got = red_first.outcomes(["tests/test_x.py::test_x"], tmp_path, python=[sys.executable])
     assert got == {"tests/test_x.py::test_x": "skipped"}
@@ -297,7 +301,7 @@ def fake_pull_request(tmp_path, base_files, head_files):
     for files in (base_files, head_files):
         for name, text in files.items():
             (repo / name).parent.mkdir(parents=True, exist_ok=True)
-            (repo / name).write_text(text)
+            (repo / name).write_text(text, encoding="utf-8")
         git(repo, "add", ".")
         git(repo, "commit", "-q", "-m", "a commit")
         hashes.append(git(repo, "rev-parse", "HEAD").strip())
@@ -314,8 +318,8 @@ CONFTEST_NEEDING_HELPER = (
 def test_a_run_that_never_reports_is_said_with_pytest_s_exit_code(tmp_path):
     """A conftest that cannot import stops pytest before any test runs; that is not 'skipped'."""
     (tmp_path / "tests").mkdir()
-    (tmp_path / "tests/conftest.py").write_text("import nowhere  # noqa: F401\n")
-    (tmp_path / "tests/test_a.py").write_text("def test_a():\n    pass\n")
+    (tmp_path / "tests/conftest.py").write_text("import nowhere  # noqa: F401\n", encoding="utf-8")
+    (tmp_path / "tests/test_a.py").write_text("def test_a():\n    pass\n", encoding="utf-8")
     with pytest.raises(red_first.Unreported) as stopped:
         red_first.outcomes(["tests/test_a.py::test_a"], tmp_path, python=[sys.executable])
     assert stopped.value.code not in (0, 1)
@@ -354,7 +358,9 @@ def test_a_tree_s_tests_cannot_import_the_branch_s_scripts_through_the_plugin(tm
     the old code's tests could import the branch's own scripts, and pass where they must fail.
     """
     (tmp_path / "tests").mkdir()
-    (tmp_path / "tests/test_uses_it.py").write_text("import red_first\n\n\ndef test_uses_it():\n    pass\n")
+    (tmp_path / "tests/test_uses_it.py").write_text(
+        "import red_first\n\n\ndef test_uses_it():\n    pass\n", encoding="utf-8"
+    )
     got = red_first.outcomes(["tests/test_uses_it.py::test_uses_it"], tmp_path, python=[sys.executable])
     assert got == {"tests/test_uses_it.py::test_uses_it": "failed"}
 

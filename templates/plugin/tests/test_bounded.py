@@ -74,7 +74,7 @@ def test_a_child_that_overruns_leaves_nothing_of_its_group_running(tmp_path: pat
         run_bounded(["sh", "-c", script], 1, capture_output=True, text=True)
     # Killing the shell alone would wait out the sleep that holds its output, then find it gone.
     assert time.monotonic() - started < 15, "the bound waited for the sleep to end by itself"
-    group, grandchild = int(leader.read_text()), int(sleeper.read_text())
+    group, grandchild = int(leader.read_text(encoding="utf-8")), int(sleeper.read_text(encoding="utf-8"))
     try:
         deadline = time.monotonic() + 10  # a killed sleep is reaped by init, which takes a moment
         while not (_ended(grandchild) and _gone(group)) and time.monotonic() < deadline:

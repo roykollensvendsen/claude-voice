@@ -26,12 +26,14 @@ def _run(tmp_path, test, *, there_before):
     """Run `test` in a scratch project guarded by this repository's conftest."""
     (tmp_path / "tests").mkdir()
     (tmp_path / "scripts").mkdir()
-    (tmp_path / "tests/conftest.py").write_text((ROOT / "tests/conftest.py").read_text(encoding="utf-8"))
+    (tmp_path / "tests/conftest.py").write_text(
+        (ROOT / "tests/conftest.py").read_text(encoding="utf-8"), encoding="utf-8"
+    )
     shutil.copy(ROOT / "scripts/temproot.py", tmp_path / "scripts/temproot.py")
     (tmp_path / "tmp").mkdir()
-    (tmp_path / "tests/test_scratch.py").write_text(test)
+    (tmp_path / "tests/test_scratch.py").write_text(test, encoding="utf-8")
     if there_before:
-        (tmp_path / "scripts/.mutate-recovery.json").write_text('{"file": "kept"}')
+        (tmp_path / "scripts/.mutate-recovery.json").write_text('{"file": "kept"}', encoding="utf-8")
     return subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "--rootdir", str(tmp_path), "tests"],
         cwd=tmp_path,

@@ -211,7 +211,7 @@ def _project(tmp_path, test):
     (project / "scripts").mkdir()
     shutil.copy(ROOT / "tests/conftest.py", project / "tests/conftest.py")
     shutil.copy(ROOT / "scripts/temproot.py", project / "scripts/temproot.py")
-    (project / "tests/test_scratch.py").write_text(test)
+    (project / "tests/test_scratch.py").write_text(test, encoding="utf-8")
     return project
 
 
@@ -260,9 +260,9 @@ def test_a_killed_test_run_is_swept_at_the_next_start(tmp_path):
     left.parent.mkdir(mode=0o700)
     left.mkdir()
     (left / temproot.LOCK).touch()
-    (left / "made-by-the-killed-run.txt").write_text("x")
+    (left / "made-by-the-killed-run.txt").write_text("x", encoding="utf-8")
     (left / "shut").mkdir()
-    (left / "shut" / "inside.txt").write_text("x")
+    (left / "shut" / "inside.txt").write_text("x", encoding="utf-8")
     (left / "shut").chmod(0)  # as a test that took its own folder's rights away would leave it
     other = base / "gizmo-mcp-tests-00000000"  # another checkout's: never ours to sweep
     other.mkdir()

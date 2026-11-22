@@ -15,7 +15,7 @@ import own_code
 
 def _checkout(where: pathlib.Path) -> pathlib.Path:
     (where / "src" / own_code.MODULE).mkdir(parents=True)
-    (where / "src" / own_code.MODULE / "__init__.py").write_text("")
+    (where / "src" / own_code.MODULE / "__init__.py").write_text("", encoding="utf-8")
     return where
 
 
@@ -31,7 +31,8 @@ def test_a_check_measures_only_this_checkout_s_own_code(tmp_path):
     hook = tmp_path / "hook"
     hook.mkdir()
     (hook / "sitecustomize.py").write_text(
-        f"import sys\nsys.path.insert(0, {str(elsewhere / 'src')!r})\nimport {own_code.MODULE}\nsys.path.pop(0)\n"
+        f"import sys\nsys.path.insert(0, {str(elsewhere / 'src')!r})\nimport {own_code.MODULE}\nsys.path.pop(0)\n",
+        encoding="utf-8",
     )
     env = {**os.environ, "PYTHONPATH": str(hook)}
     with pytest.raises(SystemExit) as refused:

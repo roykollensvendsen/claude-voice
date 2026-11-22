@@ -37,7 +37,7 @@ def _mutate(tmp_path, monkeypatch):
     spec.loader.exec_module(module)
     project = tmp_path / "project"
     (project / "tests").mkdir(parents=True)
-    (project / "tests" / "test_leaves_files.py").write_text(LEAVES_FILES)
+    (project / "tests" / "test_leaves_files.py").write_text(LEAVES_FILES, encoding="utf-8")
     monkeypatch.setattr(module, "ROOT", project)
     monkeypatch.setattr(module, "MUTATE_TMP", tmp_path / "mutate-tmp")
     return module
@@ -55,10 +55,11 @@ def test_a_suite_s_own_processes_keep_their_files_in_its_folder(tmp_path, monkey
     seen = tmp_path / "seen.txt"
     (mutate.ROOT / "tests" / "test_where.py").write_text(
         "import tempfile, pathlib\n"
-        f"def test_where():\n    pathlib.Path({str(seen)!r}).write_text(tempfile.gettempdir())\n"
+        f"def test_where():\n    pathlib.Path({str(seen)!r}).write_text(tempfile.gettempdir())\n",
+        encoding="utf-8",
     )
     mutate.run_suite(["tests/test_where.py"], tmp_path / "run")
-    assert pathlib.Path(seen.read_text()).parent == tmp_path / "run"
+    assert pathlib.Path(seen.read_text(encoding="utf-8")).parent == tmp_path / "run"
 
 
 def test_removing_a_run_s_files_never_changes_a_folder_it_links_to(tmp_path, monkeypatch):
@@ -66,9 +67,9 @@ def test_removing_a_run_s_files_never_changes_a_folder_it_links_to(tmp_path, mon
     outside = tmp_path / "outside"
     outside.mkdir()
     outside.chmod(0o755)
-    (outside / "kept.txt").write_text("x")
+    (outside / "kept.txt").write_text("x", encoding="utf-8")
     (mutate.ROOT / "tests" / "test_links_out.py").write_text(
-        f"def test_it_links_out(tmp_path):\n    (tmp_path / 'link').symlink_to({str(outside)!r})\n"
+        f"def test_it_links_out(tmp_path):\n    (tmp_path / 'link').symlink_to({str(outside)!r})\n", encoding="utf-8"
     )
     failed, _ = mutate.run_suite()
     assert failed == 0
@@ -109,12 +110,12 @@ def _project(tmp_path):
     project = tmp_path / "project"
     for folder in ("scripts/mutations/src/pkg/core.py", "src/pkg", "src/gizmo_mcp", "tests"):
         (project / folder).mkdir(parents=True)
-    (project / "src/gizmo_mcp/__init__.py").write_text("")
+    (project / "src/gizmo_mcp/__init__.py").write_text("", encoding="utf-8")
     for name in ("mutate.py", "temproot.py", "own_code.py"):
         shutil.copy(ROOT / "scripts" / name, project / "scripts" / name)
-    (project / "src/pkg/core.py").write_text(ORIGINAL)
-    (project / "scripts/mutations/src/pkg/core.py/a-slow-rule.toml").write_text(ROW)
-    (project / "tests/test_core.py").write_text(SLOW_TEST)
+    (project / "src/pkg/core.py").write_text(ORIGINAL, encoding="utf-8")
+    (project / "scripts/mutations/src/pkg/core.py/a-slow-rule.toml").write_text(ROW, encoding="utf-8")
+    (project / "tests/test_core.py").write_text(SLOW_TEST, encoding="utf-8")
     base = tmp_path / "tmp"
     base.mkdir()
     return project, base
@@ -139,12 +140,12 @@ def test_a_mutation_run_stopped_by_sigterm_restores_the_file_and_leaves_nothing(
     )
     try:
         _until(lambda: list(base.glob("gizmo-mcp-mutate-*/run-*/suite-*")), "the run never started a suite")
-        assert source.read_text().endswith("X = 2\n"), "the run never switched the rule off"
+        assert source.read_text(encoding="utf-8").endswith("X = 2\n"), "the run never switched the rule off"
         run.send_signal(signal.SIGTERM)
         assert run.wait(timeout=30) == 143
     finally:
         run.kill()
-    assert source.read_text() == ORIGINAL
+    assert source.read_text(encoding="utf-8") == ORIGINAL
     assert not (project / "scripts/.mutate-recovery.json").exists()
     assert list(base.iterdir()) == []
 
@@ -155,7 +156,7 @@ def test_a_mutation_run_stopped_twice_still_puts_its_line_back(tmp_path):
     source = project / "src/pkg/core.py"
     hook = tmp_path / "hook"
     hook.mkdir()
-    (hook / "sitecustomize.py").write_text(SLOW_RESTORE)
+    (hook / "sitecustomize.py").write_text(SLOW_RESTORE, encoding="utf-8")
     run = subprocess.Popen(
         [sys.executable, "scripts/mutate.py"],
         cwd=project,
@@ -171,6 +172,6 @@ def test_a_mutation_run_stopped_twice_still_puts_its_line_back(tmp_path):
         assert run.wait(timeout=30) in (130, -signal.SIGINT)
     finally:
         run.kill()
-    assert source.read_text() == ORIGINAL
+    assert source.read_text(encoding="utf-8") == ORIGINAL
     assert not (project / "scripts/.mutate-recovery.json").exists()
     assert list(base.iterdir()) == []

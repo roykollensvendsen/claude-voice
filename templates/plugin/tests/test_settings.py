@@ -21,14 +21,14 @@ def test_the_shipped_default_config_loads_as_the_defaults():
 
 def test_a_key_the_plugin_does_not_know_is_refused_by_name(tmp_path):
     path = tmp_path / "config.toml"
-    path.write_text('[device]\naddres = "x"\n[other]\n')
+    path.write_text('[device]\naddres = "x"\n[other]\n', encoding="utf-8")
     with pytest.raises(settings.SettingsError, match=r"device\.addres, other|other, device\.addres"):
         settings.load(path)
 
 
 def test_a_config_that_is_not_toml_says_how_to_fix_it(tmp_path):
     path = tmp_path / "config.toml"
-    path.write_text("[device\n")
+    path.write_text("[device\n", encoding="utf-8")
     with pytest.raises(settings.SettingsError, match="delete it to use the defaults"):
         settings.load(path)
 

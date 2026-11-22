@@ -72,9 +72,9 @@ def test_a_range_names_every_commit_refused_and_why(tmp_path):
 
 def test_the_hook_form_reads_a_message_file_and_drops_comments(tmp_path, monkeypatch, capsys):
     path = tmp_path / "COMMIT_EDITMSG"
-    path.write_text("feat: Add a thing\n\n# Reviewed-by: a comment git drops\n")
+    path.write_text("feat: Add a thing\n\n# Reviewed-by: a comment git drops\n", encoding="utf-8")
     monkeypatch.setattr(sys, "argv", ["no_session_links.py", "--file", str(path)])
     assert no_session_links.main() == 0
-    path.write_text("feat: Add a thing\n\nReviewed-by: Someone <s@example.invalid>\n")
+    path.write_text("feat: Add a thing\n\nReviewed-by: Someone <s@example.invalid>\n", encoding="utf-8")
     assert no_session_links.main() == 1
     assert "Reviewed-by" in capsys.readouterr().err

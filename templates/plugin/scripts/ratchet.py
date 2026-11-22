@@ -351,7 +351,7 @@ def measure(*, skip_mutation: bool = False, recorded: dict[str, Any] | None = No
         seconds = round(time.monotonic() - started, 1)
         if suite.returncode:
             raise SystemExit("The suite fails; the ratchet measures a green tree.\n" + suite.stdout[-2000:])
-        coverage = round(json.loads(report.read_text())["totals"]["percent_covered"], 2)
+        coverage = round(json.loads(report.read_text(encoding="utf-8"))["totals"]["percent_covered"], 2)
         passed = re.search(r"(\d+) passed", suite.stdout)
         lint = _python("-m", "ruff", "check", ".", "--output-format", "json", env=env)
         types = _python("-m", "mypy", "src", env=env)
@@ -448,7 +448,7 @@ def write_levels(path: Path, now: dict[str, Any]) -> None:
 def base_levels(kept: Path | None, measure_base: Callable[[], dict[str, Any]]) -> dict[str, Any]:
     """Main's kept levels for the base, or, when they are missing, the base measured."""
     try:
-        levels = json.loads(kept.read_text()) if kept else None
+        levels = json.loads(kept.read_text(encoding="utf-8")) if kept else None
     except (OSError, ValueError):
         levels = None
     if isinstance(levels, dict) and "coverage" in levels:
@@ -515,7 +515,7 @@ def measure_at(ref: str, repo: Path | None = None) -> dict[str, Any]:
         if measured.returncode:
             msg = f"Measuring {ref} failed:\n{measured.stdout[-2000:]}{measured.stderr[-2000:]}"
             raise SystemExit(msg)
-        return dict(json.loads(out.read_text()))
+        return dict(json.loads(out.read_text(encoding="utf-8")))
 
 
 def main() -> int:
