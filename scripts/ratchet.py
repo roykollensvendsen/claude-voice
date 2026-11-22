@@ -61,7 +61,6 @@ LAYERS = {
         (
             "procs",
             "lineage",
-            "boxed",
             "held_folder",
             "config",
             "store",
@@ -116,6 +115,8 @@ LAYERS = {
             "routing",
             "calllog",
             "activity",
+            "boxed",
+            "approver_token",
         ),
         1,
     ),  # parts, each about one thing
