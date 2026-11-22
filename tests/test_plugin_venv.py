@@ -292,6 +292,38 @@ def test_a_stopped_sync_never_waits_on_output_a_helper_outside_its_group_holds(t
 
 
 @posix
+def test_a_sync_cut_short_by_ctrl_c_is_stopped_with_everything_it_started(tmp_path, uv, monkeypatch):
+    """A Ctrl-C in the terminal reaches the bridge, not a sync in a session of its own."""
+    import subprocess
+
+    folder = tmp_path / "gizmo"
+    gizmo(folder, "run", "gizmo-mcp")
+    (folder / ".uv-does").write_text("spawn")
+    started = subprocess.Popen.communicate
+
+    def interrupted(self, *args, **kwargs):
+        deadline = time.monotonic() + 5
+        while not (folder / ".uv-child").exists() and time.monotonic() < deadline:
+            time.sleep(0.05)  # until the sync has started its own helper
+        monkeypatch.setattr(subprocess.Popen, "communicate", started)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(subprocess.Popen, "communicate", interrupted)
+    child = None
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            plugin_venv._sync(str(uv), folder, 60)
+        child = int((folder / ".uv-child").read_text())
+        deadline = time.monotonic() + 5
+        while _runs(child, str(folder)) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert not _runs(child, str(folder))
+    finally:
+        if child is not None and _runs(child, str(folder)):
+            os.kill(child, 9)
+
+
+@posix
 def test_waiting_for_the_lock_counts_against_the_syncs_time_limit(tmp_path, uv, monkeypatch):
     import fcntl
     import threading
