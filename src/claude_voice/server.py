@@ -61,6 +61,7 @@ from . import (
     org,
     phone_hook,
     plugin_desk,
+    plugin_venv,
     plugins,
     procs,
     prompts,
@@ -880,6 +881,10 @@ def build_server(
                 # this happens only as the bridge stops; tests open a new start for each client.
                 starting.cancel()
                 plugins_started.clear()  # the next start tries again
+            # A plugin's sync runs in a session of its own, so it would outlive the bridge.
+            # RULE: a bridge that stops stops the plugin syncs still running
+            if stopped := plugin_venv.stop_running():
+                log.info("stopped %d plugin syncs still running as the bridge stops", stopped)
             with contextlib.suppress(Exception):
                 _activity_flush(activity_view)
             if stop_software:

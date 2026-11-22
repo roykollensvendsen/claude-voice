@@ -14,17 +14,20 @@ again. This runs only for a plugin the owner approved: the approval is checked f
 from __future__ import annotations
 
 import contextlib
+import logging
 import os
 import re
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
 from . import procs, uvlock
 from .config import STATE_DIR, PluginSpec
 
+log = logging.getLogger(__name__)
 #: The lock every step that changes what uv keeps takes first (uvlock).
 LOCK = STATE_DIR / "uv.lock"
 #: How long a sync may take, waiting for the lock included. A guess: a sync that has to fetch
@@ -34,6 +37,10 @@ SYNC_SECONDS = 300.0
 DRAIN_SECONDS = 5.0
 SCRIPT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,99}")
 UV = ("uv", "uv.exe")
+#: The syncs running now, so the bridge can stop them as it stops: one in a worker thread never
+#: sees a Ctrl-C, and runs in a session of its own, so it would outlive the bridge.
+_running: set[subprocess.Popen[str]] = set()
+_running_lock = threading.Lock()
 
 
 class Refused(RuntimeError):
@@ -69,16 +76,19 @@ def _sync(uv: str, folder: Path, seconds: float) -> subprocess.CompletedProcess[
     """Run `uv sync --locked` in a process group of its own, so that a time-out stops it and
     everything it started, such as a package build that would otherwise hold uv's lock."""
     alone = sys.platform != "win32"
-    with subprocess.Popen(
-        [uv, "sync", "--locked"],
-        cwd=folder,
-        # RULE: a sync gets none of the bridges secrets
-        env=environment(),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        start_new_session=alone,
-    ) as sync:
+    with (
+        subprocess.Popen(
+            [uv, "sync", "--locked"],
+            cwd=folder,
+            # RULE: a sync gets none of the bridges secrets
+            env=environment(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=alone,
+        ) as sync,
+        _counted(sync),
+    ):
         try:
             out, err = sync.communicate(timeout=seconds)
         # A sync in a session of its own never sees a Ctrl-C in the terminal, so it is stopped
@@ -97,10 +107,43 @@ def _sync(uv: str, folder: Path, seconds: float) -> subprocess.CompletedProcess[
             # A helper that left the group, as a daemon does, can still hold uv's output open. So
             # the last read gets a short limit of its own, and the pipes close as the sync is left.
             # RULE: a stopped sync never waits on output a helper outside its group holds
-            with contextlib.suppress(subprocess.TimeoutExpired):
+            try:
                 sync.communicate(timeout=DRAIN_SECONDS)
+            except subprocess.TimeoutExpired:
+                log.warning("a stopped sync in %s left a helper that still holds its output", folder)
             raise
     return subprocess.CompletedProcess(sync.args, sync.returncode, out, err)
+
+
+@contextlib.contextmanager
+def _counted(sync: subprocess.Popen[str]):
+    """Count `sync` as running while it runs, so stop_running can reach it."""
+    with _running_lock:
+        _running.add(sync)
+    try:
+        yield
+    finally:
+        with _running_lock:
+            _running.discard(sync)
+
+
+def _stop(sync: subprocess.Popen[str]) -> None:
+    if sys.platform == "win32":
+        sync.kill()
+        return
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(os.getpgid(sync.pid), signal.SIGKILL)  # the sync leads a group of its own
+
+
+def stop_running() -> int:
+    """Stop every sync still running, with everything each started; the number stopped. The
+    thread waiting on each sync then reads its end, and the plugin is refused as a failed sync."""
+    with _running_lock:
+        syncs = list(_running)
+    for sync in syncs:
+        # RULE: a sync still running when the bridge stops is stopped with everything it started
+        _stop(sync)
+    return len(syncs)
 
 
 def ready(spec: PluginSpec) -> tuple[str, list[str]] | None:
