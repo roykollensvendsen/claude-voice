@@ -1,0 +1,5 @@
+[[rule]]
+name = "a use the protocol does not name refuses the entry"
+file = "src/claude_voice/access.py"
+find = '^\s*if any\(use not in USES for use in uses\):$'
+replace = 'if False:'

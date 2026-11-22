@@ -175,6 +175,12 @@ def test_ignored_verdict_files_are_counted_in_the_runs_summary(tmp_path):
     assert any("ignored 1 verdict file" in line for line in said)
 
 
+def test_files_that_are_not_verdict_files_are_counted_in_the_runs_summary(tmp_path):
+    verdict(tmp_path, "demo-x12.quality.json", by="quality-claude-voice", verdict="approve")
+    said = _run(Fake(), tmp_path)
+    assert any("skipped 1 file" in line for line in said)
+
+
 def test_finished_work_not_on_the_board_is_not_added(tmp_path):
     fake = Fake(open_work=[pr("P1", state="MERGED")])
     _run(fake, tmp_path)

@@ -20,6 +20,7 @@ STATES = ("granted", "refused", "never_asked")
 #: A plugin's name, as protocol v1 allows it; nothing else is spoken.
 NAME = re.compile(r"[a-z][a-z0-9_]{0,31}")
 #: The private things the protocol names: version 1's, and `messages` from the next version.
+#: A new use is added here in the same change as the protocol version that names it.
 USES = (
     "microphone",
     "camera",
@@ -103,6 +104,7 @@ def _entry(held: Held, entry: dict[str, Any]) -> None:
     if not NAME.fullmatch(name):
         held.refused.append("an entry with a name the protocol does not allow")
         return
+    # RULE: a use the protocol does not name refuses the entry
     if any(use not in USES for use in uses):
         held.refused.append(f"{name}: a use the protocol does not name")
         return

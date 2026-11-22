@@ -1,0 +1,5 @@
+[[rule]]
+name = "a file whose name is not a verdict files is counted"
+file = "src/claude_voice/tracker/verdicts.py"
+find = '^\s*out\.unnamed \+= 1$'
+replace = 'pass'
