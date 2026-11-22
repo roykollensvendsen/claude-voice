@@ -321,7 +321,7 @@ approval is ignored.
 
 | Call | Answer |
 | --- | --- |
-| `GET /api/v1/work` | `{"as_of", "waiting_on_owner": [{"id", "text", "command"\|null, "since", "repo"\|null, "session"\|null, "prompt"\|null}], "open_prs": [{"repo", "number", "title", "url", "checks": "pass"\|"fail"\|"pending", "draft"}], "unreadable": ["<repo>"], "developer_mode": {"on", "until"\|null}}` |
+| `GET /api/v1/work` | `{"as_of", "waiting_on_owner": [{"id", "text", "command"\|null, "since", "repo"\|null, "session"\|null, "prompt"\|null}], "open_prs": [{"repo", "number", "title", "url", "checks": "pass"\|"fail"\|"pending", "draft"}], "unreadable": ["<repo>"], "board_url": "<https url>"\|null, "developer_mode": {"on", "until"\|null}}` |
 
 What waits on the owner is the manager session's own list, read fresh on every
 call from `~/.local/state/claude-voice/waiting.json`; an item with no `id` or
@@ -334,6 +334,9 @@ minute; a repository whose pull requests could not be read is named in
 `unreadable` rather than shown as having none. `text` and `command` are plain
 text, never markup. `developer_mode` says whether the owner's voice may approve a
 plugin whose tools changed, and until when (ADR-CV-010); it ends by itself.
+`board_url` is the project board the page links to, from `[work] board_url` in the
+settings file. It is passed on only as an `https` address with a host; anything
+else, or no setting, gives `null`. The stream's `work` event carries it too.
 
 ## A session's own page
 

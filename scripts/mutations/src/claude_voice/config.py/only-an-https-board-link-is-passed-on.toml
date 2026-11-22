@@ -1,0 +1,5 @@
+[[rule]]
+name = "only an https board link is passed on"
+file = "src/claude_voice/config.py"
+find = '^\s*if parts\.scheme != "https" or not parts\.hostname:$'
+replace = 'if False:'

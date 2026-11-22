@@ -1587,6 +1587,7 @@ def build_server(
         | {name: repo for name, repo, _ in plugin_repos},
         run=software._gh,
         login_expiry=lambda: work.read_login_expiry(),  # looked up late, so the suite can stand in for it
+        board_url=repos.board_url,
     )
 
     def software_listed() -> list[tuple[str, str, Path | None, str]]:

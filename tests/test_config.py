@@ -97,6 +97,35 @@ def test_the_ui_folder_setting_still_wins_over_the_file(tmp_path):
     assert out.paths.ui_dist == tmp_path / "built"
 
 
+def test_the_work_page_links_to_the_board_named_in_the_file(tmp_path):
+    file = tmp_path / "config.toml"
+    file.write_text('[work]\nboard_url = "https://example.invalid/boards/7"\n')
+    assert config.load(file, own_clone=tmp_path, env={}).board_url == "https://example.invalid/boards/7"
+
+
+def test_with_no_board_named_there_is_no_link(tmp_path):
+    assert config.load(None, own_clone=tmp_path, env={}).board_url is None
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        '"http://example.invalid/boards/7"',
+        '"javascript:alert(1)"',
+        '"data:text/html,hi"',
+        '"//example.invalid/boards/7"',
+        '"https://"',
+        '"https:///boards/7"',
+        '""',
+        "7",
+    ],
+)
+def test_only_an_https_board_link_is_passed_on(tmp_path, value):
+    file = tmp_path / "config.toml"
+    file.write_text(f"[work]\nboard_url = {value}\n")
+    assert config.load(file, own_clone=tmp_path, env={}).board_url is None
+
+
 @pytest.mark.parametrize("bad", ['claude_voice = "not a repo"', 'fork = "a/b/c"', 'claude_voice = "../etc"'])
 def test_a_repository_that_is_not_owner_slash_name_is_refused(tmp_path, bad):
     file = tmp_path / "config.toml"

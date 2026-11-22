@@ -178,8 +178,10 @@ class Board:
         clock: Callable[[], float] = time.monotonic,
         login_expiry: Callable[[], datetime | None] | None = None,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        board_url: str | None = None,
     ) -> None:
         self.repos = repos
+        self.board_url = board_url  # the project board the page links to, already checked as https
         self.waiting_file = waiting_file
         self.run = run
         self.clock = clock
@@ -195,6 +197,7 @@ class Board:
             "waiting_on_owner": self._sign_in() + waiting(self.waiting_file),
             "open_prs": self._prs[1],
             "unreadable": self._prs[2],
+            "board_url": self.board_url,
         }
         self._last = body
         return {"as_of": _now(), **body}
