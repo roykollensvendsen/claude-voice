@@ -40,6 +40,7 @@ from . import (
     answers,
     api,
     approver,
+    approver_pane,
     approver_token,
     boxed,
     calllog,
@@ -657,6 +658,7 @@ def build_server(
     machine_http: machines.Http = machines.http_client,
     machine_whois: machines.Whois = tailnet.whois,
     start_seconds: float = 20.0,
+    approver_window: Callable[..., Awaitable[tuple[int, str | None]]] = approver_pane.launch,
     list_prs: Callable[[str], list[dict[str, Any]]] | None = None,
     ui_origins: list[str] | None = None,
     summarize: Callable[[str, str | None, str | None], Awaitable[str]] = transcripts.summarize,
@@ -1470,11 +1472,17 @@ def build_server(
             wanted = f"{wanted}-{secrets.token_hex(2)}"
         return wanted
 
-    async def appeared(name: str, folder: Path) -> dict[str, Any]:
-        """The started session once Claude Code lists it, recorded so the bridge may stop it."""
+    async def appeared(name: str, folder: Path, pid: int | None = None) -> dict[str, Any]:
+        """The started session once Claude Code lists it, recorded so the bridge may stop it.
+        With `pid`, only a row of that process counts: any session can write a row."""
         deadline = time.monotonic() + start_seconds
+
+        def ours(d: dict[str, Any]) -> bool:
+            # RULE: the approvers process is taken from its window not a session file
+            return d.get("name") == name and d.get("cwd") == str(folder) and pid in (None, d.get("pid"))
+
         while time.monotonic() < deadline:
-            found = next((d for d in live_sessions() if d.get("name") == name and d.get("cwd") == str(folder)), None)
+            found = next((d for d in live_sessions() if ours(d)), None)
             if found:
                 store.record_started(str(found.get("sessionId")), name, str(folder))
                 return found
@@ -1494,6 +1502,8 @@ def build_server(
             )
         folder = roles.folder_for(spec)
         name = unused_name(str(spec.get("name") or role))
+        if role == boxed.CLIENT:
+            return await launch_approver(spec, folder, name, task)
         how, _, _ = how_to_start(str(folder), name, None, None)
         try:
             await start_background(
@@ -1512,6 +1522,27 @@ def build_server(
         held = {"name": name, "id": str(found.get("sessionId")), "pid": pid, "started": lineage.start_ticks(pid)}
         store.set_setting(f"role:{role}", held)
         return {"role": role, "name": name, "claude_session_id": found.get("sessionId"), "status": found.get("status")}
+
+    async def launch_approver(spec: dict[str, Any], folder: Path, name: str, task: str | None) -> dict[str, Any]:
+        """The approver in a tmux window of its own, boxed in to its two tools, its process pinned
+        from tmux's answer the moment the window opens (approver-v1, v1.5 and v1.7)."""
+        tmux, cli = find_program("tmux"), find_program("claude")
+        # RULE: the approver cannot start without tmux
+        if not tmux or not cli:
+            raise ToolError("The approver needs tmux and claude on this machine, and cannot start without them.")
+        claude = await asyncio.to_thread(os.path.realpath, cli)
+        hooks = phone_hook.settings_entries(sys.executable)
+        prompt = roles.first_message(spec, folder, task)
+        argv = approver_pane.command(sys.executable, claude, name, bridge_port, hooks, prompt)
+        try:
+            pid, ticks = await approver_window([tmux], keeper, name, str(folder), argv, claude, start_seconds)
+        except (OSError, RuntimeError) as exc:
+            raise ToolError(f"The approver could not start: {exc}") from None
+        found = await appeared(name, folder, pid)
+        held = {"name": name, "id": str(found.get("sessionId")), "pid": pid, "started": ticks}
+        store.set_setting(f"role:{boxed.CLIENT}", held)
+        session = found.get("sessionId")
+        return {"role": boxed.CLIENT, "name": name, "claude_session_id": session, "status": found.get("status")}
 
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
     async def start_role(role: str, task: str | None = None) -> dict[str, Any]:
