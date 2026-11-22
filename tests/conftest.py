@@ -24,6 +24,8 @@ WRITE_FLAGS = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_TRUNC
 #: For each change, where among its audit arguments each written path is, and the folder handle a
 #: relative path is read against (shutil.rmtree removes by name inside an open folder). A link's
 #: source is not written, only where it is made; a database file is made without an open event.
+#: Python's open event carries no folder handle, so os.open of a bare name inside an opened
+#: folder is read against the test's own folder, not the opened one. Only the moved home holds then.
 WRITTEN: dict[str, list[tuple[int, int | None]]] = {
     "os.remove": [(0, 1)],
     "os.rmdir": [(0, 1)],
