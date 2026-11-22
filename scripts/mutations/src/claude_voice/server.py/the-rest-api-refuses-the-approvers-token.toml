@@ -1,0 +1,5 @@
+[[rule]]
+name = "the rest api refuses the approvers token"
+file = "src/claude_voice/server.py"
+find = 'return found is not None and found.client_id != boxed.CLIENT'
+replace = 'return found is not None'

@@ -14,11 +14,19 @@ and the hook it runs inherits it (approver-v1, v1.7).
 from __future__ import annotations
 
 import json
+from collections.abc import Awaitable, Callable
 from typing import Any
+
+from mcp.shared.exceptions import MCPError
+from mcp.types import INVALID_REQUEST, CallToolResult, ListToolsResult, TextContent
 
 #: The bridge's name as the approver's MCP server; its tools are mcp__<SERVER>__<tool>.
 SERVER = "claude-voice"
 TOOLS = ("approver_boxes", "approver_answer")
+#: The client name the bridge gives the approver's own token.
+CLIENT = "approver"
+#: What a message with the approver's token may ask, besides notifications.
+OPEN = ("initialize", "ping", "tools/list", "tools/call")
 #: Pinned here, since the owner's model setting lives in a settings file the approver skips.
 MODEL = "claude-opus-5-5"
 #: The environment variable the approver's token is read from; the token is never in argv.
@@ -65,3 +73,29 @@ def claude_args(cli: str, name: str, port: int, hooks: dict[str, Any], prompt: s
         "--",
         prompt,
     ]
+
+
+def _client(ctx: Any) -> str | None:
+    """The client of the token this one message came with, from its own HTTP request."""
+    user = (getattr(getattr(ctx, "request", None), "scope", None) or {}).get("user")
+    token = getattr(user, "access_token", None)
+    return getattr(token, "client_id", None)
+
+
+async def gate(ctx: Any, call_next: Callable[[Any], Awaitable[Any]]) -> Any:
+    """MCP middleware: a message that came with the approver's token reaches only its two
+    tools, and lists only those. Any other login passes through untouched."""
+    if _client(ctx) != CLIENT:
+        return await call_next(ctx)
+    # RULE: the approvers token asks nothing but tools
+    if ctx.method not in OPEN and not ctx.method.startswith("notifications/"):
+        raise MCPError(INVALID_REQUEST, "Not open to the approver.")
+    tool = str((ctx.params if isinstance(ctx.params, dict) else {}).get("name", ""))
+    # RULE: the approvers token opens only its two tools
+    if ctx.method == "tools/call" and tool not in TOOLS:
+        return CallToolResult(content=[TextContent(type="text", text="Not open to the approver.")], is_error=True)
+    result = await call_next(ctx)
+    if ctx.method == "tools/list" and isinstance(result, ListToolsResult):
+        # RULE: the approver sees only its two tools
+        result.tools = [t for t in result.tools if t.name in TOOLS]
+    return result

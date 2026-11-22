@@ -40,6 +40,8 @@ from . import (
     answers,
     api,
     approver,
+    approver_token,
+    boxed,
     calllog,
     config,
     detail,
@@ -688,7 +690,9 @@ def build_server(
     duty: approver.Duty | None = None,
 ) -> MCPServer:
     auth = None
+    keeper = approver_token.Keeper()  # the approver's own token, minted when it is launched
     if oauth is not None:
+        oauth.kept_elsewhere = lambda token: boxed.CLIENT if keeper.valid(token) else None
         auth = AuthSettings(
             issuer_url=AnyHttpUrl(oauth.public_url),
             resource_server_url=AnyHttpUrl(f"{oauth.public_url}/mcp"),
@@ -891,9 +895,10 @@ def build_server(
         instructions=voice_instructions(repos.voice_instructions_file),
         auth_server_provider=oauth,
         auth=auth,
-        middleware=[log_requests, fleet.middleware(across)],
+        middleware=[log_requests, boxed.gate, fleet.middleware(across)],
         lifespan=lifespan,
     )
+    mcp.approver_token = keeper  # type: ignore[attr-defined]
     tool = titles.titled(mcp, titles.load())  # each tool's display title, from the shared table
     # The tool list changes when a plugin is started again or approved, so say so up front
     # (tools.listChanged), and tell connected clients each time it does.
@@ -2689,7 +2694,9 @@ def build_server(
     if oauth is not None:
 
         async def check_token(token: str) -> bool:
-            return await oauth.load_access_token(token) is not None
+            found = await oauth.load_access_token(token)
+            # RULE: the rest api refuses the approvers token
+            return found is not None and found.client_id != boxed.CLIENT
 
         api.EventApi(
             store,

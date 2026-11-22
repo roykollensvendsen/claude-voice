@@ -1,0 +1,5 @@
+[[rule]]
+name = "the approver sees only its two tools"
+file = "src/claude_voice/boxed.py"
+find = 'result.tools = \[t for t in result.tools if t.name in TOOLS\]'
+replace = 'pass'
