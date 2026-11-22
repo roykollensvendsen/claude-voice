@@ -108,6 +108,13 @@ async def test_the_approver_sees_only_its_two_tools():
     assert [t.name for t in out.tools] == ["approver_boxes", "approver_answer"]
 
 
+async def test_the_approver_sees_only_its_two_tools_as_the_bridge_really_answers():
+    """The server hands the middleware the list already as JSON, not as a model (seen live)."""
+    listed = _tools("send_task", "approver_boxes", "approver_answer").model_dump(mode="json", by_alias=True)
+    _, out = await _reached(_ctx("tools/list"), listed)
+    assert [t["name"] for t in out["tools"]] == ["approver_boxes", "approver_answer"]
+
+
 async def test_another_login_is_not_narrowed():
     for client in ("static-token", "a-phone", None):
         reached, out = await _reached(_ctx("tools/call", "send_task", client))
