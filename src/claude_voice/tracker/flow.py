@@ -47,11 +47,11 @@ def pr_column(work: dict[str, Any], now: str | None, stamps: Sequence[Verdict], 
     """The column of a pull request: the first rule of board-flow-v1's table that matches."""
     if work["state"] != "OPEN":
         return "done"
-    if work["isDraft"]:
-        return "progress"
     # RULE: a pull request in blocked stays there
     if now == "blocked":
         return "blocked"
+    if work["isDraft"]:
+        return "progress"
     return _reviewed(work, stamps, owner_merges)
 
 
@@ -109,7 +109,8 @@ def stalled(work: dict[str, Any], kind: str, stamps: Sequence[Verdict], reason: 
     if kind == "progress":
         linked = (work.get("closedByPullRequestsReferences") or {}).get("totalCount")
         return not linked and _age(work, clock) > QUIET_ISSUE
-    if kind == "reviewing":
+    # RULE: a review waiting on pending checks is not stalled
+    if kind == "reviewing" and checks(work) != "pending":
         claims = [v for v in stamps if v.verdict == "reviewing" and v.head == work.get("headRefOid")]
         # RULE: a claimed review older than 120 minutes is stalled
         return any(clock - v.at > QUIET_REVIEW for v in claims)

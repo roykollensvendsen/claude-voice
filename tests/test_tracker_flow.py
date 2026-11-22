@@ -67,7 +67,7 @@ def test_pr_row_1_merged_or_closed_is_done(state):
 
 
 def test_pr_row_2_a_draft_is_in_progress():
-    assert where(pr(draft=True), now="blocked", stamps=TWO) == "progress"
+    assert where(pr(draft=True), now="reviewing", stamps=TWO) == "progress"
 
 
 def test_a_pull_request_in_blocked_stays_there():
@@ -213,3 +213,13 @@ def test_blocked_with_an_empty_reason_is_stalled_at_once():
 def test_other_columns_are_never_stalled():
     assert not stalled(pr(quiet=900 * MINUTE), "review")
     assert not stalled(issue(quiet=900 * MINUTE), "backlog")
+
+
+def test_a_draft_in_blocked_stays_there():
+    """A stuck builder's pull request is usually a draft, so Blocked is kept ahead of the draft row."""
+    assert where(pr(draft=True), now="blocked") == "blocked"
+
+
+def test_a_review_waiting_on_pending_checks_is_not_stalled():
+    """c5: a reviewer waiting on checks that are still running is not stuck."""
+    assert not stalled(pr(checks="PENDING"), "reviewing", [stamp(verdict="reviewing", ago=500 * MINUTE)])
