@@ -285,7 +285,7 @@ def test_no_module_runs_git_but_through_safe_git():
     for path in sorted(SRC.glob("*.py")):
         if path.name == "safe_git.py":
             continue
-        tree = ast.parse(path.read_text())
+        tree = ast.parse(path.read_text(encoding="utf-8"))
         assigned = [
             (target.id, node.value)
             for node in ast.walk(tree)
