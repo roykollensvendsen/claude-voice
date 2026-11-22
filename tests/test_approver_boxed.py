@@ -4,6 +4,13 @@ none of the owner's settings files, and only the bridge's own hook (approver-v1 
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
+
+import pytest
+from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
+from mcp.server.auth.provider import AccessToken
+from mcp.shared.exceptions import MCPError
+from mcp.types import ListToolsResult, Tool
 
 from claude_voice import boxed
 
@@ -61,3 +68,57 @@ def test_the_approvers_only_hook_is_the_one_the_bridge_gives():
 def test_the_first_words_come_last_after_a_separator():
     args = _args()
     assert args[-2:] == ["--", "first words"]
+
+
+# -- the token opens only the two approver tools ----------------------------------------------
+
+
+def _ctx(method: str, tool: str = "", client: str | None = boxed.CLIENT) -> SimpleNamespace:
+    scope = {}
+    if client is not None:
+        scope["user"] = AuthenticatedUser(AccessToken(token="t", client_id=client, scopes=["claude"]))
+    return SimpleNamespace(method=method, params={"name": tool}, request=SimpleNamespace(scope=scope))
+
+
+def _tools(*names: str) -> ListToolsResult:
+    return ListToolsResult(tools=[Tool(name=n, inputSchema={"type": "object"}) for n in names])
+
+
+async def _reached(ctx: SimpleNamespace, answer: object = "done") -> tuple[bool, object]:
+    seen = []
+
+    async def call_next(c):
+        seen.append(c)
+        return answer
+
+    out = await boxed.gate(ctx, call_next)
+    return bool(seen), out
+
+
+@pytest.mark.parametrize("tool", ["send_task", "start_role", "approve", "garage_request"])
+async def test_the_approvers_token_opens_only_its_two_tools(tool):
+    reached, out = await _reached(_ctx("tools/call", tool))
+    assert not reached and out.is_error
+    for allowed in boxed.TOOLS:
+        assert (await _reached(_ctx("tools/call", allowed)))[0]
+
+
+async def test_the_approver_sees_only_its_two_tools():
+    _, out = await _reached(_ctx("tools/list"), _tools("send_task", "approver_boxes", "approver_answer", "approve"))
+    assert [t.name for t in out.tools] == ["approver_boxes", "approver_answer"]
+
+
+async def test_another_login_is_not_narrowed():
+    for client in ("static-token", "a-phone", None):
+        reached, out = await _reached(_ctx("tools/call", "send_task", client))
+        assert reached and out == "done"
+    _, out = await _reached(_ctx("tools/list", client="static-token"), _tools("send_task", "approve"))
+    assert [t.name for t in out.tools] == ["send_task", "approve"]
+
+
+@pytest.mark.parametrize("method", ["resources/list", "resources/read", "prompts/get", "completion/complete"])
+async def test_the_approvers_token_asks_nothing_but_tools(method):
+    with pytest.raises(MCPError):
+        await _reached(_ctx(method))
+    for open_ in ("initialize", "ping", "notifications/initialized"):
+        assert (await _reached(_ctx(open_)))[0]

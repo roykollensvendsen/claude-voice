@@ -1,0 +1,5 @@
+[[rule]]
+name = "the approvers token opens only its two tools"
+file = "src/claude_voice/boxed.py"
+find = 'if ctx.method == "tools/call" and tool not in TOOLS:'
+replace = 'if False:'
