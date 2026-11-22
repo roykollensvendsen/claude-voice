@@ -81,8 +81,11 @@ def _sync(uv: str, folder: Path, seconds: float) -> subprocess.CompletedProcess[
     ) as sync:
         try:
             out, err = sync.communicate(timeout=seconds)
-        # A sync in a session of its own never sees the Ctrl-C the bridge gets, so the bridge
-        # stops it just as it stops one that runs too long.
+        # A sync in a session of its own never sees a Ctrl-C in the terminal, so it is stopped
+        # here just as one that runs too long is. Python raises the Ctrl-C only on the main
+        # thread: the command line's syncs and a bridge that starts its plugins before it listens.
+        # A sync in a worker thread, as when the bridge starts plugins behind, is not reached here.
+        # A second Ctrl-C during the last read does no harm, since the group is already stopped.
         # RULE: a sync cut short by ctrl c is stopped with everything it started
         except (subprocess.TimeoutExpired, KeyboardInterrupt):
             if sys.platform == "win32":
