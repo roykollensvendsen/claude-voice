@@ -1,0 +1,5 @@
+[[rule]]
+name = "a machine that never answered is not reported as all clear"
+file = "src/claude_voice/access.py"
+find = '^\s*if not self\.answered:$'
+replace = 'if False:'

@@ -1,5 +1,5 @@
 [[rule]]
 name = "an access key outside uses refuses the entry"
 file = "src/claude_voice/access.py"
-find = '^\s*if extra:$'
+find = '^\s*if any\(key not in uses for key in given\):$'
 replace = 'if False:'

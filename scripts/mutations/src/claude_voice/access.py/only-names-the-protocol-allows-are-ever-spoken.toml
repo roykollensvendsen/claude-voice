@@ -1,0 +1,5 @@
+[[rule]]
+name = "only names the protocol allows are ever spoken"
+file = "src/claude_voice/access.py"
+find = '^\s*if not NAME\.fullmatch\(name\):$'
+replace = 'if False:'
