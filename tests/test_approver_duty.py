@@ -223,11 +223,18 @@ def test_the_approver_is_off_unless_the_config_says_true(tmp_path, text):
         config.load(file, own_clone=None, env={"HOME": str(tmp_path)})
 
 
-def test_the_approver_cannot_be_switched_on_before_its_caller_check(tmp_path):
-    """Until the bridge checks who calls the approver's tools, any session could answer its own box."""
+def test_the_owner_switches_the_approver_on_with_on_true(tmp_path):
+    """The caller check, the approver's own token and the wiring are in, so the switch is the owner's."""
     file = tmp_path / "config.toml"
     file.write_text("[approver]\non = true\n", encoding="utf-8")
-    with pytest.raises(config.ConfigError, match="caller check"):
+    assert config.load(file, own_clone=None, env={"HOME": str(tmp_path)}).approver_on is True
+
+
+@pytest.mark.parametrize("value", ['"yes"', "1", '"true"'])
+def test_an_approver_switch_that_is_not_true_or_false_is_refused(tmp_path, value):
+    file = tmp_path / "config.toml"
+    file.write_text(f"[approver]\non = {value}\n", encoding="utf-8")
+    with pytest.raises(config.ConfigError, match="not true or false"):
         config.load(file, own_clone=None, env={"HOME": str(tmp_path)})
 
 
