@@ -1,5 +1,5 @@
 [[rule]]
 name = "only a block marked safe to run is ever run"
 file = "src/voice_checks/docs.py"
-find = 'inside, code, safe = True, \[\], i > 0'
-replace = 'inside, code, safe = True, [], True'
+find = 'i > 0 and self\.lines\[i - 1\]\.strip\(\) == SAFE'
+replace = 'True'
