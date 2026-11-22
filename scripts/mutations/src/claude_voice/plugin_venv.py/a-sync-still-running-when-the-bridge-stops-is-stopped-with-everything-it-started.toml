@@ -1,5 +1,5 @@
 [[rule]]
 name = "a sync still running when the bridge stops is stopped with everything it started"
 file = "src/claude_voice/plugin_venv.py"
-find = '^        _stop\(sync\)$'
-replace = '        pass'
+find = '^                _stop\(sync\)$'
+replace = '                pass'

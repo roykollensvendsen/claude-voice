@@ -38,7 +38,8 @@ DRAIN_SECONDS = 5.0
 SCRIPT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,99}")
 UV = ("uv", "uv.exe")
 #: The syncs running now, so the bridge can stop them as it stops: one in a worker thread never
-#: sees a Ctrl-C, and runs in a session of its own, so it would outlive the bridge.
+#: sees a Ctrl-C, and runs in a session of its own, so it would outlive the bridge. The set is the
+#: process's, not one bridge's: a stop reaches every sync running in it.
 _running: set[subprocess.Popen[str]] = set()
 _running_lock = threading.Lock()
 
@@ -91,6 +92,7 @@ def _sync(uv: str, folder: Path, seconds: float) -> subprocess.CompletedProcess[
     ):
         try:
             out, err = sync.communicate(timeout=seconds)
+            _forget(sync)  # reaped: its number is free, so it must never be stopped by it again
         # A sync in a session of its own never sees a Ctrl-C in the terminal, so it is stopped
         # here just as one that runs too long is. Python raises the Ctrl-C only on the main
         # thread: the command line's syncs and a bridge that starts its plugins before it listens.
@@ -104,6 +106,7 @@ def _sync(uv: str, folder: Path, seconds: float) -> subprocess.CompletedProcess[
                 with contextlib.suppress(ProcessLookupError):
                     # RULE: a sync that runs too long is stopped with everything it started
                     os.killpg(sync.pid, signal.SIGKILL)
+            _forget(sync)  # stopped here, and reaped by the read below
             # A helper that left the group, as a daemon does, can still hold uv's output open. So
             # the last read gets a short limit of its own, and the pipes close as the sync is left.
             # RULE: a stopped sync never waits on output a helper outside its group holds
@@ -123,27 +126,36 @@ def _counted(sync: subprocess.Popen[str]):
     try:
         yield
     finally:
-        with _running_lock:
-            _running.discard(sync)
+        _forget(sync)
+
+
+def _forget(sync: subprocess.Popen[str]) -> None:
+    with _running_lock:
+        _running.discard(sync)
 
 
 def _stop(sync: subprocess.Popen[str]) -> None:
     if sys.platform == "win32":
         sync.kill()
         return
-    with contextlib.suppress(ProcessLookupError):
-        os.killpg(os.getpgid(sync.pid), signal.SIGKILL)  # the sync leads a group of its own
+    # The sync leads its own group, whose number is its own. Were the number reused, a process
+    # that leads no group gives an error here, never another group.
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(sync.pid, signal.SIGKILL)
 
 
 def stop_running() -> int:
     """Stop every sync still running, with everything each started; the number stopped. The
-    thread waiting on each sync then reads its end, and the plugin is refused as a failed sync."""
-    with _running_lock:
-        syncs = list(_running)
-    for sync in syncs:
-        # RULE: a sync still running when the bridge stops is stopped with everything it started
-        _stop(sync)
-    return len(syncs)
+    thread waiting on each sync then reads its end, and the plugin is refused as a failed sync.
+    A sync already reaped is passed over: its number may belong to another process by now."""
+    stopped = 0
+    with _running_lock:  # held, so no sync is forgotten and its number reused mid-stop
+        for sync in list(_running):
+            if sync.returncode is None:
+                # RULE: a sync still running when the bridge stops is stopped with everything it started
+                _stop(sync)
+                stopped += 1
+    return stopped
 
 
 def ready(spec: PluginSpec) -> tuple[str, list[str]] | None:
