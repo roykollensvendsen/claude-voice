@@ -51,7 +51,33 @@ DELETES = [
     "git --config-env=remote.origin.push=REFSPEC push origin",
     "git --config-env remote.origin.mirror=MIRROR push origin",
     "git -c push.default=matching push origin",
+    # the shell's own quoting, read as #461 reads it, still shows the delete
+    "'git' push origin :feat/x",
+    '"git" -c remote.origin.mirror=true push origin',
+    "$'git' push --del origin feat/x",
 ]
+
+
+@pytest.mark.parametrize("mode", ["fork-only", "own-clone", "no-deletes"])
+def test_an_alias_set_on_the_line_is_never_let_through(mode):
+    """A setting given with -c is read for deletes and also keeps the guard from following an
+    alias the same line may define: both rules read one list of the line's settings."""
+    verdict = decide("git -c alias.zap='push origin :feat/x' zap", mode)
+    assert verdict is not None
+
+
+def test_without_the_guard_a_delete_behind_a_git_alias_is_refused(tmp_path):
+    import subprocess
+
+    def git(*args):
+        subprocess.run(["git", "-C", str(tmp_path), *args], check=True, capture_output=True)
+
+    git("init", "-q")
+    git("remote", "add", "origin", OWNERS)
+    git("config", "alias.zap", "push origin :feat/x")
+    hook = {"tool_name": "Bash", "tool_input": {"command": "git zap"}, "cwd": str(tmp_path)}
+    out = guard.answer(hook, UPSTREAM, only_deletes=True)
+    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
 @pytest.mark.parametrize("flag", ["--d", "--del", "--delete", "--pru", "--prune", "--m", "--mir", "--mirror"])

@@ -334,19 +334,21 @@ def _pushes(
     return found
 
 
-def _git_options(rest: list[str], folder: str | None) -> tuple[list[str], str | None, bool]:
-    """The words from git's subcommand on, the folder git runs in, and whether the line gives git
-    a setting of its own, which may define an alias the guard cannot read."""
-    configured = False
+def _git_options(rest: list[str], folder: str | None) -> tuple[list[str], str | None, tuple[str, ...]]:
+    """The words from git's subcommand on, the folder git runs in, and the names of the settings
+    the line gives git with -c or --config-env. Such a setting may define an alias the guard
+    cannot read, or make a push delete."""
+    settings = []
     while rest and rest[0].startswith("-"):
         option, joined, value = rest[0].partition("=")
         if not joined:
             value = rest[1] if option in GIT_VALUES and len(rest) > 1 else ""
         if option in ("-C", "--git-dir"):
             folder = _join(folder, value)
-        configured = configured or option in ("-c", "--config-env")
+        if option in ("-c", "--config-env"):
+            settings.append(value.split("=", 1)[0])
         rest = rest[2:] if not joined and option in GIT_VALUES else rest[1:]
-    return rest, folder, configured
+    return rest, folder, tuple(settings)
 
 
 def _runs_a_command(rest: list[str]) -> bool:
@@ -369,34 +371,22 @@ def _git_push(words: list[str], alias: Alias | None, base: str | None, seen: fro
     `alias` is None when the line may have set up an alias the guard cannot read. A push through
     an alias, or through a subcommand the guard cannot place, comes back with no words, so it is
     never in the plain shape."""
-    rest, folder, configured = _git_options(words, base)
+    rest, folder, settings = _git_options(words, base)
     if not rest:
         return None
     if rest[0] == "push":
-        return Push(rest[1:], _before_subcommand(words)[1])
+        return Push(rest[1:], settings)
     if rest[0] in GIT_COMMANDS:
         # RULE: a git subcommand that runs a command named on the line is taken as a push
         return Push([]) if _runs_a_command(rest) else None
     name = rest[0].lower()
-    runs = alias(rest[0], folder) if alias is not None and not configured and name not in seen else None
+    runs = alias(rest[0], folder) if alias is not None and not settings and name not in seen else None
     # RULE: a subcommand the guard cannot place is taken as a push
     if runs is None:
         return Push([])
     line = runs[1:] if runs.startswith("!") else f"git {runs}"
     # RULE: a git alias is judged by what it runs
     return Push([]) if _pushes(line, alias, folder, seen | {name}) else None
-
-
-def _before_subcommand(rest: list[str]) -> tuple[list[str], tuple[str, ...]]:
-    """The words from git's subcommand on, and the names of the settings given before it."""
-    settings = []
-    while rest and rest[0].startswith("-"):  # options before the subcommand, such as -C dir
-        option, joined, value = rest[0].partition("=")
-        if option in ("-c", "--config-env"):
-            settings.append((value if joined else (rest[1:2] or [""])[0]).split("=", 1)[0])
-        takes_word = rest[0] in ("-C", "-c", "--config-env", "--git-dir", "--work-tree")
-        rest = rest[2:] if takes_word else rest[1:]
-    return rest, tuple(settings)
 
 
 def _deletes(push: Push) -> bool:
