@@ -111,6 +111,7 @@ LAYERS = {
             "reposync",
             "profiles",
             "roster",
+            "relaunch",
             "routing",
             "calllog",
             "activity",

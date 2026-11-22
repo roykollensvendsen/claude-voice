@@ -17,6 +17,7 @@ Only its owner can read it, because it names conversations.
 | `conversation` | the Claude Code conversation it runs, which `claude --resume` takes |
 | `tmux` | its tmux pane, as Claude Code writes it, or empty when it is not in tmux |
 | `last_seen` | when the bridge last saw it running, in UTC |
+| `argv` | the command line it last ran with, read only from claude itself, and kept only to compare |
 
 The bridge writes it as it looks at the running sessions, every few seconds.
 A session that starts, changes its name or begins a new conversation is written
@@ -48,3 +49,23 @@ cv peek voice/manager
 
 Both say what to do when they cannot answer, such as when the role is gone or
 not in tmux.
+
+`cv up <role>` brings back a role whose session has ended. It is the same
+conversation, in a new window of its programme's tmux session, which is named after
+the programme's code. The command is built from the owner's role definition, never
+from the `argv` the row recorded:
+
+- `claude --resume <id> --settings <the role's settings> --model claude-opus-5-5 --name <role>`;
+- the folder comes from the role definition, and the session from the org file;
+- no other flag is passed, and no keys are typed into any pane.
+
+When the recorded command differs, `cv up` names the flags that differed, never
+their values. It refuses when:
+
+- the conversation is running;
+- the conversation id is not a UUID;
+- the role has no definition;
+- the role sits in no programme, or in two;
+- another `cv up` of the same role is under way.
+
+The design is worker-on-demand-v1.

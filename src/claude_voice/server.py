@@ -67,6 +67,7 @@ from . import (
     plugins,
     procs,
     prompts,
+    relaunch,
     renames,
     restarts,
     roles,
@@ -1215,7 +1216,13 @@ def build_server(
 
         now = datetime.now(UTC).isoformat(timespec="minutes")
         try:
-            rows = roster.seen(roster.read(sessions_file), reachable(), organisation, now)
+            claude = find_program("claude")
+
+            def argv(d: dict[str, Any]) -> tuple[str, ...] | None:
+                pid = d.get("pid")
+                return relaunch.recorded_argv(pid, claude) if claude and isinstance(pid, int) else None
+
+            rows = roster.seen(roster.read(sessions_file), reachable(), organisation, now, argv)
             roster.write(sessions_file, rows)
         except (OSError, ValueError) as exc:  # the news still comes; only recovery's list is late
             log.warning("could not keep the sessions file %s: %s", sessions_file, exc)

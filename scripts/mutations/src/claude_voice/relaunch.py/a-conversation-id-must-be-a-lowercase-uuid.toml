@@ -1,0 +1,5 @@
+[[rule]]
+name = "a conversation id must be a lowercase uuid"
+file = "src/claude_voice/relaunch.py"
+find = '^\s*if not CONVERSATION\.fullmatch\(value\):$'
+replace = 'if False:'

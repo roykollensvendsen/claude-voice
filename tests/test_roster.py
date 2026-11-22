@@ -100,6 +100,33 @@ def test_a_row_missing_a_field_is_skipped(tmp_path):
     assert [r.role for r in roster.read(path)] == ["store"]
 
 
+ARGV = ("/opt/claude", "--resume", "id-1", "--settings", "{}")
+
+
+def test_a_row_keeps_the_start_command_its_session_runs_with(tmp_path):
+    rows = roster.seen([], [live("shop", "id-1")], solo, NOW, argv=lambda d: ARGV)
+    assert rows[0].argv == ARGV
+    path = tmp_path / "sessions.toml"
+    roster.write(path, rows)
+    assert roster.read(path) == rows
+
+
+def test_a_start_command_that_cannot_be_read_keeps_the_last_one_read():
+    before = roster.seen([], [live("shop", "id-1")], solo, NOW, argv=lambda d: ARGV)
+    assert roster.seen(before, [live("shop", "id-1")], solo, LATER, argv=lambda d: None)[0].argv == ARGV
+    assert roster.seen(before, [live("shop", "id-2")], solo, LATER, argv=lambda d: None)[0].argv == ()
+
+
+def test_a_row_written_before_start_commands_were_kept_is_still_read(tmp_path):
+    path = tmp_path / "sessions.toml"
+    path.write_text(
+        '[[session]]\norganisation = "solo"\nrole = "shop"\nfolder = "/w"\nconversation = "id-1"\n'
+        f'tmux = ""\nlast_seen = "{NOW}"\n',
+        encoding="utf-8",
+    )
+    assert roster.read(path) == [roster.Row("solo", "shop", "/w", "id-1", "", NOW)]
+
+
 def test_a_file_that_is_not_toml_says_what_to_do(tmp_path):
     path = tmp_path / "sessions.toml"
     path.write_text("not = [toml")

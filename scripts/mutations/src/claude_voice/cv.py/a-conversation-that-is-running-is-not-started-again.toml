@@ -1,0 +1,5 @@
+[[rule]]
+name = "a conversation that is running is not started again"
+file = "src/claude_voice/cv.py"
+find = '^\s*if conversation in how\.live\(\):$'
+replace = 'if False:'

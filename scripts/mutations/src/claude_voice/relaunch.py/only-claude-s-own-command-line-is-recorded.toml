@@ -1,0 +1,5 @@
+[[rule]]
+name = "only claude's own command line is recorded"
+file = "src/claude_voice/relaunch.py"
+find = '^\s*if os\.path\.realpath\(folder / "exe"\) != os\.path\.realpath\(claude\):$'
+replace = 'if False:'

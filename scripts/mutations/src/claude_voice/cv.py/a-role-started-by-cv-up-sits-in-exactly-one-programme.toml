@@ -1,0 +1,5 @@
+[[rule]]
+name = "a role started by cv up sits in exactly one programme"
+file = "src/claude_voice/cv.py"
+find = '^\s*if by_name and by_folder and by_name\.code != by_folder\.code:$'
+replace = 'if False:'

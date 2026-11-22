@@ -1,0 +1,5 @@
+[[rule]]
+name = "a tmux name is short lowercase letters digits and dashes"
+file = "src/claude_voice/relaunch.py"
+find = '^\s*if not NAME\.fullmatch\(value\):$'
+replace = 'if False:'
