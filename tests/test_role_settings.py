@@ -152,6 +152,7 @@ def test_a_role_with_its_own_settings_and_no_guard_gets_the_delete_check(tmp_pat
 
 def _home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))  # where Windows looks for `~`
     (tmp_path / ".local/state/claude-voice/roles").mkdir(parents=True)
     return tmp_path
 
