@@ -205,6 +205,12 @@ def test_a_relative_folder_path_refuses_the_waiver_file(tmp_path, rules):
     assert not found.entries and "not absolute" in found.problem
 
 
+def test_a_folder_path_the_system_cannot_resolve_refuses_the_waiver_file(tmp_path, rules):
+    body = filled('[[folder]]\npath = {folder}\nasks = ["Bash(gh pr review*)"]\nwhy = "x"\n', tmp_path)
+    found = waivers.read(rules, waiver_file(tmp_path, body.replace('"\nasks', '\\u0000x"\nasks', 1)))
+    assert not found.entries and "cannot be resolved" in found.problem and "\x00" not in found.problem
+
+
 @pytest.mark.parametrize("why", [None, "  "])
 def test_a_waiver_without_a_why_refuses_the_waiver_file(tmp_path, rules, why):
     body = entry(clone(tmp_path)) if why is None else entry(clone(tmp_path), why=why)
