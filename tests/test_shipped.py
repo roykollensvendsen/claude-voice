@@ -99,7 +99,8 @@ def test_the_startup_sync_keeps_a_waived_ask_out_too(home):
     review = "Bash(gh pr review*)"
     rules = replace(with_(OLD, ask=[review]), waivable=[review])
     file = home / "ask-waivers.toml"
-    file.write_text(f'[[folder]]\npath = "{garage}"\nasks = ["{review}"]\nwhy = "its gate decides"\n', encoding="utf-8")
+    path = json.dumps(str(garage))  # a TOML string, so a Windows path's backslashes stay as they are
+    file.write_text(f'[[folder]]\npath = {path}\nasks = ["{review}"]\nwhy = "its gate decides"\n', encoding="utf-8")
     found = waivers.read(rules, file)
     shipped.sync([garage, tv], chart(home), home / "cv", rules, SHA, backup_root=home / "backups", found=found)
     assert review not in json.loads(settings_file(garage).read_text())["permissions"].get("ask", [])
