@@ -1,5 +1,5 @@
 [[rule]]
-name = "every role gets the guard, a role with neither guard nor settings only its merge check"
+name = "a role denied merges gets the guard, with only its merge check when it has neither guard nor settings"
 file = "src/claude_voice/roles.py"
 find = '^\s*if not role\.get\("guard"\) and not only_deletes:$'
 replace = 'if False:'
