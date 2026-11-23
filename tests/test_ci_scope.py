@@ -161,6 +161,13 @@ def test_the_slower_jobs_read_the_scope_and_still_report_when_left_out():
     assert steps.count("        if: env.NEEDED == 'true'") == steps.count("      - ") - 1
 
 
+def test_a_job_that_runs_the_tests_has_no_time_limit():
+    """Time caps are removed, never raised (ADR-CV-021): a slow runner may take as long as it needs."""
+    runs_tests = [n for n in jobs() if any(w in job(n) for w in ("pytest", "clean_install.py", "ratchet.py"))]
+    assert {"windows", "clean-install", "checks", "voice-checks", "quality", "template"} <= set(runs_tests)
+    assert [n for n in runs_tests if "timeout-minutes" in job(n)] == []
+
+
 def test_main_and_a_nightly_run_run_everything():
     assert "  push:\n    branches: [main]" in WORKFLOW
     assert '    - cron: "0 2 * * *"\n      timezone: "Europe/Oslo"' in WORKFLOW
