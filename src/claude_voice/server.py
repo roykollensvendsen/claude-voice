@@ -1888,8 +1888,13 @@ def build_server(
         )
         return [(name, repo, folder, followed.get(str(folder), "main")) for name, repo, folder in listed]
 
+    # RULE: the levels cache is chosen once when the bridge is built
+    levels_cache = software.levels_cache()
+
     def software_build() -> dict[str, Any]:
-        """Every repository's measures and checks, read afresh: git and GitHub are slow."""
+        """Every repository's measures and checks, read afresh: git and GitHub are slow. The
+        cache folder is the one chosen at build, so a build that outlives its home writes
+        where it began."""
         return {
             "as_of": datetime.now(UTC).isoformat(timespec="seconds"),
             "repos": [
@@ -1898,9 +1903,9 @@ def build_server(
                     f"https://github.com/{repo}",
                     folder,
                     ci_status(repo, branch=branch),
-                    kept_levels(repo, branch=branch),
+                    kept_levels(repo, branch=branch, cache=levels_cache),
                     branch=branch,
-                    mutations=kept_mutations(repo, branch=branch),
+                    mutations=kept_mutations(repo, branch=branch, cache=levels_cache),
                 )
                 for name, repo, folder, branch in software_listed()
             ],
