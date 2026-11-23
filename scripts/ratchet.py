@@ -374,15 +374,20 @@ def _differs(metric: str, recorded: Any, now: Any) -> bool:
     return abs(_score(now) - _score(recorded)) > wobble
 
 
-def compare(base: dict[str, Any], now: dict[str, Any], allowed: set[str]) -> list[str]:
-    """What is wrong: a measure worse than the base without an exception. The time the suite
-    takes is never one of them. Better levels need no recording: main measures its own."""
+def compare(base: dict[str, Any], now: dict[str, Any], allowed: set[str], skip_mutation: bool = False) -> list[str]:
+    """What is wrong: a measure worse than the base without an exception, or a measure one side
+    has no figure for. The time the suite takes is never one of them. Better levels need no
+    recording: main measures its own. Only a check asked to skip the mutation run may lack it."""
     found = []
     for metric in (*HIGHER, *LOWER):
         if metric not in base:
             continue  # a measure added since the base: nothing to compare with yet
-        # RULE: a mutation run skipped on either side is not compared
         if base[metric] is None or now[metric] is None:
+            # RULE: a mutation run is left out only when the check was asked to skip it
+            if metric == "mutation" and skip_mutation:
+                continue
+            # RULE: a measure missing on either side fails the check
+            found.append(f"{metric} has no figure on one side: {base[metric]} -> {now[metric]}")
             continue
         # RULE: a measure that gets worse fails the check
         if _worse(metric, base[metric], now[metric]) and metric not in allowed:
@@ -548,7 +553,7 @@ def main() -> int:
     now = measure(args.skip_mutation, base, args.mutations)
     if args.out:
         write_levels(args.out, now)
-    found = compare(base, now, exceptions(os.environ.get("RATCHET_EXCEPTIONS", "")))
+    found = compare(base, now, exceptions(os.environ.get("RATCHET_EXCEPTIONS", "")), args.skip_mutation)
     for note in notes(now):
         print(note)
     for problem in found:
