@@ -181,6 +181,26 @@ def test_an_issue_that_names_a_personal_term_is_asked_about(tmp_root, terms, tmp
     assert decide('gh issue create --repo acme/garage -t "Door" -b "x"', tmp_root, tmp_path / "gone") == "ask"
 
 
+@posix_only  # an allowed issue needs grep, which Windows lacks; there it asks
+@pytest.mark.parametrize("taken", ["--assignee @me", "--assignee=@me", "-a @me"])
+def test_a_session_may_take_the_issue_it_files(tmp_root, terms, taken):
+    assert decide(f'gh issue create -R acme/garage -t "Door" -b "x" {taken}', tmp_root, terms) == "allow"
+
+
+@pytest.mark.parametrize(
+    "given",
+    ["--assignee bob", "-a bob", "--assignee @me,bob", "--assignee @me --assignee bob", "-a bob -a @me"],
+)
+def test_an_issue_assigned_to_anyone_but_the_session_itself_is_asked_about(tmp_root, terms, given):
+    assert decide(f'gh issue create -R acme/garage -t "Door" -b "x" {given}', tmp_root, terms) == "ask"
+
+
+def test_an_issue_that_gives_a_flag_twice_is_asked_about(tmp_root, terms):
+    """Only the last of a repeated flag would be checked, while gh uses every one."""
+    two = 'gh issue create -R acme/garage -t "Door" -b "x" -l quimbly -l bug'  # the last one alone is fine
+    assert decide(two, tmp_root, terms) == "ask"
+
+
 # -- the hook as Claude Code runs it ------------------------------------------------------
 
 
