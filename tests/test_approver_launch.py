@@ -86,6 +86,7 @@ async def test_the_approvers_process_is_taken_from_its_window_not_a_session_file
     held = Store(tmp_path / "b.db").get_setting("role:approver")
     assert held["id"] == "sid-approver"
     assert held["pid"] == PID and held["started"] == lineage.start_ticks(PID)
+    assert held["folder"] == str(world[1])  # where its transcript is looked for
 
 
 async def test_the_approver_cannot_start_without_tmux(tmp_path, world):

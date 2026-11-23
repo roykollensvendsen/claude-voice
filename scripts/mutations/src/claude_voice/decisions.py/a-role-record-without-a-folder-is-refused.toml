@@ -1,0 +1,5 @@
+[[rule]]
+name = "a role record without a folder is refused"
+file = "src/claude_voice/decisions.py"
+find = '^\s*if not support\.get\("folder"\):$'
+replace = 'if False:'

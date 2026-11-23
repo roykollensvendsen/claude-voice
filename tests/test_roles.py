@@ -215,6 +215,13 @@ async def test_a_role_whose_settings_file_is_missing_does_not_start(tmp_path, wo
     assert not starter.calls
 
 
+async def test_a_launched_role_records_the_folder_it_was_started_in(tmp_path, world):
+    ready_clone(world)
+    async with Client(bridge(tmp_path, world, Starter(world[2]))) as c:
+        await c.call_tool("start_role", {"role": "contribute"})
+    assert Store(tmp_path / "b.db").get_setting("role:contribute")["folder"] == str(world[1])
+
+
 async def test_an_unknown_role_is_refused(tmp_path, world):
     async with Client(bridge(tmp_path, world, Starter(world[2]))) as c:
         bad = await c.call_tool("start_role", {"role": "nobody"})
