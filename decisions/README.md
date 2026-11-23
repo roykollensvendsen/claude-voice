@@ -49,6 +49,7 @@ decision nobody writes down.
 | [ADR-CV-018](ADR-CV-018-a-paired-machine-powers-off-only-on-a-yes-the-hub-signed.md) | A paired machine powers off only on a yes the hub signed, through a helper of its own | Accepted |
 | [ADR-CV-019](ADR-CV-019-sessions-live-in-tmux-and-a-private-file-lists-them.md) | Sessions live in tmux, and a private file lists them for recovery | Accepted |
 | [ADR-CV-021](ADR-CV-021-the-test-suite-has-no-time-cap.md) | The test suite has no time cap: its time is shown, never judged | Proposed |
+| [ADR-CV-022](ADR-CV-022-a-recorded-yes-is-checked-against-the-owners-own-turn.md) | A yes the support session recorded is checked against the owner's own turn | Accepted |
 
 What is deliberately left undone, and what would make each worth doing, is
 [`deferred.md`](deferred.md). A thing left undone with no trigger is a thing
