@@ -422,6 +422,21 @@ def test_a_git_variable_in_the_hook_environment_fails_the_plain_shape(monkeypatc
     assert decide(PLAIN, {"origin": FORK})[0] == "deny"
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=push.default GIT_CONFIG_VALUE_0=current git push origin feat/x",
+        "GIT_CONFIG_PARAMETERS=\"'push.default'='current'\" git push origin feat/x",
+        "env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=push.default GIT_CONFIG_VALUE_0=current git push origin feat/x",
+        "cd /tmp && GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=push.default GIT_CONFIG_VALUE_0=current git push origin feat/x",
+    ],
+)
+def test_a_git_setting_given_in_the_environment_on_the_line_fails_the_plain_shape(command):
+    """Settings given this way reach git as if they were in its own files, so the guard cannot
+    see what the push will do."""
+    assert decide(command, {"origin": FORK})[0] == "deny"
+
+
 @pytest.mark.parametrize("name", ["GIT_EDITOR", "GIT_SEQUENCE_EDITOR", "GIT_PAGER", "GIT_TERMINAL_PROMPT"])
 def test_a_harmless_git_variable_in_the_hook_environment_keeps_the_plain_shape(monkeypatch, name):
     """Claude Code sets GIT_EDITOR for every session."""

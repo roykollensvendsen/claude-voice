@@ -279,6 +279,7 @@ def _shape(command: str) -> tuple[bool, str | None]:
             return False, None
         # RULE: a push is judged by the remotes of the folder it runs in
         folder = words[0][1]
+    # RULE: a git setting given in the environment on the line fails the plain shape
     rest = words[-1][1:] if words[-1][:1] == ["git"] else []
     if rest[:1] == ["-C"]:
         if len(rest) < 2 or not _literal(rest[1]):
