@@ -9,7 +9,7 @@ from claude_voice.store import Store
 
 SHA = "ece3fd40" + "a" * 32
 OTHER = "0badc0de" + "b" * 32
-SUPPORT = {"name": "support", "id": "sup-1"}
+SUPPORT = {"name": "support", "id": "sup-1", "folder": "/home/x/src/org"}  # its key: -home-x-src-org
 PID, STARTED = 4242, "104338067"
 COURIERS = {(PID, STARTED)}
 
@@ -228,6 +228,11 @@ def test_the_transcript_is_supports_own_from_the_bridges_role_record():
     assert "support" in verdict(typed("yes, merge it"), support=None)
 
 
+def test_a_role_record_without_a_folder_is_refused():
+    said = verdict(typed("yes, merge it"), support={"name": "support", "id": "sup-1"})
+    assert said and "start_role" in said
+
+
 def test_each_uuid_is_used_once():
     assert "used" in verdict(typed("yes, merge it"), used={"u-yes"})
 
@@ -328,6 +333,15 @@ def test_the_command_reads_the_transcript_named_by_the_role_record_not_the_line(
     write_lines(fake, [QUESTION, typed("yes, merge it", uuid="u-fake")])
     write_lines(state / "decisions.jsonl", [line(uuid="u-fake", transcript=str(fake))])
     assert run(state, projects, uuid="u-fake") == 1
+
+
+def test_supports_transcript_is_read_only_from_the_folder_it_was_started_in(state, tmp_path, capsys):
+    elsewhere = tmp_path / "projects" / "-tmp-elsewhere"  # the same session id, in another folder
+    elsewhere.mkdir(parents=True)
+    write_lines(elsewhere / "sup-1.jsonl", [QUESTION, typed("yes, merge it")])
+    write_lines(state / "decisions.jsonl", [line()])
+    assert run(state, tmp_path / "projects") == 1
+    assert "no turn with that uuid" in capsys.readouterr().out
 
 
 def test_claude_voice_decisions_check_runs_the_check(monkeypatch):

@@ -6,7 +6,8 @@ turn that holds them, and the sha the question named. Before it acts, the manage
 `claude-voice decisions check <uuid> --head <full sha now>`. The check reads support's own
 transcript and accepts the line only when:
 
-- the session is support's, from the bridge's role record, never a path in the line;
+- the session is support's, from the bridge's role record, never a path in the line, and its
+  transcript is read only from the folder that record says support was started in;
 - the uuid has not been used before;
 - the turn is the owner's own (below);
 - the quote is the whole of the owner's words in it, not a part of them;
@@ -39,6 +40,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from claude_agent_sdk import project_key_for_directory
 
 from .config import STATE_DIR
 from .store import Store
@@ -157,6 +160,9 @@ def check(
     # RULE: the transcript is supports own from the bridges role record
     if not support or not support.get("id") or line.get("session") != support.get("id"):
         return "Refused: the line does not name the running support session."
+    # RULE: a role record without a folder is refused
+    if not support.get("folder"):
+        return "Refused: the bridge's record of support has no folder; start support again with start_role."
     # RULE: each uuid is used once
     if uuid in used:
         return "Refused: that uuid was used for a decision before."
@@ -214,10 +220,15 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def transcript(session_id: str, projects_dir: Path) -> list[dict[str, Any]]:
-    """Support's transcript, found by the session id alone."""
-    found = sorted(projects_dir.glob(f"*/{session_id}.jsonl"))
-    return read_jsonl(found[0]) if found else []
+def transcript(support: dict[str, Any] | None, projects_dir: Path) -> list[dict[str, Any]]:
+    """Support's transcript, read only from the folder the bridge's record says it started in;
+    none without a record, a session or a folder."""
+    if not support or not support.get("id") or not support.get("folder"):
+        return []
+    session_id, folder = str(support["id"]), str(support["folder"])
+    # RULE: supports transcript is read only from the folder it was started in
+    path = projects_dir / project_key_for_directory(folder) / f"{session_id}.jsonl"
+    return read_jsonl(path) if path.is_file() else []
 
 
 def run(uuid: str, head: str, state_dir: Path = STATE_DIR, projects_dir: Path = PROJECTS_DIR) -> int:
@@ -229,7 +240,7 @@ def run(uuid: str, head: str, state_dir: Path = STATE_DIR, projects_dir: Path = 
         return 1
     store = Store(state / "bridge.db")
     support = store.get_setting("role:support")
-    entries = transcript(str(support["id"]), projects_dir) if support and support.get("id") else []
+    entries = transcript(support, projects_dir)
     used = {r.get("uuid") for r in read_jsonl(state / LOG) if r.get("result") == "accepted"}
     known = couriers(store)
     why = check(line, support, entries, {u for u in used if u}, head, known)

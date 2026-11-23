@@ -1,0 +1,5 @@
+[[rule]]
+name = "supports transcript is read only from the folder it was started in"
+file = "src/claude_voice/decisions.py"
+find = '^\s*path = projects_dir / project_key_for_directory\(folder\) / f"\{session_id\}\.jsonl"$'
+replace = 'path = next(iter(sorted(projects_dir.glob(f"*/{session_id}.jsonl"))), projects_dir / "none")'
