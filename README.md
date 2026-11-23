@@ -408,7 +408,9 @@ The check accepts a line only when the turn is yours. That means typed in suppor
 window, or carried from the voice by the bridge's own courier. The quote must be all of your
 words in that turn, not a part of them. Support's question just before it must name the item,
 the action and the sha. The item must still be at that sha, given in full, and each uuid
-counts once. Every check is logged to `decision-checks.jsonl` beside it, for you to read after.
+counts once. Support's transcript is read only from the folder the bridge started it in. A
+support session started before the bridge recorded that folder is refused until it is started
+again with `start_role`. Every check is logged to `decision-checks.jsonl` beside it, for you to read after.
 The reasons are in `src/claude_voice/decisions.py`.
 
 ## Answer questions and approvals from the phone
