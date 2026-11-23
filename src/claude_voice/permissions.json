@@ -153,6 +153,12 @@
     "changing the session's own settings": [
       "Edit(./.claude/**)"
     ],
+    "changing tracked files that steer the next session, before a pull request reviews them": [
+      "Edit(**/.claude/skills/**)", "Write(**/.claude/skills/**)",
+      "Edit(//**/.claude/skills/**)", "Write(//**/.claude/skills/**)",
+      "Edit(**/CLAUDE.md)", "Write(**/CLAUDE.md)", "Edit(//**/CLAUDE.md)", "Write(//**/CLAUDE.md)",
+      "Edit(**/AGENTS.md)", "Write(**/AGENTS.md)", "Edit(//**/AGENTS.md)", "Write(//**/AGENTS.md)"
+    ],
     "the garage door's own server, run in its repository": [
       "mcp__garage-door__garage_request",
       "mcp__garage-door__garage_confirm",
@@ -310,6 +316,7 @@
       ".gitconfig", ".config/git/**",
       ".ssh/config", ".ssh/authorized_keys", ".ssh/rc", ".tmux.conf", ".config/tmux/**",
       ".claude/settings*.json", ".claude/hooks/**", ".claude/skills/**", ".claude/plugins/**", ".claude.json",
+      ".claude/agents/**", ".claude/commands/**", ".claude/rules/**", ".claude/output-styles/**", ".claude/CLAUDE.md",
       ".config/claude-voice/config.toml", ".config/claude-voice/roles.toml",
       ".config/claude-voice/machines/**", ".config/claude-voice/plugins/**",
       ".config/claude-voice/orgs/**", ".config/claude-voice/ask-waivers.toml",
@@ -317,11 +324,16 @@
       ".config/uv/**", ".config/pip/**", ".pip/**", ".npmrc",
       ".vimrc", ".config/nvim/**", ".emacs", ".emacs.d/**"
     ],
-    "any clone": [".git/hooks/**", ".git/config", ".claude/settings.json", ".claude/settings.local.json"],
+    "any clone": [
+      ".git/hooks/**", ".git/config", ".claude/settings.json", ".claude/settings.local.json",
+      ".claude/hooks/**", ".claude/agents/**", ".claude/commands/**", ".claude/rules/**", ".claude/output-styles/**",
+      ".mcp.json", "CLAUDE.local.md"
+    ],
     "own checkout": [
       ".githooks/**", ".npmrc", "uv.toml", "pip.conf", ".envrc", "src/claude_voice/literal_gh.py",
       "src/claude_voice/org_rules.py", "src/claude_voice/__init__.py",
-      "src/claude_voice/session_hook.py", "src/claude_voice/safe_git.py", "src/claude_voice/phone_hook.py"
+      "src/claude_voice/session_hook.py", "src/claude_voice/safe_git.py", "src/claude_voice/steering.py",
+      "src/claude_voice/phone_hook.py"
     ],
     "writers": [
       "tee {path}", "tee * {path}", "cp * {path}", "mv * {path}", "install * {path}", "ln * {path}",

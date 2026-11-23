@@ -1,0 +1,5 @@
+[[rule]]
+name = "every steering file at home is refused"
+file = "src/claude_voice/steering.py"
+find = '^\s*return path\.startswith\(at_home \+ os\.sep\) and _parts\(path\[len\(at_home\) :\]\)\[0\] in LOCKED_AT_HOME$'
+replace = 'return False'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a shell write to a tracked file that steers is asked"
+file = "src/claude_voice/steering.py"
+find = '^\s*level = ASKED$'
+replace = 'pass'

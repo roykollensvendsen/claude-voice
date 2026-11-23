@@ -1,0 +1,5 @@
+[[rule]]
+name = "a word that cannot be resolved counts as locked"
+file = "src/claude_voice/steering.py"
+find = '^\s*return LOCKED  # fail closed$'
+replace = 'return NONE'

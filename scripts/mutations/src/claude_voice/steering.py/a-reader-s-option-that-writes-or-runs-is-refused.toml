@@ -1,0 +1,5 @@
+[[rule]]
+name = "a reader's option that writes or runs is refused"
+file = "src/claude_voice/steering.py"
+find = '^\s*return not any\(w\.startswith\(WRITES_OR_RUNS\) or w == "-o" for w in args\[i \+ 1 :\]\)$'
+replace = 'return True'

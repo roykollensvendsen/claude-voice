@@ -1,0 +1,5 @@
+[[rule]]
+name = "a plain read of a locked path passes"
+file = "src/claude_voice/steering.py"
+find = '^\s*return program in READERS and not any\(w\.startswith\(WRITES_OR_RUNS\) for w in words\)$'
+replace = 'return False'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a word the shell would change is judged by every name it can reach"
+file = "src/claude_voice/steering.py"
+find = '^\s*found = glob\.glob\(os\.path\.join\(cwd, word\)\)$'
+replace = 'found = []'

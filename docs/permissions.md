@@ -505,6 +505,43 @@ A repository's own `.claude/settings.json` and `.claude/settings.local.json` are
 refused too, in every clone. The owner changes them by hand, or through
 `claude-voice permissions`.
 
+### What steers the next session
+
+Claude Code loads more than settings into the next session. It also loads
+hooks, skills, agents, commands, rules, output styles, the MCP list and the
+instruction files. A session that writes one steers the next session before
+anyone has seen it. So, in every clone and at home:
+
+| Where | What | Edit, Write and shell |
+| --- | --- | --- |
+| any clone | `.claude/hooks`, `agents`, `commands`, `rules`, `output-styles`, `.mcp.json`, `CLAUDE.local.md` in any folder | refused |
+| any clone | `.claude/skills`, `CLAUDE.md` in any folder, `.claude/CLAUDE.md`, `AGENTS.md` | asked |
+| home | all of the above under `~/.claude`, and `~/.claude/CLAUDE.md` | refused |
+
+The asked ones are tracked in a repository, and a pull request reviews them.
+A local edit still steers the next session before that review, so the owner
+is asked each time.
+
+The deny and ask rules catch the Edit and Write tools and the plain shell
+forms. The session hook catches the rest. It reads every word of a shell
+command that names a path, follows `..` and links, and judges where it lands.
+A word it can't resolve counts as locked. Only a plain read passes:
+
+- one of `cat`, `head`, `tail`, `wc`, `grep`, `rg`, `ls` and `stat`, or
+  `git diff`, `log`, `show`, `status` and `blame`;
+- on its own, with no chain, pipe, redirection, substitution or wrapper such as
+  `env`, `xargs` or `sh -c`;
+- with none of the options that write or run: `--output`, `--ext-diff`,
+  `--textconv` and `rg --pre`.
+
+Anything else that names such a path is refused, or asked for the tracked ones.
+That covers `find .claude -delete` and `sed`.
+
+Two edges stay open. A program that builds a path itself, such as `python -c`,
+is not seen, and neither is a variable other than `HOME`. Sessions running as
+their own user close both. The memory folder under `~/.claude/projects` stays
+writable on purpose, since sessions keep their notes there.
+
 Some of the bridge's own files run as the owner from the owner's checkout, in
 every session's hooks. They are the session hook, the git helper it loads, the
 phone hook, the GitHub command check and the org rules. In that checkout, a
