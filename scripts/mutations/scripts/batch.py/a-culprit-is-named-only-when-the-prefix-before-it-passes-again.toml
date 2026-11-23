@@ -1,0 +1,5 @@
+[[rule]]
+name = "a culprit is named only when the prefix before it passes again"
+file = "scripts/batch.py"
+find = '^\s*if fails\(order\[: high - 1\]\):$'
+replace = 'if False:'

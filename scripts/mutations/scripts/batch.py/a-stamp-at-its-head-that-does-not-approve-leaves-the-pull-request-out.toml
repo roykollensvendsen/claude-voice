@@ -1,0 +1,5 @@
+[[rule]]
+name = "a stamp at its head that does not approve leaves the pull request out"
+file = "scripts/batch.py"
+find = '^\s*against = \[f"\{s\.get\(.by.\)\} says \{s\.get\(.verdict.\)\} at its head" for s in at_head if s\.get\("verdict"\) != "approve"\]$'
+replace = 'against = []'

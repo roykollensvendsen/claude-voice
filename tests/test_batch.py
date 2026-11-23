@@ -79,7 +79,18 @@ def test_a_stamp_at_another_head_does_not_count():
 
 
 def test_a_stamp_that_asks_for_changes_does_not_count():
-    assert batch.why_not(member(stamps=[stamp(verdict="changes")]), BUILT) == ["no approving stamp at its head"]
+    assert batch.why_not(member(stamps=[stamp(verdict="changes")]), BUILT) == [
+        "no approving stamp at its head",
+        "quality-claude-voice says changes at its head",
+    ]
+
+
+@pytest.mark.parametrize("verdict", ["changes", "reviewing", "something else"])
+def test_a_stamp_at_its_head_that_does_not_approve_leaves_the_pull_request_out(verdict):
+    stamps = [stamp(), stamp(by="voice-architect", verdict=verdict)]
+    assert batch.why_not(member(stamps=stamps), BUILT) == [f"voice-architect says {verdict} at its head"]
+    older = [stamp(), stamp(by="voice-architect", verdict=verdict, head=OTHER)]
+    assert batch.why_not(member(stamps=older), BUILT) == []
 
 
 def test_a_risky_pull_request_needs_both_stamps():
@@ -130,9 +141,12 @@ def test_an_attested_yes_must_be_a_number_and_a_full_sha(flag):
         batch.attested([flag])
 
 
-def test_any_stamp_that_says_risky_makes_the_pull_request_risky():
-    stamps = [stamp(tier="low"), stamp(by="voice-architect", tier="risky")]
+@pytest.mark.parametrize("other", ["risky", None, "medium"])
+def test_a_pull_request_is_low_only_when_every_stamp_says_low(other):
+    stamps = [stamp(tier="low"), stamp(by="voice-architect", tier=other)]
     assert batch.why_not(member(stamps=stamps), BUILT) == ["risky, and the owner's yes for its head is not recorded"]
+    one = [stamp(tier=other)]
+    assert "risky, and voice-architect has not stamped its head" in batch.why_not(member(stamps=one), BUILT)
 
 
 def test_only_exceptions_every_stamp_recorded_are_copied_tagged_with_their_pull_request():
@@ -168,6 +182,19 @@ def test_a_failing_prefix_is_run_again_before_a_culprit_is_named():
     # the prefix that names the culprit was run twice, and gave the same answer
     assert calls.count((1, 2, 3, 4, 5)) == 2
     assert failing
+
+
+def test_a_culprit_is_named_only_when_the_prefix_before_it_passes_again():
+    # the real culprit is 2, but the run of the first four passes once by chance
+    flaked = []
+
+    def fails(prefix):
+        if len(prefix) == 4 and not flaked:
+            flaked.append(True)
+            return False
+        return 2 in prefix
+
+    assert batch.culprit([1, 2, 3, 4, 5, 6, 7, 8], fails) is None
 
 
 def test_a_failure_that_does_not_come_back_names_no_culprit():
@@ -281,6 +308,9 @@ LATER = "2026-11-23T21:00:00Z"
         ([check("red-first", "FAILURE"), check("red-first", started=LATER)], True),
         ([check("red-first"), check("red-first", "FAILURE", started=LATER)], False),
         ([check("windows"), check("windows", None, "IN_PROGRESS", started=LATER)], False),
+        ([check("windows"), check("windows", None, "QUEUED", started=None)], False),
+        ([check("windows", None, "IN_PROGRESS"), check("windows", started=LATER)], False),
+        ([check("windows", "FAILURE"), check("windows", started=None)], True),
     ],
 )
 def test_own_checks_are_green_only_when_every_check_finished_and_none_failed(rollup, green):
@@ -318,6 +348,16 @@ def test_the_batch_body_records_each_member_and_reads_back_the_same():
 
 def test_a_body_without_its_record_reads_as_nothing():
     assert batch.parse_body("a hand-written body") is None
+    assert batch.parse_body("<!-- batch-record\nbase x\n-->") is None
+    assert batch.parse_body("<!-- batch-record\nbranch b\nbase x\nmember four a b c d\n-->") is None
+
+
+def test_the_batch_body_carries_each_copied_exception_where_the_ratchet_reads_it():
+    import ratchet
+
+    copied = batch.exceptions([member(9, stamps=[stamp(exceptions=["Ratchet-Exception: coverage - a module went"])])])
+    body = batch.render_body(recorded(), copied, {})
+    assert ratchet.exceptions(body) == {"coverage"}
 
 
 def test_the_merge_list_refuses_when_main_moved_off_the_base_or_a_member_is_no_longer_cleared():
