@@ -1,5 +1,5 @@
 [[rule]]
 name = "a conversation that began in another folder is refused"
 file = "src/claude_voice/relaunch.py"
-find = '^\s*if _first_cwd\(path\) != str\(folder\):$'
+find = '^\s*if _first_cwd\(path\) != real:$'
 replace = 'if False:'

@@ -248,6 +248,14 @@ def test_a_conversation_that_began_in_another_folder_is_refused(tmp_path, folder
         cv.up(row(), how, Tmux())
 
 
+def test_a_role_folder_behind_a_link_is_judged_by_its_real_folder(tmp_path, folder):
+    """Claude Code keys a transcript by the real folder, so a link in the definition must not hide it."""
+    link = tmp_path / "linked"
+    link.symlink_to(folder, target_is_directory=True)
+    how, _ = start(tmp_path, folder, table={"builder-8d": {"folder": str(link)}})
+    assert cv.up(row(), how, Tmux())[-1].startswith("builder-8d: started in tmux shop:builder-8d")
+
+
 def test_only_launch_role_and_launch_approver_write_a_role_record():
     """The record cv up trusts is written by the bridge's own launchers alone (v1.4 §1)."""
     import ast

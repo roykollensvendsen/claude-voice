@@ -71,8 +71,11 @@ def recorded_conversation(db: Path, role: str) -> str | None:
 
 def transcript(projects: Path, folder: Path, conversation: str) -> Path:
     """The conversation's transcript, when it is a plain file under the folder's own project key
-    and began in that folder. Raises Refused naming what failed."""
-    path = projects / project_key_for_directory(str(folder)) / f"{conversation}.jsonl"
+    and began in that folder. Raises Refused naming what failed. The folder is taken as the real
+    one, links followed, since that is the folder Claude Code runs in and keys the transcript by."""
+    # RULE: a role folder behind a link is judged by its real folder
+    real = os.path.realpath(folder)
+    path = projects / project_key_for_directory(real) / f"{conversation}.jsonl"
     try:
         mode = os.lstat(path).st_mode
     except OSError:
@@ -83,7 +86,7 @@ def transcript(projects: Path, folder: Path, conversation: str) -> Path:
     if not stat.S_ISREG(mode):
         raise Refused(f"the transcript of {conversation[:8]} is not a plain file; start it fresh with start_role")
     # RULE: a conversation that began in another folder is refused
-    if _first_cwd(path) != str(folder):
+    if _first_cwd(path) != real:
         raise Refused(f"conversation {conversation[:8]} began in another folder; start it fresh with start_role")
     return path
 
