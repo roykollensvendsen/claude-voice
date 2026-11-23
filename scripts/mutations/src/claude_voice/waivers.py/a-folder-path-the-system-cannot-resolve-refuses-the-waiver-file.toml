@@ -1,0 +1,5 @@
+[[rule]]
+name = "a folder path the system cannot resolve refuses the waiver file"
+file = "src/claude_voice/waivers.py"
+find = '^\s*raise Refused\(f"the folder path \{shown\(path\)\} cannot be resolved"\) from None$'
+replace = 'raise'
