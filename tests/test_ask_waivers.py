@@ -295,6 +295,21 @@ def test_a_why_is_shown_without_control_characters():
     assert waivers.shown("bell\x07 and \x1b[31mred") == '"bell and [31mred"'
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        entry("/x", asks=("Bash(gh pr review*)\x1b[2J",)),
+        entry("relative\x1b[2J"),
+        '[[folder]]\npath = "/x"\nasks = []\nwhy = "x"\n"bad\\u001b[2J" = 1\n',
+        entry("/gone\x1b[2J"),
+    ],
+)
+def test_text_from_the_waiver_file_is_shown_as_data(tmp_path, rules, body):
+    found = waivers.read(rules, waiver_file(tmp_path, body))
+    said = "\n".join(found.lines())
+    assert said and "\x1b" not in said and '"' in said
+
+
 def test_a_why_is_cut_to_200_characters():
     assert waivers.shown(WHY) == f'"{WHY}"'
     assert waivers.shown("x" * 250) == '"' + "x" * 200 + '"'

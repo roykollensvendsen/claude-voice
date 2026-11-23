@@ -131,7 +131,7 @@ def _parsed(data: bytes, rules: Rules) -> Waivers:
         waiver = _entry(table, rules, notes)
         # RULE: a folder named twice refuses the waiver file
         if any(w.path == waiver.path for w in entries):
-            raise Refused(f"it names {waiver.path} twice")
+            raise Refused(f"it names {shown(str(waiver.path))} twice")
         entries.append(waiver)
     return Waivers(tuple(entries), notes=tuple(notes))
 
@@ -141,37 +141,39 @@ def _entry(table: Any, rules: Rules, notes: list[str]) -> Waiver:
     if not isinstance(table, dict):
         raise Refused("each [[folder]] must be a table")
     if extra := sorted(set(table) - KEYS):
-        raise Refused(f"a [[folder]] holds {', '.join(extra)}, and may hold only {', '.join(sorted(KEYS))}")
+        named = ", ".join(shown(key) for key in extra)
+        raise Refused(f"a [[folder]] holds {named}, and may hold only {', '.join(sorted(KEYS))}")
     path, asks, why = table.get("path"), table.get("asks"), table.get("why")
     # RULE: a relative folder path refuses the waiver file
     if not isinstance(path, str) or not Path(path).is_absolute():
-        raise Refused(f"the folder path {path!r} is not absolute")
+        raise Refused(f"the folder path {shown(str(path))} is not absolute")
     if not isinstance(asks, list) or not all(isinstance(a, str) for a in asks):
-        raise Refused(f"asks for {path} is not a list of rule texts")
+        raise Refused(f"asks for {shown(path)} is not a list of rule texts")
     # RULE: a waiver without a why refuses the waiver file
     if not isinstance(why, str) or not why.strip():
-        raise Refused(f"the waiver for {path} has no why")
+        raise Refused(f"the waiver for {shown(path)} has no why")
     real = Path(path).resolve()
     if not real.is_dir():
         # RULE: a waiver for a folder that is gone is noted once
-        notes.append(f"the owner's waiver names {path}, which is not a folder now; it does nothing")
+        notes.append(f"the owner's waiver names {shown(path)}, which is not a folder now; it does nothing")
     kept = tuple(ask for ask in asks if _waivable(ask, rules, path, notes))
     return Waiver(real, kept, why)
 
 
 def _waivable(ask: str, rules: Rules, path: str, notes: list[str]) -> bool:
     """Whether one text may be waived; False for a retired ask, which is noted. Raises Refused."""
+    said = shown(ask)  # the file's own text, shown as data
     # RULE: a deny is never waived
     if ask in rules.deny:
-        raise Refused(f"{ask} is a deny rule, and a deny is never waived")
+        raise Refused(f"{said} is a deny rule, and a deny is never waived")
     # RULE: a waiver never touches an allow rule
     if ask in rules.allow:
-        raise Refused(f"{ask} is an allow rule; a waiver only keeps asks out")
+        raise Refused(f"{said} is an allow rule; a waiver only keeps asks out")
     # RULE: a retired ask in the waiver file is skipped with a note
     if ask in rules.retired_ask:
-        notes.append(f"the owner's waiver for {path} names {ask}, a retired ask; it was skipped")
+        notes.append(f"the owner's waiver for {shown(path)} names {said}, a retired ask; it was skipped")
         return False
     # RULE: only an ask the table marks waivable is waived
     if ask not in rules.waivable:
-        raise Refused(f"{ask} is not an ask the shipped table lets a folder waive")
+        raise Refused(f"{said} is not an ask the shipped table lets a folder waive")
     return True
