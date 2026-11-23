@@ -1,0 +1,5 @@
+[[rule]]
+name = "the list names itself so dropping a line from it is a gate change"
+file = "src/voice_checks/gate_files.toml"
+find = '"packages/voice-checks/src/\*\*",'
+replace = '"packages/voice-checks/README.md",'

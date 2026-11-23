@@ -1,0 +1,5 @@
+[[rule]]
+name = "a path the base added is still a gate when the head drops it"
+file = "src/voice_checks/gates.py"
+find = '\[_at\(root, since, "pyproject\.toml"\), _at\(root, "HEAD", "pyproject\.toml"\)\],'
+replace = '[_at(root, "HEAD", "pyproject.toml")],'

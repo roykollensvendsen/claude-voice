@@ -1,0 +1,5 @@
+[[rule]]
+name = "a row whose find or replace changes is a gate change"
+file = "src/voice_checks/gates.py"
+find = 'if named\[name\] != _what\(row\):'
+replace = 'if False:'

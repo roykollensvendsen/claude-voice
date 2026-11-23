@@ -66,6 +66,28 @@ uv run voice-checks temp-files
   run. `voice_checks.docs.safe_blocks()` gives them the blocks, and `isolated_env()` an
   environment whose home and other folders lie in the test's own folder.
 
+- **`gate-files`.** A pull request that changes the files which judge it is merged by the
+  owner, never by a session. It fails, naming each such file, when the changes since `--base`
+  touch one: the workflows, the settings and lock files, the scripts, the mutation rows, the
+  guard and the permission files, and this package's own code. The list is
+  `src/voice_checks/gate_files.toml`. A repo adds to it, and never takes from it, in its
+  pyproject.toml:
+
+  <!-- not run: it is a table for another repository's pyproject.toml -->
+  ```toml
+  [tool.voice-checks.gate-files]
+  add = ["config/rules.yaml"]
+  ```
+
+  A pull request is judged by the list as it was on the base and as it is on its head
+  together, so dropping a line is caught by the line as it was. A mutation row deleted, or
+  with its `find` or `replace` changed, counts too, wherever its file lives.
+
+  <!-- not run: it needs a pull request's checkout -->
+  ```bash
+  uv run voice-checks gate-files --base origin/main
+  ```
+
 ## Move the pin
 
 <!-- not run: it rewrites the plugin's pyproject.toml -->

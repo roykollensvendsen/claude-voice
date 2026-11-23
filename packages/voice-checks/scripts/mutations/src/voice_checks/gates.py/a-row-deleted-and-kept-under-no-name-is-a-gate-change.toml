@@ -1,0 +1,5 @@
+[[rule]]
+name = "a row deleted, and kept under no name, is a gate change"
+file = "src/voice_checks/gates.py"
+find = 'elif _what\(row\) not in kept:'
+replace = 'elif False:'

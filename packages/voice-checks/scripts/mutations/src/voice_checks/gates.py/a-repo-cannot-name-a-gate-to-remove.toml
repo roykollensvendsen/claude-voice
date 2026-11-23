@@ -1,0 +1,5 @@
+[[rule]]
+name = "a repo cannot name a gate to remove"
+file = "src/voice_checks/gates.py"
+find = 'if others:'
+replace = 'if False:'
