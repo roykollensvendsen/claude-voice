@@ -290,6 +290,38 @@ def test_a_stop_while_main_is_being_copied_still_removes_the_copy(monkeypatch, t
     assert list(tmp_path.iterdir()) == []
 
 
+def test_a_quick_check_measures_the_base_without_its_mutation_run(monkeypatch, tmp_path):
+    """The mutation run is by far the slowest step; a quick look on a busy machine skips it on both sides."""
+    monkeypatch.setattr(ratchet.tempfile, "tempdir", str(tmp_path))
+    asked = []
+
+    def run(*args, **kwargs):
+        if "measure" in args:
+            asked.append(args)
+            pathlib.Path(args[args.index("--out") + 1]).write_text(json.dumps(BASE), encoding="utf-8")
+        return ratchet.subprocess.CompletedProcess(args, 0, "abc123\n", "")
+
+    monkeypatch.setattr(ratchet, "_run", run)
+    ratchet.measure_at("main", skip_mutation=True)
+    ratchet.measure_at("main")
+    assert ["--skip-mutation" in a for a in asked] == [True, False]
+
+
+def test_a_quick_measure_with_no_recorded_figures_runs_no_mutation(monkeypatch):
+    ran = []
+    monkeypatch.setattr(ratchet, "_run", lambda *args, **kwargs: ran.append(args))
+    assert ratchet.mutation_figures(True, None, None) is None
+    assert ratchet.mutation_figures(True, {"mutation": {"killed": 3, "total": 4}}, None) == {"killed": 3, "total": 4}
+    assert ran == []
+
+
+def test_a_mutation_run_skipped_on_either_side_is_not_compared():
+    worse = measured(mutation={"killed": 1, "total": 20})
+    assert problems(measured(mutation=None), worse) == []
+    assert problems(BASE, measured(mutation=None)) == []
+    assert problems(BASE, worse) != []
+
+
 def _git(where, *args):
     import subprocess
 
