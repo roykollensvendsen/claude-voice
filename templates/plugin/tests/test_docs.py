@@ -74,3 +74,16 @@ def test_no_job_that_runs_the_mutation_run_or_the_ratchet_has_a_time_limit():
         body = text.split(f"\n  {job}:\n", 1)[1].split("\n  # ", 1)[0]
         assert "timeout-minutes" not in body, job
     assert "timeout-minutes" not in (ROOT / ".github/workflows/red-first.yml").read_text(encoding="utf-8")
+
+
+def test_only_the_job_that_reads_the_commit_messages_has_a_time_limit():
+    """Time caps are removed, never raised: every job that runs the tests may take as long as it
+    needs. A job added later, in any workflow, falls under this too.
+    """
+    capped = []
+    for workflow in sorted((ROOT / ".github/workflows").glob("*.yml")):
+        text = workflow.read_text(encoding="utf-8").split("\njobs:\n", 1)[-1]
+        for job, body in re.findall(r"^  ([\w-]+):\n(.*?)(?=^  [\w-]+:\n|\Z)", text, flags=re.MULTILINE | re.DOTALL):
+            if "timeout-minutes" in body:
+                capped.append(f"{workflow.name}:{job}")
+    assert capped == ["checks.yml:commits"]
