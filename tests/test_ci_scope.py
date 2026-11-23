@@ -119,6 +119,33 @@ def test_the_gate_passes_a_skipped_job_only_when_the_scope_left_it_out():
     assert ci_scope.gate({"scope": {"result": "failure"}, **ran})
 
 
+def test_only_an_ordinary_pull_request_leaves_out_the_quality_run():
+    assert not ci_scope.quality("pull_request", "feat/x", "someone")
+    for event in ("push", "workflow_dispatch"):
+        assert ci_scope.quality(event, "", "someone"), event
+    # a branch merely named like a batch is not one
+    for ref in ("integration-x", "feat/integration/y", "integration"):
+        assert not ci_scope.quality("pull_request", ref, "someone"), ref
+
+
+def test_a_batch_runs_the_quality_run():
+    assert ci_scope.quality("pull_request", "integration/2026-11-24", "someone")
+    assert ci_scope.quality("pull_request", "integration/2026-11-24-2", "someone")
+
+
+def test_dependabots_own_pull_request_runs_the_quality_run():
+    assert ci_scope.quality("pull_request", "dependabot/uv/ruff-0.9", "dependabot[bot]")
+    assert not ci_scope.quality("pull_request", "dependabot/uv/ruff-0.9", "someone")
+
+
+def test_the_gate_passes_a_skipped_quality_run_only_when_the_scope_left_it_out():
+    needs = {"quality": {"result": "skipped"}}
+    assert ci_scope.gate({"scope": ok(windows=True, python313=True, template=True, quality=False), **needs}) == []
+    assert ci_scope.gate({"scope": ok(windows=True, python313=True, template=True, quality=True), **needs}) == [
+        "quality: skipped"
+    ]
+
+
 def test_the_gate_fails_a_job_that_failed_or_was_cancelled():
     for result in ("failure", "cancelled"):
         needs = {"scope": ok(windows=False, python313=False, template=False), "windows": {"result": result}}
@@ -147,8 +174,72 @@ def job(name):
 def test_the_gate_waits_for_every_other_job_and_runs_whatever_they_did():
     gate = job("gate")
     listed = re.search(r"needs: \[([^\]]*)\]", gate).group(1)
-    assert sorted(n.strip() for n in listed.split(",")) == sorted(n for n in jobs() if n != "gate")
+    # dependabot-batch is no check: it only reports a pass that quality already made
+    others = sorted(n for n in jobs() if n not in ("gate", "dependabot-batch"))
+    assert sorted(n.strip() for n in listed.split(",")) == others
     assert "always()" in gate
+
+
+def test_the_quality_run_reads_the_scope_and_runs_when_the_scope_failed():
+    quality = job("quality")
+    assert "    needs: scope\n" in quality
+    assert "!cancelled()" in quality
+    assert "needs.scope.outputs.quality != 'false'" in quality
+    assert "github.event_name != 'schedule'" in quality
+    scope = job("scope")
+    assert "quality: ${{ steps.scope.outputs.quality }}" in scope
+    assert "HEAD_REF: ${{ github.head_ref }}" in scope
+    assert "ACTOR: ${{ github.actor }}" in scope
+
+
+def test_the_scope_writes_whether_the_quality_run_is_needed(tmp_path, monkeypatch):
+    out = tmp_path / "out"
+    for env, value in {
+        "EVENT": "pull_request",
+        "HEAD_REF": "integration/2026-11-24",
+        "ACTOR": "someone",
+        "GITHUB_OUTPUT": str(out),
+    }.items():
+        monkeypatch.setenv(env, value)
+    monkeypatch.setattr(ci_scope, "changed", lambda base, head: [])
+    monkeypatch.setenv("BASE", "a")
+    monkeypatch.setenv("HEAD", "b")
+    assert ci_scope.main(["ci_scope.py", "scope"]) == 0
+    assert "quality=true\n" in out.read_text(encoding="utf-8")
+    monkeypatch.setenv("HEAD_REF", "feat/x")
+    out.write_text("", encoding="utf-8")
+    ci_scope.main(["ci_scope.py", "scope"])
+    assert "quality=false\n" in out.read_text(encoding="utf-8")
+
+
+def test_dependabots_run_reports_the_batch_status_itself_and_nothing_else_can():
+    batch = job("dependabot-batch")
+    assert "    needs: quality\n" in batch
+    assert "github.actor == 'dependabot[bot]'" in batch
+    assert "github.triggering_actor == 'dependabot[bot]'" in batch
+    assert "needs.quality.result == 'success'" in batch
+    assert "    permissions:\n      statuses: write\n" in batch
+    assert "checkout" not in batch
+    assert "github.event.pull_request.head.sha" in batch
+    assert "context=batch" in batch
+    # the one job that may write a status, and the whole run otherwise reads only
+    assert [n for n in jobs() if "statuses: write" in job(n)] == ["dependabot-batch"]
+    top = WORKFLOW.split("\njobs:\n", 1)[0]
+    assert "permissions:\n  contents: read\n" in top
+    assert "statuses" not in top
+
+
+def test_a_push_to_main_stops_main_runs_still_going_and_nothing_else_does():
+    top = WORKFLOW.split("\njobs:\n", 1)[0]
+    main_push = "(github.event_name == 'push' && github.ref == 'refs/heads/main')"
+    group = re.search(r"^  group: (.*)$", top, flags=re.MULTILINE).group(1)
+    cancel = re.search(r"^  cancel-in-progress: (.*)$", top, flags=re.MULTILINE).group(1)
+    # pull requests keep a group each, main's pushes share one, every other run is its own
+    assert group == (
+        "${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref"
+        f" || {main_push} && 'main-push' || github.run_id }}}}"
+    )
+    assert cancel == f"${{{{ github.event_name == 'pull_request' || {main_push} }}}}"
 
 
 def test_the_slower_jobs_read_the_scope_and_still_report_when_left_out():

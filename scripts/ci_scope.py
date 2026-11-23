@@ -1,11 +1,14 @@
 """Which of CI's slower jobs a pull request needs, and whether the jobs that ran add up to a pass.
 
-    python3 scripts/ci_scope.py scope    # writes windows=, python313=, template= to GITHUB_OUTPUT
+    python3 scripts/ci_scope.py scope    # writes windows=, python313=, template=, quality= to GITHUB_OUTPUT
     python3 scripts/ci_scope.py gate     # reads NEEDS, the run's jobs and results, and exits 1 on a fail
 
 A push to main and the nightly run need every job. A pull request needs Windows, Python 3.13
 and the plugin template only when it changes a path that one of them is there to catch. The
 lists below are where a new path is added, on purpose; a test checks each one still names a file.
+
+The quality job, with the mutation run and the ratchet, runs once per batch of approved pull
+requests rather than on each one: see `quality` below.
 
 `gate` is the one job a branch rule can require instead of the many. A job skipped because
 the scope said so passes; one skipped for any other reason, cancelled or failed, does not.
@@ -105,8 +108,31 @@ def scope(event: str, paths: list[str]) -> dict[str, bool]:
     return {job: any(fnmatch.fnmatch(p, glob) for p in paths for glob in globs) for job, globs in JOBS.items()}
 
 
+BATCH = "integration/"
+DEPENDABOT = "dependabot[bot]"
+
+
+def quality(event: str, head_ref: str, actor: str) -> bool:
+    """Whether this run needs the quality job, which holds the mutation run and the ratchet.
+
+    An ordinary pull request leaves it out: it runs once on the batch the pull request is
+    merged in, an integration/ branch. A push to main still runs it, and so does dependabot's
+    own pull request, which is never in a batch. A branch name only ever adds the run.
+    """
+    # RULE: only an ordinary pull request leaves out the quality run
+    a_pull_request = event == "pull_request"
+    if not a_pull_request:
+        return True
+    # RULE: a batch runs the quality run
+    if head_ref.startswith(BATCH):
+        return True
+    # RULE: dependabots own pull request runs the quality run
+    return actor == DEPENDABOT
+
+
 # Each job the scope can leave out, by the name it has in checks.yml.
-LEFT_OUT = {"windows": "windows", "template": "template"}
+# RULE: the gate passes a skipped quality run only when the scope left it out
+LEFT_OUT = {"windows": "windows", "template": "template", "quality": "quality"}
 
 
 def gate(needs: dict[str, dict], actor: str = "") -> list[str]:
@@ -141,6 +167,8 @@ def main(argv: list[str]) -> int:
         event = os.environ.get("EVENT", "")
         paths = changed(os.environ["BASE"], os.environ["HEAD"]) if event == "pull_request" else []
         found = scope(event, paths)
+        # RULE: the scope writes whether the quality run is needed
+        found["quality"] = quality(event, os.environ.get("HEAD_REF", ""), os.environ.get("ACTOR", ""))
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
             for job, needed in found.items():
                 out.write(f"{job}={'true' if needed else 'false'}\n")

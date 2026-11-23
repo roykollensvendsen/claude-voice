@@ -92,6 +92,12 @@ worse says so in its pull request, on a line of its own:
 Ratchet-Exception: coverage - the module it covered was deleted
 ```
 
+The ratchet and the mutation run don't run on each pull request. They run once
+on a batch: the approved pull requests applied together on an `integration/`
+branch, and on main after the batch merges
+([ADR-CV-023](decisions/ADR-CV-023-the-mutation-run-and-ratchet-run-once-per-batch.md)).
+The batch copies each pull request's exception lines into its own body.
+
 The suite has no time cap. The ratchet prints how long it took and fails
 nothing on it ([ADR-CV-021](decisions/ADR-CV-021-the-test-suite-has-no-time-cap.md)).
 

@@ -1,0 +1,5 @@
+[[rule]]
+name = "the gate passes a skipped quality run only when the scope left it out"
+file = "scripts/ci_scope.py"
+find = '^LEFT_OUT = \{"windows": "windows", "template": "template", "quality": "quality"\}$'
+replace = 'LEFT_OUT = {"windows": "windows", "template": "template"}'

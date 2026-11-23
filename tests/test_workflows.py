@@ -16,6 +16,17 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 """
 
+#: A repository that merges in batches lets pushes to main share one group (the bridge's
+#: ADR-CV-023): a batch's merges land together, and only the last one's tree, the one the batch
+#: proved, needs a full run. The nightly run and runs by hand stay their own group.
+MAIN_PUSH = "(github.event_name == 'push' && github.ref == 'refs/heads/main')"
+MAIN_PUSHES_SHARE_ONE = (
+    "concurrency:\n"
+    "  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref"
+    f" || {MAIN_PUSH} && 'main-push' || github.run_id }}}}\n"
+    f"  cancel-in-progress: ${{{{ github.event_name == 'pull_request' || {MAIN_PUSH} }}}}\n"
+)
+
 #: The block before: one group per ref, which could skip a commit on main.
 ONE_GROUP_PER_REF = """\
 concurrency:
@@ -38,7 +49,7 @@ def started_by_pull_request(workflow: str) -> bool:
 
 
 def cancels_only_a_stale_pull_request_run(workflow: str) -> bool:
-    return SUPERSEDED in workflow
+    return SUPERSEDED in workflow or MAIN_PUSHES_SHARE_ONE in workflow
 
 
 @pytest.mark.parametrize(
@@ -77,7 +88,7 @@ def test_one_group_per_ref_is_refused_because_it_can_skip_a_commit_on_main():
     assert not cancels_only_a_stale_pull_request_run(workflow)
 
 
-def test_every_pull_request_workflow_cancels_a_superseded_run_but_never_one_on_main():
+def test_every_pull_request_workflow_cancels_a_superseded_run_and_on_main_only_a_later_main_push():
     workflows = sorted((ROOT / ".github/workflows").glob("*.yml"))
     on_pull_requests = [p for p in workflows if started_by_pull_request(p.read_text(encoding="utf-8"))]
     assert on_pull_requests, "no workflow runs on pull requests"
