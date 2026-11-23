@@ -1,11 +1,13 @@
 """Bringing a role's conversation back: the start command is built from the owner's definition,
 never replayed from the record (worker-on-demand-v1, v1.1 b1, b2 and f1)."""
 
+import json
 import os
 import sys
 import threading
 
 import pytest
+from claude_agent_sdk import project_key_for_directory
 
 from claude_voice import relaunch
 
@@ -150,6 +152,17 @@ def test_a_missing_flag_is_named_too():
 
 def test_no_record_and_no_difference_say_nothing():
     assert relaunch.difference_line("builder-8d", []) is None
+
+
+def test_a_role_folder_behind_a_link_is_judged_by_its_real_folder(tmp_path):
+    real = tmp_path / "shop"
+    real.mkdir()
+    link = tmp_path / "linked"
+    link.symlink_to(real, target_is_directory=True)
+    key = tmp_path / "projects" / project_key_for_directory(str(real))
+    key.mkdir(parents=True)
+    (key / f"{ID}.jsonl").write_text(json.dumps({"type": "user", "cwd": str(real)}) + "\n", encoding="utf-8")
+    assert relaunch.transcript(tmp_path / "projects", link, ID) == key / f"{ID}.jsonl"
 
 
 def test_the_window_s_command_is_always_more_than_one_word():

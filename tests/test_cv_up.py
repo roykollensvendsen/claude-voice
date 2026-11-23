@@ -248,12 +248,24 @@ def test_a_conversation_that_began_in_another_folder_is_refused(tmp_path, folder
         cv.up(row(), how, Tmux())
 
 
-def test_a_role_folder_behind_a_link_is_judged_by_its_real_folder(tmp_path, folder):
+def test_a_role_whose_folder_is_named_through_a_link_is_brought_back(tmp_path, folder):
     """Claude Code keys a transcript by the real folder, so a link in the definition must not hide it."""
     link = tmp_path / "linked"
     link.symlink_to(folder, target_is_directory=True)
     how, _ = start(tmp_path, folder, table={"builder-8d": {"folder": str(link)}})
     assert cv.up(row(), how, Tmux())[-1].startswith("builder-8d: started in tmux shop:builder-8d")
+
+
+def test_the_window_opens_in_the_folder_that_was_checked(tmp_path, folder):
+    """The resolved folder is used throughout: for the checks, the window and the comparison."""
+    link = tmp_path / "linked"
+    link.symlink_to(folder, target_is_directory=True)
+    how, _ = start(tmp_path, folder, table={"builder-8d": {"folder": str(link)}})
+    tmux = Tmux()
+    said = cv.up(row(argv=("claude",), folder=str(folder.resolve())), how, tmux)
+    command = tmux.ran[0]
+    assert command[command.index("-c") + 1] == str(folder.resolve())
+    assert not any("changed folder" in line for line in said)
 
 
 def test_only_launch_role_and_launch_approver_write_a_role_record():

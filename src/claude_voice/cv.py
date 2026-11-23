@@ -148,12 +148,14 @@ def _session(chart: org.Chart, folder: Path, role: str) -> str:
 
 
 def _definition(how: Start, row: roster.Row) -> tuple[Path, str | None]:
-    """The role's folder and settings, from the owner's roles table alone. Raises Refused."""
+    """The role's folder, resolved once so every later step uses the same one, and its settings,
+    from the owner's roles table alone. Raises Refused."""
     spec = how.table.get(row.role)
     if spec is None:
         raise Refused(f"there is no role definition for {row.role}; start it fresh with start_role")
     try:
-        return roles.folder_for(spec), roles.settings_for(spec, row.role)
+        # RULE: the window opens in the folder that was checked
+        return Path(os.path.realpath(roles.folder_for(spec))), roles.settings_for(spec, row.role)
     except LookupError as exc:
         raise Refused(str(exc).rstrip(".")) from None
 
