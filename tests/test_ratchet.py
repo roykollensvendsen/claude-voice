@@ -315,11 +315,28 @@ def test_a_quick_measure_with_no_recorded_figures_runs_no_mutation(monkeypatch):
     assert ran == []
 
 
-def test_a_mutation_run_skipped_on_either_side_is_not_compared():
+def test_a_mutation_run_is_left_out_only_when_the_check_was_asked_to_skip_it():
     worse = measured(mutation={"killed": 1, "total": 20})
-    assert problems(measured(mutation=None), worse) == []
-    assert problems(BASE, measured(mutation=None)) == []
-    assert problems(BASE, worse) != []
+    assert ratchet.compare(measured(mutation=None), worse, set(), skip_mutation=True) == []
+    assert ratchet.compare(BASE, measured(mutation=None), set(), skip_mutation=True) == []
+    assert ratchet.compare(BASE, worse, set(), skip_mutation=True) != []
+    assert ratchet.compare(BASE, measured(mutation=None), set()) != []
+
+
+@pytest.mark.parametrize(
+    ("base", "now", "metric"),
+    [
+        (BASE, measured(coverage=None), "coverage"),
+        (measured(tests=None), BASE, "tests"),
+        (BASE, measured(mutation=None), "mutation"),
+        (measured(mutation=None), BASE, "mutation"),
+    ],
+)
+def test_a_measure_missing_on_either_side_fails_the_check(base, now, metric):
+    """A figure that could not be read never passes as unchanged, nor does a skipped run the check was not told of."""
+    for skip in (False, True) if metric != "mutation" else (False,):
+        [found] = ratchet.compare(base, now, set(), skip_mutation=skip)
+        assert metric in found and "no figure" in found
 
 
 def _git(where, *args):

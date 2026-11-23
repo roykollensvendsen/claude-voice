@@ -1,0 +1,5 @@
+[[rule]]
+name = "a mutation run is left out only when the check was asked to skip it"
+file = "scripts/ratchet.py"
+find = '^            if metric == "mutation" and skip_mutation:$'
+replace = '            if metric == "mutation":'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a measure missing on either side fails the check"
+file = "scripts/ratchet.py"
+find = '^            found\.append\(f"\{metric\} has no figure on one side: \{base\[metric\]\} -> \{now\[metric\]\}"\)$'
+replace = '            pass'

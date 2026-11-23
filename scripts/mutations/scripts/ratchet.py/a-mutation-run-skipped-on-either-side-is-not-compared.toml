@@ -1,5 +1,0 @@
-[[rule]]
-name = "a mutation run skipped on either side is not compared"
-file = "scripts/ratchet.py"
-find = '^        if base\[metric\] is None or now\[metric\] is None:$'
-replace = '        if False:'
