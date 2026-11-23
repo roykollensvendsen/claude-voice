@@ -1,0 +1,5 @@
+[[rule]]
+name = "the path of an api call is read without its host, query or fragment"
+file = "src/claude_voice/guard.py"
+find = '^\s*path = re\.split\(r"\[\?#\]", GH_HOST\.sub\("", named\[1\]\), maxsplit=1\)\[0\]$'
+replace = 'path = named[1]'

@@ -30,6 +30,19 @@ WAITING = "Wait for the owner to say what they want changed."
 #: Text rules that refuse the plain spellings of a merge to a role that may not merge. The guard
 #: hook is the real check: it reads gh's flags and every writing call to GitHub's API.
 MERGE_DENIES = ("Bash(gh pr merge*)", "Bash(gh -R * pr merge*)", "Bash(gh --repo * pr merge*)")
+#: Upstreams whose approved pull requests land in batches, merged by the manager alone
+#: (ADR-CV-023). Today that is only the bridge's own.
+BATCHED = ("roykollensvendsen/claude-voice",)
+
+
+def denies_merges(role: dict[str, Any]) -> bool:
+    """Whether a role's session is refused merges and check results on GitHub. `deny_merges = true`
+    refuses them anywhere; on a batched upstream they are refused unless `merges = true`."""
+    # RULE: deny_merges is honoured from either roles file
+    if role.get("deny_merges") is True:
+        return True
+    # RULE: merges are denied by default only on an upstream that merges in batches
+    return str(role.get("upstream") or "") in BATCHED and role.get("merges") is not True
 
 
 def load(user_file: Path | None, defaults: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
@@ -90,12 +103,12 @@ def first_message(role: dict[str, Any], folder: Path, task: str | None) -> str:
 def guard_settings(role: dict[str, Any]) -> str | None:
     """Claude Code settings that run the guard before every shell command of a role's session.
     A role that asks for the guard gets the push check; a role with its own settings file and no
-    guard gets the guard's check on deletes; any other role gets only the check on merges. A role
-    may merge, or set a check result on GitHub, only when the owner's own roles file says
-    `merges = true`."""
+    guard gets the guard's check on deletes; a role denied merges with neither gets only the check
+    on merges, and any other role gets no hook at all. See `denies_merges` for who may merge."""
     upstream = str(role.get("upstream") or "")
     only_deletes = bool(role.get("settings")) and not role.get("guard")
-    if not upstream:
+    denied = denies_merges(role)
+    if not upstream or not (role.get("guard") or only_deletes or denied):
         return None
     # RULE: the push guard runs isolated from the sessions folder
     command = f"{shlex.quote(sys.executable)} -I -m claude_voice.guard --upstream {shlex.quote(upstream)}"
@@ -105,17 +118,16 @@ def guard_settings(role: dict[str, Any]) -> str | None:
     # RULE: a role with its own settings and no guard gets the delete check
     if only_deletes:
         command += " --push-mode no-deletes"
-    # RULE: every role gets the guard, a role with neither guard nor settings only its merge check
+    # RULE: a role denied merges gets the guard, with only its merge check when it has neither guard nor settings
     if not role.get("guard") and not only_deletes:
         command += " --push-mode merges-only"
-    merges = role.get("merges") is True
-    if merges:
+    if not denied:
         command += " --merges"
     out: dict[str, Any] = {
         "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": command}]}]}
     }
-    # RULE: a role without merges carries the text denies of a merge
-    if not merges:
+    # RULE: a role denied merges carries the text denies of a merge
+    if denied:
         out["permissions"] = {"deny": list(MERGE_DENIES)}
     return json.dumps(out)
 
