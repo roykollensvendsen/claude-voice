@@ -1,0 +1,5 @@
+[[rule]]
+name = "a stamp that does not record its exceptions leaves the pull request out"
+file = "scripts/batch.py"
+find = '^\s*if not isinstance\(s\.get\("ratchet_exceptions"\), list\):$'
+replace = 'if False:'

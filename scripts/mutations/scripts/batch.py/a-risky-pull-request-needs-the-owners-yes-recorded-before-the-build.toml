@@ -1,0 +1,5 @@
+[[rule]]
+name = "a risky pull request needs the owners yes recorded before the build"
+file = "scripts/batch.py"
+find = '^\s*if yes\.get\("head"\) != m\.head:$'
+replace = 'if False:'
