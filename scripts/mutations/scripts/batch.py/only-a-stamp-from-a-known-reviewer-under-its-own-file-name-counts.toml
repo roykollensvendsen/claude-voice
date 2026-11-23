@@ -1,0 +1,5 @@
+[[rule]]
+name = "only a stamp from a known reviewer under its own file name counts"
+file = "scripts/batch.py"
+find = '^\s*if body is None or match\["suffix"\] not in verdicts\.REVIEWERS\.get\(str\(body\.get\("by"\)\), \(\)\):$'
+replace = 'if body is None:'

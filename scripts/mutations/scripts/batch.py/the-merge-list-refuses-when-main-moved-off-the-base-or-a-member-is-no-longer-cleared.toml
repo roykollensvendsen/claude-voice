@@ -1,0 +1,5 @@
+[[rule]]
+name = "the merge list refuses when main moved off the base or a member is no longer cleared"
+file = "scripts/batch.py"
+find = '^\s*if main_now != base:$'
+replace = 'if False:'
