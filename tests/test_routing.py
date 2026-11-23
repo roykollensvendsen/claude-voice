@@ -774,6 +774,33 @@ def test_a_hard_link_to_a_secret_goes_to_the_owner(place, home_secrets):
     assert bash("grep -r x .", place).shape is False
 
 
+#: The message bridges' keys, databases and send log, one file in each of their folders.
+MESSAGE_SECRETS = [
+    ".config/messages-mcp/door.toml",
+    ".config/ntfy/server.yml",
+    ".local/share/mautrix-meta/mautrix-meta.db",
+    ".local/share/synapse/homeserver.signing.key",
+    ".local/share/sms-bridge/registration.yaml",
+    ".local/share/ntfy/cache.db",
+    ".local/state/ntfy/user.db",
+    ".local/state/messages-mcp/sent.jsonl",
+]
+
+
+@pytest.mark.parametrize("name", MESSAGE_SECRETS)
+def test_the_message_bridges_files_go_to_the_owner_by_path_and_by_hard_link(place, home_secrets, name):
+    target = place.home / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("x\n")
+    for tool in ("Read", "Edit"):
+        assert routing.sort(tool, {"file_path": str(target)}, place=place, now=DAY).line == 1, (tool, name)
+    assert line_of(f"cat {target.as_posix()}", place) == 1
+    routing.SECRET_INODES.clear()
+    os.link(target, place.repo / "notes.txt")
+    assert routing.sort("Read", {"file_path": str(place.repo / "notes.txt")}, place=place, now=DAY).line == 1
+    assert bash("cat notes.txt", place).shape is False
+
+
 def test_a_hard_link_between_plain_files_is_not_secret(place, home_secrets):
     os.link(place.repo / "src" / "a.py", place.repo / "src" / "same.py")
     assert bash("cat src/same.py", place).shape is True

@@ -277,6 +277,16 @@ but names `main` or `master` is refused too, from the forms under `other pushes`
 | `secrets.yaml` | the garage door's firmware secrets |
 | `~/.config/gh/hosts.yml` | the GitHub command line's sign-in |
 | `~/.claude/.credentials.json` | Claude Code's own sign-in |
+| `~/.config/messages-mcp/` | the messages plugin's keys, who may reach it, and its undo delay |
+| `~/.local/share/mautrix-meta/`, `~/.local/share/synapse/`, `~/.local/share/sms-bridge/` | the message bridges' keys and databases |
+| `~/.config/ntfy/`, `~/.local/share/ntfy/`, `~/.local/state/ntfy/` | the push server's settings, cache and user list |
+| `~/.local/state/messages-mcp/sent.jsonl` | the record of messages sent |
+
+Three of those files decide what the messages plugin may do. `door.toml` lists
+who may reach it, and `send.toml` sets how long a message waits before it goes.
+The push server's `server.yml` keeps everyone out who isn't on its user list.
+No session may write any of them, with any tool or command. Only the owner
+changes them.
 
 - **Settings and secrets, read broadly with `sed`.** `sed -n` is refused for
   anything under a `.config` folder, and for any path that says `secrets`. These
