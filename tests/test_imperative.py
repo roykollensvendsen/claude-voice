@@ -113,5 +113,6 @@ def test_every_commit_means_every_commit_including_the_first():
     ).stdout.strip()
     every = {sha for sha, _ in imperative.subjects("HEAD")}
     as_a_range = {sha for sha, _ in imperative.subjects(f"{root}..HEAD")}
-    assert root[:7] in every
-    assert root[:7] not in as_a_range
+    # git shortens a hash to as many characters as the repository needs, so match by prefix
+    assert any(root.startswith(sha) for sha in every)
+    assert not any(root.startswith(sha) for sha in as_a_range)
