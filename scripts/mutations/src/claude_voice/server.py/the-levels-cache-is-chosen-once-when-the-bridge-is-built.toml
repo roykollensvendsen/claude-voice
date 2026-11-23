@@ -1,0 +1,5 @@
+[[rule]]
+name = "the levels cache is chosen once when the bridge is built"
+file = "src/claude_voice/server.py"
+find = '^    levels_cache = software\.levels_cache\(\)$'
+replace = '    levels_cache = None'

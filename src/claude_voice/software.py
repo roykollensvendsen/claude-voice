@@ -62,7 +62,8 @@ def _gh(args: list[str]) -> str | None:
     return out.stdout if out.returncode == 0 else None
 
 
-def _cache() -> Path:
+def levels_cache() -> Path:
+    """Where main's kept levels and mutation reports are kept once downloaded, in this home."""
     return Path.home() / ".cache" / "claude-voice" / "levels"
 
 
@@ -121,7 +122,7 @@ def kept_levels(
     and then read from disk, and one that kept none is remembered as having none. The newest
     are downloaded first, so a page shows today's numbers before it fills in their history.
     """
-    folder = (cache or _cache()) / repo.replace("/", "__")
+    folder = (cache or levels_cache()) / repo.replace("/", "__")
     out, fetched = [], 0
     for run_id in _finished_runs(repo, branch, limit, run):  # newest first
         saved = folder / f"{run_id}.json"
@@ -157,7 +158,7 @@ def kept_mutations(
     a run that kept none remembered as having none, and no more downloads per look than the
     levels get.
     """
-    folder = (cache or _cache()) / repo.replace("/", "__")
+    folder = (cache or levels_cache()) / repo.replace("/", "__")
     fetched = 0
     for run_id in _finished_runs(repo, branch, limit, run):  # newest first
         # RULE: mutation reports are cached apart from the levels
