@@ -3,13 +3,14 @@
 import json
 
 import pytest
+from claude_agent_sdk import project_key_for_directory
 
 from claude_voice import decisions, transcripts
 from claude_voice.store import Store
 
 SHA = "ece3fd40" + "a" * 32
 OTHER = "0badc0de" + "b" * 32
-SUPPORT = {"name": "support", "id": "sup-1", "folder": "/home/x/src/org"}  # its key: -home-x-src-org
+SUPPORT = {"name": "support", "id": "sup-1", "folder": "/home/x/src/org"}
 PID, STARTED = 4242, "104338067"
 COURIERS = {(PID, STARTED)}
 
@@ -293,7 +294,7 @@ def write_lines(path, rows):
 
 @pytest.fixture
 def projects(tmp_path):
-    folder = tmp_path / "projects" / "-home-x-src-org"
+    folder = tmp_path / "projects" / project_key_for_directory(SUPPORT["folder"])  # as Claude Code keys it here
     folder.mkdir(parents=True)
     write_lines(
         folder / "sup-1.jsonl", [QUESTION, typed("yes, merge it"), QUESTION, voice("yes, merge it", uuid="u-said")]
