@@ -1,0 +1,5 @@
+[[rule]]
+name = "one start of a role at a time"
+file = "src/claude_voice/relaunch.py"
+find = '^\s*fcntl\.flock\(fd, fcntl\.LOCK_EX \| fcntl\.LOCK_NB\)$'
+replace = 'pass'

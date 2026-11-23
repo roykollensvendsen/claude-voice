@@ -1,0 +1,5 @@
+[[rule]]
+name = "the window's command is always more than one word"
+file = "src/claude_voice/relaunch.py"
+find = '^\s*if len\(argv\) < 2:$'
+replace = 'if False:'

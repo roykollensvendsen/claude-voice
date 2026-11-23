@@ -258,6 +258,12 @@
     "settings and secrets, read broadly with sed": [
       "Bash(sed -n *.config/*)",
       "Bash(sed -n *secrets*)"
+    ],
+    "the bridge's own records of the sessions it started, which cv up trusts": [
+      "Edit(/{home}/.local/state/claude-voice/bridge.db*)",
+      "Write(/{home}/.local/state/claude-voice/bridge.db*)",
+      "Edit(/{home}/.local/state/claude-voice/sessions.toml)",
+      "Write(/{home}/.local/state/claude-voice/sessions.toml)"
     ]
   },
   "protected branches": {

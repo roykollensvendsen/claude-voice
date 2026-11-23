@@ -1,0 +1,5 @@
+[[rule]]
+name = "a start command that cannot be read keeps the last one read"
+file = "src/claude_voice/roster.py"
+find = '^\s*return kept if read is None else read$'
+replace = 'return () if read is None else read'

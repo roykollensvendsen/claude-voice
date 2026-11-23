@@ -287,7 +287,7 @@ class NoTmux:
         return None
 
 
-def keeper(tmp_path, world):
+def keeper(tmp_path, world, find_program=lambda name: None):
     root, live = world
     m = SessionManager(Store(tmp_path / "k.db"), project_root=root, client_factory=FakeClaude(), clock=Clock())
     kept = tmp_path / "state" / "sessions.toml"
@@ -299,8 +299,27 @@ def keeper(tmp_path, world):
         org_folders=[],
         tmux=NoTmux(),
         sessions_file=kept,
+        find_program=find_program,
     )
     return server, kept
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="reads /proc")
+async def test_the_bridge_keeps_the_start_command_of_each_claude_it_sees(tmp_path, world):
+    from claude_voice import roster
+
+    server, kept = keeper(tmp_path, world, find_program=lambda name: sys.executable if name == "claude" else None)
+    await call(server, "whats_new")
+    found = {r.role: r.argv for r in roster.read(kept)}
+    assert found["shop"][1:] == ("-c", "import time; time.sleep(60)")
+
+
+async def test_the_bridge_keeps_no_start_command_when_claude_is_not_found(tmp_path, world):
+    from claude_voice import roster
+
+    server, kept = keeper(tmp_path, world)
+    await call(server, "whats_new")
+    assert {r.argv for r in roster.read(kept)} == {()}
 
 
 def kept_rows(path):

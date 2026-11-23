@@ -35,12 +35,15 @@ class Row:
     conversation: str
     tmux: str
     last_seen: str
+    # What the session last ran with, kept only to say how a later start differs (worker-on-demand-v1)
+    argv: tuple[str, ...] = ()
 
 
-FIELDS = tuple(f.name for f in fields(Row))
+FIELDS = tuple(f.name for f in fields(Row) if f.name != "argv")
+Argv = Callable[[dict[str, Any]], "tuple[str, ...] | None"]
 
 
-def _row(d: dict[str, Any], organisation: str | None, now: str) -> Row:
+def _row(d: dict[str, Any], organisation: str | None, now: str, argv: tuple[str, ...]) -> Row:
     return Row(
         organisation or SOLO,
         str(d["name"]),
@@ -48,7 +51,13 @@ def _row(d: dict[str, Any], organisation: str | None, now: str) -> Row:
         str(d["sessionId"]),
         str(d.get("tmux") or ""),
         now,
+        argv,
     )
+
+
+def _argv(read: tuple[str, ...] | None, kept: tuple[str, ...]) -> tuple[str, ...]:
+    # RULE: a start command that cannot be read keeps the last one read
+    return kept if read is None else read
 
 
 def _is_role(d: dict[str, Any]) -> bool:
@@ -61,13 +70,16 @@ def seen(
     live: Iterable[dict[str, Any]],
     organisation: Callable[[dict[str, Any]], str | None],
     now: str,
+    argv: Argv = lambda d: None,
 ) -> list[Row]:
     """The rows after a look at the running sessions `live` (Claude Code's records of them),
-    each placed in its organisation by `organisation`; None is no programme."""
+    each placed in its organisation by `organisation`; None is no programme. `argv` reads what
+    a session runs with; when it cannot, the row keeps what was read before."""
     # RULE: a role that has gone stays in the sessions file
     kept = {(r.organisation, r.role): r for r in rows}
+    before = {r.conversation: r.argv for r in rows}
     for d in filter(_is_role, live):
-        row = _row(d, organisation(d), now)
+        row = _row(d, organisation(d), now, _argv(argv(d), before.get(str(d["sessionId"]), ())))
         # RULE: a conversation is listed under one role only
         kept = {key: r for key, r in kept.items() if r.conversation != row.conversation}
         kept[(row.organisation, row.role)] = row
@@ -91,7 +103,14 @@ def read(path: Path) -> list[Row]:
             f"{path} cannot be read ({exc}). The bridge writes it again at its next look: remove it, "
             "then wait a few seconds"
         ) from exc
-    return [Row(**{k: str(r[k]) for k in FIELDS}) for r in found if isinstance(r, dict) and set(FIELDS) <= set(r)]
+    return [_read_row(r) for r in found if isinstance(r, dict) and set(FIELDS) <= set(r)]
+
+
+def _read_row(r: dict[str, Any]) -> Row:
+    """A row as written; a row from before the start command was kept has none."""
+    argv = r.get("argv")
+    kept = tuple(str(a) for a in argv) if isinstance(argv, list) else ()
+    return Row(**{k: str(r[k]) for k in FIELDS}, argv=kept)
 
 
 def write(path: Path, rows: Iterable[Row]) -> bool:

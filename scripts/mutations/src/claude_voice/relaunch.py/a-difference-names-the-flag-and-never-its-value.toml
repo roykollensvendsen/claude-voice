@@ -1,0 +1,5 @@
+[[rule]]
+name = "a difference names the flag and never its value"
+file = "src/claude_voice/relaunch.py"
+find = '^\s*found \+= \[f"changed \{f\}" for f in now if f in then and f != RESUME and then\[f\] != now\[f\]\]$'
+replace = 'found += [f"changed {f} {then[f]}" for f in now if f in then and f != RESUME and then[f] != now[f]]'

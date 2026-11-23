@@ -314,14 +314,24 @@ def test_everything_refused_before_is_still_refused():
     assert [rule for rule in INSTALLED_BEFORE if rule not in rules.deny] == []
 
 
+def test_the_bridge_s_records_of_its_sessions_cannot_be_edited_by_a_session(tmp_path):
+    """cv up trusts the bridge's role records (worker-on-demand-v1, v1.4 §3)."""
+    rules = _for_home()
+    for tool in ("Edit", "Write"):
+        assert f"{tool}(//h/.local/state/claude-voice/bridge.db*)" in rules.deny
+        assert f"{tool}(//h/.local/state/claude-voice/sessions.toml)" in rules.deny
+
+
 def test_the_shipped_rules_name_no_person_host_or_home_folder():
     text = permissions.TABLE.read_text(encoding="utf-8")
     # The rules about removing folders name everyone's home and state folders the same way and
     # no person's, so those exact rules are taken out before looking for anything private.
     raw = json.loads(text)
     owner = raw["what later runs as the owner"]
-    generic = raw["what cannot be got back"]["targets"] + owner["home"]
+    records = raw["deny"]["the bridge's own records of the sessions it started, which cv up trusts"]
+    generic = raw["what cannot be got back"]["targets"] + owner["home"] + records
     assert not any(p.startswith(("/", "~")) for p in owner["home"])  # relative to any home folder
+    assert all("/{home}/.local/state/claude-voice/" in p for p in records)  # the same state folder for anyone
     for rule in generic:
         text = text.replace(json.dumps(rule), "")
     for private in ("/home/", "/users/", "~/", "roykollensvendsen", "192.168.", "100.", ".local/"):

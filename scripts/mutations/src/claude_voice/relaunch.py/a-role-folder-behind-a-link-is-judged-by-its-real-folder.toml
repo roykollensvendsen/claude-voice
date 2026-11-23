@@ -1,0 +1,5 @@
+[[rule]]
+name = "a role folder behind a link is judged by its real folder"
+file = "src/claude_voice/relaunch.py"
+find = '^\s*real = os\.path\.realpath\(folder\)$'
+replace = 'real = str(folder)'

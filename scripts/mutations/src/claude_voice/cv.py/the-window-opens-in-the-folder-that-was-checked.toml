@@ -1,0 +1,5 @@
+[[rule]]
+name = "the window opens in the folder that was checked"
+file = "src/claude_voice/cv.py"
+find = '^\s*return Path\(os\.path\.realpath\(roles\.folder_for\(spec\)\)\), roles\.settings_for\(spec, row\.role\)$'
+replace = 'return roles.folder_for(spec), roles.settings_for(spec, row.role)'

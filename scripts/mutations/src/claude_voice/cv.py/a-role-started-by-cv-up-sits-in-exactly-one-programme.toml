@@ -1,0 +1,5 @@
+[[rule]]
+name = "a role started by cv up sits in exactly one programme"
+file = "src/claude_voice/cv.py"
+find = '^\s*if len\(codes\) > 1:$'
+replace = 'if False:'
