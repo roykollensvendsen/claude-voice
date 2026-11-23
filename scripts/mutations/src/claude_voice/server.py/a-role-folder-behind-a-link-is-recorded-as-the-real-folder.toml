@@ -1,0 +1,5 @@
+[[rule]]
+name = "a role folder behind a link is recorded as the real folder"
+file = "src/claude_voice/server.py"
+find = '^\s*real = await asyncio\.to_thread\(os\.path\.realpath, folder\)  # Claude Code keys the transcript by it$'
+replace = 'real = str(folder)'
