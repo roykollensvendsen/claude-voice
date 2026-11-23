@@ -1,0 +1,5 @@
+[[rule]]
+name = "only an ask the table ships can be marked waivable"
+file = "src/claude_voice/permissions.py"
+find = '^\s*if stray := next\(\(text for text in texts if text not in ask\), None\):$'
+replace = 'if stray := None:'

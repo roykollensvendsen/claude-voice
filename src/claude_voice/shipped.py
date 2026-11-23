@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from . import accepted, permissions, safe_git
+from . import accepted, permissions, safe_git, waivers
 
 if TYPE_CHECKING:
     from . import org
@@ -160,11 +160,18 @@ def sync(
     sha: str,
     *,
     backup_root: Path,
+    found: waivers.Waivers | None = None,
 ) -> list[Outcome]:
-    """Bring each folder's shipped rules up to date where that only takes rights away."""
+    """Bring each folder's shipped rules up to date where that only takes rights away, less
+    the asks the owner's waiver keeps out of it."""
     manager = own_clone.expanduser().resolve() if own_clone else Path("/nonexistent")
     own = next((p for p in chart.programmes if p.repo == manager), None)
-    return [one(folder, chart, own, manager, rules, sha, backup_root) for folder in folders]
+    found = found or waivers.Waivers()
+    # RULE: the startup sync keeps a waived ask out too
+    marked = [permissions.waived(rules, found.for_folder(folder)) for folder in folders]
+    return [
+        one(folder, chart, own, manager, here, sha, backup_root) for folder, here in zip(folders, marked, strict=True)
+    ]
 
 
 def installed_commit(own_clone: Path | None) -> str:

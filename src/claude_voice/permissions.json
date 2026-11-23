@@ -312,7 +312,7 @@
       ".claude/settings*.json", ".claude/hooks/**", ".claude/skills/**", ".claude/plugins/**", ".claude.json",
       ".config/claude-voice/config.toml", ".config/claude-voice/roles.toml",
       ".config/claude-voice/machines/**", ".config/claude-voice/plugins/**",
-      ".config/claude-voice/orgs/**",
+      ".config/claude-voice/orgs/**", ".config/claude-voice/ask-waivers.toml",
       ".config/gh/config.yml",
       ".config/uv/**", ".config/pip/**", ".pip/**", ".npmrc",
       ".vimrc", ".config/nvim/**", ".emacs", ".emacs.d/**"
@@ -348,6 +348,7 @@
       "git config *remote.*.uploadpack *", "git config *remote.*.receivepack *"
     ]
   },
+  "waivable asks": ["Bash(gh pr review*)"],
   "retired": {
     "allow": [
       "Bash(cp * /tmp/*)",

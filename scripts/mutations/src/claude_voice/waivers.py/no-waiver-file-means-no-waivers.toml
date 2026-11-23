@@ -1,0 +1,5 @@
+[[rule]]
+name = "no waiver file means no waivers"
+file = "src/claude_voice/waivers.py"
+find = '^\s*return Waivers\(\)$'
+replace = 'return Waivers(problem="no file")'

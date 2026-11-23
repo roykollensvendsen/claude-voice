@@ -1,0 +1,5 @@
+[[rule]]
+name = "only a plain file is read as the waiver file"
+file = "src/claude_voice/waivers.py"
+find = '^\s*if not stat\.S_ISREG\(os\.fstat\(fd\)\.st_mode\):$'
+replace = 'if False:'

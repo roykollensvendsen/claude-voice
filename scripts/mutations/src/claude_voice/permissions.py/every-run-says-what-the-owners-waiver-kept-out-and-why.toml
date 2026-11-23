@@ -1,0 +1,5 @@
+[[rule]]
+name = "every run says what the owners waiver kept out and why"
+file = "src/claude_voice/permissions.py"
+find = '^\s*return self\._changed\(\) \+ \(f"; \{self\.kept_out\}" if self\.kept_out else ""\)$'
+replace = 'return self._changed()'

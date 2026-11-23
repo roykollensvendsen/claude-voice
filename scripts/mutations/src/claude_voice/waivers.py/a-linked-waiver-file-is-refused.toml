@@ -1,0 +1,5 @@
+[[rule]]
+name = "a linked waiver file is refused"
+file = "src/claude_voice/waivers.py"
+find = '^\s*no_link = getattr\(os, "O_NOFOLLOW", 0\)$'
+replace = 'no_link = 0'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "only an ask the table marks waivable is waived"
+file = "src/claude_voice/waivers.py"
+find = '^\s*if ask not in rules\.waivable:$'
+replace = 'if False:'

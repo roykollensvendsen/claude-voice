@@ -1,0 +1,5 @@
+[[rule]]
+name = "a waiver never touches an allow rule"
+file = "src/claude_voice/waivers.py"
+find = '^\s*if ask in rules\.allow:$'
+replace = 'if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a dry run says what decides a waived command once its ask is gone"
+file = "src/claude_voice/permissions.py"
+find = '^\s*return said \+ "".join\(f"; \{_decided_by\(settings, ask\)\}" for ask in waiver\.asks\)$'
+replace = 'return said'
