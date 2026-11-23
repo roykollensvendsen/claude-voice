@@ -1,0 +1,5 @@
+[[rule]]
+name = "a draft is not cleared"
+file = "scripts/batch.py"
+find = '^\s*if m\.draft:$'
+replace = 'if False:'

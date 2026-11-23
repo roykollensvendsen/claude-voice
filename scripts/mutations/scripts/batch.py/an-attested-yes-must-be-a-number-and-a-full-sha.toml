@@ -1,0 +1,5 @@
+[[rule]]
+name = "an attested yes must be a number and a full sha"
+file = "scripts/batch.py"
+find = '^\s*if not match:$'
+replace = 'if False:'

@@ -28,6 +28,7 @@ SCRIPTS_WITH_ROWS = (
     "scripts/clean_merged.py",
     "scripts/ci_scope.py",
     "scripts/ratchet.py",
+    "scripts/batch.py",
 )
 
 

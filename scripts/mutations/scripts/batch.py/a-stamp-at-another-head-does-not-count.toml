@@ -1,0 +1,5 @@
+[[rule]]
+name = "a stamp at another head does not count"
+file = "scripts/batch.py"
+find = '^\s*if not stamps:$'
+replace = 'if False:'

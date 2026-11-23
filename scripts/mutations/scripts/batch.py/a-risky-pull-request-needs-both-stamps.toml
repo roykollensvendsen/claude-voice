@@ -1,0 +1,5 @@
+[[rule]]
+name = "a risky pull request needs both stamps"
+file = "scripts/batch.py"
+find = '^\s*found \+= \[f"risky, and \{who\} has not stamped its head"'
+replace = 'pass'
