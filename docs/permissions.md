@@ -356,11 +356,14 @@ It lets through:
 - **an issue in the programme's own repositories.** The repository must be named
   with `--repo`, and listed as a component's remote in the org chart. These
   repositories are public, so whatever the issue holds is published at once.
+  The session may take the issue itself with `--assignee @me` or `-a @me`.
 
 So an issue asks when:
 
 - its command names a variable or a home folder (`$`, `~`), which the shell would
   fill in after the hook has looked;
+- it assigns anyone but the session itself, since that hands work to someone else;
+- it gives a flag twice. gh uses every one, while only the last would be checked;
 - its body file is neither in the session's own scratchpad nor a file git tracks.
   An ignored file, such as one holding a network password, never qualifies;
 - its title, body or body file holds the shape of a secret: a token prefix such as

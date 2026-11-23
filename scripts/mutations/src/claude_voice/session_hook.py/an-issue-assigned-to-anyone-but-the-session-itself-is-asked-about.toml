@@ -1,0 +1,5 @@
+[[rule]]
+name = "an issue assigned to anyone but the session itself is asked about"
+file = "src/claude_voice/session_hook.py"
+find = '^\s*return found if found\.get\("assignee", "@me"\) == "@me" else None$'
+replace = 'return found'
