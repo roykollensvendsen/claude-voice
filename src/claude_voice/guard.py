@@ -126,6 +126,22 @@ RUNS_A_COMMAND = {
     "submodule": ("foreach",),
     "difftool": ("-x", "--extcmd"),
 }
+#: The mode for a role with neither the guard nor its own settings: only merges are judged.
+MERGES_ONLY = "merges-only"
+#: gh's options that take the next word as their value, for gh itself and for `gh api`.
+GH_VALUES = frozenset(
+    "-R --repo --hostname -X --method -f --raw-field -F --field -H --header --input -q --jq "
+    "-t --template --cache -p --preview".split()
+)
+#: `gh api` options that send fields, which makes the call a POST unless it names a method.
+GH_FIELDS = frozenset({"-f", "--raw-field", "-F", "--field", "--input"})
+GH_FIELDS_JOINED = ("-f", "-F", "--raw-field=", "--field=", "--input=")
+#: API paths that merge a pull request or a branch, or set a commit status or a check run.
+GH_PATH = re.compile(r"^/?repos/[^/]+/[^/]+/(?:statuses/|pulls/[^/]+/merge/?$|merges/?$|check-runs|check-suites)")
+#: GraphQL mutations that merge, or set a status.
+GH_MUTATIONS = re.compile(
+    r"mergePullRequest|enablePullRequestAutoMerge|mergeBranch|createCommitStatus|createCheckRun|updateCheckRun"
+)
 #: Options before git's subcommand that take the next word as their value.
 GIT_VALUES = ("-C", "-c", "--config-env", "--git-dir", "--work-tree")
 #: The shell's own quoting, `$'...'` with escapes and `$"..."`, which bash turns into plain text.
@@ -229,6 +245,75 @@ def _hidden(words: list[str]) -> bool:
     if any(_is_git(word) and "push" in words[i + 1 :] for i, word in enumerate(words)):
         return True
     return any(_pushes(line) for line in _inner(words))
+
+
+def _is_gh(word: str) -> bool:
+    return word.rsplit("/", 1)[-1] == "gh"
+
+
+def _gh_words(words: list[str]) -> list[str]:
+    """The words after gh that name what it does, with every option and its value left out."""
+    out, i = [], 0
+    while i < len(words):
+        word = words[i]
+        if word in GH_VALUES:
+            i += 2
+            continue
+        if not word.startswith("-"):
+            out.append(word)
+        i += 1
+    return out
+
+
+def _gh_method(words: list[str]) -> str:
+    """The HTTP method a `gh api` call uses: the one it names, else POST when it sends fields."""
+    method, fields = None, False
+    for i, word in enumerate(words):
+        if word in ("-X", "--method") and i + 1 < len(words):
+            method = words[i + 1]
+        elif word.startswith("--method="):
+            method = word.split("=", 1)[1]
+        elif word.startswith("-X"):
+            method = word[2:]
+        elif word in GH_FIELDS or word.startswith(GH_FIELDS_JOINED):
+            fields = True
+    return (method or ("POST" if fields else "GET")).upper()
+
+
+def _gh_write(words: list[str]) -> str | None:
+    """What a gh call, given the words after gh, does that only the manager may: None for anything else."""
+    named = _gh_words(words)
+    # RULE: the flags of gh never hide a merge
+    if named[:2] == ["pr", "merge"]:
+        return "merges a pull request"
+    if named[:2] in (["alias", "set"], ["alias", "import"]):
+        return "sets up a gh alias, which could stand for a merge"
+    if named[:1] != ["api"] or len(named) < 2:
+        return None
+    # RULE: a writing api call to a merge or a status is refused
+    if named[1] == "graphql":
+        return "merges or sets a status through GitHub's API" if any(GH_MUTATIONS.search(w) for w in words) else None
+    if GH_PATH.search(named[1]) and _gh_method(words) not in ("GET", "HEAD"):
+        return "merges or sets a status through GitHub's API"
+    return None
+
+
+def merge_or_status(command: str) -> str | None:
+    """What a command line does through gh that only a role with `merges` may, or None. A gh call
+    behind a wrapper, `env`, or a shell's -c or eval is read too."""
+    for raw in _segments(command):
+        words, _ = _without_environment(raw)
+        if words[:1] in (["echo"], ["printf"]):
+            continue
+        for i, word in enumerate(words):
+            found = _gh_write(words[i + 1 :]) if _is_gh(word) else None
+            if found:
+                return found
+        for line in _inner(words):
+            found = merge_or_status(line)
+            if found:
+                return found
+    return None
 
 
 def _join(base: str | None, folder: str) -> str:
@@ -524,12 +609,21 @@ def decide(
     alias: Alias | None = None,
     only_deletes: bool = False,
     deletes_set_up: Callable[[str | None, str | None], bool] | None = None,
+    merges: bool = False,
+    merges_only: bool = False,
 ) -> tuple[str, str] | None:
-    """("deny" or "ask", why) for a command with a push in it, or None when it may run.
+    """("deny" or "ask", why) for a command with a push or a merge in it, or None when it may run.
     `in_folder` reads another folder's remotes, or answers None when it cannot; `alias` reads
     what a git alias runs. With `only_deletes`, a readable push is judged only on whether it
     deletes a branch. `deletes_set_up(folder, remote)` says whether the clone's own settings
-    make a push delete."""
+    make a push delete. Without `merges`, a merge or a status write through gh is refused; with
+    `merges_only`, nothing else is judged."""
+    found = None if merges else merge_or_status(command)
+    # RULE: a merge or a status write through gh is refused to a role without merges
+    if found is not None:
+        return ("deny", f"This command {found}. Only the manager merges or sets a check result: ask the manager.")
+    if merges_only:
+        return None
     pushes = _pushes(command, alias)
     if not pushes:
         return None
@@ -603,7 +697,12 @@ def _reader(path: str) -> Reader:
 
 
 def answer(
-    hook_input: dict[str, Any], upstream: str, own_clone: bool = False, only_deletes: bool = False
+    hook_input: dict[str, Any],
+    upstream: str,
+    own_clone: bool = False,
+    only_deletes: bool = False,
+    merges: bool = False,
+    merges_only: bool = False,
 ) -> dict[str, Any]:
     """Claude Code's hook answer: a refusal, a question, or nothing so the command runs."""
     if hook_input.get("tool_name") != "Bash":
@@ -634,6 +733,8 @@ def answer(
         alias=alias,
         only_deletes=only_deletes,
         deletes_set_up=deletes_set_up,
+        merges=merges,
+        merges_only=merges_only,
     )
     if verdict is None:
         return {}
@@ -650,13 +751,21 @@ def main() -> int:
     parser = argparse.ArgumentParser(prog="python -m claude_voice.guard")
     parser.add_argument("--upstream", required=True)
     parser.add_argument("--push-mode", default="fork-only")
+    parser.add_argument("--merges", action="store_true")
     options = parser.parse_args()
     try:
         hook_input = json.load(sys.stdin)
     except ValueError:
         return 0
     mode = options.push_mode
-    out = answer(hook_input, options.upstream, own_clone=mode == OWN_CLONE, only_deletes=mode == NO_DELETES)
+    out = answer(
+        hook_input,
+        options.upstream,
+        own_clone=mode == OWN_CLONE,
+        only_deletes=mode == NO_DELETES,
+        merges=options.merges,
+        merges_only=mode == MERGES_ONLY,
+    )
     if out:
         sys.stdout.write(json.dumps(out))
     return 0

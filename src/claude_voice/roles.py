@@ -27,6 +27,9 @@ SKIPS = ("bypassPermissions", "acceptEdits", "dontAsk")
 #: The rule lists in a settings file's permissions.
 RULE_LISTS = ("allow", "ask", "deny")
 WAITING = "Wait for the owner to say what they want changed."
+#: Text rules that refuse the plain spellings of a merge to a role that may not merge. The guard
+#: hook is the real check: it reads gh's flags and every writing call to GitHub's API.
+MERGE_DENIES = ("Bash(gh pr merge*)", "Bash(gh -R * pr merge*)", "Bash(gh --repo * pr merge*)")
 
 
 def load(user_file: Path | None, defaults: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
@@ -56,6 +59,9 @@ def _built_in() -> dict[str, dict[str, Any]]:
         # RULE: a roles settings file is honoured only from the owners own roles file
         if role.pop("settings", None) is not None:
             logger.warning("the built-in role %s names a settings file; it is ignored", name)
+        # RULE: merges is honoured only from the owners own roles file
+        if role.pop("merges", None) is not None:
+            logger.warning("the built-in role %s says it merges; it is ignored", name)
     return found
 
 
@@ -82,11 +88,14 @@ def first_message(role: dict[str, Any], folder: Path, task: str | None) -> str:
 
 
 def guard_settings(role: dict[str, Any]) -> str | None:
-    """Claude Code settings that run the push guard before every shell command, if the role asks.
-    A role with its own settings file and no guard still gets the guard's check on deletes."""
+    """Claude Code settings that run the guard before every shell command of a role's session.
+    A role that asks for the guard gets the push check; a role with its own settings file and no
+    guard gets the guard's check on deletes; any other role gets only the check on merges. A role
+    may merge, or set a check result on GitHub, only when the owner's own roles file says
+    `merges = true`."""
     upstream = str(role.get("upstream") or "")
     only_deletes = bool(role.get("settings")) and not role.get("guard")
-    if not (role.get("guard") or only_deletes) or not upstream:
+    if not upstream:
         return None
     # RULE: the push guard runs isolated from the sessions folder
     command = f"{shlex.quote(sys.executable)} -I -m claude_voice.guard --upstream {shlex.quote(upstream)}"
@@ -96,9 +105,19 @@ def guard_settings(role: dict[str, Any]) -> str | None:
     # RULE: a role with its own settings and no guard gets the delete check
     if only_deletes:
         command += " --push-mode no-deletes"
-    return json.dumps(
-        {"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": command}]}]}}
-    )
+    # RULE: every role gets the guard, a role with neither guard nor settings only its merge check
+    if not role.get("guard") and not only_deletes:
+        command += " --push-mode merges-only"
+    merges = role.get("merges") is True
+    if merges:
+        command += " --merges"
+    out: dict[str, Any] = {
+        "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": command}]}]}
+    }
+    # RULE: a role without merges carries the text denies of a merge
+    if not merges:
+        out["permissions"] = {"deny": list(MERGE_DENIES)}
+    return json.dumps(out)
 
 
 def settings_for(role: dict[str, Any], name: str = "") -> str | None:
@@ -115,7 +134,14 @@ def settings_for(role: dict[str, Any], name: str = "") -> str | None:
     for event, entries in extra.get("hooks", {}).items():
         # RULE: the guard hook is kept beside the files own hooks
         hooks[event] = [*hooks.get(event, []), *entries]
-    return json.dumps({**own, **({"hooks": hooks} if hooks else {})})
+    merged = {**own, **({"hooks": hooks} if hooks else {})}
+    denies = extra.get("permissions", {}).get("deny", [])
+    if denies:
+        permissions = {**own.get("permissions", {})}
+        # RULE: the merge denies are kept beside the files own denies
+        permissions["deny"] = [*permissions.get("deny", []), *denies]
+        merged["permissions"] = permissions
+    return json.dumps(merged)
 
 
 def _read_settings(given: str, pin: str) -> tuple[Path, dict[str, Any], str]:

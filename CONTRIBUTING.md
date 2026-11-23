@@ -174,6 +174,21 @@ git push --force-with-lease origin <your branch>
 The commit-msg hook lets a `fixup!`, `amend!` or `squash!` commit through for
 this, and continuous integration still refuses one that reaches a pull request.
 
+### Who merges
+
+Only the manager merges, and only after both reviews. Approved pull requests
+land together, in a batch: `scripts/batch.py` builds the batch and prints the
+merge list, and the manager runs it (ADR-CV-023).
+The script itself never merges, and never sets a check result.
+
+A session the bridge starts for a role cannot merge either. Before each shell
+command, the guard refuses `gh pr merge` in any spelling, and any writing call
+to GitHub's API that merges, or sets a commit status or a check run. It reads
+gh's flags wherever they sit, and a call wrapped in `env`, `timeout`, a shell's
+`-c` or `eval`. Text rules refuse the plain spellings too. A role may merge only
+when the owner's own roles file says `merges = true` in its entry; the
+bridge's built-in roles never can.
+
 ## More rules for every change
 
 - **A tool's first line says what it is for.** The Claude app shows an
