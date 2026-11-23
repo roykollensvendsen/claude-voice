@@ -1,0 +1,5 @@
+[[rule]]
+name = "a failing prefix is run again before a culprit is named"
+file = "scripts/batch.py"
+find = '^\s*if not fails\(order\[:high\]\):$'
+replace = 'if False:'

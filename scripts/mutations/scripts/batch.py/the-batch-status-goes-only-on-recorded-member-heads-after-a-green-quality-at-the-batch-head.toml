@@ -1,0 +1,5 @@
+[[rule]]
+name = "the batch status goes only on recorded member heads after a green quality at the batch head"
+file = "scripts/batch.py"
+find = '^\s*if not green or quality_head != batch_head:$'
+replace = 'if False:'

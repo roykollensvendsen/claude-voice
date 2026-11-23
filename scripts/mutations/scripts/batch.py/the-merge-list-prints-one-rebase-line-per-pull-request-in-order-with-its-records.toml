@@ -1,0 +1,5 @@
+[[rule]]
+name = "the merge list prints one rebase line per pull request in order with its records"
+file = "scripts/batch.py"
+find = '^\s*lines\.append\(f"gh pr merge '
+replace = 'pass'

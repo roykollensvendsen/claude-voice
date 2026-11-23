@@ -1,0 +1,5 @@
+[[rule]]
+name = "only exceptions every stamp recorded are copied tagged with their pull request"
+file = "scripts/batch.py"
+find = '^\s*shared = set\.intersection\('
+replace = 'shared = set.union(*(set(map(str, r)) for r in recorded if isinstance(r, list)))'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a pull request whose own checks are not green is not cleared"
+file = "scripts/batch.py"
+find = '^\s*if not m\.ci_green:$'
+replace = 'if False:'

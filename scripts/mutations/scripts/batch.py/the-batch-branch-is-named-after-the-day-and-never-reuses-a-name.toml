@@ -1,0 +1,5 @@
+[[rule]]
+name = "the batch branch is named after the day and never reuses a name"
+file = "scripts/batch.py"
+find = '^\s*while name in taken:$'
+replace = 'while False:'

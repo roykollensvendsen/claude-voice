@@ -1,0 +1,5 @@
+[[rule]]
+name = "a pull request whose patch moved is not cleared"
+file = "scripts/batch.py"
+find = '^\s*if len\(recorded\) < SHORT or not m\.patch_id\.startswith\(recorded\):$'
+replace = 'if False:'
