@@ -1,0 +1,5 @@
+[[rule]]
+name = "a pull requests own checks leave out the batch status"
+file = "scripts/batch.py"
+find = '^\s*rollup = \[c for c in rollup if not \(c\.get\("__typename"\) == "StatusContext" and c\.get\("context"\) == "batch"\)\]$'
+replace = 'rollup = list(rollup)'
