@@ -1,0 +1,5 @@
+[[rule]]
+name = "doctor reports when main does not require batch or still requires quality"
+file = "scripts/batch.py"
+find = '^\s*if "batch" not in have:$'
+replace = 'if False:'
