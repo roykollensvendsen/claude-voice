@@ -49,6 +49,10 @@ and main's tree after the merges matched it exactly.
   owner's settings change, made after this one merges.
 - The commits between a batch's first and last merge are never checked on
   their own. Their combined tree is what the batch proved.
+- A reviewer's stamp names the patch it read. When an earlier member changes the
+  lines around a later one, the later patch applies differently, and the batch
+  leaves it out. That fails safe. The fix is a later batch on the new main, not
+  a new stamp on the old head.
 - A main run stopped by a later push keeps no levels. The ratchet then measures
   the base itself, as it already does for a missing run.
 
