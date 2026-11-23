@@ -1,0 +1,5 @@
+[[rule]]
+name = "dependabots own pull request runs the quality run"
+file = "scripts/ci_scope.py"
+find = '^\s*return actor == DEPENDABOT$'
+replace = 'return False'
