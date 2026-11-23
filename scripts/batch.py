@@ -294,8 +294,11 @@ def ci_green(rollup: Sequence[dict[str, Any]]) -> bool:
     """Whether every check GitHub reports for a head finished, and none failed.
 
     GitHub lists every run at the head, reruns too. A run still going or queued counts as not
-    green; otherwise the latest run of each check decides.
+    green; otherwise the latest run of each check decides. The `batch` status is left out: it
+    is what a batch sets, so a member waits on it until its batch is green.
     """
+    # RULE: a pull requests own checks leave out the batch status
+    rollup = [c for c in rollup if not (c.get("__typename") == "StatusContext" and c.get("context") == "batch")]
     latest: dict[tuple[str, str], dict[str, Any]] = {}
     for c in sorted(rollup, key=_age):
         latest[str(c.get("workflowName") or ""), str(c.get("name") or c.get("context") or "")] = c
