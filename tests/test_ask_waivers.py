@@ -39,6 +39,13 @@ def entry(folder, asks=(REVIEW,), why=WHY):
     return f"[[folder]]\npath = {json.dumps(str(folder))}\nasks = {json.dumps(list(asks))}\nwhy = {json.dumps(why)}\n"
 
 
+def filled(body, tmp_path):
+    """A file body with {folder} as an absolute folder on this system, and {gone} as one with a
+    control character in its name that does not exist; both as TOML strings."""
+    gone = json.dumps(str(tmp_path / "gone\x1b[2J"))
+    return body.replace("{folder}", json.dumps(str(tmp_path))).replace("{gone}", gone)
+
+
 def clone(tmp_path, name="some-clone"):
     folder = tmp_path / name
     folder.mkdir()
@@ -209,14 +216,14 @@ def test_a_waiver_without_a_why_refuses_the_waiver_file(tmp_path, rules, why):
 @pytest.mark.parametrize(
     ("body", "said"),
     [
-        ('[[folder]]\npath = "/x"\nasks = "Bash(gh pr review*)"\nwhy = "x"\n', "asks"),
-        ('[[folder]]\npath = "/x"\nasks = ["Bash(gh pr review*)"]\nwhy = "x"\nallow = ["x"]\n', "allow"),
+        ('[[folder]]\npath = {folder}\nasks = "Bash(gh pr review*)"\nwhy = "x"\n', "asks"),
+        ('[[folder]]\npath = {folder}\nasks = ["Bash(gh pr review*)"]\nwhy = "x"\nallow = ["x"]\n', "allow"),
         ('folder = "x"\n', "folder"),
         ("[[folder\n", "TOML"),
     ],
 )
 def test_a_file_that_is_not_well_formed_waives_nothing(tmp_path, rules, body, said):
-    found = waivers.read(rules, waiver_file(tmp_path, body))
+    found = waivers.read(rules, waiver_file(tmp_path, filled(body, tmp_path)))
     assert not found.entries and said in found.problem
 
 
@@ -298,14 +305,14 @@ def test_a_why_is_shown_without_control_characters():
 @pytest.mark.parametrize(
     "body",
     [
-        entry("/x", asks=("Bash(gh pr review*)\x1b[2J",)),
+        '[[folder]]\npath = {folder}\nasks = ["Bash(gh pr review*)\\u001b[2J"]\nwhy = "x"\n',
         entry("relative\x1b[2J"),
-        '[[folder]]\npath = "/x"\nasks = []\nwhy = "x"\n"bad\\u001b[2J" = 1\n',
-        entry("/gone\x1b[2J"),
+        '[[folder]]\npath = {folder}\nasks = []\nwhy = "x"\n"bad\\u001b[2J" = 1\n',
+        '[[folder]]\npath = {gone}\nasks = []\nwhy = "x"\n',
     ],
 )
 def test_text_from_the_waiver_file_is_shown_as_data(tmp_path, rules, body):
-    found = waivers.read(rules, waiver_file(tmp_path, body))
+    found = waivers.read(rules, waiver_file(tmp_path, filled(body, tmp_path)))
     said = "\n".join(found.lines())
     assert said and "\x1b" not in said and '"' in said
 
