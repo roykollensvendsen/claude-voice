@@ -72,6 +72,7 @@ LAYERS = {
             "fields",
             "safefile",
             "owner_rules",
+            "waivers",
             "never_touch",
             "cpu_watch",
             "uvlock",

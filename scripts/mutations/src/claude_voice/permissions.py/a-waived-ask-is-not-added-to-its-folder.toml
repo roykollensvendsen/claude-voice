@@ -1,0 +1,5 @@
+[[rule]]
+name = "a waived ask is not added to its folder"
+file = "src/claude_voice/permissions.py"
+find = '^\s*return \[rule for rule in rules\.ask if rule not in rules\.waived\]$'
+replace = 'return rules.ask'

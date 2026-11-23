@@ -1,0 +1,5 @@
+[[rule]]
+name = "a waiver without a why refuses the waiver file"
+file = "src/claude_voice/waivers.py"
+find = '^\s*if not isinstance\(why, str\) or not why\.strip\(\):$'
+replace = 'if False:'

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from claude_voice import accepted, org, permissions, shipped
+from claude_voice import accepted, org, permissions, shipped, waivers
 from claude_voice.permissions import Rules
 
 OWN = """
@@ -91,6 +92,18 @@ def with_(rules: Rules, **more: list[str]) -> Rules:
 
 
 # -- what is written by itself ----------------------------------------------------------
+
+
+def test_the_startup_sync_keeps_a_waived_ask_out_too(home):
+    garage, tv = lagging(home, "garage"), lagging(home, "tv")
+    review = "Bash(gh pr review*)"
+    rules = replace(with_(OLD, ask=[review]), waivable=[review])
+    file = home / "ask-waivers.toml"
+    file.write_text(f'[[folder]]\npath = "{garage}"\nasks = ["{review}"]\nwhy = "its gate decides"\n', encoding="utf-8")
+    found = waivers.read(rules, file)
+    shipped.sync([garage, tv], chart(home), home / "cv", rules, SHA, backup_root=home / "backups", found=found)
+    assert review not in json.loads(settings_file(garage).read_text())["permissions"].get("ask", [])
+    assert review in json.loads(settings_file(tv).read_text())["permissions"]["ask"]
 
 
 def test_a_shipped_rule_that_only_takes_rights_away_is_written_without_an_accept(home):
