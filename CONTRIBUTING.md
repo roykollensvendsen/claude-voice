@@ -175,13 +175,19 @@ land together, in a batch: `scripts/batch.py` builds the batch and prints the
 merge list, and the manager runs it (ADR-CV-023).
 The script itself never merges, and never sets a check result.
 
-A session the bridge starts for a role cannot merge either. Before each shell
-command, the guard refuses `gh pr merge` in any spelling, and any writing call
-to GitHub's API that merges, or sets a commit status or a check run. It reads
-gh's flags wherever they sit, and a call wrapped in `env`, `timeout`, a shell's
-`-c` or `eval`. Text rules refuse the plain spellings too. A role may merge only
-when the owner's own roles file says `merges = true` in its entry; the
-bridge's built-in roles never can.
+A session the bridge starts for a role on this repository cannot merge either.
+Before each shell command, the guard refuses `gh pr merge` in any spelling, and
+any writing call to GitHub's API that merges, moves `main`, or sets a commit
+status or a check run. It reads gh's flags wherever they sit, a full address,
+and a call wrapped in `env`, `timeout`, a shell's `-c` or `eval`. It refuses a
+GraphQL query it cannot read, and `gh auth token`. Text rules refuse the plain
+spellings too. Such a role may merge only when the owner's own roles file says
+`merges = true` in its entry. Roles on other repositories keep their merges,
+unless their entry says `deny_merges = true`.
+
+This is a guard against slips, not a wall. A program that calls GitHub with a
+login it already holds is not read, and branch protection on `main` stays the
+last word.
 
 ## More rules for every change
 

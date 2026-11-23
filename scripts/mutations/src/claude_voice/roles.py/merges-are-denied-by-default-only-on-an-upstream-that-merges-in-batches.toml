@@ -1,0 +1,5 @@
+[[rule]]
+name = "merges are denied by default only on an upstream that merges in batches"
+file = "src/claude_voice/roles.py"
+find = '^\s*return str\(role\.get\("upstream"\) or ""\) in BATCHED and role\.get\("merges"\) is not True$'
+replace = 'return role.get("merges") is not True'

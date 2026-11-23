@@ -1,0 +1,5 @@
+[[rule]]
+name = "a role denied merges carries the text denies of a merge"
+file = "src/claude_voice/roles.py"
+find = '^\s*if denied:$'
+replace = 'if False:'

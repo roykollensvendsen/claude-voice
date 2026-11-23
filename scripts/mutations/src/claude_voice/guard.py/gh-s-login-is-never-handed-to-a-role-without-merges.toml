@@ -1,0 +1,5 @@
+[[rule]]
+name = "gh's login is never handed to a role without merges"
+file = "src/claude_voice/guard.py"
+find = '^\s*if named\[:2\] == \["auth", "token"\] or \(named\[:2\] == \["auth", "status"\] and \{"-t", "--show-token"\} & set\(words\)\):$'
+replace = 'if False:'
