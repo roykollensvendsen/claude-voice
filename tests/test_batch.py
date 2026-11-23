@@ -317,6 +317,14 @@ def test_own_checks_are_green_only_when_every_check_finished_and_none_failed(rol
     assert batch.ci_green(rollup) is green
 
 
+@pytest.mark.parametrize("state", ["PENDING", "EXPECTED", "FAILURE"])
+def test_a_pull_requests_own_checks_leave_out_the_batch_status(state):
+    # once main requires `batch`, a member's checks list it as waiting until its batch is green
+    waiting = {"__typename": "StatusContext", "context": "batch", "state": state}
+    assert batch.ci_green([check("windows"), waiting]) is True
+    assert batch.ci_green([waiting]) is False
+
+
 def test_the_batch_keeps_the_order_the_pull_requests_were_cleared_in():
     late = member(1, stamps=[stamp(), {**stamp(by="voice-architect"), "at": "2026-11-23T23:00:00+01:00"}])
     early = member(2, stamps=[{**stamp(), "at": "2026-11-23T19:00:00+01:00"}])
