@@ -1,0 +1,178 @@
+"""Only the manager merges (batch-merge v1, part 3).
+
+Every role's session runs the guard before each shell command. Unless the owner's own roles file
+gives the role `merges = true`, the guard refuses a merge and a write of a commit status or a
+check result through gh, however gh's flags are placed and whatever wraps the call. Text rules
+refuse the plain spellings too, as a second layer.
+"""
+
+import json
+import logging
+
+import pytest
+
+from claude_voice import guard, roles
+
+UPSTREAM = "owner/name"
+
+
+def decide(command, merges=False, merges_only=False):
+    return guard.decide(command, UPSTREAM, False, {}.get, lambda: "origin", merges=merges, merges_only=merges_only)
+
+
+MERGES = [
+    "gh pr merge 12 --rebase",
+    "gh pr merge --auto --squash 12",
+    "gh -R owner/name pr merge 12",
+    "gh pr -R owner/name merge 12",
+    "gh --repo=owner/name pr merge 12",
+    "gh --repo owner/name pr merge 12 --match-head-commit abc",
+    "/usr/bin/gh pr merge 12",
+    "env GH_REPO=owner/name gh pr merge 12",
+    "GH_TOKEN=x gh pr merge 12",
+    "timeout 60 gh pr merge 12",
+    "bash -c 'gh pr merge 12'",
+    'sh -c "gh -R owner/name pr merge 12"',
+    "eval gh pr merge 12",
+    "true && gh pr merge 12",
+    "echo hi; gh pr merge 12",
+    "gh pr merge $'1\\x32'",
+    "gh alias set mm 'pr merge'",
+    "gh alias import aliases.yml",
+]
+
+WRITES = [
+    "gh api --method POST repos/owner/name/statuses/abc -f state=success -f context=batch",
+    "gh api --method=POST repos/owner/name/statuses/abc -f state=success",
+    "gh api -X POST repos/owner/name/statuses/abc",
+    "gh api -XPOST /repos/owner/name/statuses/abc",
+    "gh api repos/owner/name/statuses/abc -f state=success",
+    "gh api repos/owner/name/statuses/abc -F state=success",
+    "gh api repos/owner/name/statuses/abc --field state=success",
+    "gh api repos/owner/name/statuses/abc --raw-field=state=success",
+    "gh api repos/owner/name/statuses/abc --input body.json",
+    "gh api -X PUT repos/owner/name/pulls/12/merge",
+    "gh api --method put repos/{owner}/{repo}/pulls/12/merge",
+    "gh -R owner/name api -X PUT repos/owner/name/pulls/12/merge",
+    "gh api repos/owner/name/merges -f base=main -f head=feat",
+    "gh api repos/owner/name/check-runs -f name=quality -f head_sha=abc",
+    "gh api -X PATCH repos/owner/name/check-runs/9 -f conclusion=success",
+    "gh api graphql -f query='mutation { mergePullRequest(input: {pullRequestId: \"x\"}) { clientMutationId } }'",
+    "gh api graphql -f query='mutation { enablePullRequestAutoMerge(input: {}) { clientMutationId } }'",
+    "gh api graphql -f query='mutation { createCommitStatus(input: {}) { clientMutationId } }'",
+    "bash -c 'gh api -X POST repos/owner/name/statuses/abc'",
+]
+
+READS = [
+    "gh pr view 12 --json mergeable,mergeStateStatus",
+    "gh pr checks 12",
+    "gh pr list --search 'is:merged'",
+    "gh api repos/owner/name/commits/abc/statuses",
+    "gh api repos/owner/name/commits/abc/status",
+    "gh api repos/owner/name/statuses/abc",
+    "gh api -X GET repos/owner/name/statuses/abc -f per_page=100",
+    "gh api repos/owner/name/pulls/12/merge",
+    "gh api repos/owner/name/check-runs/9",
+    'gh api graphql -f query=\'{ repository(owner: "o", name: "n") { pullRequest(number: 1) { mergeable } } }\'',
+    "gh api graphql -f query='{ node(id: \"x\") { ... on CheckRun { conclusion } } }'",
+    "echo gh pr merge 12",
+    "printf '%s' 'gh pr merge 12'",
+    "git merge --ff-only origin/main",
+    "gh run list --branch main",
+]
+
+
+@pytest.mark.parametrize("command", MERGES + WRITES)
+def test_a_merge_or_a_status_write_through_gh_is_refused_to_a_role_without_merges(command):
+    verdict, reason = decide(command)
+    assert verdict == "deny" and "manager" in reason
+    assert decide(command, merges=True) is None or "push" in decide(command, merges=True)[1]
+
+
+@pytest.mark.parametrize("command", MERGES[:7])
+def test_the_flags_of_gh_never_hide_a_merge(command):
+    assert guard.merge_or_status(command) == "merges a pull request"
+
+
+@pytest.mark.parametrize("command", WRITES)
+def test_a_writing_api_call_to_a_merge_or_a_status_is_refused(command):
+    assert guard.merge_or_status(command) == "merges or sets a status through GitHub's API"
+
+
+@pytest.mark.parametrize("command", READS)
+def test_a_read_of_a_pull_request_or_its_checks_runs(command):
+    assert guard.merge_or_status(command) is None
+    assert decide(command, merges_only=True) is None
+
+
+def test_merges_only_judges_nothing_but_merges():
+    assert decide("git push origin :main", merges_only=True) is None
+    assert decide("gh pr merge 12", merges_only=True)[0] == "deny"
+
+
+def test_the_hook_reads_its_merge_flags_from_its_own_command_line(monkeypatch, capsys):
+    command = {"tool_name": "Bash", "tool_input": {"command": "gh pr merge 12"}, "cwd": "."}
+    monkeypatch.setattr("sys.stdin", __import__("io").StringIO(json.dumps(command)))
+    monkeypatch.setattr("sys.argv", ["guard", "--upstream", UPSTREAM, "--push-mode", "merges-only"])
+    guard.main()
+    assert json.loads(capsys.readouterr().out)["hookSpecificOutput"]["permissionDecision"] == "deny"
+    monkeypatch.setattr("sys.stdin", __import__("io").StringIO(json.dumps(command)))
+    monkeypatch.setattr("sys.argv", ["guard", "--upstream", UPSTREAM, "--push-mode", "merges-only", "--merges"])
+    guard.main()
+    assert capsys.readouterr().out == ""
+
+
+def hook_command(settings):
+    return json.loads(settings)["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+
+
+@pytest.mark.parametrize(
+    ("role", "mode"),
+    [
+        ({"upstream": UPSTREAM}, "--push-mode merges-only"),
+        ({"upstream": UPSTREAM, "guard": True}, None),
+        ({"upstream": UPSTREAM, "guard": True, "push_mode": "own-clone"}, "--push-mode own-clone"),
+        ({"upstream": UPSTREAM, "settings": "x.json"}, "--push-mode no-deletes"),
+    ],
+)
+def test_every_role_gets_the_guard_a_role_with_neither_guard_nor_settings_only_its_merge_check(role, mode):
+    command = hook_command(roles.guard_settings(role))
+    assert "-I -m claude_voice.guard" in command and "--merges" not in command
+    assert (mode in command) if mode else "--push-mode" not in command
+
+
+@pytest.mark.parametrize("value", [True, "true", 1, "yes", None])
+def test_a_role_without_merges_carries_the_text_denies_of_a_merge(value):
+    role = {"upstream": UPSTREAM, **({"merges": value} if value is not None else {})}
+    settings = json.loads(roles.guard_settings(role))
+    if value is True:
+        assert "--merges" in hook_command(json.dumps(settings)) and "permissions" not in settings
+    else:
+        assert "--merges" not in hook_command(json.dumps(settings))
+        assert settings["permissions"]["deny"] == list(roles.MERGE_DENIES)
+
+
+def test_merges_is_honoured_only_from_the_owners_own_roles_file(tmp_path, monkeypatch, caplog):
+    built_in = tmp_path / "roles.toml"
+    built_in.write_text('[roles.b]\nmerges = true\n[roles.m]\ntitle = "m"\n', encoding="utf-8")
+    owners = tmp_path / "own.toml"
+    owners.write_text("[roles.m]\nmerges = true\n", encoding="utf-8")
+    monkeypatch.setattr(roles, "BUILT_IN", built_in)
+    with caplog.at_level(logging.WARNING):
+        found = roles.load(owners)
+    assert "merges" not in found["b"] and found["m"]["merges"] is True
+    assert "says it merges" in caplog.text
+
+
+def test_the_merge_denies_are_kept_beside_the_files_own_denies(tmp_path, monkeypatch):
+    folder = tmp_path / "roles"
+    folder.mkdir()
+    own = folder / "b.json"
+    own.write_text(json.dumps({"permissions": {"deny": ["Bash(rm *)"], "allow": ["Read"]}}), encoding="utf-8")
+    monkeypatch.setattr(roles, "SETTINGS_DIR", folder)
+    import hashlib
+
+    role = {"upstream": UPSTREAM, "settings": str(own), "settings_sha256": hashlib.sha256(own.read_bytes()).hexdigest()}
+    merged = json.loads(roles.settings_for(role))
+    assert merged["permissions"]["deny"] == ["Bash(rm *)", *roles.MERGE_DENIES]
+    assert merged["permissions"]["allow"] == ["Read"]

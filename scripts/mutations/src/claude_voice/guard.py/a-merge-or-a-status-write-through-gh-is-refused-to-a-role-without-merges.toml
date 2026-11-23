@@ -1,0 +1,5 @@
+[[rule]]
+name = "a merge or a status write through gh is refused to a role without merges"
+file = "src/claude_voice/guard.py"
+find = '^\s*if found is not None:$'
+replace = 'if False:'

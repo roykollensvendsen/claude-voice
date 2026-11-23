@@ -1,0 +1,5 @@
+[[rule]]
+name = "the flags of gh never hide a merge"
+file = "src/claude_voice/guard.py"
+find = '^\s*if named\[:2\] == \["pr", "merge"\]:$'
+replace = 'if False:'

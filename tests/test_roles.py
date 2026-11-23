@@ -201,7 +201,7 @@ async def test_a_roles_own_settings_file_reaches_its_session(tmp_path, world):
     async with Client(bridge(tmp_path, world, starter)) as c:
         await c.call_tool("start_role", {"role": "builder"})
     sent = json.loads(starter.calls[0]["settings"])
-    assert sent["permissions"]["deny"] == ["Bash(gh pr merge:*)"]
+    assert sent["permissions"]["deny"] == ["Bash(gh pr merge:*)", *roles.MERGE_DENIES]
     assert "--push-mode no-deletes" in sent["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
 
 
