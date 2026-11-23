@@ -1,0 +1,5 @@
+[[rule]]
+name = "any stamp that says risky makes the pull request risky"
+file = "scripts/batch.py"
+find = '^\s*return any\(s\.get\("tier"\) == "risky" for s in m\.stamps\)$'
+replace = 'return False'

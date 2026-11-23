@@ -1,0 +1,5 @@
+[[rule]]
+name = "a merge that fails part way stops and names the prefix that landed"
+file = "scripts/batch.py"
+find = '^\s*landed = list\(order\[: order\.index\(failed_at\)\]\)$'
+replace = 'landed = list(order)'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "the owners yes is taken only from an accepted check of this pull request at its head"
+file = "scripts/batch.py"
+find = '^\s*if row\.get\("result"\) != "accepted" or row\.get\("sha_matched"\) is not True:$'
+replace = 'if False:'
