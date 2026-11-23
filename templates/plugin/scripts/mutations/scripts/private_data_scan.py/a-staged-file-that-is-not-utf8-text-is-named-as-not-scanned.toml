@@ -1,0 +1,5 @@
+[[rule]]
+name = "a staged file that is not utf8 text is named as not scanned"
+file = "scripts/private_data_scan.py"
+find = 'sys\.stderr\.write\(f"\{name\}: not UTF-8 text, so not scanned'
+replace = 'pass'

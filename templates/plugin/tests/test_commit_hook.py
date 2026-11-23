@@ -78,3 +78,26 @@ def test_a_clean_staged_file_is_committed(repo):
 def test_the_hook_lets_a_fixup_through_for_folding_in_later(repo):
     assert _commit(repo, "feat: Add a thing\n").returncode == 0
     assert _commit(repo, "fixup! feat: Add a thing\n").returncode == 0
+
+
+def test_a_secret_staged_and_then_edited_out_of_the_file_is_still_refused(repo):
+    """The commit takes what is staged, not what is in the folder now."""
+    folder, env = repo
+    (folder / "notes.txt").write_text("The box answers on " + "192." + "168.1.20 at home.\n", encoding="utf-8")
+    run_bounded(["git", "add", "notes.txt"], cwd=folder, env=env, check=True)
+    (folder / "notes.txt").write_text("Nothing here.\n", encoding="utf-8")  # edited, never staged
+    done = run_bounded(
+        ["git", "commit", "-q", "-m", "docs: Add notes\n"], cwd=folder, env=env, capture_output=True, text=True
+    )
+    assert done.returncode != 0 and "notes.txt" in done.stderr
+
+
+def test_a_staged_file_that_is_not_utf8_text_is_named_as_not_scanned(repo):
+    folder, env = repo
+    (folder / "photo.bin").write_bytes(b"\xff\xd8\xff\xe0 not text")
+    run_bounded(["git", "add", "photo.bin"], cwd=folder, env=env, check=True)
+    done = run_bounded(
+        ["git", "commit", "-q", "-m", "docs: Add a photo\n"], cwd=folder, env=env, capture_output=True, text=True
+    )
+    assert done.returncode == 0, done.stderr
+    assert "photo.bin" in done.stderr and "not scanned" in done.stderr
