@@ -1,0 +1,5 @@
+[[rule]]
+name = "merges is honoured only from the owners own roles file"
+file = "src/claude_voice/roles.py"
+find = 'if role\.pop\("merges", None\) is not None:'
+replace = 'if False:'

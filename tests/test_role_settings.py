@@ -246,7 +246,7 @@ def test_a_roles_own_settings_file_reaches_its_session(tmp_path, monkeypatch):
     _file(home, "b.json", {"permissions": {"allow": ["Bash(git status)"], "deny": ["Bash(gh pr merge:*)"]}})
     merged = json.loads(roles.settings_for(_role(home, "b.json")))
     assert merged["permissions"]["allow"] == ["Bash(git status)"]
-    assert merged["permissions"]["deny"] == ["Bash(gh pr merge:*)"]
+    assert merged["permissions"]["deny"] == ["Bash(gh pr merge:*)", *roles.MERGE_DENIES]
 
 
 def test_a_roles_settings_file_is_honoured_only_from_the_owners_own_roles_file(tmp_path, monkeypatch):

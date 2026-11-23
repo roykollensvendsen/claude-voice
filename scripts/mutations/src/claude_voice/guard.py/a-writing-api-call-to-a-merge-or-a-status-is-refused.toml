@@ -1,0 +1,5 @@
+[[rule]]
+name = "a writing api call to a merge or a status is refused"
+file = "src/claude_voice/guard.py"
+find = '^\s*if GH_PATH\.search\(named\[1\]\) and _gh_method\(words\) not in \("GET", "HEAD"\):$'
+replace = 'if False:'
