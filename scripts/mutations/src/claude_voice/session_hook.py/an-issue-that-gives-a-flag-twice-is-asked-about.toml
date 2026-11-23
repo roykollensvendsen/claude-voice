@@ -1,0 +1,5 @@
+[[rule]]
+name = "an issue that gives a flag twice is asked about"
+file = "src/claude_voice/session_hook.py"
+find = '^\s*if key in found:$'
+replace = 'if False:'

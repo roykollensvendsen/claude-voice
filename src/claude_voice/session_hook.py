@@ -97,6 +97,8 @@ ISSUE_VALUES = {
     "-F": "body_file",
     "--label": "label",
     "-l": "label",
+    "--assignee": "assignee",
+    "-a": "assignee",
 }
 
 
@@ -274,11 +276,15 @@ def _issue_values(words: list[str]) -> dict[str, str] | None:
         key = ISSUE_VALUES.get(flag)
         if key is None or (not value and not rest):
             return None
+        # RULE: an issue that gives a flag twice is asked about
+        if key in found:
+            return None
         found[key] = value or rest.pop(0)
     one_body = ("body" in found) != ("body_file" in found)
     if "title" not in found or not one_body or found.get("body_file") == "-":
         return None
-    return found
+    # RULE: an issue assigned to anyone but the session itself is asked about
+    return found if found.get("assignee", "@me") == "@me" else None
 
 
 def _issue_text(found: dict[str, str], files: list[Path], terms: Path | None, session_id: str, tmp_root: Path) -> str:
