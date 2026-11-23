@@ -1,5 +1,5 @@
 [[rule]]
 name = "a polling tool is counted but never written line by line"
 file = "src/claude_voice/calllog.py"
-find = '^        if not polling\(row\["tool"\]\):$'
+find = '^        if not polling\(row\["tool"\], self\.machines\):$'
 replace = '        if True:'

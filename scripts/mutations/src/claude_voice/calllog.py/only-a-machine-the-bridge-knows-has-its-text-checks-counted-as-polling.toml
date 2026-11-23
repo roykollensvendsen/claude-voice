@@ -1,0 +1,5 @@
+[[rule]]
+name = "only a machine the bridge knows has its text checks counted as polling"
+file = "src/claude_voice/calllog.py"
+find = '^    known = machine in machines$'
+replace = '    known = True'
