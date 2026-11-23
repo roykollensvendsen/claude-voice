@@ -1,0 +1,5 @@
+[[rule]]
+name = "own checks are green only when every check finished and none failed"
+file = "scripts/batch.py"
+find = '^\s*return bool\(states\) and all\(state in GREEN for state in states\)$'
+replace = 'return True'

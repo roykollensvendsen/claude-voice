@@ -1,0 +1,5 @@
+[[rule]]
+name = "the batch keeps the order the pull requests were cleared in"
+file = "scripts/batch.py"
+find = '^\s*return sorted\(members, key=cleared\)$'
+replace = 'return list(members)'

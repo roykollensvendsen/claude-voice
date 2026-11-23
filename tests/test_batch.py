@@ -1,6 +1,7 @@
 """The batch script's own judgement, with GitHub and git left out: which pull requests are
 cleared, what the batch body copies, how a culprit is found, and what is printed to merge."""
 
+import json
 import pathlib
 import sys
 
@@ -222,3 +223,137 @@ def test_a_merge_that_fails_part_way_stops_and_names_the_prefix_that_landed():
 def test_a_head_must_be_a_full_sha(bad):
     with pytest.raises(ValueError):
         batch.full_sha(bad)
+
+
+# The command's own reading of GitHub and the stamp files, still without either.
+
+
+def write_stamp(folder, name, **fields):
+    body = {**stamp(), **fields}
+    body.pop("file")
+    (folder / name).write_text(json.dumps(body), encoding="utf-8")
+
+
+def test_only_a_stamp_from_a_known_reviewer_under_its_own_file_name_counts(tmp_path):
+    write_stamp(tmp_path, "claude-voice-7.quality.json", pr=7)
+    write_stamp(tmp_path, "claude-voice-7.voice-architect.json", by="voice-architect", pr=7)
+    write_stamp(tmp_path, "claude-voice-7.notes.json", by="someone-else", pr=7)
+    write_stamp(tmp_path, "claude-voice-7.architect.json", by="quality-claude-voice", pr=7)
+    write_stamp(tmp_path, "claude-voice-8.quality.json", pr=8)
+    write_stamp(tmp_path, "claude-voice-7.quality-2.json", pr=8)
+    stamps = batch.read_stamps(tmp_path, "claude-voice", 7)
+    assert sorted((s["by"], s["file"]) for s in stamps) == [
+        ("quality-claude-voice", "claude-voice-7.quality.json"),
+        ("voice-architect", "claude-voice-7.voice-architect.json"),
+    ]
+
+
+def test_a_stamp_file_that_is_not_plain_json_is_skipped(tmp_path):
+    (tmp_path / "claude-voice-7.quality.json").write_text("{not json", encoding="utf-8")
+    (tmp_path / "claude-voice-7.voice-architect.json").symlink_to(tmp_path / "elsewhere.json")
+    assert batch.read_stamps(tmp_path, "claude-voice", 7) == []
+
+
+def check(name, conclusion="SUCCESS", status="COMPLETED", started="2026-11-23T20:00:00Z"):
+    return {
+        "__typename": "CheckRun",
+        "name": name,
+        "workflowName": "checks",
+        "status": status,
+        "conclusion": conclusion,
+        "startedAt": started,
+    }
+
+
+LATER = "2026-11-23T21:00:00Z"
+
+
+@pytest.mark.parametrize(
+    ("rollup", "green"),
+    [
+        ([check("checks"), check("quality", "SKIPPED"), check("note", "NEUTRAL")], True),
+        ([check("checks"), check("red-first", "FAILURE")], False),
+        ([check("checks"), check("windows", None, "IN_PROGRESS")], False),
+        ([check("checks"), check("checks (3.12)", "CANCELLED")], False),
+        ([{"__typename": "StatusContext", "context": "batch", "state": "SUCCESS"}, check("checks")], True),
+        ([{"__typename": "StatusContext", "context": "batch", "state": "PENDING"}], False),
+        ([], False),
+        ([check("red-first", "FAILURE"), check("red-first", started=LATER)], True),
+        ([check("red-first"), check("red-first", "FAILURE", started=LATER)], False),
+        ([check("windows"), check("windows", None, "IN_PROGRESS", started=LATER)], False),
+    ],
+)
+def test_own_checks_are_green_only_when_every_check_finished_and_none_failed(rollup, green):
+    assert batch.ci_green(rollup) is green
+
+
+def test_the_batch_keeps_the_order_the_pull_requests_were_cleared_in():
+    late = member(1, stamps=[stamp(), {**stamp(by="voice-architect"), "at": "2026-11-23T23:00:00+01:00"}])
+    early = member(2, stamps=[{**stamp(), "at": "2026-11-23T19:00:00+01:00"}])
+    middle = member(3, stamps=[stamp()])
+    stale = {**stamp(head=OTHER), "at": "2026-11-24T09:00:00+01:00"}
+    middle_too = member(4, stamps=[stamp(), stale])
+    assert [m.number for m in batch.cleared_order([late, early, middle, middle_too])] == [2, 3, 4, 1]
+
+
+def recorded():
+    return batch.Recorded(
+        branch="integration/2026-11-24",
+        base="d" * 40,
+        members=[
+            batch.Entry(4, HEAD, PATCH, "low", "e" * 40),
+            batch.Entry(9, OTHER, "f" * 40, "risky", "1" * 40),
+        ],
+    )
+
+
+def test_the_batch_body_records_each_member_and_reads_back_the_same():
+    left_out = {12: ["it is a draft"]}
+    body = batch.render_body(recorded(), ["Ratchet-Exception: coverage -0.1 (#9)"], left_out)
+    assert "Do not merge" in body
+    assert "#12: it is a draft" in body
+    assert "Ratchet-Exception: coverage -0.1 (#9)" in body
+    assert batch.parse_body(body) == recorded()
+
+
+def test_a_body_without_its_record_reads_as_nothing():
+    assert batch.parse_body("a hand-written body") is None
+
+
+def test_the_merge_list_refuses_when_main_moved_off_the_base_or_a_member_is_no_longer_cleared():
+    assert batch.merge_refusals("d" * 40, "d" * 40, {4: [], 9: []}) == []
+    assert batch.merge_refusals("d" * 40, "0" * 40, {4: [], 9: []}) == [
+        f"main is at {'0' * 40}, not the batch's base {'d' * 40}: build the batch again"
+    ]
+    assert batch.merge_refusals("d" * 40, "d" * 40, {4: [], 9: ["its own checks are not green at its head"]}) == [
+        "#9 is no longer cleared: its own checks are not green at its head; nothing is merged"
+    ]
+
+
+def test_the_status_lines_name_the_batch_and_its_run():
+    lines = batch.status_lines("o/r", [HEAD], "integration/2026-11-24", "https://run/1")
+    assert lines == [
+        f"gh api --method POST repos/o/r/statuses/{HEAD} -f state=success -f context=batch"
+        " -f description=integration/2026-11-24 -f target_url=https://run/1"
+    ]
+
+
+def run(sha, status="completed", conclusion="success"):
+    return {"headSha": sha, "status": status, "conclusion": conclusion, "url": f"https://run/{sha[:2]}"}
+
+
+def test_verify_waits_for_a_complete_main_run_at_the_batch_tree_or_later():
+    at_tree, later = "1" * 40, "2" * 40
+    since = [later, at_tree]  # newest first, from main's tip back to the commit with the batch's tree
+    assert batch.main_run(since, [run(later, "in_progress", ""), run(at_tree, "completed", "cancelled")]) is None
+    failed = run(at_tree, "completed", "failure")
+    assert batch.main_run(since, [run("9" * 40), failed]) == failed
+    assert batch.main_run(since, [run(later), run(at_tree, "completed", "failure")]) == run(later)
+
+
+def test_doctor_reports_when_main_does_not_require_batch_or_still_requires_quality():
+    assert batch.protection_drift(["checks (3.12)", "batch"]) == []
+    assert batch.protection_drift(["checks (3.12)", "quality"]) == [
+        "main's protection does not require batch",
+        "main's protection still requires quality",
+    ]
