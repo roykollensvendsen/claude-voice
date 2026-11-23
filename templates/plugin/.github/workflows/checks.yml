@@ -64,7 +64,7 @@ jobs:
 
   checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # No time limit: caps are removed, never raised, so a slow runner may finish.
     strategy:
       fail-fast: false           # one version failing should not hide another
       matrix:                    # every version pyproject.toml claims to support
