@@ -1,0 +1,5 @@
+[[rule]]
+name = "a quick check measures the base without its mutation run"
+file = "scripts/ratchet.py"
+find = '^        quick = \["--skip-mutation"\] if skip_mutation else \[\]$'
+replace = '        quick = []'
