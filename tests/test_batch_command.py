@@ -241,6 +241,51 @@ def test_merge_list_refuses_a_batch_whose_quality_run_is_not_green(world):
         batch.merge_commands(gh, REPO, 500, world.where(), [])
 
 
+def test_the_merge_list_refuses_a_batch_whose_own_checks_are_not_all_green(world):
+    body, record = built(world)
+    gh = FakeGh(world)
+    view = batch_view(body, record.members[-1].tip)
+    view["statusCheckRollup"].append(
+        {"__typename": "CheckRun", "name": "windows", "status": "COMPLETED", "conclusion": "FAILURE"}
+    )
+    gh.answers["pr view 500"] = view
+    gh.answers[f"api repos/{REPO}/commits/main"] = {"sha": record.base}
+    with pytest.raises(batch.Stop, match="the batch's own checks are not green"):
+        batch.merge_commands(gh, REPO, 500, world.where(), [])
+
+
+def quality_run(conclusion, started, url):
+    return {
+        "__typename": "CheckRun",
+        "name": "quality",
+        "workflowName": "checks",
+        "status": "COMPLETED",
+        "conclusion": conclusion,
+        "startedAt": started,
+        "detailsUrl": url,
+    }
+
+
+def test_merge_list_reads_the_latest_quality_run_of_the_batch(world):
+    body, record = built(world)
+    gh = FakeGh(world)
+    gh.answers[f"api repos/{REPO}/commits/main"] = {"sha": record.base}
+    old, new = "2026-11-23T20:00:00Z", "2026-11-23T21:00:00Z"
+    view = {"body": body, "headRefOid": record.members[-1].tip}
+    view["statusCheckRollup"] = [
+        quality_run("SUCCESS", new, "https://run/new"),
+        quality_run("FAILURE", old, "https://run/old"),
+    ]
+    gh.answers["pr view 500"] = view
+    assert "target_url=https://run/new" in batch.merge_commands(gh, REPO, 500, world.where(), [])[0]
+    view["statusCheckRollup"] = [
+        quality_run("SUCCESS", old, "https://run/old"),
+        quality_run("FAILURE", new, "https://run/new"),
+    ]
+    with pytest.raises(batch.Stop, match="quality run is not green"):
+        batch.merge_commands(gh, REPO, 500, world.where(), [])
+
+
 def test_merge_list_refuses_when_a_member_has_a_new_commit(world):
     body, record = built(world)
     world.prs[9]["headRefOid"] = "f" * 40
@@ -284,6 +329,16 @@ def test_verify_reports_main_at_the_batch_tree_and_its_run(world):
     lines = batch.verify(gh, REPO, 500, work)
     tree = git(work, "rev-parse", f"{tip}^{{tree}}")
     assert lines == [f"main holds the batch's tree {tree}", f"main's run: success, https://run/{tip[:4]}"]
+
+
+def test_verify_fails_when_main_run_at_the_batch_tree_failed(world):
+    body, record = built(world)
+    work = merged(world, record)
+    gh = FakeGh(world)
+    gh.answers["pr view 500"] = batch_view(body, record.members[-1].tip)
+    gh.answers["run list --repo"] = runs((record.members[-1].tip, "completed", "failure"))
+    with pytest.raises(batch.Stop, match="main's run: failure"):
+        batch.verify(gh, REPO, 500, work)
 
 
 def test_verify_waits_while_main_has_no_complete_run_there(world):

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a pull request is low only when every stamp says low"
+file = "scripts/batch.py"
+find = '^\s*return not all\(s\.get\("tier"\) == "low" for s in m\.stamps\)$'
+replace = 'return False'

@@ -21,7 +21,10 @@ The steps, each run by the batch owner except where it says otherwise:
     batch.py --repo O/R build --work DIR --body FILE [--owner-yes N:SHA ...]
         prints the push and the draft pull request that publish the batch
     batch.py --repo O/R bisect --pr N --work DIR --copy NEWDIR -- COMMAND ...
-        runs COMMAND in the sandbox on halves of the batch, by merge order
+        runs COMMAND in the sandbox on halves of the batch, by merge order. The one step
+        outside the sandbox is `uv sync --frozen`, which installs each prefix's locked
+        dependencies and builds the project: a member that changes the build system runs
+        its build there, with the network
     batch.py --repo O/R merge-list --pr N [--owner-yes N:SHA ...]
         prints the status and merge lines; the manager runs them
     batch.py --repo O/R verify --pr N [--clone DIR]
@@ -84,8 +87,8 @@ def _approving(m: Member) -> list[dict[str, Any]]:
 
 
 def _risky(m: Member) -> bool:
-    # RULE: any stamp that says risky makes the pull request risky
-    return any(s.get("tier") == "risky" for s in m.stamps)
+    # RULE: a pull request is low only when every stamp says low
+    return not all(s.get("tier") == "low" for s in m.stamps)
 
 
 def _when(at: Any) -> float | None:
@@ -115,10 +118,13 @@ def why_not(m: Member, built: str) -> list[str]:
     if not m.ci_green:
         return ["its own checks are not green at its head"]
     stamps = _approving(m)
+    at_head = [s for s in m.stamps if s.get("head") == m.head]
+    # RULE: a stamp at its head that does not approve leaves the pull request out
+    against = [f"{s.get('by')} says {s.get('verdict')} at its head" for s in at_head if s.get("verdict") != "approve"]
     # RULE: a stamp at another head does not count
     if not stamps:
-        return ["no approving stamp at its head"]
-    found = []
+        return ["no approving stamp at its head", *against]
+    found = list(against)
     for s in stamps:
         recorded = str(s.get("patch_id") or "")
         # RULE: a pull request whose patch moved is not cleared
@@ -195,8 +201,9 @@ def culprit(order: Sequence[int], fails: Callable[[Sequence[int]], bool]) -> int
     """The pull request whose prefix first fails, found by halving; None when nothing is to blame.
 
     `fails(prefix)` runs the batch made of that prefix of `order`. The whole batch has already
-    failed once, in its own run. The prefix that names the culprit is run once more before it
-    names anyone, so one flaky run never blames a pull request.
+    failed once, in its own run. Before it names anyone, the prefix that names the culprit is
+    run once more and must fail, and the prefix just before it must pass. So one flaky run,
+    whether a false fail or a false pass, never blames a pull request.
     """
     low, high = 0, len(order)  # the shortest failing prefix is longer than low, at most high
     while high - low > 1:
@@ -207,6 +214,9 @@ def culprit(order: Sequence[int], fails: Callable[[Sequence[int]], bool]) -> int
             low = mid
     # RULE: a failing prefix is run again before a culprit is named
     if not fails(order[:high]):
+        return None
+    # RULE: a culprit is named only when the prefix before it passes again
+    if fails(order[: high - 1]):
         return None
     return order[high - 1]
 
@@ -269,22 +279,31 @@ def read_stamps(reviews: Path, repo: str, number: int) -> list[dict[str, Any]]:
 GREEN = {"SUCCESS", "SKIPPED", "NEUTRAL"}
 
 
+def _age(c: dict[str, Any]) -> tuple[bool, str]:
+    """Oldest first; a run with no start time yet (one still queued) counts as the newest."""
+    return c.get("startedAt") is None, str(c.get("startedAt") or "")
+
+
+def _finished(c: dict[str, Any]) -> bool:
+    if c.get("__typename") == "StatusContext":
+        return c.get("state") not in (None, "PENDING", "EXPECTED")
+    return c.get("status") == "COMPLETED"
+
+
 def ci_green(rollup: Sequence[dict[str, Any]]) -> bool:
     """Whether every check GitHub reports for a head finished, and none failed.
 
-    GitHub lists every run at the head, reruns too, so the latest run of each check decides.
+    GitHub lists every run at the head, reruns too. A run still going or queued counts as not
+    green; otherwise the latest run of each check decides.
     """
     latest: dict[tuple[str, str], dict[str, Any]] = {}
-    for c in sorted(rollup, key=lambda c: str(c.get("startedAt") or "")):
+    for c in sorted(rollup, key=_age):
         latest[str(c.get("workflowName") or ""), str(c.get("name") or c.get("context") or "")] = c
     states = [
-        c.get("state")
-        if c.get("__typename") == "StatusContext"
-        else c.get("status") == "COMPLETED" and c.get("conclusion")
-        for c in latest.values()
+        c.get("state") if c.get("__typename") == "StatusContext" else c.get("conclusion") for c in latest.values()
     ]
     # RULE: own checks are green only when every check finished and none failed
-    return bool(states) and all(state in GREEN for state in states)
+    return bool(states) and all(_finished(c) for c in rollup) and all(state in GREEN for state in states)
 
 
 def cleared_order(members: Iterable[Member]) -> list[Member]:
@@ -330,8 +349,8 @@ def render_body(record: Recorded, copied: Sequence[str], left_out: dict[int, lis
         "|---|---|---|---|",
         *(f"| #{e.number} | `{e.head}` | `{e.patch_id}` | {e.tier} |" for e in record.members),
         "",
-        "Ratchet exceptions the stamps recorded:",
-        *([f"- {line}" for line in copied] or ["- none"]),
+        "Ratchet exceptions the stamps recorded, each at the start of its line, where the ratchet reads it:",
+        *(list(copied) or ["none"]),
         "",
         "Left out:",
         *([f"- #{n}: {'; '.join(why)}" for n, why in sorted(left_out.items())] or ["- none"]),
@@ -346,14 +365,17 @@ def render_body(record: Recorded, copied: Sequence[str], left_out: dict[int, lis
 
 
 def parse_body(body: str) -> Recorded | None:
-    """The record `render_body` wrote, or None when the body holds none."""
+    """The record `render_body` wrote, or None when the body holds none, or a broken one."""
     found = RECORD.search(body)
     if found is None:
         return None
     fields = [line.split() for line in found["lines"].splitlines()]
     named = {f[0]: f[1] for f in fields if len(f) == 2}
-    members = [Entry(int(f[1]), f[2], f[3], f[4], f[5]) for f in fields if f[0] == "member" and len(f) == 6]
-    return Recorded(named["branch"], named["base"], members)
+    try:
+        members = [Entry(int(f[1]), f[2], f[3], f[4], f[5]) for f in fields if f[0] == "member" and len(f) == 6]
+        return Recorded(named["branch"], named["base"], members)
+    except (KeyError, ValueError):
+        return None
 
 
 def merge_refusals(base: str, main_now: str, reasons: dict[int, list[str]]) -> list[str]:
@@ -558,7 +580,9 @@ def bisect(
 
 
 def _quality(pr: dict[str, Any]) -> dict[str, Any] | None:
-    return next((c for c in pr.get("statusCheckRollup") or [] if c.get("name") == "quality"), None)
+    """The latest quality run in a pull request's checks, or None when there is none."""
+    runs = sorted((c for c in pr.get("statusCheckRollup") or [] if c.get("name") == "quality"), key=_age)
+    return runs[-1] if runs else None
 
 
 def merge_commands(gh: Gh, repo: str, number: int, where: Where, owner_yes: Sequence[str]) -> list[str]:
@@ -582,6 +606,9 @@ def merge_commands(gh: Gh, repo: str, number: int, where: Where, owner_yes: Sequ
     heads = status_targets({e.number: e.head for e in record.members}, batch_pr["headRefOid"], last, green)
     if not heads:
         refusals.append(f"the batch's quality run is not green at its recorded head {last}")
+    # RULE: the merge list refuses a batch whose own checks are not all green
+    if not ci_green(batch_pr.get("statusCheckRollup") or []):
+        refusals.append("the batch's own checks are not green at its head")
     if refusals:
         raise Stop("\n".join(refusals))
     return status_lines(repo, heads, record.branch, str(quality.get("detailsUrl"))) + merge_list(members, repo)
@@ -631,7 +658,10 @@ def verify(gh: Gh, repo: str, number: int, clone: Path) -> list[str]:
     found = main_run(since, runs)
     if found is None:
         raise Stop(f"main holds the batch's tree {want}; waiting for a complete main run there")
-    return [f"main holds the batch's tree {want}", f"main's run: {found['conclusion']}, {found['url']}"]
+    lines = [f"main holds the batch's tree {want}", f"main's run: {found['conclusion']}, {found['url']}"]
+    if found["conclusion"] != "success":
+        raise Stop("\n".join(lines))
+    return lines
 
 
 def close(gh: Gh, repo: str, number: int, note: Path) -> list[str]:
