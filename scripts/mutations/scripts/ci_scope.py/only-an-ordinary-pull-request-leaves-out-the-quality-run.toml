@@ -1,0 +1,5 @@
+[[rule]]
+name = "only an ordinary pull request leaves out the quality run"
+file = "scripts/ci_scope.py"
+find = '^\s*a_pull_request = event == "pull_request"$'
+replace = 'a_pull_request = True'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "the scope writes whether the quality run is needed"
+file = "scripts/ci_scope.py"
+find = '^\s*found\["quality"\] = quality\('
+replace = 'pass'
