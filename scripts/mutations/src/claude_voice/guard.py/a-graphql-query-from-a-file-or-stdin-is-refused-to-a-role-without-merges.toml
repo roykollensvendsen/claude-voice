@@ -1,0 +1,5 @@
+[[rule]]
+name = "a graphql query from a file or stdin is refused to a role without merges"
+file = "src/claude_voice/guard.py"
+find = '^\s*if any\(GH_FROM_FILE\.search\(w\) or w == "--input" or w\.startswith\("--input="\) for w in words\):$'
+replace = 'if False:'

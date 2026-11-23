@@ -1,0 +1,5 @@
+[[rule]]
+name = "deny_merges is honoured from either roles file"
+file = "src/claude_voice/roles.py"
+find = '^\s*if role\.get\("deny_merges"\) is True:$'
+replace = 'if False:'

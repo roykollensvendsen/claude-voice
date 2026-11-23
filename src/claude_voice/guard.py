@@ -137,7 +137,15 @@ GH_VALUES = frozenset(
 GH_FIELDS = frozenset({"-f", "--raw-field", "-F", "--field", "--input"})
 GH_FIELDS_JOINED = ("-f", "-F", "--raw-field=", "--field=", "--input=")
 #: API paths that merge a pull request or a branch, or set a commit status or a check run.
-GH_PATH = re.compile(r"^/?repos/[^/]+/[^/]+/(?:statuses/|pulls/[^/]+/merge/?$|merges/?$|check-runs|check-suites)")
+#: The main branch's ref belongs here too: moving it is a merge by another name.
+GH_PATH = re.compile(
+    r"^/?repos/[^/]+/[^/]+/"
+    r"(?:statuses/|pulls/[^/]+/merge/?$|merges/?$|check-runs|check-suites|git/refs/heads/main/?$)"
+)
+#: What comes before an API path in a full address: the scheme, the host and any `/api/v3`.
+GH_HOST = re.compile(r"^[a-z]+://[^/]+(?:/api/v3)?(?=/)", re.IGNORECASE)
+#: `gh api` field values that read a file or stdin, where a GraphQL query could hide.
+GH_FROM_FILE = re.compile(r"^(?:-F|--field=?)?query=@")
 #: GraphQL mutations that merge, or set a status.
 GH_MUTATIONS = re.compile(
     r"mergePullRequest|enablePullRequestAutoMerge|mergeBranch|createCommitStatus|createCheckRun|updateCheckRun"
@@ -288,12 +296,20 @@ def _gh_write(words: list[str]) -> str | None:
         return "merges a pull request"
     if named[:2] in (["alias", "set"], ["alias", "import"]):
         return "sets up a gh alias, which could stand for a merge"
+    # RULE: gh's login is never handed to a role without merges
+    if named[:2] == ["auth", "token"] or (named[:2] == ["auth", "status"] and {"-t", "--show-token"} & set(words)):
+        return "hands out gh's login, which could make the same calls without gh"
     if named[:1] != ["api"] or len(named) < 2:
         return None
-    # RULE: a writing api call to a merge or a status is refused
     if named[1] == "graphql":
+        # RULE: a graphql query from a file or stdin is refused to a role without merges
+        if any(GH_FROM_FILE.search(w) or w == "--input" or w.startswith("--input=") for w in words):
+            return "sends GitHub's API a query the guard cannot read, from a file or stdin"
         return "merges or sets a status through GitHub's API" if any(GH_MUTATIONS.search(w) for w in words) else None
-    if GH_PATH.search(named[1]) and _gh_method(words) not in ("GET", "HEAD"):
+    # RULE: the path of an api call is read without its host, query or fragment
+    path = re.split(r"[?#]", GH_HOST.sub("", named[1]), maxsplit=1)[0]
+    # RULE: a writing api call to a merge or a status is refused
+    if GH_PATH.search(path) and _gh_method(words) not in ("GET", "HEAD"):
         return "merges or sets a status through GitHub's API"
     return None
 
