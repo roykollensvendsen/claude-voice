@@ -1,0 +1,5 @@
+[[rule]]
+name = "a git setting given in the environment on the line fails the plain shape"
+file = "src/claude_voice/guard.py"
+find = '^    rest = words\[-1\]\[1:\] if words\[-1\]\[:1\] == \["git"\] else \[\]$'
+replace = '    rest = words[-1][words[-1].index("git") + 1 :] if "git" in words[-1] else []'
