@@ -1,0 +1,5 @@
+[[rule]]
+name = "verify waits for a complete main run at the batch tree or later"
+file = "scripts/batch.py"
+find = '^\s*if r\.get\("headSha"\) in ours and r\.get\("status"\) == "completed" and r\.get\("conclusion"\) != "cancelled":$'
+replace = 'if r.get("headSha") in ours:'
