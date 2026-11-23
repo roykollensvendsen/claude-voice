@@ -1,0 +1,5 @@
+[[rule]]
+name = "the merge denies are kept beside the files own denies"
+file = "src/claude_voice/roles.py"
+find = '^\s*permissions\["deny"\] = \[\*permissions\.get\("deny", \[\]\), \*denies\]$'
+replace = 'permissions["deny"] = list(denies)'
