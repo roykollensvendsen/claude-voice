@@ -124,6 +124,33 @@ def test_the_owner_approves_a_plugin_by_typing_its_name(tmp_path, monkeypatch, c
     assert plugins.inputs_approved(spec, plugins.Plugin(spec, plugins.CLIENT).listing(), approvals)
 
 
+def test_the_owner_sees_which_approved_tools_say_they_only_read(tmp_path, monkeypatch, capsys):
+    from mcp.types import ToolAnnotations
+
+    server = MCPServer("garage")
+
+    @server.tool(annotations=ToolAnnotations(read_only_hint=True))
+    async def garage_status() -> dict:
+        return {"door": "closed"}
+
+    @server.tool()
+    async def garage_request(action: str) -> dict:
+        return {"token": "t1"}
+
+    f = tmp_path / "c.toml"
+    f.write_text(
+        '[plugins.garage]\ncommand = "garage-door-mcp"\ncwd = "/g"\ntools = ["garage_status", "garage_request"]\n'
+    )
+    monkeypatch.setattr(plugins, "APPROVALS", tmp_path / "approved.json")
+    monkeypatch.setattr(plugins, "CLIENT", lambda params: Client(server))
+    monkeypatch.setattr("builtins.input", lambda prompt="": "garage")
+    env = {"HOME": str(tmp_path), "CLAUDE_VOICE_CONFIG": str(f)}
+    assert cli.main(["plugins", "approve", "garage"], env=env) == 0
+    shown = capsys.readouterr().out
+    assert "garage_status takes: nothing, says it only reads" in shown
+    assert "garage_request takes: action\n" in shown  # a tool that may press is not marked
+
+
 def test_approving_with_nothing_typed_approves_nothing(tmp_path, monkeypatch, capsys):
     f = tmp_path / "c.toml"
     f.write_text('[plugins.garage]\ncommand = "garage-door-mcp"\ncwd = "/g"\ntools = ["garage_status"]\n')
