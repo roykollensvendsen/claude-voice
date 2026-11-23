@@ -1,0 +1,5 @@
+[[rule]]
+name = "a batch runs the quality run"
+file = "scripts/ci_scope.py"
+find = '^\s*if head_ref\.startswith\(BATCH\):$'
+replace = 'if False:'

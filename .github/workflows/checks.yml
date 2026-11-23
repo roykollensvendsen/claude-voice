@@ -15,11 +15,13 @@ on:
     - cron: "0 2 * * *"
       timezone: "Europe/Oslo"
 
-# A newer push to a pull request stops that pull request's stale run. Every other run, on
-# main, a tag or by hand, is its own group and always runs to the end.
+# A newer push to a pull request stops that pull request's stale run. Pushes to main share one
+# group, so a batch's last merge stops the runs of the merges before it: only its tree, the one
+# the batch proved, is checked in full. Every other run, nightly or by hand, is its own group and
+# always runs to the end.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || (github.event_name == 'push' && github.ref == 'refs/heads/main') && 'main-push' || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
 
 # Nothing here writes to the repository, its issues or its packages.
 permissions:
@@ -35,6 +37,7 @@ jobs:
       windows: ${{ steps.scope.outputs.windows }}
       python313: ${{ steps.scope.outputs.python313 }}
       template: ${{ steps.scope.outputs.template }}
+      quality: ${{ steps.scope.outputs.quality }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -44,6 +47,8 @@ jobs:
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.head_ref }}
+          ACTOR: ${{ github.actor }}
         run: python3 scripts/ci_scope.py scope
 
   # Conventional Commits, over the commits this pull request adds.
@@ -130,9 +135,13 @@ jobs:
       - run: python3 scripts/clean_install.py
 
   quality:
-    # The ratchet compares with a base, and a nightly run has none, so it runs on pull
-    # requests and on main only, as before.
-    if: github.event_name != 'schedule'
+    # The ratchet compares with a base, and a nightly run has none, so it never runs at night.
+    # An ordinary pull request leaves it out: the mutation run and the ratchet run once, on the
+    # batch of approved pull requests (an integration/ branch) that main takes them in. A push
+    # to main and dependabot's own pull request still run it. When the scope job failed, its
+    # outputs are empty, and quality runs.
+    needs: scope
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.scope.outputs.quality != 'false' }}
     runs-on: ubuntu-latest
     # No time limit, on purpose: this job holds the mutation run, which grows with every rule,
     # and a run cut short proves nothing. Never cap it; remove a cap rather than raise it.
@@ -186,6 +195,29 @@ jobs:
           name: quality-mutations
           path: ${{ runner.temp }}/mutations.json
           if-no-files-found: ignore
+
+  # Main requires a "batch" status: a pass of quality on a batch the pull request was part of.
+  # Dependabot's pull request is never in a batch, so its own run reports that pass itself, once
+  # quality passed on it. This job runs no code from the pull request and checks nothing out; its
+  # token may write statuses and nothing else. A person who pushes onto dependabot's branch, or
+  # re-runs its run, is not dependabot: the job is skipped, no status is set, and the pull
+  # request cannot merge. That fails safe.
+  dependabot-batch:
+    needs: quality
+    if: github.event_name == 'pull_request' && github.actor == 'dependabot[bot]' && github.triggering_actor == 'dependabot[bot]' && needs.quality.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      statuses: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >-
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$SHA"
+          -f state=success -f context=batch -f target_url="$RUN"
+          -f description="dependabot's own full run passed"
 
   # The plugin template, rendered under a made-up name into a temporary folder and put through
   # its own gates there, offline: its suite, its mutation run and its ratchet.
