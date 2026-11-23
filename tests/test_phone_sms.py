@@ -85,6 +85,16 @@ async def test_sent_then_failed_for_one_recipient_comes_back_unchanged_and_in_or
     assert [item["outcome"] for item in answer["outcomes"]] == ["sent", "failed"]
 
 
+async def test_a_number_key_in_a_phones_reply_is_dropped_on_purpose():
+    """The hub drops every `number` from another machine's answer, since that is the machine's own
+    session number. A phone is a machine, so a field it calls `number` never reaches the voice:
+    a phone's reply must name a recipient's phone number some other way."""
+    message = {"id": "m-4", "from": "Kari", "number": "+4700000001", "text": "Kommer kl 18"}
+    reply = {"messages": [message], "cursor": "Qm7Tz2pL0aVe", "number": 3}
+    answer, _ = await passed_on(reply, "sms_since", {"cursor": "Qm7Tz2pL0aVd"})
+    assert answer == {"messages": [{k: v for k, v in message.items() if k != "number"}], "cursor": "Qm7Tz2pL0aVe"}
+
+
 @pytest.mark.parametrize("server", ["claude-voice", "claude_ai_claude-voice"])
 def test_no_session_may_confirm_a_text_to_a_list_by_any_rule_that_reads_its_arguments(server):
     """Claude Code's rule for an MCP tool names the tool and never its arguments, so a list in
