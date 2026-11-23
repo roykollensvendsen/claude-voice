@@ -1,0 +1,5 @@
+[[rule]]
+name = "the merge list refuses a batch whose own checks are not all green"
+file = "scripts/batch.py"
+find = '^\s*if not ci_green\(batch_pr\.get\("statusCheckRollup"\) or \[\]\):$'
+replace = 'if False:'
