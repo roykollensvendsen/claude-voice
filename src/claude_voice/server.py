@@ -126,6 +126,11 @@ BASE_INSTRUCTIONS = _BASE + REPLY_IS_WORDS + "\n"
 # The voice's default behaviour, one named rule each, so each can later be switched on or off.
 DEFAULT_RULES: dict[str, str] = {
     "read_next_step": "When a tool's answer says what to do next, read that step out to the user.",
+    # RULE: after a question that asks for a yes the voice ends its turn
+    "wait_for_yes": (
+        "When a tool returns a question to confirm before it acts, read the question aloud, then "
+        "end your turn at once. Say nothing else until the owner answers."
+    ),
     # RULE: the voice follows a next at once and stops without one
     "follow_next": (
         "When an answer carries `next`, call that tool with its args at once, without asking, "
