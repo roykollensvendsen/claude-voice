@@ -15,8 +15,10 @@ transcript and accepts the line only when:
 
 Whose turn it is. The voice reaches support only through the bridge's courier, so a spoken yes
 arrives as a cross-session message. Its sender's pid and start ticks are the kernel's word,
-and the bridge keeps those of every courier process it starts. Such a message counts when they
-match, and the first line of its body is `origin: voice`. Any other user turn that starts with
+and the bridge keeps those of every courier process it starts. Only the courier's are kept: the
+digest and side-question helpers also run in helper folders, but a message from one of them is
+never a yes. Such a message counts when they match, and the first line of its body is
+`origin: voice`. Any other user turn that starts with
 `origin:` wrote the stamp itself, and is refused. A turn with no stamp is the owner's only
 when typed in support's own pane: entrypoint "cli", origin kind "human", not a meta entry, and
 plain text. In this machine's transcripts, peer messages, task notifications, Stop-hook
