@@ -18,8 +18,9 @@ takes as long again. The time the suite takes is shown, never judged (ADR-CV-021
     uv run python scripts/ratchet.py measure --out FILE  # measure only
 
 `check` reads exceptions from the environment variable RATCHET_EXCEPTIONS (continuous
-integration passes the pull request's text). `--skip-mutation` keeps the base's
-mutation figures, for a quick local look; continuous integration never skips it.
+integration passes the pull request's text). `--skip-mutation`, for a quick local look,
+runs no mutation on either side: it keeps the figures in `--levels` when given, and
+otherwise leaves mutation out of the comparison. Continuous integration never skips it.
 """
 
 from __future__ import annotations
@@ -307,6 +308,20 @@ def mutation_command(report: Path | None) -> list[str]:
     return ["uv", "run", "python", "scripts/mutate.py", *(["--json", str(report)] if report else [])]
 
 
+def mutation_figures(
+    skip_mutation: bool, recorded: dict[str, Any] | None, mutations: Path | None
+) -> dict[str, int] | None:
+    """How many rules the mutation run saw guarded. A quick look keeps the recorded figures,
+    or has none when nothing was recorded: then mutation is left out of the comparison."""
+    if skip_mutation:
+        # RULE: a quick measure with no recorded figures runs no mutation
+        return recorded.get("mutation") if recorded else None
+    mutate = _run(*mutation_command(mutations))
+    tally = re.search(r"(\d+)/(\d+) rules turned off", mutate.stdout)
+    killed, total = (int(tally[1]), int(tally[2])) if tally else (0, 1)
+    return {"killed": killed if mutate.returncode == 0 else min(killed, total - 1), "total": total}
+
+
 def measure(
     skip_mutation: bool = False, recorded: dict[str, Any] | None = None, mutations: Path | None = None
 ) -> dict[str, Any]:
@@ -323,16 +338,9 @@ def measure(
     lint = _run("uv", "run", "ruff", "check", ".", "--output-format", "json")
     types = _run("uv", "run", "mypy", "src")
     type_errors = re.search(r"Found (\d+) errors?", types.stdout)
-    if skip_mutation and recorded:
-        mutation = recorded["mutation"]
-    else:
-        mutate = _run(*mutation_command(mutations))
-        tally = re.search(r"(\d+)/(\d+) rules turned off", mutate.stdout)
-        killed, total = (int(tally[1]), int(tally[2])) if tally else (0, 1)
-        mutation = {"killed": killed if mutate.returncode == 0 else min(killed, total - 1), "total": total}
     return {
         "coverage": coverage,
-        "mutation": mutation,
+        "mutation": mutation_figures(skip_mutation, recorded, mutations),
         "tests": int(passed[1]) if passed else 0,
         "lint_errors": len(json.loads(lint.stdout or "[]")),
         "type_errors": int(type_errors[1]) if type_errors else 0,
@@ -373,6 +381,9 @@ def compare(base: dict[str, Any], now: dict[str, Any], allowed: set[str]) -> lis
     for metric in (*HIGHER, *LOWER):
         if metric not in base:
             continue  # a measure added since the base: nothing to compare with yet
+        # RULE: a mutation run skipped on either side is not compared
+        if base[metric] is None or now[metric] is None:
+            continue
         # RULE: a measure that gets worse fails the check
         if _worse(metric, base[metric], now[metric]) and metric not in allowed:
             found.append(f"{metric} got worse: {base[metric]} -> {now[metric]}")
@@ -468,11 +479,12 @@ def copy_of(ref: str, copy: Path) -> None:
             raise SystemExit(f"Cannot check out {ref} to measure it:\n{done.stderr}")
 
 
-def measure_at(ref: str) -> dict[str, Any]:
+def measure_at(ref: str, skip_mutation: bool = False) -> dict[str, Any]:
     """Measure `ref` in a copy of it, with this ratchet, so both sides are measured alike.
 
     The copy keeps its own tests and scripts unchanged: this ratchet runs from where it is
-    and is pointed at the copy, so the base is measured exactly as it stands."""
+    and is pointed at the copy, so the base is measured exactly as it stands. A quick look
+    measures the base without its mutation run, as it does the change."""
     held = hold()
     try:  # the copy is made inside the held folder, so a stop at any point removes it too
         copy, out = held.path / "base", held.path / "levels.json"
@@ -482,7 +494,9 @@ def measure_at(ref: str) -> dict[str, Any]:
             raise SystemExit(f"Cannot install {ref} to measure it:\n{synced.stderr[-2000:]}")
         env = {**os.environ, "RATCHET_ROOT": str(copy)}
         here = str(Path(__file__).resolve())
-        measured = _run("uv", "run", "python", here, "measure", "--out", str(out), cwd=copy, env=env)
+        # RULE: a quick check measures the base without its mutation run
+        quick = ["--skip-mutation"] if skip_mutation else []
+        measured = _run("uv", "run", "python", here, "measure", "--out", str(out), *quick, cwd=copy, env=env)
         if measured.returncode:
             raise SystemExit(f"Measuring {ref} failed:\n{measured.stdout[-2000:]}{measured.stderr[-2000:]}")
         return dict(json.loads(out.read_text()))
@@ -521,7 +535,7 @@ def main() -> int:
     args = parser.parse_args()
     stop_cleanly()
     if args.action == "measure":
-        now = measure()
+        now = measure(args.skip_mutation)
         if args.out:
             write_levels(args.out, now)
         print(json.dumps(now, indent=2, sort_keys=True))
@@ -530,7 +544,7 @@ def main() -> int:
     if not args.base:
         print("check needs --base, the ref to compare with (usually origin/main).", file=sys.stderr)
         return 1
-    base = base_levels(args.levels, lambda: measure_at(args.base))
+    base = base_levels(args.levels, lambda: measure_at(args.base, args.skip_mutation))
     now = measure(args.skip_mutation, base, args.mutations)
     if args.out:
         write_levels(args.out, now)

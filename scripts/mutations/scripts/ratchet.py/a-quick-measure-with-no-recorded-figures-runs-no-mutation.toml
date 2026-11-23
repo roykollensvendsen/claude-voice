@@ -1,0 +1,5 @@
+[[rule]]
+name = "a quick measure with no recorded figures runs no mutation"
+file = "scripts/ratchet.py"
+find = '^    if skip_mutation:$'
+replace = '    if skip_mutation and recorded:'
