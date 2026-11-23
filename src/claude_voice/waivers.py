@@ -152,12 +152,22 @@ def _entry(table: Any, rules: Rules, notes: list[str]) -> Waiver:
     # RULE: a waiver without a why refuses the waiver file
     if not isinstance(why, str) or not why.strip():
         raise Refused(f"the waiver for {shown(path)} has no why")
-    real = Path(path).resolve()
+    real = _resolved(path)
     if not real.is_dir():
         # RULE: a waiver for a folder that is gone is noted once
         notes.append(f"the owner's waiver names {shown(path)}, which is not a folder now; it does nothing")
     kept = tuple(ask for ask in asks if _waivable(ask, rules, path, notes))
     return Waiver(real, kept, why)
+
+
+def _resolved(path: str) -> Path:
+    """The folder's real path. Raises Refused for one the system cannot resolve, such as one
+    with a NUL in it, or a name Windows does not allow."""
+    try:
+        return Path(path).resolve()
+    except (OSError, ValueError):
+        # RULE: a folder path the system cannot resolve refuses the waiver file
+        raise Refused(f"the folder path {shown(path)} cannot be resolved") from None
 
 
 def _waivable(ask: str, rules: Rules, path: str, notes: list[str]) -> bool:
