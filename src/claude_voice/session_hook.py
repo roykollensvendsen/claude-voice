@@ -9,8 +9,10 @@ PreToolUse hook). It lets through:
   personal terms, and whose body file is in the scratchpad or tracked by git.
 
 Every other recursive remove, however it is spelled, and every other issue, it asks
-the owner about. A single-file rm and `git rm` keep the rules they always had. All
-other commands it leaves to Claude Code's own rules. When it cannot tell, it asks.
+the owner about. A single-file rm and `git rm` keep the rules they always had. It
+refuses a git setting that runs code, and a push that deletes or forces a branch
+on the remote. All other commands it leaves to Claude Code's own rules. When it
+cannot tell, it asks.
 
 It runs as ``python3 -I session_hook.py --repos owner/name,... [--terms FILE]``,
 with the standard library only, so a broken bridge environment cannot stop it.
@@ -369,6 +371,88 @@ def _code_setting(command: str) -> str | None:
     return DENY if runs_code(command) else None
 
 
+#: Long push options that remove or overwrite branches on the remote; git takes any unique prefix of one.
+PUSH_REMOVES = ("delete", "mirror", "prune", "all")
+#: Push options whose value is the next word.
+PUSH_VALUES = frozenset({"-o", "--push-option", "--repo", "--receive-pack", "--exec"})
+#: git options before the subcommand whose value is the next word.
+GIT_VALUES = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env"})
+#: Settings that give a push its branches or make it a mirror.
+PUSH_SETTINGS = re.compile(r"remote\..+\.(push|mirror)", re.IGNORECASE)
+
+
+def _git_commands(command: str) -> list[list[str]]:
+    """The words after `git` in every git command, whatever runs it: env, VAR=value, timeout and the like."""
+    found = []
+    for part in SEPARATORS.split(command):
+        try:
+            words = shlex.split(part)
+        except ValueError:  # unbalanced quotes: read plainly, never asked about for that alone
+            words = part.split()
+        at = next((i for i, w in enumerate(words) if os.path.basename(w) == "git"), None)
+        if at is not None:
+            found.append(words[at + 1 :])
+    return found
+
+
+def _push_words(words: list[str]) -> tuple[list[str], list[str]] | None:
+    """git's own options and the push's words, or None when the command is not a push."""
+    i = 0
+    while i < len(words) and words[i].startswith("-"):
+        i += 2 if words[i] in GIT_VALUES else 1
+    if i >= len(words) or words[i] != "push":
+        return None
+    return words[:i], words[i + 1 :]
+
+
+def _short_flags_remove(word: str) -> bool:
+    """Whether stuck-together short flags, such as -fd, hold one that deletes or forces.
+    After -o the rest of the word is its value."""
+    for flag in word[1:]:
+        if flag == "o":
+            return False
+        if flag == "d" or (flag == "f" and len(word) > 2):
+            return True
+    return False
+
+
+def _push_removes(args: list[str]) -> bool:
+    skip = False
+    for word in args:
+        if skip:
+            skip = False
+            continue
+        if word in PUSH_VALUES or (word.startswith("-") and not word.startswith("--") and word.endswith("o")):
+            skip = True
+        if word.startswith((":", "+")):
+            return True
+        name = word[2:].partition("=")[0]
+        if word.startswith("--") and name and any(full.startswith(name) for full in PUSH_REMOVES):
+            return True
+        if word.startswith("-") and not word.startswith("--") and _short_flags_remove(word):
+            return True
+    return False
+
+
+def pushes_away(command: str) -> bool:
+    """Whether a git push in `command` deletes or forces a branch on the remote, however it is spelled."""
+    for words in _git_commands(command):
+        found = _push_words(words)
+        if found is None:
+            continue
+        options, args = found
+        settings = [options[i + 1] for i, w in enumerate(options[:-1]) if w in ("-c", "--config-env")]
+        settings += [w.partition("=")[2] for w in options if w.startswith("--config-env=")]
+        if any(PUSH_SETTINGS.fullmatch(s.partition("=")[0]) for s in settings) or _push_removes(args):
+            return True
+    return False
+
+
+def _push(command: str) -> str | None:
+    # RULE: a push that deletes or forces a remote branch is refused
+    return DENY if pushes_away(command) else None
+
+
 def decision(hook_input: dict[str, Any], *, tmp_root: Path, repos: Sequence[str], terms: Path | None) -> str | None:
     """allow, ask, deny, or None to leave the command to Claude Code's own rules."""
     if hook_input.get("tool_name") != "Bash":
@@ -378,6 +462,7 @@ def decision(hook_input: dict[str, Any], *, tmp_root: Path, repos: Sequence[str]
     session_id = str(hook_input.get("session_id") or "")
     for judge in (
         lambda: _code_setting(command),
+        lambda: _push(command),
         lambda: _removal(command, cwd, session_id, tmp_root),
         lambda: _issue(command, cwd, repos, terms, session_id, tmp_root),
     ):
@@ -395,14 +480,18 @@ REASONS = {
     ASK: "only a remove inside this session's own scratchpad, or a clean issue in its own programme, runs unasked",
     DENY: "a git setting whose value runs as the owner later; only core.hooksPath .githooks may be set",
 }
+PUSH_REFUSED = (
+    "a push that deletes or forces a branch on the remote; a branch is deleted only on the owner's yes, "
+    "asked through the manager"
+)
 
 
 def answer(hook_input: dict[str, Any], *, tmp_root: Path, repos: Sequence[str], terms: Path | None) -> dict[str, Any]:
     """Claude Code's hook answer. A hook that fails while judging a remove or an issue asks."""
+    command = str((hook_input.get("tool_input") or {}).get("command", ""))
     try:
         said = decision(hook_input, tmp_root=tmp_root, repos=repos, terms=terms)
     except Exception:  # noqa: BLE001 - whatever went wrong, the owner is asked
-        command = str((hook_input.get("tool_input") or {}).get("command", ""))
         # RULE: a hook that cannot decide asks
         said = ASK if removes_a_tree(command) or ISSUE.search(command) else None
     if said is None:
@@ -411,7 +500,7 @@ def answer(hook_input: dict[str, Any], *, tmp_root: Path, repos: Sequence[str], 
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": said,
-            "permissionDecisionReason": REASONS[said],
+            "permissionDecisionReason": PUSH_REFUSED if said == DENY and _push(command) else REASONS[said],
         }
     }
 
