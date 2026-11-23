@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import httpx
@@ -220,6 +221,18 @@ async def test_a_launched_role_records_the_folder_it_was_started_in(tmp_path, wo
     async with Client(bridge(tmp_path, world, Starter(world[2]))) as c:
         await c.call_tool("start_role", {"role": "contribute"})
     assert Store(tmp_path / "b.db").get_setting("role:contribute")["folder"] == str(world[1])
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="a folder link needs extra rights on Windows")
+async def test_a_role_folder_behind_a_link_is_recorded_as_the_real_folder(tmp_path, world):
+    """Claude Code keys a transcript by the real folder, so the record names that one."""
+    ready_clone(world)
+    link = tmp_path / "linked"
+    link.symlink_to(world[1], target_is_directory=True)
+    world[3].write_text(f"[roles.contribute]\nfolder = '{link}'\n")
+    async with Client(bridge(tmp_path, world, Starter(world[2]))) as c:
+        await c.call_tool("start_role", {"role": "contribute"})
+    assert Store(tmp_path / "b.db").get_setting("role:contribute")["folder"] == str(world[1].resolve())
 
 
 async def test_an_unknown_role_is_refused(tmp_path, world):
