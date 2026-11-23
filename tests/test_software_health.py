@@ -150,7 +150,8 @@ async def test_the_phone_app_is_on_the_software_panel_after_the_page(tmp_path):
 async def test_the_levels_cache_is_chosen_once_when_the_bridge_is_built(tmp_path, monkeypatch):
     """The report is refreshed on a thread of its own, which may outlive the home it began in."""
     voice = repo_with_history(tmp_path / "voice", QUALITY)
-    monkeypatch.setenv("HOME", str(tmp_path / "built"))
+    for name in ("HOME", "USERPROFILE"):  # Windows reads the home from USERPROFILE
+        monkeypatch.setenv(name, str(tmp_path / "built"))
     store = Store(tmp_path / "b.db")
     m = SessionManager(store, project_root=tmp_path, client_factory=FakeClaude())
     caches = []
@@ -165,7 +166,8 @@ async def test_the_levels_cache_is_chosen_once_when_the_bridge_is_built(tmp_path
         kept_mutations=lambda repo, **kw: caches.append(kw.get("cache")),
         main_head=lambda repo, **_: "aaa",
     )
-    monkeypatch.setenv("HOME", str(tmp_path / "later"))
+    for name in ("HOME", "USERPROFILE"):
+        monkeypatch.setenv(name, str(tmp_path / "later"))
     await asyncio.to_thread(server.software_report.refresh)
     assert caches and all(c == tmp_path / "built" / ".cache" / "claude-voice" / "levels" for c in caches)
 
