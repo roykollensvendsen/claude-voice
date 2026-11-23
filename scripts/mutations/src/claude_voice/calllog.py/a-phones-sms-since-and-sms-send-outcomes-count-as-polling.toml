@@ -1,5 +1,5 @@
 [[rule]]
 name = "a phones sms_since and sms_send_outcomes count as polling"
 file = "src/claude_voice/calllog.py"
-find = '^    return tool in POLLING or PHONE_POLLING\.fullmatch\(tool\) is not None$'
-replace = '    return tool in POLLING'
+find = '^    return known and name in PHONE_POLLING$'
+replace = '    return False'
