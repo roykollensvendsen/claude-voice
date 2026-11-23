@@ -155,8 +155,9 @@ why = "its own gate sorts the safe forms; approving stays denied"
 - **Only asks the table marks waivable.** The list is `"waivable asks"` in
   `permissions.json`, and today it holds `Bash(gh pr review*)` alone. Widening
   it is a change to the public table, with its own review.
-- **A deny is never waived, and an allow is never touched.** Approving a pull
-  request stays denied with the review ask waived.
+- **A deny is never waived, and an allow is never touched.** The deny rules on
+  approving a pull request stay exactly as they are when the review ask is
+  waived.
 - **A rule you kept stays yours.** If the folder's file has the waived ask
   already, it is neither added nor removed.
 - **Every run says so,** with the reason, for example

@@ -82,7 +82,8 @@ def _for_each_branch(branches: list[str], forms: list[str]) -> list[str]:
 # rule ending in `:*` is the older prefix form instead: what stands before the colon is a plain
 # prefix, with no wildcard in it, so `Bash(git push* :*)` matches only commands that begin with
 # "git push* " itself, which none does. Quotes are taken off the command first, the way a shell
-# would, so `git push origin ':feature'` is matched as `git push origin :feature`.
+# would, so `git push origin ':feature'` is matched as `git push origin :feature`. It judges one
+# simple command; Claude Code splits a chain such as `a && b` first, and this copy does not.
 
 
 def matches(rule: str, command: str) -> bool:
