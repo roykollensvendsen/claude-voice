@@ -1,0 +1,5 @@
+[[rule]]
+name = "a folder named twice refuses the waiver file"
+file = "src/claude_voice/waivers.py"
+find = '^\s*if any\(w\.path == waiver\.path for w in entries\):$'
+replace = 'if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a why is shown without control characters"
+file = "src/claude_voice/waivers.py"
+find = '^\s*clean = "".join\(ch for ch in flat if not unicodedata\.category\(ch\)\.startswith\("C"\)\)$'
+replace = 'clean = flat'

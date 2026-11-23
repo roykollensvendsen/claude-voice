@@ -138,6 +138,44 @@ The retired rules so far are all allow rules:
   `Bash(git commit *)`, took their place, so a commit with `-q` or `--amend`
   no longer asks.
 
+### Keeping an ask out of one folder
+
+When you delete an ask rule from a folder's settings, the next run adds it back,
+and so does the bridge's start. To keep one out for good, name it in
+`~/.config/claude-voice/ask-waivers.toml`:
+
+<!-- not run: a made-up folder -->
+```toml
+[[folder]]
+path = "/home/you/src/some-clone"
+asks = ["Bash(gh pr review*)"]
+why = "its own gate sorts the safe forms; approving stays denied"
+```
+
+- **Only asks the table marks waivable.** The list is `"waivable asks"` in
+  `permissions.json`, and today it holds `Bash(gh pr review*)` alone. Widening
+  it is a change to the public table, with its own review.
+- **A deny is never waived, and an allow is never touched.** Approving a pull
+  request stays denied with the review ask waived.
+- **A rule you kept stays yours.** If the folder's file has the waived ask
+  already, it is neither added nor removed.
+- **Every run says so,** with the reason, for example
+  `kept 1 ask out by the owner's waiver: Bash(gh pr review*) (why: "…")`. The
+  reason is shown on one line, cut to 200 characters.
+- **The dry run says what then decides the command:** the allow rule that lets
+  it through, your session hook, or Claude Code's own question. Read it before
+  you add the line.
+- **A file that cannot be trusted waives nothing,** and every ask comes back.
+  The run's first line says why. That covers a link, anything but a plain file,
+  text that is not UTF-8 or not TOML, a relative path, a missing `why`, a folder
+  named twice, and any text that is not a waivable ask. A retired ask is skipped
+  with a note instead, and a folder that is gone is noted once.
+
+You write the file by hand. No command writes it, and every session is denied
+writing it, as with the files in [What later runs as the owner](#what-later-runs-as-the-owner).
+Like those files, it runs under your own Unix user, so the boundary is the same
+as theirs.
+
 ## The groups
 
 **Allowed, so a session does not ask:**

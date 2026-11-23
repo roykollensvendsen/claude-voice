@@ -1,0 +1,5 @@
+[[rule]]
+name = "a why is cut to 200 characters"
+file = "src/claude_voice/waivers.py"
+find = '''^\s*return f'"\{clean\[:WHY_LENGTH\]\}"'$'''
+replace = '''return f'"{clean}"' '''

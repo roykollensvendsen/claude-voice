@@ -1,0 +1,5 @@
+[[rule]]
+name = "a relative folder path refuses the waiver file"
+file = "src/claude_voice/waivers.py"
+find = '^\s*if not isinstance\(path, str\) or not Path\(path\)\.is_absolute\(\):$'
+replace = 'if not isinstance(path, str):'

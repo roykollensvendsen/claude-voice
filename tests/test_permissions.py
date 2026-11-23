@@ -6,12 +6,8 @@ session may run without asking (looking at git, running the tests), and what it 
 never run (deleting history, reading a secret). The owner's own rules are kept.
 """
 
-import contextlib
-import functools
 import json
 import os
-import re
-import shlex
 from pathlib import Path, PurePosixPath
 
 import pytest
@@ -330,51 +326,11 @@ def test_the_shipped_rules_name_no_person_host_or_home_folder():
 
 # -- forced pushes: a session's own branch, never main ---------------------------------
 #
-# The permissions module has no matcher of its own: Claude Code does the matching. This is a
-# small faithful copy of it. A rule without `*` matches the whole command exactly. With `*`,
-# each `*` matches any run of characters, spaces included, and the rule must match the whole
-# command. A rule ending in `:*` is the older prefix form instead: what stands before the colon
-# is a plain prefix, with no wildcard in it, so `Bash(git push* :*)` matches only commands that
-# begin with "git push* " itself, which none does. Quotes are taken off the command first, the
-# way a shell would, so `git push origin ':feature'` is matched as `git push origin :feature`.
-# A command matching any deny rule is refused, even when an allow rule matches too.
+# Claude Code does the matching; `permissions.matches` is the one faithful copy of it, used
+# here and by the dry run's "what decides" line (ask-waivers v1.1 f2).
 
-
-def _matches(rule, command):
-    if not rule.startswith("Bash("):
-        return False  # another tool's rule: these tests match only shell commands
-    assert rule.endswith(")"), rule
-    pattern = rule[len("Bash(") : -1]
-    command = _spoken(command)
-    if pattern.endswith(":*"):
-        return command.startswith(pattern[:-2])
-    if "*" not in pattern:
-        return command == pattern
-    return _glob(pattern).fullmatch(command) is not None
-
-
-@functools.cache
-def _spoken(command):
-    """The command as Claude Code compares it, its quoting undone; built once per command."""
-    with contextlib.suppress(ValueError):  # unbalanced quotes: matched as written
-        return " ".join(shlex.split(command))
-    return command
-
-
-@functools.cache
-def _glob(pattern):
-    """A rule's pattern as a regular expression, built once: the rule tables are large."""
-    return re.compile(".*".join(re.escape(part) for part in pattern.split("*")), re.DOTALL)
-
-
-def decision(rules, command):
-    if any(_matches(rule, command) for rule in rules.deny):
-        return "refused"
-    if any(_matches(rule, command) for rule in rules.ask):
-        return "asked"
-    if any(_matches(rule, command) for rule in rules.allow):
-        return "allowed"
-    return "asked"
+_matches = permissions.matches
+decision = permissions.decision
 
 
 def test_the_matcher_reads_rules_the_way_claude_code_does():
