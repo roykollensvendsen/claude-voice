@@ -17,6 +17,7 @@ from .config import STATE_DIR
 from .server import Config, ConfigError, load_config, serve_forever
 
 if TYPE_CHECKING:
+    from . import permissions, waivers
     from .config import PluginSpec
 
 #: Every verb this command has. The documentation test requires each one to
@@ -738,16 +739,31 @@ def permissions_command(folders: list[Path], dry_run: bool, env: Mapping[str, st
     if not folders:
         return 1
     rules, code = permissions.load(machines=_machine_names(env)), 0
-    backups = permissions.backup_root(Path(env.get("HOME") or Path.home()))
+    home = Path(env.get("HOME") or Path.home())
+    backups = permissions.backup_root(home)
     hooks = _session_hooks(folders, env)
+    found = _waivers(rules, home)
     for folder in folders:
         try:
-            outcome = permissions.apply(folder, rules, dry_run, backup_root=backups, hook=hooks[folder])
+            outcome = permissions.apply(
+                folder, rules, dry_run, backup_root=backups, hook=hooks[folder], waiver=found.for_folder(folder)
+            )
             sys.stdout.write(outcome.line() + "\n")
         except permissions.PermissionsError as exc:
             sys.stderr.write(f"claude-voice: {exc}\n")
             code = 1
     return code
+
+
+def _waivers(rules: permissions.Rules, home: Path) -> waivers.Waivers:
+    """The owner's ask waivers under `home`, with why a file waives nothing said first."""
+    from . import waivers
+
+    found = waivers.read(rules, home / waivers.FILE.relative_to("~"))
+    # RULE: the runs first line says why the waiver file waives nothing
+    for line in found.lines():
+        sys.stdout.write(line + "\n")
+    return found
 
 
 def _machine_names(env: Mapping[str, str]) -> list[str]:
@@ -832,7 +848,9 @@ def shipped_command(folders: list[Path], env: Mapping[str, str]) -> int:
     backups = permissions.backup_root(Path(env.get("HOME") or Path.home()))
     # RULE: the shipped rules are recorded under the commit that is installed
     sha = shipped.installed_commit(own)
-    done = shipped.sync(folders, chart, own, permissions.load(machines=_machine_names(env)), sha, backup_root=backups)
+    rules = permissions.load(machines=_machine_names(env))
+    found = _waivers(rules, Path(env.get("HOME") or Path.home()))
+    done = shipped.sync(folders, chart, own, rules, sha, backup_root=backups, found=found)
     for line in shipped.report(done):
         sys.stdout.write(line + "\n")
     return 0

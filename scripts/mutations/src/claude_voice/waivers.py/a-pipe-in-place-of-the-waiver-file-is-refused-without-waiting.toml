@@ -1,0 +1,5 @@
+[[rule]]
+name = "a pipe in place of the waiver file is refused without waiting"
+file = "src/claude_voice/waivers.py"
+find = '^\s*no_wait = getattr\(os, "O_NONBLOCK", 0\)$'
+replace = 'no_wait = 0'

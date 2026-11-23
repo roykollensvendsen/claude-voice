@@ -1,0 +1,5 @@
+[[rule]]
+name = "the runs first line says why the waiver file waives nothing"
+file = "src/claude_voice/cli.py"
+find = '^\s*for line in found\.lines\(\):$'
+replace = 'for line in []:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a waiver for a folder that is gone is noted once"
+file = "src/claude_voice/waivers.py"
+find = '^\s*notes\.append\(f"the owner.s waiver names \{path\}, which is not a folder now; it does nothing"\)$'
+replace = 'pass'

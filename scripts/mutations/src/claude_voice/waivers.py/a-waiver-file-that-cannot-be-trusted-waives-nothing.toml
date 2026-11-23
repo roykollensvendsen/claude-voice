@@ -1,0 +1,5 @@
+[[rule]]
+name = "a waiver file that cannot be trusted waives nothing"
+file = "src/claude_voice/waivers.py"
+find = '^\s*return Waivers\(problem=f"\{file\}: \{exc\}; it waives nothing, so every ask stays"\)$'
+replace = 'return Waivers()'

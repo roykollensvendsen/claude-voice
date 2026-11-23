@@ -1,0 +1,5 @@
+[[rule]]
+name = "a deny is never waived"
+file = "src/claude_voice/waivers.py"
+find = '^\s*if ask in rules\.deny:$'
+replace = 'if False:'

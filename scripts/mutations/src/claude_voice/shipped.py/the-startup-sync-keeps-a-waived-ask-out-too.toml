@@ -1,0 +1,5 @@
+[[rule]]
+name = "the startup sync keeps a waived ask out too"
+file = "src/claude_voice/shipped.py"
+find = '^\s*marked = \[permissions\.waived\(rules, found\.for_folder\(folder\)\) for folder in folders\]$'
+replace = 'marked = [rules for folder in folders]'
