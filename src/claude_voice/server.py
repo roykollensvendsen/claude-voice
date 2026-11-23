@@ -1748,7 +1748,9 @@ def build_server(
         # The approver's process is fixed here, once; a session file written later cannot move it.
         # RULE: a launched role keeps the process it started as
         held = {"name": name, "id": str(found.get("sessionId")), "pid": pid, "started": lineage.start_ticks(pid)}
-        store.set_setting(f"role:{role}", {**held, "folder": str(folder)})  # where its transcript is read
+        # RULE: a role folder behind a link is recorded as the real folder
+        real = await asyncio.to_thread(os.path.realpath, folder)  # Claude Code keys the transcript by it
+        store.set_setting(f"role:{role}", {**held, "folder": real})
         return {"role": role, "name": name, "claude_session_id": found.get("sessionId"), "status": found.get("status")}
 
     async def launch_approver(spec: dict[str, Any], folder: Path, name: str, task: str | None) -> dict[str, Any]:
@@ -1767,7 +1769,8 @@ def build_server(
         except (OSError, RuntimeError) as exc:
             raise ToolError(f"The approver could not start: {exc}") from None
         found = await appeared(name, folder, pid)
-        held = {"name": name, "id": str(found.get("sessionId")), "pid": pid, "started": ticks, "folder": str(folder)}
+        real = await asyncio.to_thread(os.path.realpath, folder)  # as for every role, the real folder
+        held = {"name": name, "id": str(found.get("sessionId")), "pid": pid, "started": ticks, "folder": real}
         store.set_setting(f"role:{boxed.CLIENT}", held)
         session = found.get("sessionId")
         return {"role": boxed.CLIENT, "name": name, "claude_session_id": session, "status": found.get("status")}
