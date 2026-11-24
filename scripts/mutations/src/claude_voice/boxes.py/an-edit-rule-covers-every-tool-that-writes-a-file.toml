@@ -1,0 +1,5 @@
+[[rule]]
+name = "an edit rule covers every tool that writes a file"
+file = "src/claude_voice/boxes.py"
+find = '^    if \(name == "Edit" and box\.tool in EDITORS\) or \(name == "Read" and box\.tool in READERS\) or name == box\.tool:$'
+replace = '    if name == box.tool:'

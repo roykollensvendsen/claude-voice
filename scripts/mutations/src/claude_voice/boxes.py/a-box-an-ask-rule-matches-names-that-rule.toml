@@ -1,0 +1,5 @@
+[[rule]]
+name = "a box an ask rule matches names that rule"
+file = "src/claude_voice/boxes.py"
+find = '^        return ASK_RULE \+ shown\(asked\)$'
+replace = '        return NO_RULE'

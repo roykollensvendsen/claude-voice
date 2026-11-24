@@ -1,0 +1,5 @@
+[[rule]]
+name = "box text is shown on one line and cut short"
+file = "src/claude_voice/boxes.py"
+find = '^    return flat if len\(flat\) <= SHOWN else flat\[: SHOWN - 1\] \+ "…"$'
+replace = '    return text'

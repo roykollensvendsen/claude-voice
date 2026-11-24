@@ -106,6 +106,7 @@ LAYERS = {
             "devmode",
             "terminals",
             "permissions",
+            "boxes",
             "hints",
             "prompts",
             "manifest",

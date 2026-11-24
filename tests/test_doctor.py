@@ -74,6 +74,16 @@ def test_a_complete_computer_passes_every_check(tmp_path):
         assert set(c) >= {"id", "title", "ok", "required", "affects", "detail", "fix", "fix_url"}
 
 
+def test_what_is_left_of_the_retired_approver_is_named_for_the_owner(tmp_path):
+    host, clone, state = healthy(tmp_path)
+    (state / "approver").mkdir()
+    left = by_id(doctor.examine(host, {"folder": str(clone)}, state_dir=state, roles=["approver", "builder"]))
+    found = left["approver_left"]
+    assert not found["ok"] and not found["required"]
+    assert str(state / "approver") in found["detail"] and "[roles.approver]" in found["detail"]
+    assert "role:approver" in found["fix"]
+
+
 def test_every_missing_piece_says_what_is_lost_and_how_to_fix_it(tmp_path):
     host = Host(tools=(), signed_in=False)
     report = doctor.examine(host, {"folder": str(tmp_path / "nowhere")}, state_dir=tmp_path, port=8811)

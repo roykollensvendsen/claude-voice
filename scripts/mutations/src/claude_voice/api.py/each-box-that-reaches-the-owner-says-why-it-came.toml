@@ -1,0 +1,5 @@
+[[rule]]
+name = "each box that reaches the owner says why it came"
+file = "src/claude_voice/api.py"
+find = '^        prompt\["cause"\] = why$'
+replace = '        pass'

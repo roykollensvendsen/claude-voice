@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import subprocess
 import time
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -242,6 +243,22 @@ def _never_runs(*args: Any, **kwargs: Any) -> Any:
     raise OSError("python3 is not installed")
 
 
+def _approver_left(state_dir: Path, roles: Iterable[str]) -> dict[str, Any]:
+    """Whether anything of the retired approver is still on disk. Nothing reads it, so it is only named."""
+    folder = state_dir.expanduser() / "approver"
+    left = [f"the folder {folder}"] if folder.exists() else []
+    left += ["the [roles.approver] table in the roles file"] if "approver" in roles else []
+    return check(
+        "approver_left",
+        "Nothing left of the retired approver",
+        not left,
+        # RULE: what is left of the retired approver is named for the owner
+        "nothing of the approver is left" if not left else "still there, and read by nothing: " + "; ".join(left),
+        affects="nothing: the approver is retired, and the bridge reads none of it",
+        fix="Remove " + " and ".join(left) + ", and the role:approver setting with it if the bridge lists one",
+    )
+
+
 def _role_clone(role: dict[str, Any]) -> tuple[Path | None, dict[str, Any]]:
     from .roles import folder_for
 
@@ -282,7 +299,13 @@ def _role_trust(host: Host, folder: Path) -> dict[str, Any]:
     )
 
 
-def examine(host: Host, role: dict[str, Any] | None, state_dir: Path = STATE_DIR, port: int = 8811) -> dict[str, Any]:
+def examine(
+    host: Host,
+    role: dict[str, Any] | None,
+    state_dir: Path = STATE_DIR,
+    port: int = 8811,
+    roles: Iterable[str] = (),
+) -> dict[str, Any]:
     """Every check, the required ones first."""
     signed_in, detail = host.login()
     checks = [
@@ -317,6 +340,7 @@ def examine(host: Host, role: dict[str, Any] | None, state_dir: Path = STATE_DIR
         _tailnet_port(host, port),
         _statusline(state_dir),
         _session_hook(host),
+        _approver_left(state_dir, roles),
     ]
     if role is not None:
         folder, clone = _role_clone(role)

@@ -1,0 +1,5 @@
+[[rule]]
+name = "what is left of the retired approver is named for the owner"
+file = "src/claude_voice/doctor.py"
+find = '^    left \+= \["the \[roles\.approver\] table in the roles file"\] if "approver" in roles else \[\]$'
+replace = '    pass'

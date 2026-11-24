@@ -39,6 +39,7 @@ from . import (
     activity,
     answers,
     api,
+    boxes,
     calllog,
     config,
     decisions,
@@ -87,7 +88,7 @@ from .tree import PROJECTS_DIR, SessionTree
 
 MIN_TOKEN_CHARS = 32
 READ_ONLY = ToolAnnotations(read_only_hint=True)
-#: The approver role, retired (approver v3): a roles file may still name it, but it never starts.
+#: The approver role, retired (approver v4.1): a roles file may still name it, but it never starts.
 RETIRED_ROLE = "approver"
 COURIER_PREFIX = "claude-voice-msg-"
 SENDING_SAY = (
@@ -689,6 +690,10 @@ def build_server(
     stalled_watch: stalled.Watch | None = None,
     stalled_tmux: Callable[[list[str]], str] | None = None,
     proof: bool = False,  # a bridge for a test or a proof: it starts no plugins, whatever its settings
+    # Why each box came: labelled and logged as it arrives, and read back for the work page.
+    # None for a test unless it gives them, so no test writes the owner's log.
+    triage: Callable[[str, str, boxes.Box], str] | None = None,
+    box_causes: Callable[[], dict[str, str]] | None = None,
 ) -> MCPServer:
     auth = None
     if oauth is not None:
@@ -1823,6 +1828,7 @@ def build_server(
         run=software._gh,
         login_expiry=lambda: work.read_login_expiry(),  # looked up late, so the suite can stand in for it
         board_url=repos.board_url,
+        causes=box_causes,
     )
 
     def software_listed() -> list[tuple[str, str, Path | None, str]]:
@@ -1876,7 +1882,8 @@ def build_server(
         }
 
     def doctor_report() -> dict[str, Any]:
-        report = doctor.examine(host, role_table().get("contribute"), port=bridge_port)
+        table = role_table()
+        report = doctor.examine(host, table.get("contribute"), port=bridge_port, roles=table)
         report["checks"] += [*config.check_paths(repos), launch.check(repos.sessions, find_program, desktop)]
         return report
 
@@ -2925,6 +2932,7 @@ def build_server(
             away=lambda app_open: PRESENCE[0].away(app_open=app_open),
             route=_router(route, across),
             activity=activity_view,
+            triage=triage,
         ).routes(mcp)
 
     mcp.prompt_book = prompt_book  # type: ignore[attr-defined]  # for tests
@@ -2998,11 +3006,23 @@ def configure_logging(log_file: Path) -> logging.Handler:
     return handler
 
 
+def _box_log(proof: bool) -> dict[str, Any]:
+    """How the bridge labels and reads back each box's cause. A proof bridge runs beside the
+    owner's, so it keeps no log of boxes in the owner's state."""
+    if proof:
+        return {}
+    triager = boxes.Triager()
+    return {"triage": triager.label, "box_causes": triager.causes}
+
+
 def serve_forever(cfg: Config) -> None:
     """Run the bridge with a checked configuration until stopped."""
     transcripts.configure_courier(cfg.courier_name)
     store = Store(cfg.db)
-    manager = SessionManager(store, project_root=cfg.root, approvals=ApprovalBroker(store))
+    box_log = _box_log(cfg.proof)
+    manager = SessionManager(
+        store, project_root=cfg.root, approvals=ApprovalBroker(store, triage=box_log.get("triage"))
+    )
     if cfg.transport == "stdio":
         build_server(manager, proof=cfg.proof).run("stdio")
         return
@@ -3025,6 +3045,7 @@ def serve_forever(cfg: Config) -> None:
         activity_file=config.STATE_DIR.expanduser() / activity.FILE,
         plugins_behind=True,
         proof=cfg.proof,
+        **box_log,
     )
     app = build_app(server, cfg.public_hosts, ui_origins=cfg.ui_origins, ui_dir=cfg.ui_dir)
     configure_logging(cfg.db.parent / LOG_FILE)

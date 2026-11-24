@@ -64,13 +64,15 @@ def _prompt(hook_input: dict[str, Any], spoken_to: str) -> dict[str, Any] | None
         return _question(session, tool_input, spoken_to)
     # RULE: a question never opens a second prompt as an approval
     if event == "PermissionRequest" and tool != "AskUserQuestion":
-        # The folder the session works in, so the bridge can sort the prompt.
+        # The folder the session works in and its permission mode, so the bridge can sort the
+        # prompt and say why it came.
         return {
             "session_id": session,
             "kind": "approval",
             "tool": tool,
             "input": tool_input,
             "cwd": hook_input.get("cwd"),
+            "mode": hook_input.get("permission_mode"),
         }
     return None
 

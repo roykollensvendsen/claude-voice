@@ -1,0 +1,5 @@
+[[rule]]
+name = "a bash rule matches the whole command or any part of a chain"
+file = "src/claude_voice/boxes.py"
+find = '^    return any\(regex\.fullmatch\(p\) or p == bare for p in pieces if p\)$'
+replace = '    return bool(regex.fullmatch(command))'

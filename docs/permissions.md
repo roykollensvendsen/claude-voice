@@ -442,6 +442,33 @@ that fills it in has to change the test on purpose.
 Each opened approval carries `routed`: `to` (always `owner` for now; older bridges wrote the owner's first name, so read any value but `manager` as the owner), the
 fixed-list `lines` it matched, the first as `line`, and `shape`.
 
+### Why a box came
+
+Each approval also carries `cause`, a moment after it opens. It is one of:
+
+- `ask rule: <rule>`, the folder's ask rule that matches the call;
+- `session hook asked`;
+- `not in auto mode`, for a session Claude Code runs in another mode;
+- `no rule matched (classifier or its pause)`;
+- `a deny matched: <rule>`, which should never make a box, so the bridge also
+  logs a warning.
+
+The rules are read as Claude Code reads them: the owner's own settings, then the
+project's shared and local ones. A voice session's box gets a cause too. Its
+folder is not known there, so only the owner's own rules count.
+
+The cause is advice. An answer is always read from the box itself, never from
+this line. Each box also gets one line in `~/.local/state/claude-voice/boxes.jsonl`,
+on this computer only. The line holds the time, the prompt, the session, the
+tool, the mode, the cause, and what the box is about. A command is named by its
+first two words, and a file by its path. All box text is shown as data: on one
+line, without control characters, and cut at 200 characters. The work page adds
+the cause to a waiting item whose `prompt` names the box.
+
+The matching is the bridge's own reading of Claude Code's rule syntax, from the
+permissions docs. It can be wrong at the edges, such as a chain of commands
+inside quotes. That is one more reason the cause is never what is pressed.
+
 ## What later runs as the owner
 
 Some files run later as the owner, with no session watching: at login, on a
