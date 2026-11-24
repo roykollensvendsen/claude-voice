@@ -131,6 +131,12 @@ def status(body: dict[str, Any] | None, running: bool) -> dict[str, Any]:
     if body.get("running"):
         said = f"The update started at {at} stopped at the {last} step without finishing."
         return out | {"state": "interrupted", "say": said}
+    return _ended(body, out, at, last)
+
+
+def _ended(body: dict[str, Any], out: dict[str, Any], at: str, last: str) -> dict[str, Any]:
+    """How a finished update ended, with the step that failed and why, if one did."""
+    steps = body.get("steps") or []
     result = str(body.get("result") or "stopped")
     out |= {"state": result, "rolled_back": result == "rolled_back"}
     failed = next((s for s in steps if not s.get("ok")), None)
