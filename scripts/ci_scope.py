@@ -72,6 +72,7 @@ WINDOWS = (
             "software",
             "stalled",
             "tailnet",
+            "temp_disk",
             "terminals*",
             "transcripts",
             "updater",
