@@ -66,6 +66,18 @@ uv run voice-checks temp-files
   run. `voice_checks.docs.safe_blocks()` gives them the blocks, and `isolated_env()` an
   environment whose home and other folders lie in the test's own folder.
 
+- **`left-behind`.** No rule is left switched off by a mutation run that was stopped halfway.
+  For each mutation row, in `scripts/mutations.toml` or a file of its own under
+  `scripts/mutations/`, it looks within 8 lines of the rule's `# RULE:` marker. When the rule's
+  own line is gone there and the row's replacement stands in its place, it names the file, the
+  line and the rule. The replacement alone counts for nothing, since `return None` or `pass`
+  stand in many files on purpose. A row whose file is gone is named too.
+
+  <!-- not run: it needs a plugin checkout -->
+  ```bash
+  uv run voice-checks left-behind
+  ```
+
 ## Move the pin
 
 <!-- not run: it rewrites the plugin's pyproject.toml -->

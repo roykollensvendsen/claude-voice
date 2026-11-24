@@ -1,0 +1,5 @@
+[[rule]]
+name = "a rule left switched off is named with its file and line"
+file = "src/voice_checks/left_behind.py"
+find = '^\s*return next\(\(i for i in below if lines\[i\]\.strip\(\) == replacement\), None\)$'
+replace = 'return None'

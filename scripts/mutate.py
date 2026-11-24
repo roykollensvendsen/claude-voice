@@ -144,34 +144,6 @@ def switched_off(text: str, rule: dict[str, object]) -> str:
     return "\n".join(lines) + "\n"
 
 
-#: A rule's marker in the source, as the evidence checks read it.
-MARKER = re.compile(r"^[ \t]*#\s*RULE:\s*(.+?)\s*$")
-
-
-#: How far from its marker, either way, a rule's own line is looked for.
-NEAR = 8
-
-
-def left_behind(text: str, rule: dict[str, object]) -> int | None:
-    """The line where a stopped run left this rule switched off, or None.
-
-    A rule's line sits near its marker, nearly always just below it. When no line near
-    the marker matches the row's pattern any more, but one is the row's replacement, the
-    run swapped the line in and never put it back. The replacement on its own proves
-    nothing: `return None` or `pass` stand in many files on purpose.
-    """
-    lines = text.splitlines()
-    marks = [i for i, line in enumerate(lines) if (m := MARKER.search(line)) and m.group(1) == rule["name"]]
-    if not marks:
-        return None
-    near = [i for i in range(max(marks[0] - NEAR, 0), min(marks[0] + NEAR + 1, len(lines))) if i != marks[0]]
-    if any(re.search(str(rule["find"]), lines[i]) for i in near):
-        return None
-    replacement = str(rule["replace"]).strip()
-    below = sorted(near, key=lambda i: (i < marks[0], abs(i - marks[0])))  # below the marker first
-    return next((i for i in below if lines[i].strip() == replacement), None)
-
-
 def ambiguous(text: str, rule: dict[str, object]) -> str | None:
     """Why a row's pattern leaves its line unclear, or None when it names one line.
 

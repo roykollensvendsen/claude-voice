@@ -4,7 +4,7 @@ import argparse
 import pathlib
 import sys
 
-from voice_checks import bump, docs, temp_files
+from voice_checks import bump, docs, left_behind, temp_files
 
 
 def _temp_files(args: argparse.Namespace) -> int:
@@ -14,6 +14,16 @@ def _temp_files(args: argparse.Namespace) -> int:
     if found:
         return 1
     print("voice-checks: no temporary file or folder can be left behind.")
+    return 0
+
+
+def _left_behind(args: argparse.Namespace) -> int:
+    found = left_behind.scan(pathlib.Path(args.root))
+    for line in found:
+        print(line)
+    if found:
+        return 1
+    print("voice-checks: no rule is left switched off by a mutation run.")
     return 0
 
 
@@ -52,6 +62,9 @@ def main(argv: list[str] | None = None) -> int:
     temps = commands.add_parser("temp-files", help="refuse a temporary file or folder that may be left behind")
     temps.add_argument("--root", default=".", help="the plugin's checkout (default: here)")
     temps.set_defaults(run=_temp_files)
+    left = commands.add_parser("left-behind", help="refuse a rule a stopped mutation run left switched off")
+    left.add_argument("--root", default=".", help="the repository's checkout (default: here)")
+    left.set_defaults(run=_left_behind)
     bumps = commands.add_parser("bump", help="move the voice-checks pin to the newest release")
     bumps.add_argument("--pyproject", default="pyproject.toml", help="the file holding the pin")
     bumps.add_argument("--sha", help="pin this commit instead of the newest release")
