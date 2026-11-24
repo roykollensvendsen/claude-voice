@@ -1,0 +1,5 @@
+[[rule]]
+name = "each programme's manager hears its own sessions largest folders"
+file = "src/claude_voice/server.py"
+find = '^\s*if at\.role is not None and at\.role\.code == "manager" and at\.programme and at\.programme\.code in held:$'
+replace = 'if False:'

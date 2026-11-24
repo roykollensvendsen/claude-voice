@@ -136,6 +136,37 @@ def test_the_folders_are_sized_only_once_the_temporary_disk_is_past_the_first_le
     assert temp_disk.reading(tmp_path, tmp_path)["largest"] == []
 
 
+def test_a_session_folder_is_named_as_claude_code_names_it():
+    assert temp_disk.folder_for("/home/u/.claude/jobs/a_b") == "-home-u--claude-jobs-a-b"
+
+
+def test_a_reading_keeps_every_session_folder_for_the_managers(tmp_path, monkeypatch):
+    for i in range(7):
+        folder_of(tmp_path, f"s{i}", [(i + 1) * 100_000])
+    full(monkeypatch, used=85)
+    out = temp_disk.reading(tmp_path, tmp_path)
+    assert len(out["largest"]) == 5 and len(out["folders"]) == 7
+
+
+def test_the_health_page_reading_leaves_out_the_full_folder_list():
+    w = temp_disk.Watch(lambda: {**reading(85), "folders": [{"folder": "s1", "mb": 2100}]}, clock=Clock())
+    w.look()
+    assert "folders" not in w.last and w.folders == [{"folder": "s1", "mb": 2100}]
+
+
+def test_a_programme_hears_only_its_own_sessions_folders():
+    folders = [{"folder": f"f{i}", "mb": 1000 - i} for i in range(9)]
+    owner = {"f1": "acme", "f3": "acme", "f4": "zeta", **{f"f{i}": "acme" for i in range(5, 9)}}
+    held = temp_disk.by_programme(folders, owner)
+    assert [f["folder"] for f in held["acme"]] == ["f1", "f3", "f5", "f6", "f7"]
+    assert [f["folder"] for f in held["zeta"]] == ["f4"]
+
+
+def test_a_manager_hears_the_level_and_its_own_largest_folders():
+    said = temp_disk.say_to_manager({"percent": 92}, "Acme Robots", [{"folder": "-a", "mb": 3000}])
+    assert "92 %" in said and "sessions stop" in said and "Acme Robots" in said and "-a (3.0 GB)" in said
+
+
 def bridge(tmp_path, levels):
     clock = Clock()
     seen = iter(levels)

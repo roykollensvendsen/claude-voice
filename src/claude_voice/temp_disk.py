@@ -9,6 +9,7 @@ A session that made something removes it itself, as the rules already say.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import tempfile
 import time
@@ -57,29 +58,43 @@ def size_of(folder: Path) -> int:
     return total
 
 
-def largest(root: Path, top: int = TOP) -> list[dict[str, Any]]:
-    """The `top` largest folders right under `root`, largest first, in megabytes."""
+def folder_for(cwd: str) -> str:
+    """The folder Claude Code gives a session under `sessions_root()`: the session's working
+    folder, with each character that is not a letter or a digit made a '-'."""
+    return re.sub(r"[^A-Za-z0-9]", "-", cwd)
+
+
+def sized(root: Path) -> list[dict[str, Any]]:
+    """Every folder right under `root`, largest first, in megabytes."""
     try:
         folders = [p for p in root.iterdir() if p.is_dir() and not p.is_symlink()]
     except OSError:
         return []
-    sized = sorted(((size_of(p), p.name) for p in folders), reverse=True)[:top]
-    return [{"folder": name, "mb": round(size / 1_000_000)} for size, name in sized]
+    ordered = sorted(((size_of(p), p.name) for p in folders), reverse=True)
+    return [{"folder": name, "mb": round(size / 1_000_000)} for size, name in ordered]
+
+
+def largest(root: Path, top: int = TOP) -> list[dict[str, Any]]:
+    """The `top` largest folders right under `root`, largest first, in megabytes."""
+    return sized(root)[:top]
 
 
 def reading(disk: Path, root: Path) -> dict[str, Any]:
-    """How full `disk` is, and from WARN up the largest folders under `root`.
+    """How full `disk` is, and from WARN up the folders under `root`: the largest, and all of
+    them for the managers.
 
     Below WARN nobody is told, so the folders are not walked: on a full disk a walk is costly.
     """
     usage = shutil.disk_usage(disk)
     percent = round(100 * usage.used / usage.total) if usage.total else 0
+    # RULE: the folders are sized only once the temporary disk is past the first level
+    folders = sized(root) if percent >= WARN else []
     return {
         "percent": percent,
         "used_gb": round(usage.used / 1e9, 1),
         "total_gb": round(usage.total / 1e9, 1),
-        # RULE: the folders are sized only once the temporary disk is past the first level
-        "largest": largest(root) if percent >= WARN else [],
+        "largest": folders[:TOP],
+        "folders": folders,
         "at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
 
@@ -100,6 +115,27 @@ def say(now: dict[str, Any], level: int) -> str:
     return f"The shared temporary disk is {now['percent']} % full{stop}; the largest folders are {held}."
 
 
+def by_programme(folders: list[dict[str, Any]], owner: dict[str, str]) -> dict[str, list[dict[str, Any]]]:
+    """Each programme's own largest folders, at most TOP, from `folders` (largest first) and
+    `owner`, which gives the programme of each folder a running session works in."""
+    held: dict[str, list[dict[str, Any]]] = {}
+    for f in folders:
+        # RULE: a programme hears only its own sessions folders
+        if (programme := owner.get(f["folder"])) is not None and len(held.setdefault(programme, [])) < TOP:
+            held[programme].append(f)
+    return held
+
+
+def say_to_manager(now: dict[str, Any], programme: str, held: list[dict[str, Any]]) -> str:
+    """What a programme's manager hears: how full the disk is, and its own sessions' largest folders."""
+    stop = ", and sessions stop when it fills" if now["percent"] >= FULL else ""
+    folders = ", ".join(f"{f['folder']} ({_size(f['mb'])})" for f in held)
+    return (
+        f"The shared temporary disk is {now['percent']} % full{stop}. In {programme}, these sessions' folders "
+        f"hold most: {folders}. Have them remove what they no longer need."
+    )
+
+
 class Watch:
     """Measures the disk at most every `every` seconds, and says so once per level it passes."""
 
@@ -108,6 +144,7 @@ class Watch:
     ) -> None:
         self.measure, self.clock, self.every = measure, clock, every
         self.last: dict[str, Any] | None = None  # the latest reading, for the health page
+        self.folders: list[dict[str, Any]] = []  # every folder of the latest reading, for the managers
         self._due = 0.0
         self._told = 0  # the highest level said since the disk was last below it
 
@@ -122,6 +159,8 @@ class Watch:
             self.last = self.measure()
         except OSError:
             return None  # a disk that can't be read now is read again next time
+        # RULE: the health page reading leaves out the full folder list
+        self.folders = self.last.pop("folders", [])
         percent = self.last["percent"]
         level = FULL if percent >= FULL else WARN if percent >= WARN else 0
         # RULE: a temporary disk that falls back is reported again when it passes a level next

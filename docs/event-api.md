@@ -520,13 +520,20 @@ ever deleted. A session that made something removes it itself.
   shared temporary disk is 82 % full; the largest folders are …", with up to five
   folders and their sizes.
 - At 90 %, the item adds that sessions stop when it fills.
+- At each level, the running manager of each programme is sent its own sessions'
+  largest folders, up to five, and asked to have them tidied. A folder belongs
+  to a programme when a running session of that programme works in it; the
+  folder's name is that session's working folder, with every character other
+  than a letter or digit made a `-`. A folder no running session works in goes
+  to no manager. A message that doesn't arrive is logged, not sent again.
 
 Each level is said once. When the disk falls back below it, it is said again the
 next time the disk passes it.
 
 A folder's name is the path of the project its session works in. It can name
 other programmes and the owner's own folders. So the reading stays with the
-owner's voice and `health`, and is never written to a public page or GitHub.
+owner's voice, `health` and each manager's own folders, and is never written to
+a public page or GitHub.
 
 ## Roles
 
