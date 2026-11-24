@@ -279,13 +279,6 @@ class Store:
         row = self.db.execute("SELECT 1 FROM started WHERE claude_session_id = ?", (claude_session_id,)).fetchone()
         return row is not None
 
-    def is_role(self, claude_session_id: str) -> bool:
-        """Whether the bridge launched this session as a role. A session started by voice is not
-        one: it is recorded as started, but only a role launch writes the `role:<name>` setting."""
-        rows = self.db.execute("SELECT value FROM settings WHERE key LIKE 'role:%'").fetchall()
-        # RULE: only a session started as a role waits for the approver
-        return any(_role_id(row[0]) == claude_session_id for row in rows)
-
     def rename(self, claude_session_id: str, was: str, name: str, old: Iterable[str]) -> None:
         """Session `claude_session_id`, which Claude Code calls `was`, is now `name`; the
         names in `old` still reach it."""
@@ -389,12 +382,3 @@ def _decode(row: sqlite3.Row) -> dict[str, Any]:
     d = dict(row)
     d["payload"] = json.loads(d["payload"])
     return d
-
-
-def _role_id(value: str) -> str | None:
-    """The session id a `role:<name>` setting holds, or None for one that holds none."""
-    try:
-        held = json.loads(value)
-    except ValueError:
-        return None
-    return str(held["id"]) if isinstance(held, dict) and held.get("id") else None

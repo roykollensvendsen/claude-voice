@@ -1,5 +1,0 @@
-[[rule]]
-name = "uv run that fetches other code goes to the owner"
-file = "src/claude_voice/approver.py"
-find = 'if any\(w.startswith\(UV_FETCHES'
-replace = 'if False:'

@@ -1,5 +1,0 @@
-[[rule]]
-name = "anything but one plain allowed command goes to the owner"
-file = "src/claude_voice/approver.py"
-find = 'if parts is None or len\(parts\) != 1'
-replace = 'if parts is None:'

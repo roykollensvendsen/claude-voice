@@ -1,5 +1,0 @@
-[[rule]]
-name = "a token ask and a report never stand in for each other"
-file = "src/claude_voice/approver.py"
-find = 'if isinstance\(body, dict\) and body.get\("ask"\) == "token":'
-replace = 'if False:'

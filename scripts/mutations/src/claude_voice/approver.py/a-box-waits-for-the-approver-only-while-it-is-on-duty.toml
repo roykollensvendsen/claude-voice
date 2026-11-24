@@ -1,5 +1,0 @@
-[[rule]]
-name = "a box waits for the approver only while it is on duty"
-file = "src/claude_voice/approver.py"
-find = 'return prompt.get\("kind"\) == "approval" and self.on_duty\(\) and self.role'
-replace = 'return prompt.get("kind") == "approval" and self.role(str(prompt.get("session")))'

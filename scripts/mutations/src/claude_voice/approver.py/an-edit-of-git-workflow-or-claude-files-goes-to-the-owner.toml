@@ -1,5 +1,0 @@
-[[rule]]
-name = "an edit of git, workflow or claude files goes to the owner"
-file = "src/claude_voice/approver.py"
-find = 'if tool != "Read" and not _writable'
-replace = 'if False:'

@@ -1,5 +1,0 @@
-[[rule]]
-name = "a subcommand off the approvers list goes to the owner"
-file = "src/claude_voice/approver.py"
-find = 'if program in SUBCOMMANDS and \(not rest'
-replace = 'if False:'

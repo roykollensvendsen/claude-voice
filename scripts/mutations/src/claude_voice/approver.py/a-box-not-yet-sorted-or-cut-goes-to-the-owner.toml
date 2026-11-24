@@ -1,5 +1,0 @@
-[[rule]]
-name = "a box not yet sorted or cut goes to the owner"
-file = "src/claude_voice/approver.py"
-find = 'if lines is None:'
-replace = 'if False:'

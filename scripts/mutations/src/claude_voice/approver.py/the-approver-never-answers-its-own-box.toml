@@ -1,5 +1,0 @@
-[[rule]]
-name = "the approver never answers its own box"
-file = "src/claude_voice/approver.py"
-find = 'if prompt.get\("session"\) == caller:'
-replace = 'if False:'

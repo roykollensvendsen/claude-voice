@@ -1,5 +1,0 @@
-[[rule]]
-name = "a command run from outside the repo goes to the owner"
-file = "src/claude_voice/approver.py"
-find = 'if not routing\.inside\(str\(cwd\)'
-replace = 'if False:'

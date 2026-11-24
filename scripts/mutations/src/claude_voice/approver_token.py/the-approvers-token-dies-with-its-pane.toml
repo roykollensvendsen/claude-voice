@@ -1,5 +1,0 @@
-[[rule]]
-name = "the approvers token dies with its pane"
-file = "src/claude_voice/approver_token.py"
-find = 'return started is not None and lineage.start_ticks\(pid\) == started'
-replace = 'return started is not None'

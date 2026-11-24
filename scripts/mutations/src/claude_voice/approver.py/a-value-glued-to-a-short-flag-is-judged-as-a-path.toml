@@ -1,5 +1,0 @@
-[[rule]]
-name = "a value glued to a short flag is judged as a path"
-file = "src/claude_voice/approver.py"
-find = 'return \[word\[i:\] for i in range\(2, len\(word\)\)\]'
-replace = 'return [word[2:]]'

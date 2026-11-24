@@ -1,0 +1,5 @@
+[[rule]]
+name = "the retired approver role never starts"
+file = "src/claude_voice/server.py"
+find = '^        if role == RETIRED_ROLE:$'
+replace = '        if False:'

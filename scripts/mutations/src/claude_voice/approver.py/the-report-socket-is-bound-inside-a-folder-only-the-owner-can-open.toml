@@ -1,5 +1,0 @@
-[[rule]]
-name = "the report socket is bound inside a folder only the owner can open"
-file = "src/claude_voice/approver.py"
-find = 'path.parent.chmod\(0o700\)'
-replace = 'pass'
