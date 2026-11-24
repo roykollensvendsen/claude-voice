@@ -668,6 +668,11 @@ def _stalled_parts(
     return given or stalled.Watch(after_min, clock=clock), tmux or stalled.run_tmux
 
 
+def _temp_watch(given: temp_disk.Watch | None) -> temp_disk.Watch:
+    """The watch a test hands in, or one over the machine's own temporary disk."""
+    return given or temp_disk.Watch(temp_disk.machine_reading)
+
+
 def build_server(
     manager: SessionManager,
     oauth: OAuthProvider | None = None,
@@ -749,7 +754,7 @@ def build_server(
 
     watcher = events.LiveWatcher(manager.store, live_dir, manager.root, clock=manager.clock)
     replies = mailbox.Mailbox(manager.store.db, clock=manager.clock)
-    temp_watch = temp_watch or temp_disk.Watch(temp_disk.machine_reading)
+    temp_watch = _temp_watch(temp_watch)
 
     def heard(sender: str, body: str) -> None:
         """A reply is news for the phone page's stream, and waits in the mailbox for the voice."""
