@@ -36,7 +36,7 @@ def test_a_rule_whose_line_is_in_place_passes(tmp_path):
     assert scan(repo(tmp_path, BACK)) == []
 
 
-def test_the_replacement_on_its_own_is_no_leftover(tmp_path):
+def test_a_rule_whose_own_line_is_still_near_its_marker_is_no_leftover(tmp_path):
     """`if False:` may stand on purpose, even beside the rule; only the rule's own line gone counts."""
     assert scan(repo(tmp_path, BACK + "    if False:\n        pass\n")) == []
 

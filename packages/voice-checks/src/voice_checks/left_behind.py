@@ -35,7 +35,7 @@ def left_behind(text: str, rule: dict[str, object]) -> int | None:
     if not marks:
         return None
     near = [i for i in range(max(marks[0] - NEAR, 0), min(marks[0] + NEAR + 1, len(lines))) if i != marks[0]]
-    # RULE: the replacement on its own is no leftover
+    # RULE: a rule whose own line is still near its marker is no leftover
     if any(re.search(str(rule["find"]), lines[i]) for i in near):
         return None
     replacement = str(rule["replace"]).strip()

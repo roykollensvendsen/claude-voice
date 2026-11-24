@@ -1,5 +1,5 @@
 [[rule]]
-name = "the replacement on its own is no leftover"
+name = "a rule whose own line is still near its marker is no leftover"
 file = "src/voice_checks/left_behind.py"
 find = '^\s*if any\(re\.search\(str\(rule\["find"\]\), lines\[i\]\) for i in near\):$'
 replace = 'if False:'
