@@ -1,0 +1,5 @@
+[[rule]]
+name = "a module function wins over a method of the same name"
+file = "src/voice_checks/temp_files.py"
+find = '^\s*functions \|= \{f\.name: f for f in getattr\(tree, "body", \[\]\) if isinstance\(f, ast\.FunctionDef \| ast\.AsyncFunctionDef\)\}$'
+replace = 'functions |= {}'

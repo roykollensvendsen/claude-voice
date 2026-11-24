@@ -92,6 +92,14 @@ def test_a_folder_its_named_functions_remove_is_let_through(place):
     assert offences(_run_folders(**{place: marker})) == []
 
 
+def test_a_module_function_wins_over_a_method_of_the_same_name():
+    """A bare-name call can only reach a module function, so a method called `remove` hides nothing."""
+    held = _run_folders(above="# temp-files: removed by remove") + (
+        "\nclass Held:\n    def remove(self):\n        return remove(self.path)\n"
+    )
+    assert offences(held) == []
+
+
 def test_os_remove_counts_as_removing():
     assert offences(_run_folders(above="# temp-files: removed by removes_a_file")) == []
 
