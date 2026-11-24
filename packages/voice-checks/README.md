@@ -66,6 +66,22 @@ uv run voice-checks temp-files
   run. `voice_checks.docs.safe_blocks()` gives them the blocks, and `isolated_env()` an
   environment whose home and other folders lie in the test's own folder.
 
+- **`ci-limits`.** No job in `.github/workflows` that runs tests carries `timeout-minutes`,
+  on the job or on one of its steps. A job runs tests when a line of it names pytest, a
+  mutation run, the quality ratchet, or a wrapper such as `make test`, tox, nox,
+  `hatch test`, `just test`, `gradlew test`, `npm test` or a script under `scripts/`. A
+  limit cuts a slow but honest run short, and time caps are removed, never raised
+  (ADR-CV-021). A job that runs no tests may keep its limit.
+
+  Workflows are read as text, so a comment neither runs tests nor sets a limit. Jobs written
+  in flow style (`{...}`) or through YAML anchors are not read. A file with a limit whose
+  jobs can't be read fails, rather than passing unread.
+
+  <!-- not run: it needs a plugin checkout -->
+  ```bash
+  uv run voice-checks ci-limits
+  ```
+
 ## Move the pin
 
 <!-- not run: it rewrites the plugin's pyproject.toml -->

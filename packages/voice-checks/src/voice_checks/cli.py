@@ -4,7 +4,17 @@ import argparse
 import pathlib
 import sys
 
-from voice_checks import bump, docs, temp_files
+from voice_checks import bump, ci_limits, docs, temp_files
+
+
+def _ci_limits(args: argparse.Namespace) -> int:
+    found = ci_limits.scan(pathlib.Path(args.root))
+    for line in found:
+        print(f"voice-checks: {line}; time caps are removed, never raised")
+    if found:
+        return 1
+    print("voice-checks: no job that runs tests has a time limit.")
+    return 0
 
 
 def _temp_files(args: argparse.Namespace) -> int:
@@ -52,6 +62,9 @@ def main(argv: list[str] | None = None) -> int:
     temps = commands.add_parser("temp-files", help="refuse a temporary file or folder that may be left behind")
     temps.add_argument("--root", default=".", help="the plugin's checkout (default: here)")
     temps.set_defaults(run=_temp_files)
+    limits = commands.add_parser("ci-limits", help="refuse a time limit on a CI job that runs tests or mutation")
+    limits.add_argument("--root", default=".", help="the plugin's checkout (default: here)")
+    limits.set_defaults(run=_ci_limits)
     bumps = commands.add_parser("bump", help="move the voice-checks pin to the newest release")
     bumps.add_argument("--pyproject", default="pyproject.toml", help="the file holding the pin")
     bumps.add_argument("--sha", help="pin this commit instead of the newest release")

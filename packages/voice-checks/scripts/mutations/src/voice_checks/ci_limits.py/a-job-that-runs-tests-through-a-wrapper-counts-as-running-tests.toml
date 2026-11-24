@@ -1,0 +1,5 @@
+[[rule]]
+name = "a job that runs tests through a wrapper counts as running tests"
+file = "src/voice_checks/ci_limits.py"
+find = 'if not any\(RUNS_TESTS\.search\(line\) or WRAPPERS\.search\(line\) for _, line in lines\):'
+replace = 'if not any(RUNS_TESTS.search(line) for _, line in lines):'

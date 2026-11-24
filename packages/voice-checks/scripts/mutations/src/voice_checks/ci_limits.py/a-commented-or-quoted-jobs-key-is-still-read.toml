@@ -1,0 +1,5 @@
+[[rule]]
+name = "a commented or quoted jobs key is still read"
+file = "src/voice_checks/ci_limits.py"
+find = '^JOBS = re\.compile\('
+replace = 'JOBS = re.compile(r"^jobs:\s*$")'
