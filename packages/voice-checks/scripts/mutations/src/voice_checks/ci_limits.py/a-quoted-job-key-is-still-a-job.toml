@@ -1,0 +1,5 @@
+[[rule]]
+name = "a quoted job key is still a job"
+file = "src/voice_checks/ci_limits.py"
+find = '^KEY = re\.compile\('
+replace = 'KEY = re.compile(r"^( +)()([\w-]+)\2:\s*(?:#.*)?$")'
