@@ -207,7 +207,7 @@ def _built_name_may_recurse(raw: list[str]) -> bool:
         # RULE: a remove whose command name the shell builds asks
         if name not in TESTS and BUILT.search(name) and _flags_may_recurse(words[(at or 0) + 1 :]):
             return True
-        built =[i for i, word in enumerate(words) if word not in TESTS and BUILT.search(word)]
+        built = [i for i, word in enumerate(words) if word not in TESTS and BUILT.search(word)]
         # RULE: a built word followed by a flag rm reads as recursive asks
         if any(_rm_would_recurse(later) for i in built for later in words[i + 1 :]):
             return True
