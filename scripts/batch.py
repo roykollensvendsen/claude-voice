@@ -53,6 +53,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import red_first  # scripts/red_first.py, beside this script: it is what reads the excuses
+
 from claude_voice.tracker import verdicts
 
 FULL_SHA = re.compile(r"[0-9a-f]{40}")
@@ -194,12 +196,9 @@ def exceptions(members: Iterable[Member]) -> list[str]:
 PINNED = re.compile(r"^[ \t]*(Red-first:[ \t]*existing behaviou?r[ \t]*[-–—].*?)[ \t]*$", re.MULTILINE)
 
 
-#: The test an excuse line names, as red_first.py reads it.
-EXCUSED = re.compile(r"existing behaviou?r[ \t]*[-–—][ \t]*([^\s,]+)")
-
-
 def _excused(lines: Iterable[Any]) -> set[str]:
-    return {m.group(1) for line in lines if (m := EXCUSED.search(str(line)))}
+    """The tests the lines excuse, read with red_first.py's own pattern so the two never drift."""
+    return {m.group(1) for line in lines if (m := red_first.MARKER.search(str(line).strip()))}
 
 
 def _recorded(s: dict[str, Any]) -> set[str]:
@@ -234,7 +233,7 @@ def pinned(members: Iterable[Member]) -> list[str]:
         stamps = _approving(m)
         seen_by_all = set.intersection(*(_recorded(s) for s in stamps)) if stamps else set()
         # RULE: only an excuse every stamp recorded is copied
-        lines = [line for line in dict.fromkeys(PINNED.findall(m.body)) if _excused([line]) <= seen_by_all]
+        lines = [line for line in dict.fromkeys(PINNED.findall(m.body)) if set() < _excused([line]) <= seen_by_all]
         # RULE: a members existing behaviour lines are copied tagged with its pull request
         out += [f"{line} (#{m.number})" for line in lines]
     return out

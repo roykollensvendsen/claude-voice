@@ -396,6 +396,21 @@ def test_a_members_existing_behaviour_lines_are_copied_tagged_with_its_pull_requ
     ]
 
 
+def test_the_batch_reads_each_excuse_by_the_name_red_first_reads():
+    import red_first
+
+    assert batch._excused(batch.PINNED.findall(PINS)) == red_first.excuses(PINS)
+
+
+def test_an_excuse_line_without_a_test_name_is_not_copied():
+    """red-first can't read a name from it, so it would excuse nothing, and it is dropped."""
+    body = "Red-first: existing behaviour - \n" + PINS
+    assert batch.pinned([member(9, body=body, stamps=[seen()])]) == [
+        "Red-first: existing behaviour - test_the_sessions_are_in_one_list (#9)",
+        "Red-first: existing behavior – test_a_number_is_never_passed_on (#9)",
+    ]
+
+
 def test_only_an_excuse_every_stamp_recorded_is_copied():
     both = [seen(), seen(by="voice-architect", lines=SEEN[:1])]
     assert batch.pinned([member(9, body=PINS, stamps=both)]) == [
