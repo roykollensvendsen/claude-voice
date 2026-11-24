@@ -80,6 +80,12 @@ def test_an_update_whose_process_died_is_said_to_have_stopped_without_finishing(
     assert out["state"] == "interrupted" and "without finishing" in out["say"] and "test" in out["say"]
 
 
+def test_a_failed_step_with_nothing_to_say_is_named_without_an_empty_reason():
+    bare = {**ROLLED_BACK, "steps": [step("check"), step("install", False, "")], "detail": ""}
+    said = updater.status(bare, running=False)["say"]
+    assert said.endswith("rolled back at the install step.") and ": ." not in said
+
+
 def test_a_problem_is_one_short_line():
     long = {**ROLLED_BACK, "steps": [step("install", False, "x" * 900)]}
     assert len(updater.status(long, running=False)["problem"]) <= 200

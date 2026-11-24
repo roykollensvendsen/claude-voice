@@ -1,0 +1,5 @@
+[[rule]]
+name = "a failed step with nothing to say is named without an empty reason"
+file = "src/claude_voice/updater.py"
+find = '    reason = f": \{problem\}" if problem else ""'
+replace = '    reason = f": {problem}"'
