@@ -23,8 +23,9 @@ class Text:
 class FakePlugin:
     """A plugin as the bridge holds it: a name, its allowed tools, and a call."""
 
-    def __init__(self, name, tools, answer=None, wait=0.0, fails=None, is_error=False):
+    def __init__(self, name, tools, answer=None, wait=0.0, fails=None, is_error=False, looks=None):
         self.spec = SimpleNamespace(name=name, tools=tools)
+        self.looks = set(tools) if looks is None else looks
         self.answer, self.wait, self.fails, self.is_error = answer, wait, fails, is_error
         self.calls = []
         self.finished = False
@@ -49,6 +50,18 @@ def test_a_plugins_status_tool_is_the_one_named_status():
     assert plugin_status.status_tool(["lamp_on"]) is None
 
 
+def test_the_shortest_status_tool_name_is_picked_whatever_the_order():
+    assert plugin_status.status_tool(["vacuum_full_status", "vacuum_status"]) == "vacuum_status"
+    assert plugin_status.status_tool(["vacuum_status", "vacuum_full_status"]) == "vacuum_status"
+
+
+async def test_only_a_status_tool_the_listing_marks_read_only_is_called():
+    unmarked = FakePlugin("tv", ["reset_status"], answer={"say": "Reset."}, looks=set())
+    out = await plugin_status.check([unmarked], seconds=1)
+    assert unmarked.calls == []
+    assert out["no_status_tool"] == [{"plugin": "tv", "why": "its status tool is not marked read-only"}]
+
+
 async def test_every_plugin_is_asked_at_once_and_a_slow_one_is_named_without_holding_up_the_answer():
     quick = FakePlugin("lamp", ["lamp_status"], answer={"say": "The lamp is on."})
     slow = FakePlugin("door", ["door_status"], answer={"say": "Shut."}, wait=30)
@@ -66,7 +79,19 @@ async def test_a_slow_plugins_call_is_left_to_finish_and_never_cut_off():
     assert out["too_slow"] == ["door"]
     await asyncio.sleep(0.4)
     assert slow.finished  # never cut off midway
-    assert not plugin_status.LEFT_RUNNING  # and let go once it finished
+    assert "door" not in plugin_status.RUNNING  # and let go once it finished
+
+
+async def test_a_plugin_still_busy_from_an_earlier_check_is_not_asked_again():
+    hung = FakePlugin("door", ["door_status"], answer={"say": "Shut."}, wait=0.5)
+    first = await plugin_status.check([hung], seconds=0.05)
+    second = await plugin_status.check([hung], seconds=0.05)
+    assert len(hung.calls) == 1
+    assert first["too_slow"] == ["door"] and first["still_busy"] == []
+    assert second["too_slow"] == ["door"] and second["still_busy"] == ["door"]
+    await asyncio.sleep(0.6)
+    await plugin_status.check([hung], seconds=1)
+    assert len(hung.calls) == 2  # asked again once the earlier call finished
 
 
 async def test_a_plugin_that_fails_is_named_with_its_reason():
@@ -79,10 +104,10 @@ async def test_a_plugin_that_fails_is_named_with_its_reason():
     ]
 
 
-async def test_a_plugin_without_a_status_tool_is_named_and_not_called():
+async def test_a_plugin_without_a_read_only_status_tool_is_named_and_not_called():
     plain = FakePlugin("radio", ["radio_play"])
     out = await plugin_status.check([plain], seconds=1)
-    assert out["no_status_tool"] == ["radio"] and plain.calls == []
+    assert out["no_status_tool"] == [{"plugin": "radio", "why": "it has no status tool"}] and plain.calls == []
 
 
 async def test_each_answer_is_cut_to_one_short_line():
