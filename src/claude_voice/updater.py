@@ -29,13 +29,14 @@ import re
 import subprocess
 import sys
 import time
+import unicodedata
 import urllib.request
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import cpu_watch, procs, restarts, safe_git, safefile
+from . import cpu_watch, procs, redact, restarts, safe_git, safefile
 from .config import STATE_DIR
 
 LOG = Path("~/.local/state/claude-voice/update.json")
@@ -114,7 +115,15 @@ def _clock(at: object) -> str:
 
 def _one_line(detail: str) -> str:
     """The first line of a step's detail that says something, short enough to read out."""
-    return next((line.strip() for line in detail.splitlines() if line.strip()), "")[:200]
+    return _spoken(next((line.strip() for line in detail.splitlines() if line.strip()), ""))
+
+
+def _spoken(text: str) -> str:
+    """Words from git, uv or the service manager as they may be said: secrets hidden, no
+    control characters, at most 200 characters."""
+    # RULE: a failed step's words are said with secrets hidden and control characters gone
+    clean = "".join(" " if unicodedata.category(ch).startswith("C") else ch for ch in redact.mask(text))
+    return redact.hide(" ".join(clean.split()), 200)
 
 
 def status(body: dict[str, Any] | None, running: bool) -> dict[str, Any]:
@@ -125,6 +134,8 @@ def status(body: dict[str, Any] | None, running: bool) -> dict[str, Any]:
     at, last = _clock(body.get("started_at")), (steps[-1]["step"] if steps else "first")
     keep = ("started_at", "finished_at", "from", "to", "detail")
     out: dict[str, Any] = {key: body[key] for key in keep if body.get(key)} | {"step": last}
+    if out.get("detail"):
+        out["detail"] = _spoken(str(out["detail"]))
     if running:
         return out | {"state": "running", "say": f"An update has run since {at}; it is at the {last} step."}
     # RULE: an update whose process died is said to have stopped without finishing
