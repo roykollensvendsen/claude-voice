@@ -4,11 +4,24 @@ approved machine, named with the machine in front, and never wait long for one."
 import time
 
 import httpx
+import pytest
 from test_agent_sessions import laptop_bridge
 from test_machines import SPEC, Laptop, approve, call
 from test_plugins import bridge_with
 
-from claude_voice import machines
+from claude_voice import fleet, machines
+
+
+@pytest.fixture
+def patient(monkeypatch):
+    """A hub that waits for the laptop however slow the runner is.
+
+    The laptop here answers in-process, so its speed is the runner's. A loaded Windows runner
+    once took past the hub's two seconds, the laptop was reported as not answering, and its
+    sessions were left out of the list (#520). Only the tests about those limits keep them.
+    """
+    monkeypatch.setattr(machines.Machine, "start_seconds", 600.0)
+    monkeypatch.setattr(fleet, "ASK_SECONDS", 600.0)
 
 
 async def hub_with_laptop(tmp_path, http=None):
@@ -27,7 +40,7 @@ def the_hub(tmp_path, laptop, http=None):
     )
 
 
-async def test_the_sessions_on_every_machine_are_in_one_list(tmp_path):
+async def test_the_sessions_on_every_machine_are_in_one_list(tmp_path, patient):
     laptop, _ = await hub_with_laptop(tmp_path)
     async with laptop:
         await approve(laptop, tmp_path / "hub")
@@ -39,7 +52,7 @@ async def test_the_sessions_on_every_machine_are_in_one_list(tmp_path):
     assert listed["machines"][0]["name"] == "laptop-a" and listed["machines"][0]["reachable"] is True
 
 
-async def test_a_session_on_another_machine_is_reached_by_the_machine_name_in_front(tmp_path):
+async def test_a_session_on_another_machine_is_reached_by_the_machine_name_in_front(tmp_path, patient):
     laptop, deliver = await hub_with_laptop(tmp_path)
     async with laptop:
         await approve(laptop, tmp_path / "hub")
@@ -101,7 +114,7 @@ async def test_looking_across_machines_never_waits_long_for_one():
     assert [m["error"] for m in across.rows()] == ["did not answer", "did not answer"]
 
 
-async def test_a_session_on_another_machine_gets_its_number_from_the_same_pool_as_the_hub(tmp_path):
+async def test_a_session_on_another_machine_gets_its_number_from_the_same_pool_as_the_hub(tmp_path, patient):
     laptop, deliver = await hub_with_laptop(tmp_path)
     async with laptop:
         await approve(laptop, tmp_path / "hub")
@@ -124,7 +137,7 @@ def _numbers_in(body):
     return []
 
 
-async def test_a_session_number_from_another_machine_is_never_passed_on(tmp_path):
+async def test_a_session_number_from_another_machine_is_never_passed_on(tmp_path, patient):
     laptop, _ = await hub_with_laptop(tmp_path)
     async with laptop:
         await approve(laptop, tmp_path / "hub")
@@ -138,7 +151,7 @@ async def test_a_session_number_from_another_machine_is_never_passed_on(tmp_path
     assert _numbers_in([listed, tree, recap, page]) == []
 
 
-async def test_a_session_on_another_machine_is_made_the_active_one_by_its_number(tmp_path):
+async def test_a_session_on_another_machine_is_made_the_active_one_by_its_number(tmp_path, patient):
     laptop, _ = await hub_with_laptop(tmp_path)
     async with laptop:
         await approve(laptop, tmp_path / "hub")
