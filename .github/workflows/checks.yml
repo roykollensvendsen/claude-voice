@@ -259,6 +259,8 @@ jobs:
         run: uv run mypy src
       - name: Its own tests
         run: uv run pytest -q -p no:cacheprovider --strict-markers --cov=voice_checks
+      - name: No rule left switched off, in the bridge and in this package
+        run: uv run voice-checks left-behind --root ../.. && uv run voice-checks left-behind --root .
 
   checks:
     needs: scope
