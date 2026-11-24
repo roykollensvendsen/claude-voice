@@ -1,0 +1,5 @@
+[[rule]]
+name = "a temporary disk past a level is news for the voice"
+file = "src/claude_voice/server.py"
+find = '^\s*if said:$'
+replace = 'if False:'
