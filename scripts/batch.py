@@ -10,6 +10,7 @@ its own:
 
 - `why_not`: why a pull request may not go into a batch, or nothing when it may;
 - `exceptions`: the Ratchet-Exception lines the batch body copies;
+- `pinned`: the members' "Red-first: existing behaviour" lines the batch body copies;
 - `culprit`: the pull request that breaks a batch, found by merge order;
 - `merge_list`: the commands the manager runs once a batch is green, and the records each
   one rests on. This script never merges;
@@ -80,6 +81,7 @@ class Member:
     ci_green: bool
     stamps: list[dict[str, Any]] = field(default_factory=list)
     yes: dict[str, Any] | None = None
+    body: str = ""
 
 
 def _approving(m: Member) -> list[dict[str, Any]]:
@@ -184,6 +186,22 @@ def exceptions(members: Iterable[Member]) -> list[str]:
         # RULE: only exceptions every stamp recorded are copied tagged with their pull request
         shared = set.intersection(*(set(map(str, r)) for r in recorded if isinstance(r, list)))
         out += [f"{line} (#{m.number})" for line in sorted(shared)]
+    return out
+
+
+#: A line saying a test only pins behaviour that was already there, as red_first.py reads it.
+PINNED = re.compile(r"^[ \t]*(Red-first:[ \t]*existing behaviou?r[ \t]*[-–—].*?)[ \t]*$", re.MULTILINE)
+
+
+def pinned(members: Iterable[Member]) -> list[str]:
+    """Each member's lines excusing a test that passed before, tagged with its pull request.
+
+    The batch runs red-first over all its members' tests at once, so it needs their excuses too.
+    """
+    out: list[str] = []
+    for m in members:
+        # RULE: a members existing behaviour lines are copied tagged with its pull request
+        out += [f"{line} (#{m.number})" for line in dict.fromkeys(PINNED.findall(m.body))]
     return out
 
 
@@ -341,7 +359,9 @@ class Recorded:
 RECORD = re.compile(r"<!-- batch-record\n(?P<lines>.*?)\n-->", re.S)
 
 
-def render_body(record: Recorded, copied: Sequence[str], left_out: dict[int, list[str]]) -> str:
+def render_body(
+    record: Recorded, copied: Sequence[str], left_out: dict[int, list[str]], pins: Sequence[str] = ()
+) -> str:
     """The batch pull request's body: for people at the top, and the record the script reads back."""
     lines = [
         "Do not merge. This is a batch: main with each cleared pull request applied in order (ADR-CV-023).",
@@ -354,6 +374,10 @@ def render_body(record: Recorded, copied: Sequence[str], left_out: dict[int, lis
         "",
         "Ratchet exceptions the stamps recorded, each at the start of its line, where the ratchet reads it:",
         *(list(copied) or ["none"]),
+        "",
+        "Tests the members say only pin behaviour already there, each at the start of its line,"
+        " where red-first reads it:",
+        *(list(pins) or ["none"]),
         "",
         "Left out:",
         *([f"- #{n}: {'; '.join(why)}" for n, why in sorted(left_out.items())] or ["- none"]),
@@ -441,7 +465,7 @@ Gh = Callable[[Sequence[str]], str]
 STATE = Path("~/.local/state/claude-voice").expanduser()
 SANDBOX = Path(__file__).resolve().parent.parent / ".claude/skills/review-contribution/sandboxed.sh"
 CHECKS_LOG = "decision-checks.jsonl"
-FIELDS = "number,headRefOid,headRefName,isDraft,statusCheckRollup"
+FIELDS = "number,headRefOid,headRefName,isDraft,statusCheckRollup,body"
 
 
 class Stop(Exception):
@@ -481,7 +505,8 @@ def _member(
     name = repo.rpartition("/")[2]
     yes = checked_yes(rows, name, number, head) or vouched.get(number)
     stamps = read_stamps(reviews, name, number)
-    return Member(number, head, "", bool(pr["isDraft"]), ci_green(pr.get("statusCheckRollup") or []), stamps, yes)
+    green = ci_green(pr.get("statusCheckRollup") or [])
+    return Member(number, head, "", bool(pr["isDraft"]), green, stamps, yes, str(pr.get("body") or ""))
 
 
 def _apply(work: Path, tip: str, number: int) -> str | None:
@@ -546,7 +571,7 @@ def build(
     branch = branch_name(day, {line.split("refs/heads/")[-1] for line in heads.splitlines()})
     git(work, "branch", branch, tip)
     record = Recorded(branch, base, entries)
-    body_file.write_text(render_body(record, exceptions(chosen), left_out), encoding="utf-8")
+    body_file.write_text(render_body(record, exceptions(chosen), left_out, pinned(chosen)), encoding="utf-8")
     return [
         f"git -C {work} push origin {branch}",
         f"gh pr create --repo {repo} --draft --base main --head {branch}"

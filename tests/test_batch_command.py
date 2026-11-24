@@ -51,7 +51,7 @@ class World:
         git(self.seed, "add", name)
         git(self.seed, "commit", "--quiet", "-m", message)
 
-    def pull_request(self, number, name, text, *, draft=False, stamped=True, tier="low"):
+    def pull_request(self, number, name, text, *, draft=False, stamped=True, tier="low", body=""):
         git(self.seed, "checkout", "--quiet", "--detach", self.base)
         self.commit(name, text, f"pull request {number}")
         head = git(self.seed, "rev-parse", "HEAD")
@@ -62,6 +62,7 @@ class World:
             "headRefOid": head,
             "headRefName": f"feat/{number}",
             "isDraft": draft,
+            "body": body,
             "statusCheckRollup": [
                 {"__typename": "CheckRun", "name": "checks", "status": "COMPLETED", "conclusion": "SUCCESS"}
             ],
@@ -143,6 +144,15 @@ def test_build_applies_the_cleared_pull_requests_in_order_and_leaves_out_the_res
         f"gh pr create --repo {REPO} --draft --base main --head integration/2026-11-24"
         f" --title 'batch: integration/2026-11-24' --body-file {world.root / 'body.md'}",
     ]
+
+
+def test_build_copies_only_the_chosen_members_existing_behaviour_lines(world):
+    world.pull_request(4, "four.txt", "4\n", body="Red-first: existing behaviour - test_four\n")
+    world.pull_request(12, "twelve.txt", "12\n", draft=True, body="Red-first: existing behaviour - test_twelve\n")
+    build(world, FakeGh(world))
+    body = (world.root / "body.md").read_text(encoding="utf-8")
+    assert "Red-first: existing behaviour - test_four (#4)" in body
+    assert "test_twelve" not in body
 
 
 def test_build_leaves_out_a_pull_request_that_does_not_apply_on_the_batch(world):
