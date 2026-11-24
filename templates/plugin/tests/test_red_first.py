@@ -431,6 +431,22 @@ def test_a_package_s_tests_are_looked_at_too(tmp_path):
     assert red_first.changed_test_files(base, head, cwd=repo) == ["packages/p/tests/test_p.py", "tests/test_root.py"]
 
 
+def test_the_before_tree_takes_no_package_code_from_a_folder_named_tests(tmp_path):
+    """Only packages/<name>/tests is tests. A folder called tests deeper in a package's code is code."""
+    repo, base, head = fake_pull_request(
+        tmp_path,
+        {"packages/p/src/deep/tests/helper.py": "OLD = 1\n"},
+        {"packages/p/src/deep/tests/helper.py": "NEW = 2\n", "packages/p/tests/test_p.py": "def test_p():\n    pass\n"},
+    )
+    before = tmp_path / "before"
+    red_first.before_tree(base, head, before, cwd=repo)
+    try:
+        assert (before / "packages/p/src/deep/tests/helper.py").read_text() == "OLD = 1\n"
+        assert (before / "packages/p/tests/test_p.py").exists()
+    finally:
+        git(repo, "worktree", "remove", "--force", str(before))
+
+
 def test_a_package_s_tests_run_in_the_package_s_own_folder(tmp_path):
     """Each package runs with its own project, as its own check does, and is named in each test's id."""
     test = (

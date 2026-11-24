@@ -4,7 +4,8 @@
 A test that passes on its first run proves nothing. This runs the tests a pull
 request adds or changes against its merge base, with only the changes under
 tests/ applied, and each must fail there. A package's tests, under
-packages/<name>/tests, run the same way in the package's own folder and environment. It runs them again on the branch,
+packages/<name>/tests, run the same way, in the package's own folder and
+environment. It runs them again on the branch,
 where each must pass. Run it from the repository root, or name the repository with --repo:
 
     uv run python scripts/red_first.py --base origin/main --head HEAD [--body-file body.md] [--repo PATH]
@@ -183,7 +184,7 @@ def prove(counted: list[str], run: Run, body: str) -> tuple[bool, list[str]]:
 
 
 #: Where tests live: the repository's own, and each package's under packages/<name>/tests.
-TEST_PATHS = ("tests", "packages/*/tests/*")
+TEST_PATHS = ("tests", ":(glob)packages/*/tests/**")  # glob: '*' stays within one folder
 
 
 def is_test_file(path: str) -> bool:
