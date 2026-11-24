@@ -1,0 +1,5 @@
+[[rule]]
+name = "a rolled back update names the step that failed and why in one line"
+file = "src/claude_voice/updater.py"
+find = '    if failed is not None:'
+replace = '    if False:'

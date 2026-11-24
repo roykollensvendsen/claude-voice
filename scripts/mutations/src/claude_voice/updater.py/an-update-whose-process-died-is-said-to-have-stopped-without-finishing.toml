@@ -1,0 +1,5 @@
+[[rule]]
+name = "an update whose process died is said to have stopped without finishing"
+file = "src/claude_voice/updater.py"
+find = '    if body\.get\("running"\):'
+replace = '    if False:'
