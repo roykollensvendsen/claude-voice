@@ -49,7 +49,9 @@ EDITORS = frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit"})
 READERS = frozenset({"Read", "Grep", "Glob"})
 BREAKS = ("Zl", "Zp")  # the line and paragraph separators, which start a new line too
 RULE = re.compile(r"^([A-Za-z0-9_-]+)(?:\((.*)\))?$", re.DOTALL)
-JOINS = re.compile(r"\s*(?:&&|\|\||;|\|)\s*")
+JOINS = re.compile(r"\s*(?:&&|\|\||;|\||&|\n)\s*")  # for a line the shell could not parse
+# What ends one simple command in a chain, as the session hook's own check reads them (literal_gh).
+SEPARATORS = frozenset({";", "&", "|", "&&", "||", "|&", ";;", ";&", "\n", "(", ")"})
 
 
 def _hidden(c: str) -> bool:
@@ -140,12 +142,30 @@ def _wildcard(pattern: str, star: str) -> re.Pattern[str]:
     return re.compile("".join(words.get(p, re.escape(p)) for p in parts), re.DOTALL)
 
 
+def _pieces(command: str) -> list[str]:
+    """Each simple command of a chain, split as the shell splits it: on newlines and a lone `&`
+    too, never inside quotes. A line the shell could not parse is split on its joins alone."""
+    lexer = shlex.shlex(command, posix=True, punctuation_chars="();<>|&\n")
+    lexer.whitespace, lexer.commenters, lexer.whitespace_split = " \t\r", "", True
+    found: list[list[str]] = [[]]
+    try:
+        for token in lexer:
+            # RULE: a chain is split as the shell splits it
+            if token in SEPARATORS:
+                found.append([])
+            else:
+                found[-1].append(token)
+    except ValueError:
+        return JOINS.split(command)
+    return [" ".join(words) for words in found if words]
+
+
 def _bash_matches(spec: str, command: str) -> bool:
     """Claude Code's Bash rule: `*` any text, spaces too; `x:*` and `x *` also match `x` alone."""
     if spec.endswith(":*"):
         spec = spec[:-2] + " *"
     bare = spec[:-2] if spec.endswith(" *") else None
-    pieces = [command.strip(), *JOINS.split(command.strip())]
+    pieces = [command.strip(), *_pieces(command.strip())]
     regex = _wildcard(spec, ".*")
     # RULE: a bash rule matches the whole command or any part of a chain
     return any(regex.fullmatch(p) or p == bare for p in pieces if p)

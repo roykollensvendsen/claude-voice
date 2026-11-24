@@ -67,6 +67,21 @@ def test_a_bash_rule_matches_the_whole_command_or_any_part_of_a_chain(repo, home
 
 
 @pytest.mark.parametrize(
+    ("command", "hit"),
+    [
+        ("cd x\ngit push origin y", True),
+        ("make & git push", True),
+        ("(git push)", True),
+        ("make |& git push", True),
+        ("echo 'a && git push'", False),  # inside quotes it is one word, not a command
+        ("echo 'unclosed && git push", True),  # one the shell cannot parse is split on its joins
+    ],
+)
+def test_a_chain_is_split_as_the_shell_splits_it(repo, home, command, hit):
+    assert boxes.matches("Bash(git push:*)", bash(command, repo), home) is hit
+
+
+@pytest.mark.parametrize(
     ("rule", "tool", "path", "hit"),
     [
         ("Edit(./.claude/**)", "Write", ".claude/skills/a/SKILL.md", True),
