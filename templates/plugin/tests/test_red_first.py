@@ -393,3 +393,24 @@ def test_a_run_that_fails_also_leaves_no_checkout_folder_behind(tmp_path, monkey
     with pytest.raises(SystemExit):
         red_first.run_both(base, head, cwd=repo, setup=lambda tree: [sys.executable])(["tests/test_a.py::test_a"])
     assert list(scratch.iterdir()) == []
+
+
+def test_the_check_runs_from_any_folder_given_the_repository(tmp_path, monkeypatch, capsys):
+    """A session whose shell can't stay in a worktree still runs the check on it, by naming it."""
+    test = (
+        "import pathlib\nimport sys\n\n"
+        "sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))\n\n"
+        "from answer import X\n\n\ndef test_x():\n    assert X == 2\n"
+    )
+    repo, base, head = fake_pull_request(
+        tmp_path, {"answer.py": "X = 1\n"}, {"answer.py": "X = 2\n", "tests/test_x.py": test}
+    )
+    real = red_first.run_both
+    monkeypatch.setattr(
+        red_first, "run_both", lambda b, h, cwd=None: real(b, h, cwd=cwd, setup=lambda tree: [sys.executable])
+    )
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    assert red_first.main(["--repo", str(repo), "--base", base, "--head", head]) == 0
+    assert "1 test failed before this change and pass on it: tests/test_x.py::test_x" in capsys.readouterr().out

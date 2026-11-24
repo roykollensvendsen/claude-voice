@@ -385,3 +385,24 @@ def test_a_tree_s_tests_cannot_import_the_branch_s_scripts_through_the_plugin(tm
     (tmp_path / "tests/test_uses_it.py").write_text("import red_first\n\n\ndef test_uses_it():\n    pass\n")
     got = red_first.outcomes(["tests/test_uses_it.py::test_uses_it"], tmp_path, python=[sys.executable])
     assert got == {"tests/test_uses_it.py::test_uses_it": "failed"}
+
+
+def test_the_check_runs_from_any_folder_given_the_repository(tmp_path, monkeypatch, capsys):
+    """A session whose shell can't stay in a worktree still runs the check on it, by naming it."""
+    test = (
+        "import pathlib\nimport sys\n\n"
+        "sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))\n\n"
+        "from answer import X\n\n\ndef test_x():\n    assert X == 2\n"
+    )
+    repo, base, head = fake_pull_request(
+        tmp_path, {"answer.py": "X = 1\n"}, {"answer.py": "X = 2\n", "tests/test_x.py": test}
+    )
+    real = red_first.run_both
+    monkeypatch.setattr(
+        red_first, "run_both", lambda b, h, cwd=None: real(b, h, cwd=cwd, setup=lambda tree: [sys.executable])
+    )
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    assert red_first.main(["--repo", str(repo), "--base", base, "--head", head]) == 0
+    assert "1 test failed before this change and pass on it: tests/test_x.py::test_x" in capsys.readouterr().out
