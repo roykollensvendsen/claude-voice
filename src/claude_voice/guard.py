@@ -156,9 +156,15 @@ GH_GRAPHQL = ("graphql", "api/graphql")
 GH_HOST = re.compile(r"^[a-z]+://[^/]+(?:/api/v3)?(?=/)", re.IGNORECASE)
 #: `gh api` field values that read a file or stdin, where a GraphQL query could hide.
 GH_FROM_FILE = re.compile(r"^(?:-F|--field=?)?query=@")
-#: GraphQL mutations that merge, or set a status.
+#: GraphQL mutations that merge or queue a merge, write to a branch or move a ref, set a status or
+#: a check, or change the protection on main or the repository. Taken from GitHub's own schema;
+#: it has no mutations for webhooks or Actions permissions.
 GH_MUTATIONS = re.compile(
-    r"mergePullRequest|enablePullRequestAutoMerge|mergeBranch|createCommitStatus|createCheckRun|updateCheckRun"
+    r"mergePullRequest|enablePullRequest(?:Auto|Agent)Merge|enqueuePullRequest|mergeBranch"
+    r"|createCommitOnBranch|updateRefs?\b|deleteRef\b"
+    r"|createCommitStatus|createCheckRun|updateCheckRun|createCheckSuite"
+    r"|(?:create|update|delete)BranchProtectionRule|(?:create|update|delete)RepositoryRuleset"
+    r"|updateRepository\b|archiveRepository"
 )
 #: Options before git's subcommand that take the next word as their value.
 GIT_VALUES = ("-C", "-c", "--config-env", "--git-dir", "--work-tree")
@@ -320,7 +326,10 @@ def _gh_write(words: list[str], substitutes: bool = False) -> str | None:
             return "sends GitHub's API a query the guard cannot read, from a file or stdin"
         # RULE: a graphql query in a variable or a substitution is refused
         if substitutes or any("$" in w for w in words):
-            return "sends GitHub's API a query the guard cannot read, from a variable or a command"
+            return (
+                "sends GitHub's API a query the guard cannot read, from a variable or a command"
+                " (write the query, and any value it needs, inline)"
+            )
         return "merges or sets a status through GitHub's API" if any(GH_MUTATIONS.search(w) for w in words) else None
     writes = _gh_method(words) not in ("GET", "HEAD")
     # RULE: a writing api call to a merge or a status is refused
