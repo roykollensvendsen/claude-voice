@@ -368,6 +368,31 @@ def test_the_batch_body_carries_each_copied_exception_where_the_ratchet_reads_it
     assert ratchet.exceptions(body) == {"coverage"}
 
 
+PINS = """\
+Red-first: packages/x/tests/test_y.py, a new module.
+Red-first: existing behaviour - test_the_sessions_are_in_one_list
+  Red-first: existing behavior – test_a_number_is_never_passed_on
+Not a marker: Red-first: existing behaviour - test_quoted
+"""
+
+
+def test_a_members_existing_behaviour_lines_are_copied_tagged_with_its_pull_request():
+    found = batch.pinned([member(4), batch.Member(9, OTHER, PATCH, False, True, body=PINS)])
+    assert found == [
+        "Red-first: existing behaviour - test_the_sessions_are_in_one_list (#9)",
+        "Red-first: existing behavior – test_a_number_is_never_passed_on (#9)",
+    ]
+
+
+def test_the_batch_body_carries_each_existing_behaviour_line_where_red_first_reads_it():
+    import red_first
+
+    lines = batch.pinned([batch.Member(9, OTHER, PATCH, False, True, body=PINS)])
+    body = batch.render_body(recorded(), [], {}, lines)
+    assert red_first.excuses(body) == {"test_the_sessions_are_in_one_list", "test_a_number_is_never_passed_on"}
+    assert batch.parse_body(body) == recorded()
+
+
 def test_the_merge_list_refuses_when_main_moved_off_the_base_or_a_member_is_no_longer_cleared():
     assert batch.merge_refusals("d" * 40, "d" * 40, {4: [], 9: []}) == []
     assert batch.merge_refusals("d" * 40, "0" * 40, {4: [], 9: []}) == [
