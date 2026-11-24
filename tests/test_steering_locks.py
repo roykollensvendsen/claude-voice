@@ -82,7 +82,8 @@ def test_a_shell_write_to_a_tracked_file_that_steers_is_asked(repo, home, name, 
 @pytest.mark.parametrize("form", ["~/.claude/{}", "$HOME/.claude/{}", "{home}/.claude/{}"])
 def test_every_steering_file_at_home_is_refused(repo, home, name, form, monkeypatch):
     monkeypatch.setenv("HOME", str(home))
-    assert judge("cp y " + form.format(name, home=home), repo, home) == "deny"
+    # The shell reads a backslash as an escape, so a home spelled out is written with forward slashes.
+    assert judge("cp y " + form.format(name, home=home.as_posix()), repo, home) == "deny"
 
 
 @pytest.mark.parametrize(

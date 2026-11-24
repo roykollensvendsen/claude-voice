@@ -115,6 +115,8 @@ def _level_of_spelling(word: str, cwd: str, home: str) -> int:
         named = max((level for marker, level in MARKERS if marker in word), default=NONE)
         return max([named] + [_level_of_path(p, home) for p in found])
     try:
+        if "\0" in word:  # Windows resolves a NUL without complaint; no file can hold one
+            raise ValueError("a NUL in a path")
         written = os.path.normpath(os.path.join(cwd, word))
         resolved = os.path.realpath(os.path.join(cwd, word))
     except (OSError, ValueError):
