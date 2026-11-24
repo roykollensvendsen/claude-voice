@@ -65,7 +65,9 @@ def jobs(text: str) -> list[tuple[str, list[tuple[int, str]]]]:
 def scan(root: pathlib.Path, no_tests: frozenset[str] = frozenset()) -> list[str]:
     """Each time limit not allowed, as `path:line: what`.
 
-    A limit is allowed only on a job named in `no_tests` whose lines show no tests.
+    A limit is allowed only on a job named in `no_tests` whose lines show no tests. A job is
+    named with its workflow file, as `checks.yml:commits`, so a job of the same name in
+    another workflow gets no pass from it.
     """
     folder = root / ".github" / "workflows"
     if not folder.is_dir():
@@ -88,9 +90,9 @@ def scan(root: pathlib.Path, no_tests: frozenset[str] = frozenset()) -> list[str
                     # RULE: a job that runs tests with a time limit is refused
                     found.append(f"{shown}:{number}: the {name} job runs tests and has timeout-minutes")
                 # RULE: a time limit on a job not named as running no tests is refused
-                elif name not in no_tests:
+                elif f"{path.name}:{name}" not in no_tests:
                     found.append(
                         f"{shown}:{number}: the {name} job has timeout-minutes"
-                        " but is not named as running no tests (--no-tests)"
+                        f" but is not named as running no tests (--no-tests {path.name}:{name})"
                     )
     return found

@@ -68,8 +68,8 @@ def main(argv: list[str] | None = None) -> int:
         "--no-tests",
         action="append",
         default=[],
-        metavar="JOB",
-        help="a job that runs no tests and may keep its time limit; give it once per job",
+        metavar="FILE:JOB",
+        help="a job that runs no tests and may keep its time limit, as checks.yml:commits; once per job",
     )
     limits.set_defaults(run=_ci_limits)
     bumps = commands.add_parser("bump", help="move the voice-checks pin to the newest release")

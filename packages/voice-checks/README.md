@@ -73,9 +73,11 @@ uv run voice-checks temp-files
   limit cuts a slow but honest run short, and time caps are removed, never raised
   (ADR-CV-021).
 
-  Only a job the repository names with `--no-tests JOB` may keep its limit, such as one that
-  lints commit messages. A limit on any other job is refused, so a new way of running tests
-  can't slip past the word list. A named job whose lines still show tests is refused too.
+  Only a job the repository names with `--no-tests FILE:JOB` may keep its limit, such as one
+  that lints commit messages. The workflow file is part of the name, so a job of the same
+  name in another workflow gets no pass. A limit on any other job is refused, so a new way of
+  running tests can't slip past the word list. A named job whose lines still show tests is
+  refused too.
 
   Workflows are read as text, so a comment neither runs tests nor sets a limit. Jobs written
   in flow style (`{...}`) or through YAML anchors are not read. A file with a limit whose
@@ -83,7 +85,7 @@ uv run voice-checks temp-files
 
   <!-- not run: it needs a plugin checkout -->
   ```bash
-  uv run voice-checks ci-limits --no-tests commits
+  uv run voice-checks ci-limits --no-tests checks.yml:commits
   ```
 
 ## Move the pin
