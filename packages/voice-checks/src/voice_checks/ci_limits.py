@@ -2,7 +2,9 @@
 
 The owner's rule is that time caps are removed, never raised. A limit on a test job cuts a
 slow but honest run short, and the red it leaves says nothing about the change. A job that
-runs no tests, such as one that lints commit messages, may keep its limit.
+runs no tests, such as one that lints commit messages, may keep its limit, but only when the
+repository names it as such. Guessing from a job's lines would miss a new way of running
+tests (#529). A named job whose lines still show tests is refused all the same.
 
 Workflows are read as text, not as YAML, so the check needs nothing installed. A job is the
 block under `jobs:` that starts at the first key's indent. Comment lines are skipped, so a
@@ -60,8 +62,11 @@ def jobs(text: str) -> list[tuple[str, list[tuple[int, str]]]]:
     return found
 
 
-def scan(root: pathlib.Path) -> list[str]:
-    """Each time limit on a job that runs tests, as `path:line: what`."""
+def scan(root: pathlib.Path, no_tests: frozenset[str] = frozenset()) -> list[str]:
+    """Each time limit not allowed, as `path:line: what`.
+
+    A limit is allowed only on a job named in `no_tests` whose lines show no tests.
+    """
     folder = root / ".github" / "workflows"
     if not folder.is_dir():
         return []
@@ -75,10 +80,17 @@ def scan(root: pathlib.Path) -> list[str]:
             found.append(f"{shown}: has timeout-minutes, but its jobs could not be read")
         for name, lines in read:
             # RULE: a job that runs tests through a wrapper counts as running tests
-            if not any(RUNS_TESTS.search(line) or WRAPPERS.search(line) for _, line in lines):
-                continue
+            tests = any(RUNS_TESTS.search(line) or WRAPPERS.search(line) for _, line in lines)
             for number, line in lines:
-                if LIMIT.match(line):
+                if not LIMIT.match(line):
+                    continue
+                if tests:
                     # RULE: a job that runs tests with a time limit is refused
                     found.append(f"{shown}:{number}: the {name} job runs tests and has timeout-minutes")
+                # RULE: a time limit on a job not named as running no tests is refused
+                elif name not in no_tests:
+                    found.append(
+                        f"{shown}:{number}: the {name} job has timeout-minutes"
+                        " but is not named as running no tests (--no-tests)"
+                    )
     return found

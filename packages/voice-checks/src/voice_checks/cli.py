@@ -8,12 +8,12 @@ from voice_checks import bump, ci_limits, docs, temp_files
 
 
 def _ci_limits(args: argparse.Namespace) -> int:
-    found = ci_limits.scan(pathlib.Path(args.root))
+    found = ci_limits.scan(pathlib.Path(args.root), frozenset(args.no_tests))
     for line in found:
         print(f"voice-checks: {line}; time caps are removed, never raised")
     if found:
         return 1
-    print("voice-checks: no job that runs tests has a time limit.")
+    print("voice-checks: only jobs named as running no tests have a time limit.")
     return 0
 
 
@@ -64,6 +64,13 @@ def main(argv: list[str] | None = None) -> int:
     temps.set_defaults(run=_temp_files)
     limits = commands.add_parser("ci-limits", help="refuse a time limit on a CI job that runs tests or mutation")
     limits.add_argument("--root", default=".", help="the plugin's checkout (default: here)")
+    limits.add_argument(
+        "--no-tests",
+        action="append",
+        default=[],
+        metavar="JOB",
+        help="a job that runs no tests and may keep its time limit; give it once per job",
+    )
     limits.set_defaults(run=_ci_limits)
     bumps = commands.add_parser("bump", help="move the voice-checks pin to the newest release")
     bumps.add_argument("--pyproject", default="pyproject.toml", help="the file holding the pin")

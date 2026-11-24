@@ -33,13 +33,29 @@ def workflow(root, text, name="checks.yml"):
 
 def test_a_job_that_runs_tests_with_a_time_limit_is_refused(tmp_path):
     workflow(tmp_path, CAPPED)
-    found = ci_limits.scan(tmp_path)
+    found = ci_limits.scan(tmp_path, frozenset({"commits"}))
     assert found == [".github/workflows/checks.yml:11: the checks job runs tests and has timeout-minutes"]
 
 
-def test_a_job_that_runs_no_tests_may_keep_its_time_limit(tmp_path):
+def test_a_job_named_as_running_no_tests_may_keep_its_time_limit(tmp_path):
     workflow(tmp_path, CAPPED.replace("timeout-minutes: 20", "permissions: {}"))
-    assert ci_limits.scan(tmp_path) == []
+    assert ci_limits.scan(tmp_path, frozenset({"commits"})) == []
+
+
+def test_a_time_limit_on_a_job_not_named_as_running_no_tests_is_refused(tmp_path):
+    """A job that runs tests some unknown way is caught: only the named ones may keep a limit (#529)."""
+    workflow(tmp_path, CAPPED.replace("timeout-minutes: 20", "permissions: {}"))
+    assert ci_limits.scan(tmp_path) == [
+        ".github/workflows/checks.yml:6: the commits job has timeout-minutes"
+        " but is not named as running no tests (--no-tests)"
+    ]
+
+
+def test_a_job_named_as_running_no_tests_that_runs_tests_is_refused_all_the_same(tmp_path):
+    workflow(tmp_path, CAPPED)
+    assert ci_limits.scan(tmp_path, frozenset({"commits", "checks"})) == [
+        ".github/workflows/checks.yml:11: the checks job runs tests and has timeout-minutes"
+    ]
 
 
 def test_a_time_limit_on_a_step_counts_too(tmp_path):
@@ -91,7 +107,7 @@ jobs:
       - run: uv run pytest
 """
     workflow(tmp_path, text)
-    assert ci_limits.scan(tmp_path) == []
+    assert ci_limits.scan(tmp_path, frozenset({"commits"})) == []
 
 
 def test_a_job_key_with_a_trailing_comment_is_still_a_job(tmp_path):
@@ -170,5 +186,12 @@ def test_ci_limits_fails_and_names_each_place(tmp_path, capsys):
 
 def test_ci_limits_passes_a_clean_tree(tmp_path, capsys):
     workflow(tmp_path, CAPPED.replace("timeout-minutes: 20", "permissions: {}"))
-    assert main(["ci-limits", "--root", str(tmp_path)]) == 0
-    assert "no job that runs tests has a time limit" in capsys.readouterr().out
+    assert main(["ci-limits", "--root", str(tmp_path), "--no-tests", "commits"]) == 0
+    assert "only jobs named as running no tests have a time limit" in capsys.readouterr().out
+
+
+def test_ci_limits_takes_several_no_test_jobs(tmp_path):
+    text = CAPPED.replace("uv run python -m pytest -q", "echo ok")
+    workflow(tmp_path, text)
+    assert main(["ci-limits", "--root", str(tmp_path), "--no-tests", "commits"]) == 1
+    assert main(["ci-limits", "--root", str(tmp_path), "--no-tests", "commits", "--no-tests", "checks"]) == 0

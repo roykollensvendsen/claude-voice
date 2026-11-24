@@ -1,0 +1,5 @@
+[[rule]]
+name = "a time limit on a job not named as running no tests is refused"
+file = "src/voice_checks/ci_limits.py"
+find = '^\s*elif name not in no_tests:$'
+replace = 'elif False:'
