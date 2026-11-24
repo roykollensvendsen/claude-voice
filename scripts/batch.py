@@ -53,9 +53,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import red_first  # scripts/red_first.py, beside this script: it is what reads the excuses
+# This checkout's own code, found even under `python -I`, which puts neither folder on the path.
+_HERE = Path(__file__).resolve().parent
+sys.path[:0] = [str(_HERE), str(_HERE.parent / "src")]
 
-from claude_voice.tracker import verdicts
+import red_first  # noqa: E402  # it is what reads the excuses, so the batch reads them the same way
+
+from claude_voice.tracker import verdicts  # noqa: E402
 
 FULL_SHA = re.compile(r"[0-9a-f]{40}")
 #: The reviewers a risky pull request needs, by the name each signs its verdicts with.

@@ -396,6 +396,15 @@ def test_a_members_existing_behaviour_lines_are_copied_tagged_with_its_pull_requ
     ]
 
 
+def test_the_batch_starts_in_python_s_isolated_mode():
+    """Under -I the script's own folder is not on the path, so red_first must be found another way."""
+    import subprocess
+
+    script = pathlib.Path(__file__).parent.parent / "scripts" / "batch.py"
+    run = subprocess.run([sys.executable, "-I", str(script), "--help"], capture_output=True, text=True, timeout=60)
+    assert run.returncode == 0, run.stderr
+
+
 def test_the_batch_reads_each_excuse_by_the_name_red_first_reads():
     import red_first
 
