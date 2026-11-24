@@ -322,6 +322,31 @@ def mutation_figures(
     return {"killed": killed if mutate.returncode == 0 else min(killed, total - 1), "total": total}
 
 
+#: What a measure run says when the tree's own suite fails, and how a check knows it.
+SUITE_RED = "The suite fails; the ratchet measures a green tree."
+
+#: The exit status of a check whose base cannot be measured: neither a pass (0) nor a level
+#: made worse by the change (1).
+BASE_UNMEASURED = 3
+
+
+class BaseUnmeasured(SystemExit):
+    """The base's own suite is red, so it has no levels to compare a change with."""
+
+    def __init__(self, ref: str, said: str) -> None:
+        failed = re.search(r"^FAILED (\S+)", said, re.MULTILINE)
+        self.ref, self.first = ref, failed[1] if failed else None
+        super().__init__(BASE_UNMEASURED)
+
+    def __str__(self) -> str:
+        short = self.ref[:7] if re.fullmatch(r"[0-9a-f]{8,40}", self.ref) else self.ref
+        first = self.first or "its first failure is in the log above"
+        return (
+            f"base {short} can't be measured: main's own suite is red ({first}). "
+            "This is not this pull request's fault; fix main, or merge past it with the owner's yes."
+        )
+
+
 def measure(
     skip_mutation: bool = False, recorded: dict[str, Any] | None = None, mutations: Path | None = None
 ) -> dict[str, Any]:
@@ -332,7 +357,7 @@ def measure(
             lambda: _run("uv", "run", "pytest", "-q", "-p", "no:cacheprovider", "--cov", f"--cov-report=json:{report}")
         )
         if suite.returncode:
-            raise SystemExit("The suite fails; the ratchet measures a green tree.\n" + suite.stdout[-2000:])
+            raise SystemExit(f"{SUITE_RED}\n" + suite.stdout[-2000:])
         coverage = round(json.loads(report.read_text())["totals"]["percent_covered"], 2)
     passed = re.search(r"(\d+) passed", suite.stdout)
     lint = _run("uv", "run", "ruff", "check", ".", "--output-format", "json")
@@ -502,6 +527,9 @@ def measure_at(ref: str, skip_mutation: bool = False) -> dict[str, Any]:
         # RULE: a quick check measures the base without its mutation run
         quick = ["--skip-mutation"] if skip_mutation else []
         measured = _run("uv", "run", "python", here, "measure", "--out", str(out), *quick, cwd=copy, env=env)
+        # RULE: a base whose own suite is red is said to be unmeasurable
+        if measured.returncode and SUITE_RED in measured.stdout + measured.stderr:
+            raise BaseUnmeasured(ref, measured.stdout + measured.stderr)
         if measured.returncode:
             raise SystemExit(f"Measuring {ref} failed:\n{measured.stdout[-2000:]}{measured.stderr[-2000:]}")
         return dict(json.loads(out.read_text()))
@@ -549,7 +577,12 @@ def main() -> int:
     if not args.base:
         print("check needs --base, the ref to compare with (usually origin/main).", file=sys.stderr)
         return 1
-    base = base_levels(args.levels, lambda: measure_at(args.base, args.skip_mutation))
+    try:
+        base = base_levels(args.levels, lambda: measure_at(args.base, args.skip_mutation))
+    except BaseUnmeasured as red:
+        # RULE: the check names mains red suite and not the pull request
+        print(str(red), file=sys.stderr)
+        return BASE_UNMEASURED
     now = measure(args.skip_mutation, base, args.mutations)
     if args.out:
         write_levels(args.out, now)
