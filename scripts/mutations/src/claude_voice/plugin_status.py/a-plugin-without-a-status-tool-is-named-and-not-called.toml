@@ -1,0 +1,5 @@
+[[rule]]
+name = "a plugin without a status tool is named and not called"
+file = "src/claude_voice/plugin_status.py"
+find = '^        if tool is None:$'
+replace = '        if False:'

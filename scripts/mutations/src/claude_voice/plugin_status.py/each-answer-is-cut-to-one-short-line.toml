@@ -1,0 +1,5 @@
+[[rule]]
+name = "each answer is cut to one short line"
+file = "src/claude_voice/plugin_status.py"
+find = '^    line = next\(\(part\.strip\(\) for part in said\.splitlines\(\) if part\.strip\(\)\), ""\)$'
+replace = '    line = said'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a plugin that fails is named with its reason"
+file = "src/claude_voice/plugin_status.py"
+find = '^            failed\.append\(\{"plugin": name, "problem": str\(job\.exception\(\)\)\}\)$'
+replace = '            failed.append({"plugin": name, "problem": "failed"})'

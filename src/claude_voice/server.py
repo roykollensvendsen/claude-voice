@@ -63,6 +63,7 @@ from . import (
     org,
     phone_hook,
     plugin_desk,
+    plugin_status,
     plugin_venv,
     plugins,
     procs,
@@ -2684,6 +2685,14 @@ def build_server(
                 "tree_version": tree_version[0] if tree_version else tree.build()["version"],
             },
         }
+
+    @tool(annotations=READ_ONLY)
+    async def plugins_status() -> dict[str, Any]:
+        """How every running plugin is, asked all at once: read 'say' aloud.
+        Each plugin's own status tool gets a few seconds. `answered` holds one line each,
+        `failed` the reason, and `too_slow` those that did not answer in time."""
+        # RULE: the plugin check asks the plugins that are running
+        return await plugin_status.check(list(active_plugins))
 
     def caller() -> str:
         return transcripts.current_client.get()
