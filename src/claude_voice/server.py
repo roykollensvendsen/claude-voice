@@ -3019,6 +3019,9 @@ def build_server(
     mcp.sweep_prompts = sweep_prompts  # type: ignore[attr-defined]  # for tests
 
     mcp.fleet = across  # type: ignore[attr-defined]  # the other machines, for tests and the CLI
+    # The call log starts after the bridge, and knows the other machines only from here.
+    # RULE: the call log knows the machines named in the bridges settings
+    mcp.machine_names = [spec.name for spec in repos.machines]  # type: ignore[attr-defined]
     mcp.org_check = tell_programmes  # type: ignore[attr-defined]  # for tests
     mcp.idle_check = tell_idle  # type: ignore[attr-defined]  # for tests
     mcp.deliveries_in_flight = in_flight  # type: ignore[attr-defined]  # for tests
@@ -3117,7 +3120,7 @@ def serve_forever(cfg: Config) -> None:
     app = build_app(server, cfg.public_hosts, ui_origins=cfg.ui_origins, ui_dir=cfg.ui_dir)
     configure_logging(cfg.db.parent / LOG_FILE)
     envfile.warn(log)
-    calls = calllog.CallLog(config.STATE_DIR / calllog.FILE, store, machines=[spec.name for spec in cfg.machines])
+    calls = calllog.CallLog(config.STATE_DIR / calllog.FILE, store, machines=server.machine_names)  # type: ignore[attr-defined]
     try:
         calls.start_up()
         CALLS[:] = [calls]
