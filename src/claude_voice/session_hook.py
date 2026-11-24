@@ -155,17 +155,22 @@ def _flags_may_recurse(words: list[str]) -> bool:
 WRAPPERS = frozenset({"command", "env", "nice", "time", "sudo", "doas", "busybox", "exec", "nohup"})
 #: Options of those programs that take the next word as their value.
 WRAPPER_VALUES = frozenset({"-u", "-g", "-n", "-C", "-p"})
-#: Words the shell itself reads at a command's start: none is a built name.
-SHELL_WORDS = frozenset({"[", "[[", "{", "}"})
+#: The shell's own words before a command, which the name comes after.
+KEYWORDS = frozenset({"{", "!", "if", "then", "elif", "else", "while", "until", "do"})
+#: The test command's names: they hold a bracket, but the shell never builds them.
+TESTS = frozenset({"[", "[["})
 ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
+#: A flag rm reads as recursive: its own short options only, with r or R among them.
+RM_RECURSIVE = re.compile(r"-[fiIdvrR]*[rR][fiIdvrR]*")
 
 
 def _name_at(words: list[str]) -> int | None:
-    """Where a command's name is among its words, past NAME=value words and wrappers."""
+    """Where a command's name is among its words, past the shell's keywords, NAME=value words
+    and wrappers."""
     at, wrapped = 0, False
     while at < len(words):
         plain = QUOTING.sub("", words[at])
-        if ASSIGNMENT.match(plain):
+        if ASSIGNMENT.match(plain) or words[at] in KEYWORDS:
             at += 1
         elif plain.rsplit("/", 1)[-1] in WRAPPERS:
             at, wrapped = at + 1, True
@@ -176,9 +181,20 @@ def _name_at(words: list[str]) -> int | None:
     return None
 
 
+def _rm_would_recurse(word: str) -> bool:
+    """Whether rm would read this word as a recursive flag, or it is built or quoted so it can't be read."""
+    plain = QUOTING.sub("", word)
+    if not plain.startswith("-"):
+        return False
+    long = plain.startswith("--") and len(plain) >= 3 and "--recursive".startswith(plain)
+    return bool(BUILT.search(word) or QUOTING.search(word) or RM_RECURSIVE.fullmatch(plain) or long)
+
+
 def _built_name_may_recurse(raw: list[str]) -> bool:
-    """Whether a command whose name the shell builds, by a glob or a `$`, is given a flag
-    that may ask for a tree. What such a name runs can't be known here, so it may be rm."""
+    """Whether the shell builds a word, by a glob or a `$`, that may run rm with a tree to remove.
+    What such a word names can't be known here. As a command's name, any flag that may recurse
+    counts; anywhere else, a later flag rm itself would read as recursive. The second catches a
+    name behind a wrapper or keyword this hook does not know."""
     commands: list[list[str]] = [[]]
     for word in raw:
         if word == ";":
@@ -187,10 +203,13 @@ def _built_name_may_recurse(raw: list[str]) -> bool:
             commands[-1].append(word)
     for words in commands:
         at = _name_at(words)
-        if at is None or words[at] in SHELL_WORDS or not BUILT.search(words[at]):
-            continue
+        name = words[at] if at is not None else "["  # no name: nothing the shell builds
         # RULE: a remove whose command name the shell builds asks
-        if _flags_may_recurse(words[at + 1 :]):
+        if name not in TESTS and BUILT.search(name) and _flags_may_recurse(words[(at or 0) + 1 :]):
+            return True
+        built =[i for i, word in enumerate(words) if word not in TESTS and BUILT.search(word)]
+        # RULE: a built word followed by a flag rm reads as recursive asks
+        if any(_rm_would_recurse(later) for i in built for later in words[i + 1 :]):
             return True
     return False
 

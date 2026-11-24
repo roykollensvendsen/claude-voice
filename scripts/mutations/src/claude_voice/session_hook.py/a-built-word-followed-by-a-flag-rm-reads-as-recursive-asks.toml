@@ -1,0 +1,5 @@
+[[rule]]
+name = "a built word followed by a flag rm reads as recursive asks"
+file = "src/claude_voice/session_hook.py"
+find = '^\s*if any\(_rm_would_recurse\(later\) for i in built for later in words\[i \+ 1 :\]\):$'
+replace = '        if False:'
