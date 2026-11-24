@@ -92,7 +92,6 @@ from .tree import PROJECTS_DIR, SessionTree
 
 MIN_TOKEN_CHARS = 32
 READ_ONLY = ToolAnnotations(read_only_hint=True)
-COURIER_PREFIX = "claude-voice-msg-"
 SENDING_SAY = (
     "The message to {name} is on its way but not yet confirmed. Read the session's output "
     "with read_session_output in a moment to see that it arrived."
@@ -2148,9 +2147,7 @@ def build_server(
             d
             for d in live_sessions()
             # the bridge's own messengers, gone as soon as they deliver
-            if not str(d.get("name", "")).startswith(COURIER_PREFIX)
-            and not Path(str(d.get("cwd"))).name.startswith(COURIER_PREFIX)
-            and under_root(d.get("cwd"))
+            if not transcripts.is_courier(d) and under_root(d.get("cwd"))
         ]
 
     def named(rows: list[dict[str, Any]], session: str) -> dict[str, Any] | None:

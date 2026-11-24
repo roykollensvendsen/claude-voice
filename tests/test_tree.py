@@ -87,6 +87,21 @@ def by_id(tree):
     return {n["id"]: n for n in tree["nodes"]}
 
 
+def test_the_tree_and_the_bridge_know_a_courier_by_one_rule(world, tmp_path, monkeypatch):
+    """#286 item 5: one prefix and one check, in transcripts, for every part that hides couriers."""
+    from claude_voice import transcripts
+
+    monkeypatch.setattr(transcripts, "HELPER_PREFIX", "helper-")
+    folder = tmp_path / "helper-abc"
+    folder.mkdir()
+    assert transcripts.is_courier({"cwd": str(folder), "name": "Owner via the voice"})
+    assert transcripts.is_courier({"cwd": str(world.root), "name": "helper-x"})
+    assert not transcripts.is_courier({"cwd": str(world.root / "app"), "name": "app-1"})
+    world.session("app-1")
+    world.session("helper-x1")
+    assert {n["name"] for n in world.tree().build()["nodes"]} == {"claude-voice", "app-1"}
+
+
 def test_running_sessions_become_nodes_and_couriers_do_not(world):
     world.session("app-1", kind="interactive")
     world.session("bg-1", kind="bg", status="busy")
