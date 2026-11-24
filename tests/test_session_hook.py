@@ -134,6 +134,27 @@ def test_any_recursive_remove_asks_however_it_is_spelled(tmp_root, command):
 
 @pytest.mark.parametrize(
     "command",
+    [
+        "/bin/r? -r /home/x/src",
+        "/usr/bin/r[m] -r /home/x/src",
+        "r$'\\155' -r /home/x/src",
+        "$RM -rf /home/x/src",
+        "A=1 sudo -u root /bin/r* -r /home/x/src",
+        "env nice -n 5 /bin/r? -$'\\162' /home/x/src",
+        "ls; /bin/r? -r /home/x/src",
+    ],
+)
+def test_a_remove_whose_command_name_the_shell_builds_asks(tmp_root, command):
+    assert decide(command, tmp_root) == "ask"
+
+
+def test_a_built_command_name_without_a_recursive_flag_is_left_alone(tmp_root):
+    for command in ("[ -f notes.txt ]", "$PYTHON -m pytest -q", "/bin/l? notes.txt", "{ ls; }"):
+        assert decide(command, tmp_root) is None, command
+
+
+@pytest.mark.parametrize(
+    "command",
     ['"rm" notes.txt', "rm '-r' build", 'rm "-rf" build', "rm $FLAGS build", "rm -$X build", "/bin/r\\m build"],
 )
 def test_a_single_file_rm_is_exempt_only_with_a_plain_command_word_and_plain_flags(tmp_root, command):

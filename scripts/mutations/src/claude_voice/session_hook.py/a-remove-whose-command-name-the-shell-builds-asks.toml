@@ -1,0 +1,5 @@
+[[rule]]
+name = "a remove whose command name the shell builds asks"
+file = "src/claude_voice/session_hook.py"
+find = '^\s*if _flags_may_recurse\(words\[at \+ 1 :\]\):$'
+replace = '        if False:'

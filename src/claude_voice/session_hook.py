@@ -142,22 +142,71 @@ def _rm_removes_a_tree(raw: list[str], at: int) -> bool:
     if word.rsplit("/", 1)[-1] != "rm" or BUILT.search(word):
         return True
     rest = raw[at + 1 :]
-    rest = rest[: rest.index(";")] if ";" in rest else rest
-    flags = [w for w in rest if QUOTING.sub("", w).startswith(("-", "$"))]
+    return _flags_may_recurse(rest[: rest.index(";")] if ";" in rest else rest)
+
+
+def _flags_may_recurse(words: list[str]) -> bool:
+    """Whether a command's flags ask for a tree, or are built or quoted so they cannot be read."""
+    flags = [w for w in words if QUOTING.sub("", w).startswith(("-", "$"))]
     return any(BUILT.search(w) or QUOTING.search(w) or _recursive(QUOTING.sub("", w)) for w in flags)
+
+
+#: Programs that run the command after them, so the name to judge comes later.
+WRAPPERS = frozenset({"command", "env", "nice", "time", "sudo", "doas", "busybox", "exec", "nohup"})
+#: Options of those programs that take the next word as their value.
+WRAPPER_VALUES = frozenset({"-u", "-g", "-n", "-C", "-p"})
+#: Words the shell itself reads at a command's start: none is a built name.
+SHELL_WORDS = frozenset({"[", "[[", "{", "}"})
+ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
+
+
+def _name_at(words: list[str]) -> int | None:
+    """Where a command's name is among its words, past NAME=value words and wrappers."""
+    at, wrapped = 0, False
+    while at < len(words):
+        plain = QUOTING.sub("", words[at])
+        if ASSIGNMENT.match(plain):
+            at += 1
+        elif plain.rsplit("/", 1)[-1] in WRAPPERS:
+            at, wrapped = at + 1, True
+        elif wrapped and plain.startswith("-"):
+            at += 2 if plain in WRAPPER_VALUES else 1
+        else:
+            return at
+    return None
+
+
+def _built_name_may_recurse(raw: list[str]) -> bool:
+    """Whether a command whose name the shell builds, by a glob or a `$`, is given a flag
+    that may ask for a tree. What such a name runs can't be known here, so it may be rm."""
+    commands: list[list[str]] = [[]]
+    for word in raw:
+        if word == ";":
+            commands.append([])
+        else:
+            commands[-1].append(word)
+    for words in commands:
+        at = _name_at(words)
+        if at is None or words[at] in SHELL_WORDS or not BUILT.search(words[at]):
+            continue
+        # RULE: a remove whose command name the shell builds asks
+        if _flags_may_recurse(words[at + 1 :]):
+            return True
+    return False
 
 
 def removes_a_tree(command: str) -> bool:
     """Whether the command, read after quotes and backslashes are taken away, removes a
     folder with everything in it: rm with a recursive option however rm is reached, a
-    remove that find runs, or a tree removal inside another program. A single-file rm
-    and `git rm` are not, and keep the rules they always had."""
+    remove that find runs, or a tree removal inside another program. A command whose name
+    the shell builds counts too, when its flags may ask for a tree. A single-file rm and
+    `git rm` are not, and keep the rules they always had."""
     flat = QUOTING.sub("", command)
     if "rmtree" in flat or re.search(r"(?:^|\s)-delete(?=\s|$)", flat):
         return True
     raw = SEPARATORS.sub(" ; ", command).split()
     found = [at for at, word in enumerate(raw) if QUOTING.sub("", word).rsplit("/", 1)[-1] == "rm"]
-    return any(_rm_removes_a_tree(raw, at) for at in found)
+    return any(_rm_removes_a_tree(raw, at) for at in found) or _built_name_may_recurse(raw)
 
 
 def _removal(command: str, cwd: str, session_id: str, tmp_root: Path) -> str | None:
