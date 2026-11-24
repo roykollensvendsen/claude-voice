@@ -1,0 +1,5 @@
+[[rule]]
+name = "only an excuse every stamp recorded is copied"
+file = "scripts/batch.py"
+find = '^\s*lines = \[line for line in dict\.fromkeys\(PINNED\.findall\(m\.body\)\) if set\(\) < _excused\(\[line\]\) <= seen_by_all\]$'
+replace = 'lines = list(dict.fromkeys(PINNED.findall(m.body)))'
