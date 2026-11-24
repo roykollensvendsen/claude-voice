@@ -4,9 +4,9 @@
 A test that passes on its first run proves nothing. This runs the tests a pull
 request adds or changes against its merge base, with only the changes under
 tests/ applied, and each must fail there. It runs them again on the branch,
-where each must pass. Run it from the repository root:
+where each must pass. Run it from the repository root, or name the repository with --repo:
 
-    uv run python scripts/red_first.py --base origin/main --head HEAD [--body-file body.md]
+    uv run python scripts/red_first.py --base origin/main --head HEAD [--body-file body.md] [--repo PATH]
 
 The base is narrowed to the merge base of the two. A pull request with no new or
 changed tests passes at once. A test that pins behaviour that already exists is
@@ -359,17 +359,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--base", default="origin/main", help="the branch merged into; its merge base is used")
     parser.add_argument("--head", default="HEAD", help="the pull request's last commit")
     parser.add_argument("--body-file", type=pathlib.Path, help="a file holding the pull request body")
+    parser.add_argument("--repo", type=pathlib.Path, default=pathlib.Path(), help="the repository (default: here)")
     args = parser.parse_args(argv)
-    head = _git("rev-parse", "--verify", f"{args.head}^{{commit}}").strip()
-    base = _git("merge-base", args.base, head).strip()
-    files = changed_test_files(base, head)
-    everywhere = _git("ls-tree", "-r", "--name-only", base, "--", "tests").split()
-    on_base = [_show(base, p, None) for p in everywhere if fnmatch.fnmatch(pathlib.PurePosixPath(p).name, "test_*.py")]
+    repo = args.repo
+    head = _git("rev-parse", "--verify", f"{args.head}^{{commit}}", cwd=repo).strip()
+    base = _git("merge-base", args.base, head, cwd=repo).strip()
+    files = changed_test_files(base, head, cwd=repo)
+    everywhere = _git("ls-tree", "-r", "--name-only", base, "--", "tests", cwd=repo).split()
+    on_base = [_show(base, p, repo) for p in everywhere if fnmatch.fnmatch(pathlib.PurePosixPath(p).name, "test_*.py")]
     counted, removed = count(
-        {p: (_show(base, p, None), _show(head, p, None)) for p in files}, shapes_of(filter(None, on_base))
+        {p: (_show(base, p, repo), _show(head, p, repo)) for p in files}, shapes_of(filter(None, on_base))
     )
     body = args.body_file.read_text(encoding="utf-8") if args.body_file else os.environ.get("RED_FIRST_BODY", "")
-    ok, said = prove(counted, run_both(base, head), body)
+    ok, said = prove(counted, run_both(base, head, cwd=repo), body)
     said.insert(0, f"base {base[:12]}, head {head[:12]}; test files looked at: {', '.join(files) or 'none'}")
     if removed:
         said.append(f"removed, for the reviewer to weigh: {', '.join(removed)}")
