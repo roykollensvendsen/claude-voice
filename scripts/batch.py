@@ -52,6 +52,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import ratchet
+
 from claude_voice.tracker import verdicts
 
 FULL_SHA = re.compile(r"[0-9a-f]{40}")
@@ -498,6 +500,21 @@ def _apply(work: Path, tip: str, number: int) -> str | None:
     return git(work, "rev-parse", "HEAD")
 
 
+def harder_to_follow(work: Path, base: str, tip: str, allowed: Iterable[str]) -> list[str]:
+    """What the quality job's complexity measure would refuse in the batch, found in seconds.
+
+    The quality job takes over an hour, mostly for its mutation run. Two members can each stay
+    within the level alone and pass it together, so the batch is measured as a whole here."""
+    if "complexity" in ratchet.exceptions("\n".join(allowed)):
+        return []
+    levels = []
+    for rev in (base, tip):
+        git(work, "checkout", "--quiet", "--detach", rev)
+        levels.append(ratchet.complexity(work / "src"))
+    # RULE: a batch is measured as a whole, from main to its tip
+    return ratchet.complexity_found(*levels)
+
+
 @dataclass(frozen=True)
 class Where:
     """The folders a step reads and writes."""
@@ -542,6 +559,10 @@ def build(
         tip = after
     if not entries:
         raise Stop("nothing is cleared: " + "; ".join(f"#{n}: {', '.join(w)}" for n, w in sorted(left_out.items())))
+    if found := harder_to_follow(work, base, tip, exceptions(chosen)):
+        raise Stop(
+            "the batch would fail the quality job: " + "; ".join(found) + "; split it in the member that adds it"
+        )
     heads = git(work, "ls-remote", "--heads", "origin", f"{BATCH}*")
     branch = branch_name(day, {line.split("refs/heads/")[-1] for line in heads.splitlines()})
     git(work, "branch", branch, tip)

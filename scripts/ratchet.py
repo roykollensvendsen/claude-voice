@@ -418,11 +418,19 @@ def compare(base: dict[str, Any], now: dict[str, Any], allowed: set[str], skip_m
         # RULE: a measure that gets worse fails the check
         if _worse(metric, base[metric], now[metric]) and metric not in allowed:
             found.append(f"{metric} got worse: {base[metric]} -> {now[metric]}")
-    for module, score in now["complexity"].items():
-        before = base["complexity"].get(module)
-        if before is not None and score > before and "complexity" not in allowed:
+    if "complexity" not in allowed:
+        found += complexity_found(base["complexity"], now["complexity"])
+    return found
+
+
+def complexity_found(base: dict[str, int], now: dict[str, int]) -> list[str]:
+    """Each module whose most tangled function got worse, or a new module past the ceiling."""
+    found = []
+    for module, score in now.items():
+        before = base.get(module)
+        if before is not None and score > before:
             found.append(f"complexity of {module} got worse: {before} -> {score}")
-        if before is None and score > NEW_MODULE_CEILING and "complexity" not in allowed:
+        if before is None and score > NEW_MODULE_CEILING:
             found.append(f"{module} is new and has a function of complexity {score}; keep it at {NEW_MODULE_CEILING}")
     return found
 

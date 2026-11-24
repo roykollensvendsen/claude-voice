@@ -1,0 +1,5 @@
+[[rule]]
+name = "a batch is measured as a whole, from main to its tip"
+file = "scripts/batch.py"
+find = '^\s*return ratchet\.complexity_found\(\*levels\)$'
+replace = '    return ratchet.complexity_found(levels[1], levels[1])'
