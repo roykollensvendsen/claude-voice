@@ -25,7 +25,7 @@ from claude_agent_sdk import list_subagents, project_key_for_directory
 
 from . import procs, renames
 from .store import Store
-from .transcripts import HELPER_PREFIX, PROJECTS_DIR, is_courier
+from .transcripts import PROJECTS_DIR, is_courier, is_courier_name
 
 BRIDGE_NODE = "claude-voice"
 WINDOW_SECONDS = 24 * 3600
@@ -226,7 +226,7 @@ class SessionTree:
         def resolve(who: str, address: str = "") -> str | None:
             pid_match = SOCKET_PID.search(address)
             if (
-                who.startswith(HELPER_PREFIX)
+                is_courier_name(who)
                 or who in courier_names
                 or (pid_match is not None and int(pid_match.group(1)) in courier_pids)
             ):

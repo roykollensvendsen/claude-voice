@@ -466,13 +466,17 @@ HELPERS_IN: Path | None = None
 HELPER_PREFIX = "claude-voice-msg-"
 
 
+def is_courier_name(name: str) -> bool:
+    """Whether a folder or session name is a message helper's; the only place the prefix is read."""
+    return name.startswith(HELPER_PREFIX)
+
+
 def is_courier(session: Mapping[str, Any]) -> bool:
     """Whether a running session is one of the bridge's message helpers.
 
     A helper is known by its working folder; its name is whatever the owner chose, or the prefix.
     """
-    folder = Path(str(session.get("cwd"))).name
-    return folder.startswith(HELPER_PREFIX) or str(session.get("name", "")).startswith(HELPER_PREFIX)
+    return is_courier_name(Path(str(session.get("cwd"))).name) or is_courier_name(str(session.get("name", "")))
 
 
 class HelperFolder(held_folder.HeldFolder):
