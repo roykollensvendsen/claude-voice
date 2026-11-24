@@ -244,6 +244,14 @@ def test_a_role_denied_merges_carries_the_text_denies_of_a_merge(value):
         assert settings["permissions"]["deny"] == list(roles.MERGE_DENIES)
 
 
+def test_a_role_with_no_upstream_is_denied_merges_on_the_bridges_own(tmp_path, monkeypatch):
+    built_in = tmp_path / "roles.toml"
+    built_in.write_text('[roles.b]\ntitle = "b"\nupstream = ""\n', encoding="utf-8")
+    monkeypatch.setattr(roles, "BUILT_IN", built_in)
+    found = roles.load(None)
+    assert found["b"]["upstream"] in roles.BATCHED and roles.denies_merges(found["b"])
+
+
 def test_deny_merges_is_honoured_from_either_roles_file(tmp_path, monkeypatch):
     built_in = tmp_path / "roles.toml"
     built_in.write_text(f'[roles.b]\nupstream = "{ELSEWHERE}"\ndeny_merges = true\n', encoding="utf-8")
