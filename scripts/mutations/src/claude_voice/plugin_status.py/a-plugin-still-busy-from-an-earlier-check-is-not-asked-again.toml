@@ -1,0 +1,5 @@
+[[rule]]
+name = "a plugin still busy from an earlier check is not asked again"
+file = "src/claude_voice/plugin_status.py"
+find = '^        elif name in RUNNING:$'
+replace = '        elif False:'

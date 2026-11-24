@@ -1,5 +1,5 @@
 [[rule]]
 name = "a slow plugins call is left to finish and never cut off"
 file = "src/claude_voice/plugin_status.py"
-find = '^            LEFT_RUNNING\.add\(job\)$'
+find = '^            RUNNING\[name\] = job$'
 replace = '            job.cancel()'
