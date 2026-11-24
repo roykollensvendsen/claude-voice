@@ -314,7 +314,17 @@ async def test_a_voice_sessions_box_says_why_it_came_too(tmp_path):
     broker.deny(pending[0]["id"])
     await asking
     assert pending[0]["cause"] == "not in auto mode"
-    assert seen == [("sdk-1", session, Box("Bash", {"command": "make"}, "", "default"))]
+    assert seen == [(f"sdk-{broker._run}-1", session, Box("Bash", {"command": "make"}, "", "default"))]
+
+
+async def test_a_voice_sessions_box_is_named_apart_from_any_box_before_a_restart(tmp_path):
+    seen = []
+    store = Store(tmp_path / "b.db")
+    session = store.create_session(str(tmp_path))["id"]
+    for _ in range(2):  # the same first box, by a bridge started twice
+        broker = ApprovalBroker(store, timeout_seconds=5, triage=lambda prompt, s, box: seen.append(prompt) or "x")
+        await broker._cause("1", session, "Bash", {"command": "make"})
+    assert len(set(seen)) == 2 and all(p.startswith("sdk-") and p.endswith("-1") for p in seen)
 
 
 def test_a_waiting_item_for_a_box_shows_why_the_box_came(tmp_path):

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a voice sessions box is named apart from any box before a restart"
+file = "src/claude_voice/approvals.py"
+find = '^\s*prompt = f"sdk-\{self\._run\}-\{approval_id\}"$'
+replace = 'prompt = f"sdk-{approval_id}"'

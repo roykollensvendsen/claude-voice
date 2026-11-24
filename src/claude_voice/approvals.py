@@ -12,6 +12,7 @@ import asyncio
 import contextlib
 import itertools
 import logging
+import uuid
 from collections.abc import Callable
 from typing import Any
 
@@ -46,6 +47,8 @@ class ApprovalBroker:
         self.auto_allow = auto_allow
         self.triage = triage  # why a box came to the owner, logged: boxes.Triager.label; advice only
         self._ids = itertools.count(1)
+        # The approval ids start at 1 on every start, so the log names each box by its run too.
+        self._run = uuid.uuid4().hex[:8]
         self._pending: dict[str, tuple[dict[str, Any], asyncio.Future]] = {}
 
     def callback(self, session_id: str):
@@ -89,7 +92,9 @@ class ApprovalBroker:
         box = boxes.Box(tool, tool_input, "", SDK_MODE)
         try:
             # RULE: a voice sessions box says why it came too
-            return {"cause": await asyncio.to_thread(self.triage, f"sdk-{approval_id}", session_id, box)}
+            # RULE: a voice sessions box is named apart from any box before a restart
+            prompt = f"sdk-{self._run}-{approval_id}"
+            return {"cause": await asyncio.to_thread(self.triage, prompt, session_id, box)}
         except Exception:
             log.exception("could not label the approval %s", approval_id)
             return {}
