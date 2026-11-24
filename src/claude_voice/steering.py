@@ -101,8 +101,7 @@ def _level_of_text(word: str, cwd: str, home: str) -> int:
         return LOCKED
     try:
         spellings = _braces(word)
-    except ValueError:
-        # RULE: a brace the hook cannot expand counts as locked
+    except ValueError:  # past BRACE_LIMIT: fail closed
         return LOCKED
     return max(_level_of_spelling(w, cwd, home) for w in spellings)
 
@@ -137,6 +136,7 @@ def _braces(word: str) -> list[str]:
             continue
         todo += [text[: match.start()] + part + text[match.end() :] for part in _alternatives(match.group(1))]
         if len(done) + len(todo) > BRACE_LIMIT:
+            # RULE: a brace the hook cannot expand counts as locked
             raise ValueError("too many words")
     return done
 
