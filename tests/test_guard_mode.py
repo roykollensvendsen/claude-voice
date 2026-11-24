@@ -584,6 +584,35 @@ def test_a_push_to_the_users_own_fork_is_still_let_through():
     assert decide("git push origin feat/x", {"origin": FORK}) is None
 
 
+#: A change of where a remote pushes, joined to a push of it on one command line (#415). The guard
+#: reads the remotes before the line runs, so it would judge the old address.
+REMOTE_CHANGED = [
+    f"git remote set-url origin {OWNERS} && git push origin feat/x",
+    f"git remote set-url --push origin {OWNERS}; git push origin feat/x",
+    f"git remote add up {OWNERS} && git push up feat/x",
+    "git remote rename origin fork\ngit push fork feat/x",
+    f"git config remote.origin.pushurl {OWNERS} && git push origin feat/x",
+    f"git config --add remote.origin.url {OWNERS} || git push origin feat/x",
+    f"git config url.{OWNERS}.pushInsteadOf {FORK} && git push origin feat/x",
+    f"git config --global url.{OWNERS}.insteadOf {FORK} & git push origin feat/x",
+    f"git -C ../other remote set-url origin {OWNERS} && git -C ../other push origin feat/x",
+    f"cd ../other && git remote set-url origin {OWNERS} && git push origin feat/x",
+    f"git push origin feat/x; git remote set-url origin {OWNERS}",
+]
+
+
+@pytest.mark.parametrize("command", REMOTE_CHANGED)
+def test_a_push_joined_to_a_change_of_a_remote_is_refused_in_fork_only_mode(command):
+    verdict, _ = decide(command, {"origin": FORK, "fork": FORK, "up": FORK})
+    assert verdict == "deny"
+
+
+@pytest.mark.parametrize("command", REMOTE_CHANGED)
+def test_a_push_joined_to_a_change_of_a_remote_asks_in_own_clone_mode(command):
+    verdict, _ = decide(command, {"origin": OWNERS, "fork": OWNERS, "up": OWNERS}, own_clone=True)
+    assert verdict == "ask"
+
+
 # -- comparing addresses (f6) -------------------------------------------------------------------
 
 

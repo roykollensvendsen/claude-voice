@@ -367,6 +367,12 @@ plain shape to use instead, and asks in own-clone mode. Common forms are
 refused this way: `git push ... 2>&1`, `git push ... | tail -1` and
 `cd X; git push`. Run the push on its own, or with `&&` after the `cd`.
 
+This covers a push in the same command as a change of where a remote goes:
+`git remote set-url`, `remote add`, `remote rename`, or a `git config` write
+of a `remote.` or `url.` key. The guard reads the remotes before the command
+runs, so it would judge the old address. A push joined to such a change is
+refused in fork-only mode, and asks in own-clone mode.
+
 The shape rule judges only pushes the guard finds: `git push` itself, and one
 behind a wrapper such as `timeout` or `sh -c`. A push the guard cannot see,
 such as one inside a file run with `source` or `.`, text piped into a shell,
