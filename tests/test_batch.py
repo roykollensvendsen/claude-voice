@@ -405,3 +405,33 @@ def test_doctor_reports_when_main_does_not_require_batch_or_still_requires_quali
         "main's protection does not require batch",
         "main's protection still requires quality",
     ]
+
+
+def two_members_on_one_function(tmp_path):
+    """main, then two members that each add one branch to the same function."""
+    work = tmp_path / "work"
+    (work / "src").mkdir(parents=True)
+
+    def commit(body):
+        (work / "src" / "m.py").write_text(f"def f(x):\n{body}    return 0\n", encoding="utf-8")
+        batch.git(work, "add", "-A")
+        batch.git(work, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--quiet", "-m", "c")
+        return batch.git(work, "rev-parse", "HEAD")
+
+    batch.git(work, "init", "--quiet")
+    base = commit("    if x == 1:\n        return 1\n")
+    commit("    if x == 1:\n        return 1\n    if x == 2:\n        return 2\n")
+    tip = commit(
+        "    if x == 1:\n        return 1\n    if x == 2:\n        return 2\n    if x == 3:\n        return 3\n"
+    )
+    return work, base, tip
+
+
+def test_a_batch_is_measured_as_a_whole_from_main_to_its_tip(tmp_path):
+    work, base, tip = two_members_on_one_function(tmp_path)
+    assert batch.harder_to_follow(work, base, tip, []) == ["complexity of m.py got worse: 2 -> 4"]
+
+
+def test_a_complexity_exception_every_stamp_recorded_lets_the_batch_through(tmp_path):
+    work, base, tip = two_members_on_one_function(tmp_path)
+    assert batch.harder_to_follow(work, base, tip, ["Ratchet-Exception: complexity - a reason (#1)"]) == []
