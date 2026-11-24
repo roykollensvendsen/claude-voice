@@ -1,0 +1,5 @@
+[[rule]]
+name = "an excuse in the body that a stamp did not record leaves the pull request out"
+file = "scripts/batch.py"
+find = '^\s*missed = sorted\(live - _recorded\(s\)\)$'
+replace = 'missed = []'

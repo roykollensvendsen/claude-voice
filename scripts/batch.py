@@ -10,6 +10,7 @@ its own:
 
 - `why_not`: why a pull request may not go into a batch, or nothing when it may;
 - `exceptions`: the Ratchet-Exception lines the batch body copies;
+- `pinned`: the members' "Red-first: existing behaviour" lines the batch body copies;
 - `culprit`: the pull request that breaks a batch, found by merge order;
 - `merge_list`: the commands the manager runs once a batch is green, and the records each
   one rests on. This script never merges;
@@ -52,7 +53,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from claude_voice.tracker import verdicts
+# This checkout's own code, found even under `python -I`, which puts neither folder on the path.
+_HERE = Path(__file__).resolve().parent
+sys.path[:0] = [str(_HERE), str(_HERE.parent / "src")]
+
+import red_first  # noqa: E402  # it is what reads the excuses, so the batch reads them the same way
+
+from claude_voice.tracker import verdicts  # noqa: E402
 
 FULL_SHA = re.compile(r"[0-9a-f]{40}")
 #: The reviewers a risky pull request needs, by the name each signs its verdicts with.
@@ -80,6 +87,7 @@ class Member:
     ci_green: bool
     stamps: list[dict[str, Any]] = field(default_factory=list)
     yes: dict[str, Any] | None = None
+    body: str = ""
 
 
 def _approving(m: Member) -> list[dict[str, Any]]:
@@ -133,6 +141,7 @@ def why_not(m: Member, built: str) -> list[str]:
         # RULE: a stamp that does not record its exceptions leaves the pull request out
         if not isinstance(s.get("ratchet_exceptions"), list):
             found.append(f"{s.get('by')}'s stamp does not record its ratchet exceptions")
+    found += unrecorded(m)
     if _risky(m):
         by = {str(s.get("by")) for s in stamps}
         # RULE: a risky pull request needs both stamps
@@ -184,6 +193,53 @@ def exceptions(members: Iterable[Member]) -> list[str]:
         # RULE: only exceptions every stamp recorded are copied tagged with their pull request
         shared = set.intersection(*(set(map(str, r)) for r in recorded if isinstance(r, list)))
         out += [f"{line} (#{m.number})" for line in sorted(shared)]
+    return out
+
+
+#: A line saying a test only pins behaviour that was already there, as red_first.py reads it.
+PINNED = re.compile(r"^[ \t]*(Red-first:[ \t]*existing behaviou?r[ \t]*[-–—].*?)[ \t]*$", re.MULTILINE)
+
+
+def _excused(lines: Iterable[Any]) -> set[str]:
+    """The tests the lines excuse, read with red_first.py's own pattern so the two never drift."""
+    return {m.group(1) for line in lines if (m := red_first.MARKER.search(str(line).strip()))}
+
+
+def _recorded(s: dict[str, Any]) -> set[str]:
+    """The tests a stamp saw excused in the body at its head; none when it kept no record."""
+    lines = s.get("red_first")
+    return _excused(lines) if isinstance(lines, list) else set()
+
+
+def unrecorded(m: Member) -> list[str]:
+    """Each approving stamp that did not see every excuse the body holds now, and the tests it missed.
+
+    The body is not covered by a stamp, so a line added after review would excuse its own test (#538).
+    """
+    live = _excused(PINNED.findall(m.body))
+    found = []
+    for s in _approving(m):
+        # RULE: an excuse in the body that a stamp did not record leaves the pull request out
+        missed = sorted(live - _recorded(s))
+        if missed:
+            found.append(f"{s.get('by')}'s stamp did not record the red-first excuse for {', '.join(missed)}")
+    return found
+
+
+def pinned(members: Iterable[Member]) -> list[str]:
+    """Each member's lines excusing a test that passed before, tagged with its pull request.
+
+    The batch runs red-first over all its members' tests at once, so it needs their excuses too.
+    Only a line every approving stamp recorded is copied.
+    """
+    out: list[str] = []
+    for m in members:
+        stamps = _approving(m)
+        seen_by_all = set.intersection(*(_recorded(s) for s in stamps)) if stamps else set()
+        # RULE: only an excuse every stamp recorded is copied
+        lines = [line for line in dict.fromkeys(PINNED.findall(m.body)) if set() < _excused([line]) <= seen_by_all]
+        # RULE: a members existing behaviour lines are copied tagged with its pull request
+        out += [f"{line} (#{m.number})" for line in lines]
     return out
 
 
@@ -341,7 +397,9 @@ class Recorded:
 RECORD = re.compile(r"<!-- batch-record\n(?P<lines>.*?)\n-->", re.S)
 
 
-def render_body(record: Recorded, copied: Sequence[str], left_out: dict[int, list[str]]) -> str:
+def render_body(
+    record: Recorded, copied: Sequence[str], left_out: dict[int, list[str]], pins: Sequence[str] = ()
+) -> str:
     """The batch pull request's body: for people at the top, and the record the script reads back."""
     lines = [
         "Do not merge. This is a batch: main with each cleared pull request applied in order (ADR-CV-023).",
@@ -354,6 +412,10 @@ def render_body(record: Recorded, copied: Sequence[str], left_out: dict[int, lis
         "",
         "Ratchet exceptions the stamps recorded, each at the start of its line, where the ratchet reads it:",
         *(list(copied) or ["none"]),
+        "",
+        "Tests the members say only pin behaviour already there, each at the start of its line,"
+        " where red-first reads it:",
+        *(list(pins) or ["none"]),
         "",
         "Left out:",
         *([f"- #{n}: {'; '.join(why)}" for n, why in sorted(left_out.items())] or ["- none"]),
@@ -441,7 +503,7 @@ Gh = Callable[[Sequence[str]], str]
 STATE = Path("~/.local/state/claude-voice").expanduser()
 SANDBOX = Path(__file__).resolve().parent.parent / ".claude/skills/review-contribution/sandboxed.sh"
 CHECKS_LOG = "decision-checks.jsonl"
-FIELDS = "number,headRefOid,headRefName,isDraft,statusCheckRollup"
+FIELDS = "number,headRefOid,headRefName,isDraft,statusCheckRollup,body"
 
 
 class Stop(Exception):
@@ -481,7 +543,8 @@ def _member(
     name = repo.rpartition("/")[2]
     yes = checked_yes(rows, name, number, head) or vouched.get(number)
     stamps = read_stamps(reviews, name, number)
-    return Member(number, head, "", bool(pr["isDraft"]), ci_green(pr.get("statusCheckRollup") or []), stamps, yes)
+    green = ci_green(pr.get("statusCheckRollup") or [])
+    return Member(number, head, "", bool(pr["isDraft"]), green, stamps, yes, str(pr.get("body") or ""))
 
 
 def _apply(work: Path, tip: str, number: int) -> str | None:
@@ -546,7 +609,7 @@ def build(
     branch = branch_name(day, {line.split("refs/heads/")[-1] for line in heads.splitlines()})
     git(work, "branch", branch, tip)
     record = Recorded(branch, base, entries)
-    body_file.write_text(render_body(record, exceptions(chosen), left_out), encoding="utf-8")
+    body_file.write_text(render_body(record, exceptions(chosen), left_out, pinned(chosen)), encoding="utf-8")
     return [
         f"git -C {work} push origin {branch}",
         f"gh pr create --repo {repo} --draft --base main --head {branch}"
