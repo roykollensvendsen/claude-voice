@@ -262,7 +262,7 @@ def test_the_sign_in_date_is_read_from_claude_code_without_a_secret(monkeypatch)
         return subprocess.CompletedProcess(command, 0, stdout=out)
 
     monkeypatch.setattr(work.subprocess, "run", run)
-    monkeypatch.setattr(work, "_claude", lambda: "/bin/claude")
+    monkeypatch.setattr(work.procs, "claude", lambda: "/bin/claude")
     assert READ_LOGIN_EXPIRY() == datetime(2026, 12, 9, 10, 33, 47, 475000, tzinfo=UTC)
     assert seen == [["/bin/claude", "auth", "status"]]
     monkeypatch.setattr(work.subprocess, "run", lambda c, **k: subprocess.CompletedProcess(c, 1, stdout="no"))

@@ -47,11 +47,8 @@ SIGN_IN = (
 
 
 def claude_code_login() -> tuple[bool, str]:
-    """Whether the Claude Code the bridge runs is signed in, asked of Claude Code itself."""
-    import claude_agent_sdk
-
-    bundled = Path(claude_agent_sdk.__file__).parent / "_bundled" / "claude"
-    cli = str(bundled) if bundled.exists() else procs.find("claude")
+    """Whether Claude Code is signed in, asked of Claude Code itself; every copy shares one sign-in."""
+    cli = procs.claude()
     if not cli:
         return False, "Claude Code was not found"
     try:
