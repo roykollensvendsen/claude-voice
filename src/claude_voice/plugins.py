@@ -264,6 +264,7 @@ class Plugin:
         self.spec, self.client_factory = spec, client_factory
         self.state = "not started"
         self.offered: list[str] = []
+        self.looks: set[str] = set()  # its tools the listing marks read-only, as last offered
         self.unlisted: str | None = None  # why the latest listing got no answer, or None
         self.refused: str | None = None  # why its start was refused, with what fixes it, or None
         self._failure: Exception | None = None
@@ -500,6 +501,8 @@ def offer(server: Any, plugin: Plugin, listing: dict[str, dict[str, Any]]) -> li
     """Offer the plugin's allowed tools on the bridge's MCP server; the names offered."""
     from mcp.server.mcpserver.exceptions import ToolError
     from mcp.server.mcpserver.tools.base import Tool
+
+    plugin.looks = {tool for tool in plugin.spec.tools if listing.get(tool, {}).get("read_only") is True}
 
     class PluginTool(Tool):
         async def run(self, arguments: dict[str, Any], context: Any, convert_result: bool = False) -> Any:

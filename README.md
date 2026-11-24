@@ -101,6 +101,7 @@ the bridge says which are missing, with the exact fix, through its
 | `whats_new` | only what happened since you last asked: finished, failed, waiting for you, or a reply a session sent back to a message; a reply comes back on every call, even the first, until a later call confirms it was read out |
 | `list_replies` | the replies not yet confirmed heard, older ones too, for when `whats_new` says some wait |
 | `fleet_recap` | every session in one call, each with a line on what it is doing |
+| `plugins_status` | every running plugin asked how it is at once, a few seconds each: who answered and how, who failed, and who was too slow; only a status tool the plugin marks read-only is called |
 | `get_active_session`, `set_active_session` | the session the owner talks to, chosen on the companion page or by voice |
 | `check_dependencies` | which dependencies are missing for full use of the bridge, and the exact fix for each |
 | `update_bridge` | update claude-voice: pull, install, test, restart, and roll back if anything fails |

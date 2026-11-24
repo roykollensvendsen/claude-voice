@@ -259,6 +259,8 @@ jobs:
         run: uv run mypy src
       - name: Its own tests
         run: uv run pytest -q -p no:cacheprovider --strict-markers --cov=voice_checks
+      - name: No job that runs tests has a time limit
+        run: uv run voice-checks ci-limits --root ../..
 
   checks:
     needs: scope

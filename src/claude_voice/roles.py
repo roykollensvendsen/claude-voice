@@ -122,7 +122,10 @@ def guard_settings(role: dict[str, Any]) -> str | None:
     out: dict[str, Any] = {
         "hooks": {
             "PreToolUse": [
-                {"matcher": "Bash", "hooks": [{"type": "command", "command": _guard_command(role, upstream)}]}
+                {
+                    "matcher": "Bash",
+                    "hooks": [{"type": "command", "command": _guard_command(role, upstream, only_deletes, denied)}],
+                }
             ]
         }
     }
@@ -132,10 +135,9 @@ def guard_settings(role: dict[str, Any]) -> str | None:
     return json.dumps(out)
 
 
-def _guard_command(role: dict[str, Any], upstream: str) -> str:
-    """The guard's command line for a role, with the checks `guard_settings` describes."""
-    only_deletes = bool(role.get("settings")) and not role.get("guard")
-    denied = denies_merges(role)
+def _guard_command(role: dict[str, Any], upstream: str, only_deletes: bool, denied: bool) -> str:
+    """The guard's command line for a role, with the checks `guard_settings` describes. It takes
+    that function's own reading of the role, so the two can't disagree on which checks apply."""
     # RULE: the push guard runs isolated from the sessions folder
     command = f"{shlex.quote(sys.executable)} -I -m claude_voice.guard --upstream {shlex.quote(upstream)}"
     # RULE: own-clone mode is on only when the role entry names it exactly

@@ -1,0 +1,5 @@
+[[rule]]
+name = "the call log knows the machines named in the bridges settings"
+file = "src/claude_voice/server.py"
+find = 'mcp\.machine_names = \[spec\.name for spec in repos\.machines\]'
+replace = 'mcp.machine_names = []  # type: ignore[attr-defined]'

@@ -122,6 +122,7 @@ LAYERS = {
             "decisions",
             "backlog",
             "stalled",
+            "temp_disk",
         ),
         1,
     ),  # parts, each about one thing
@@ -134,6 +135,7 @@ LAYERS = {
             "approvals",
             "machines",
             "plugin_desk",
+            "plugin_status",
             "org",
             "answers",
             "approver",

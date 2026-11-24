@@ -235,6 +235,24 @@ def test_a_rule_whose_words_give_no_file_name_is_refused():
         raise AssertionError("a name with nothing to file it under was given a path")
 
 
+def test_a_rule_marked_twice_in_one_file_names_the_file_and_both_lines():
+    """The checks read only a rule's first marker, so a second one would be trusted and never read."""
+    text = "x = 1\n# RULE: a press needs a yes\ny = 2\n\n    # RULE: a press needs a yes\nz = 3\n"
+    said = _mutate().repeated_markers("src/claude_voice/store.py", text)
+    assert said == ["src/claude_voice/store.py: 'a press needs a yes' is marked on lines 2 and 5"]
+    assert _mutate().repeated_markers("src/claude_voice/store.py", "# RULE: one\n# RULE: two\n") == []
+
+
+def test_no_rule_is_marked_twice_in_one_file():
+    sources = [*sorted((ROOT / "src").rglob("*.py")), *(ROOT / s for s in SCRIPTS_WITH_ROWS)]
+    repeated = [
+        line
+        for source in sources
+        for line in _mutate().repeated_markers(str(source.relative_to(ROOT)), source.read_text(encoding="utf-8"))
+    ]
+    assert not repeated, "rules marked twice; keep one marker each: " + "; ".join(repeated)
+
+
 def test_a_row_s_folder_is_the_whole_path_of_the_file_it_switches_off():
     """The same layout in every repository, whatever the language. A shorter folder
     name would put src/app.ts and src/app/ together, src/app/home.ts and
