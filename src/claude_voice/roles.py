@@ -119,6 +119,23 @@ def guard_settings(role: dict[str, Any]) -> str | None:
     denied = denies_merges(role)
     if not upstream or not (role.get("guard") or only_deletes or denied):
         return None
+    out: dict[str, Any] = {
+        "hooks": {
+            "PreToolUse": [
+                {"matcher": "Bash", "hooks": [{"type": "command", "command": _guard_command(role, upstream)}]}
+            ]
+        }
+    }
+    # RULE: a role denied merges carries the text denies of a merge
+    if denied:
+        out["permissions"] = {"deny": list(MERGE_DENIES)}
+    return json.dumps(out)
+
+
+def _guard_command(role: dict[str, Any], upstream: str) -> str:
+    """The guard's command line for a role, with the checks `guard_settings` describes."""
+    only_deletes = bool(role.get("settings")) and not role.get("guard")
+    denied = denies_merges(role)
     # RULE: the push guard runs isolated from the sessions folder
     command = f"{shlex.quote(sys.executable)} -I -m claude_voice.guard --upstream {shlex.quote(upstream)}"
     # RULE: own-clone mode is on only when the role entry names it exactly
@@ -132,13 +149,7 @@ def guard_settings(role: dict[str, Any]) -> str | None:
         command += " --push-mode merges-only"
     if not denied:
         command += " --merges"
-    out: dict[str, Any] = {
-        "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": command}]}]}
-    }
-    # RULE: a role denied merges carries the text denies of a merge
-    if denied:
-        out["permissions"] = {"deny": list(MERGE_DENIES)}
-    return json.dumps(out)
+    return command
 
 
 def settings_for(role: dict[str, Any], name: str = "") -> str | None:
