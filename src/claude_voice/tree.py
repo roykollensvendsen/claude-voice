@@ -23,7 +23,7 @@ from typing import Any
 
 from claude_agent_sdk import list_subagents, project_key_for_directory
 
-from . import procs, renames
+from . import procs, renames, transcripts
 from .store import Store
 from .transcripts import PROJECTS_DIR
 
@@ -74,7 +74,6 @@ class _Transcript:
         self.offset = 0
         self.rest = bytearray()  # an unfinished last line; grown in place, so a long one costs its length once
         self.seen: list[tuple[float | None, str, str, str]] = []
-        self.moved_to: str | None = None  # set by a continued-in line, cleared by later talk
 
     def update(self) -> None:
         # A transcript can pass a gigabyte, so it is read a chunk at a time: reading it whole
@@ -102,10 +101,6 @@ class _Transcript:
             entry = json.loads(line)
         except ValueError:
             return
-        if entry.get("type") == "continued-in":
-            self.moved_to = str(entry.get("continuedInSessionId") or "") or None
-        elif entry.get("type") in ("user", "assistant"):
-            self.moved_to = None
         when = _timestamp(entry)
         self.seen.extend((when, kind, who, address) for kind, who, address in _messages(entry))
 
@@ -252,9 +247,11 @@ class SessionTree:
         for d in live:
             sid = str(d["sessionId"])
             transcript = self._transcript(sid, str(d.get("cwd")))
-            if transcript.moved_to:
+            # The bridge's tools read a hand-over the same way, so the two never disagree.
+            moved_to = transcripts.continued_in(sid, str(d.get("cwd")), self.projects_dir)
+            if moved_to:
                 nodes[sid]["status"] = "moved"
-                nodes[sid]["moved_to"] = transcript.moved_to
+                nodes[sid]["moved_to"] = moved_to
             for when, kind, who, address in transcript.seen:
                 if when is not None and when < cutoff:
                     continue

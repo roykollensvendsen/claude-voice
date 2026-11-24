@@ -229,6 +229,24 @@ def test_a_session_continued_elsewhere_is_marked_moved(world):
     assert "moved_to" not in nodes[b] or nodes[b]["moved_to"] is None
 
 
+def test_the_tree_and_the_bridge_read_a_hand_over_in_one_place(world, monkeypatch):
+    """#286 item 3: the tree takes a hand-over from the same reader the bridge's tools use."""
+    from claude_voice import transcripts
+
+    a, a_cwd = world.session("alpha")
+    world.transcript(a, a_cwd, [send("beta")])  # nothing in the file itself says moved
+    asked = []
+
+    def reader(session_id, cwd, projects_dir):
+        asked.append((session_id, cwd, projects_dir))
+        return "sid-elsewhere"
+
+    monkeypatch.setattr(transcripts, "continued_in", reader)
+    nodes = by_id(world.tree().build())
+    assert nodes[a]["moved_to"] == "sid-elsewhere"
+    assert asked == [(a, str(a_cwd), world.projects)]
+
+
 def test_a_courier_with_a_friendly_name_is_still_the_bridge(world, tmp_path):
     courier_dir = tmp_path / "claude-voice-msg-abc"
     courier_dir.mkdir()
@@ -383,7 +401,6 @@ def test_chunked_reading_keeps_every_message_and_the_unfinished_last_line(tmp_pa
     transcript.update()
     when = (NOW - timedelta(minutes=1)).timestamp()
     assert transcript.seen == [(when, "sent", "beta", ""), (when, "received", "gamma", "uds:/g.sock")]
-    assert transcript.moved_to == "sid-next"
     assert transcript.rest == unfinished[:30].encode()
     assert transcript.offset == path.stat().st_size
     with path.open("ab") as f:
@@ -391,4 +408,3 @@ def test_chunked_reading_keeps_every_message_and_the_unfinished_last_line(tmp_pa
     transcript.update()
     assert transcript.seen[-1] == (when, "sent", "delta", "")
     assert transcript.rest == b""
-    assert transcript.moved_to is None
