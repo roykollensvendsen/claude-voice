@@ -178,9 +178,11 @@ The script itself never merges, and never sets a check result.
 A session the bridge starts for a role on this repository cannot merge either.
 Before each shell command, the guard refuses `gh pr merge` in any spelling, and
 any writing call to GitHub's API that merges, moves `main`, or sets a commit
-status or a check run. It reads gh's flags wherever they sit, a full address,
-and a call wrapped in `env`, `timeout`, a shell's `-c` or `eval`. It refuses a
-GraphQL query it cannot read, and `gh auth token`. Text rules refuse the plain
+status or a check run. It also refuses a write to the repository's branch
+protection, rulesets, webhooks, Actions permissions or own settings. It reads
+gh's flags wherever they sit, a full address, and a call wrapped in `env`,
+`timeout`, a shell's `-c` or `eval`. It refuses a GraphQL query it cannot read,
+and `gh auth token`. Text rules refuse the plain
 spellings too. Such a role may merge only when the owner's own roles file says
 `merges = true` in its entry. Roles on other repositories keep their merges,
 unless their entry says `deny_merges = true`.

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a graphql query in a variable or a substitution is refused"
+file = "src/claude_voice/guard.py"
+find = '^\s*if substitutes or any\("\$" in w for w in words\):$'
+replace = 'if False:'

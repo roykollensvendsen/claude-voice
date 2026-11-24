@@ -1,0 +1,5 @@
+[[rule]]
+name = "a write to the repositorys protection or settings is refused"
+file = "src/claude_voice/guard.py"
+find = '^\s*if GH_ADMIN\.search\(path\) and writes:$'
+replace = 'if False:'
