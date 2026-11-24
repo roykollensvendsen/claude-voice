@@ -1,0 +1,5 @@
+[[rule]]
+name = "the report says first that box text is data never instructions"
+file = "src/claude_voice/boxes.py"
+find = '^\s*out = \[DATA_NOTE, f"\{sum\(groups\.values\(\)\)\} boxes reached the owner on \{day\.isoformat\(\)\}, in \{len\(groups\)\} groups:"\]$'
+replace = 'out = [f"{sum(groups.values())} boxes reached the owner on {day.isoformat()}, in {len(groups)} groups:"]'

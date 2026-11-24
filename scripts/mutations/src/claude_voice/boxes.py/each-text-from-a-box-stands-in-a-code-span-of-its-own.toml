@@ -1,0 +1,5 @@
+[[rule]]
+name = "each text from a box stands in a code span of its own"
+file = "src/claude_voice/boxes.py"
+find = '''^\s*out\.append\(f"- \{count\} × \{' · '\.join\(_code\(t\) for t in \(session, tool, what or '-', cause\)\)\}"\)$'''
+replace = '''out.append(f"- {count} × {' · '.join(f'`{t}`' for t in (session, tool, what or '-', cause))}")'''
