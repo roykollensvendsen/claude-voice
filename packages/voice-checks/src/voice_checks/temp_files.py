@@ -133,6 +133,8 @@ def _marked(tree: ast.AST, lines: list[str], line: int) -> tuple[bool, str | Non
     if not names:
         return True, f"a temp-files marker names no function; {NAME_IT}"
     functions = {f.name: f for f in ast.walk(tree) if isinstance(f, ast.FunctionDef | ast.AsyncFunctionDef)}
+    # RULE: a module function wins over a method of the same name
+    functions |= {f.name: f for f in getattr(tree, "body", []) if isinstance(f, ast.FunctionDef | ast.AsyncFunctionDef)}
     for name in names:
         if name not in functions:
             return True, f"{name} is not a function in this module; {NAME_IT}"
