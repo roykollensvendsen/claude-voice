@@ -1831,9 +1831,13 @@ def build_server(
         update_steps_seen[0] = len(steps)
         return {**body, "running": bool(body.get("running")) and updater.running(update_log)}
 
+    def update_status_now() -> dict[str, Any]:
+        return updater.status(updater.read(update_log), running=updater.running(update_log))
+
     def start_update() -> dict[str, Any]:
         if updater.running(update_log):
-            raise RuntimeError("An update is already running.")
+            # RULE: a second update names the step the running one is on and when it started
+            raise RuntimeError(f"An update is already running. {update_status_now()['say']}")
         folder = bridge_folder or repos.paths.claude_voice
         if folder is None:
             raise LookupError("This bridge does not run from a git clone, so it cannot update itself.")
@@ -1862,6 +1866,13 @@ def build_server(
             return start_update()
         except (LookupError, RuntimeError) as exc:
             raise ToolError(str(exc)) from None
+
+    @tool(annotations=READ_ONLY)
+    def update_status() -> dict[str, Any]:
+        """How the latest update of claude-voice is going, or how it ended.
+        Which step it is on, whether it worked or was rolled back, and why.
+        Read out 'say'."""
+        return update_status_now()
 
     def update_changes_now() -> dict[str, Any]:
         folder = bridge_folder or repos.paths.claude_voice

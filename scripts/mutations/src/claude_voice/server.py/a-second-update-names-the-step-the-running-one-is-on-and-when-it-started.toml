@@ -1,0 +1,5 @@
+[[rule]]
+name = "a second update names the step the running one is on and when it started"
+file = "src/claude_voice/server.py"
+find = '            raise RuntimeError\(f"An update is already running\. \{update_status_now\(\)\[.say.\]\}"\)'
+replace = '            raise RuntimeError("An update is already running.")'
