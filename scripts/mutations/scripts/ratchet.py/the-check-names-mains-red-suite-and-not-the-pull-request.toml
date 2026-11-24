@@ -1,0 +1,5 @@
+[[rule]]
+name = "the check names mains red suite and not the pull request"
+file = "scripts/ratchet.py"
+find = '^        return BASE_UNMEASURED$'
+replace = '        return 1'

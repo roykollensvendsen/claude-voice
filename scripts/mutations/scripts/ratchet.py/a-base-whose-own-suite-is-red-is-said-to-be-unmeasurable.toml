@@ -1,0 +1,5 @@
+[[rule]]
+name = "a base whose own suite is red is said to be unmeasurable"
+file = "scripts/ratchet.py"
+find = '^        if measured\.returncode and SUITE_RED in measured\.stdout \+ measured\.stderr:$'
+replace = '        if False:'
