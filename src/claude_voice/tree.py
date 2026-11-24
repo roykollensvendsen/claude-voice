@@ -25,10 +25,9 @@ from claude_agent_sdk import list_subagents, project_key_for_directory
 
 from . import procs, renames
 from .store import Store
-from .transcripts import PROJECTS_DIR
+from .transcripts import PROJECTS_DIR, is_courier, is_courier_name
 
 BRIDGE_NODE = "claude-voice"
-COURIER_PREFIX = "claude-voice-msg-"
 WINDOW_SECONDS = 24 * 3600
 SUBAGENT_SECONDS = 3600
 CHUNK = 1 << 20  # bytes of a transcript read at a time
@@ -152,10 +151,7 @@ class SessionTree:
                 pid = int(d["pid"])
             except (ValueError, KeyError, TypeError, OSError):
                 continue
-            # A courier is known by its working folder; its name is whatever the owner chose.
-            if Path(str(d.get("cwd"))).name.startswith(COURIER_PREFIX) or str(d.get("name", "")).startswith(
-                COURIER_PREFIX
-            ):
+            if is_courier(d):
                 pids.add(pid)
                 names.add(str(d.get("name", "")))
                 continue
@@ -230,7 +226,7 @@ class SessionTree:
         def resolve(who: str, address: str = "") -> str | None:
             pid_match = SOCKET_PID.search(address)
             if (
-                who.startswith(COURIER_PREFIX)
+                is_courier_name(who)
                 or who in courier_names
                 or (pid_match is not None and int(pid_match.group(1)) in courier_pids)
             ):
