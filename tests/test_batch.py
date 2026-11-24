@@ -29,7 +29,7 @@ def stamp(by="quality-claude-voice", head=HEAD, patch=PATCH[:8], tier="low", ver
     }
 
 
-def member(number=1, head=HEAD, patch=PATCH, draft=False, green=True, stamps=None, yes=None):
+def member(number=1, head=HEAD, patch=PATCH, draft=False, green=True, stamps=None, yes=None, body=""):
     return batch.Member(
         number=number,
         head=head,
@@ -38,6 +38,7 @@ def member(number=1, head=HEAD, patch=PATCH, draft=False, green=True, stamps=Non
         ci_green=green,
         stamps=[stamp()] if stamps is None else stamps,
         yes=yes,
+        body=body,
     )
 
 
@@ -376,18 +377,52 @@ Not a marker: Red-first: existing behaviour - test_quoted
 """
 
 
+#: What a reviewer records in `red_first`: the body's Red-first lines at the head it stamps.
+SEEN = [
+    "Red-first: existing behaviour - test_the_sessions_are_in_one_list",
+    "Red-first: existing behavior – test_a_number_is_never_passed_on",
+]
+
+
+def seen(by="quality-claude-voice", lines=tuple(SEEN)):
+    return {**stamp(by=by), "red_first": list(lines)}
+
+
 def test_a_members_existing_behaviour_lines_are_copied_tagged_with_its_pull_request():
-    found = batch.pinned([member(4), batch.Member(9, OTHER, PATCH, False, True, body=PINS)])
+    found = batch.pinned([member(4), member(9, body=PINS, stamps=[seen()])])
     assert found == [
         "Red-first: existing behaviour - test_the_sessions_are_in_one_list (#9)",
         "Red-first: existing behavior – test_a_number_is_never_passed_on (#9)",
     ]
 
 
+def test_only_an_excuse_every_stamp_recorded_is_copied():
+    both = [seen(), seen(by="voice-architect", lines=SEEN[:1])]
+    assert batch.pinned([member(9, body=PINS, stamps=both)]) == [
+        "Red-first: existing behaviour - test_the_sessions_are_in_one_list (#9)"
+    ]
+
+
+def test_an_excuse_in_the_body_that_a_stamp_did_not_record_leaves_the_pull_request_out():
+    """A line added after review would excuse its own test, and the batch's too (#538)."""
+    assert batch.why_not(member(body=PINS, stamps=[seen(lines=SEEN[:1])]), BUILT) == [
+        "quality-claude-voice's stamp did not record the red-first excuse for test_a_number_is_never_passed_on"
+    ]
+    assert batch.why_not(member(body=PINS, stamps=[stamp()]), BUILT) == [
+        "quality-claude-voice's stamp did not record the red-first excuse for"
+        " test_a_number_is_never_passed_on, test_the_sessions_are_in_one_list"
+    ]
+
+
+def test_an_excuse_every_stamp_recorded_is_cleared():
+    assert batch.why_not(member(body=PINS, stamps=[seen()]), BUILT) == []
+    assert batch.why_not(member(body="", stamps=[seen()]), BUILT) == []
+
+
 def test_the_batch_body_carries_each_existing_behaviour_line_where_red_first_reads_it():
     import red_first
 
-    lines = batch.pinned([batch.Member(9, OTHER, PATCH, False, True, body=PINS)])
+    lines = batch.pinned([member(9, body=PINS, stamps=[seen()])])
     body = batch.render_body(recorded(), [], {}, lines)
     assert red_first.excuses(body) == {"test_the_sessions_are_in_one_list", "test_a_number_is_never_passed_on"}
     assert batch.parse_body(body) == recorded()

@@ -135,6 +135,7 @@ def why_not(m: Member, built: str) -> list[str]:
         # RULE: a stamp that does not record its exceptions leaves the pull request out
         if not isinstance(s.get("ratchet_exceptions"), list):
             found.append(f"{s.get('by')}'s stamp does not record its ratchet exceptions")
+    found += unrecorded(m)
     if _risky(m):
         by = {str(s.get("by")) for s in stamps}
         # RULE: a risky pull request needs both stamps
@@ -193,15 +194,49 @@ def exceptions(members: Iterable[Member]) -> list[str]:
 PINNED = re.compile(r"^[ \t]*(Red-first:[ \t]*existing behaviou?r[ \t]*[-–—].*?)[ \t]*$", re.MULTILINE)
 
 
+#: The test an excuse line names, as red_first.py reads it.
+EXCUSED = re.compile(r"existing behaviou?r[ \t]*[-–—][ \t]*([^\s,]+)")
+
+
+def _excused(lines: Iterable[Any]) -> set[str]:
+    return {m.group(1) for line in lines if (m := EXCUSED.search(str(line)))}
+
+
+def _recorded(s: dict[str, Any]) -> set[str]:
+    """The tests a stamp saw excused in the body at its head; none when it kept no record."""
+    lines = s.get("red_first")
+    return _excused(lines) if isinstance(lines, list) else set()
+
+
+def unrecorded(m: Member) -> list[str]:
+    """Each approving stamp that did not see every excuse the body holds now, and the tests it missed.
+
+    The body is not covered by a stamp, so a line added after review would excuse its own test (#538).
+    """
+    live = _excused(PINNED.findall(m.body))
+    found = []
+    for s in _approving(m):
+        # RULE: an excuse in the body that a stamp did not record leaves the pull request out
+        missed = sorted(live - _recorded(s))
+        if missed:
+            found.append(f"{s.get('by')}'s stamp did not record the red-first excuse for {', '.join(missed)}")
+    return found
+
+
 def pinned(members: Iterable[Member]) -> list[str]:
     """Each member's lines excusing a test that passed before, tagged with its pull request.
 
     The batch runs red-first over all its members' tests at once, so it needs their excuses too.
+    Only a line every approving stamp recorded is copied.
     """
     out: list[str] = []
     for m in members:
+        stamps = _approving(m)
+        seen_by_all = set.intersection(*(_recorded(s) for s in stamps)) if stamps else set()
+        # RULE: only an excuse every stamp recorded is copied
+        lines = [line for line in dict.fromkeys(PINNED.findall(m.body)) if _excused([line]) <= seen_by_all]
         # RULE: a members existing behaviour lines are copied tagged with its pull request
-        out += [f"{line} (#{m.number})" for line in dict.fromkeys(PINNED.findall(m.body))]
+        out += [f"{line} (#{m.number})" for line in lines]
     return out
 
 

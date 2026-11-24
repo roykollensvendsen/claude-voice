@@ -51,7 +51,9 @@ class World:
         git(self.seed, "add", name)
         git(self.seed, "commit", "--quiet", "-m", message)
 
-    def pull_request(self, number, name, text, *, draft=False, stamped=True, tier="low", body=""):
+    def pull_request(self, number, name, text, *, draft=False, stamped=True, tier="low", body="", seen=None):
+        """A pull request; its stamp records the body's Red-first lines, or `seen` when given."""
+        red_first = [line for line in body.splitlines() if line.startswith("Red-first:")] if seen is None else seen
         git(self.seed, "checkout", "--quiet", "--detach", self.base)
         self.commit(name, text, f"pull request {number}")
         head = git(self.seed, "rev-parse", "HEAD")
@@ -69,7 +71,7 @@ class World:
             "state": "OPEN",
         }
         if stamped:
-            body = {
+            verdict = {
                 "by": "quality-claude-voice",
                 "verdict": "approve",
                 "head": head,
@@ -77,9 +79,10 @@ class World:
                 "tier": tier,
                 "at": AT,
                 "ratchet_exceptions": [],
+                "red_first": red_first,
                 "pr": number,
             }
-            (self.reviews / f"claude-voice-{number}.quality.json").write_text(json.dumps(body), encoding="utf-8")
+            (self.reviews / f"claude-voice-{number}.quality.json").write_text(json.dumps(verdict), encoding="utf-8")
         return head
 
     def where(self):
@@ -153,6 +156,16 @@ def test_build_copies_only_the_chosen_members_existing_behaviour_lines(world):
     body = (world.root / "body.md").read_text(encoding="utf-8")
     assert "Red-first: existing behaviour - test_four (#4)" in body
     assert "test_twelve" not in body
+
+
+def test_build_leaves_out_a_pull_request_whose_excuse_was_added_after_its_stamp(world):
+    world.pull_request(4, "four.txt", "4\n")
+    world.pull_request(9, "nine.txt", "9\n", body="Red-first: existing behaviour - test_late\n", seen=[])
+    build(world, FakeGh(world))
+    body = (world.root / "body.md").read_text(encoding="utf-8")
+    assert "#9: quality-claude-voice's stamp did not record the red-first excuse for test_late" in body
+    assert "Red-first: existing behaviour - test_late" not in body
+    assert [e.number for e in batch.parse_body(body).members] == [4]
 
 
 def test_build_leaves_out_a_pull_request_that_does_not_apply_on_the_batch(world):

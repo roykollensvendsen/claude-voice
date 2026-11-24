@@ -1,5 +1,5 @@
 [[rule]]
 name = "a members existing behaviour lines are copied tagged with its pull request"
 file = "scripts/batch.py"
-find = '^\s*out \+= \[f"\{line\} \(#\{m\.number\}\)" for line in dict\.fromkeys\(PINNED\.findall\(m\.body\)\)\]$'
+find = '^\s*out \+= \[f"\{line\} \(#\{m\.number\}\)" for line in lines\]$'
 replace = 'pass'
