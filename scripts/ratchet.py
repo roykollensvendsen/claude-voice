@@ -343,7 +343,7 @@ class BaseUnmeasured(SystemExit):
         first = self.first or "its first failure is in the log above"
         return (
             f"base {short} can't be measured: main's own suite is red ({first}). "
-            "This is not this pull request's fault; fix main, or merge past it with the owner's yes."
+            "This is not this pull request's fault. Fix main first; until then this check stays red."
         )
 
 
