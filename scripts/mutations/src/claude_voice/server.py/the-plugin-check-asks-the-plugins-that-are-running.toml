@@ -1,0 +1,5 @@
+[[rule]]
+name = "the plugin check asks the plugins that are running"
+file = "src/claude_voice/server.py"
+find = '^        return await plugin_status\.check\(list\(active_plugins\)\)$'
+replace = '        return await plugin_status.check([])'
