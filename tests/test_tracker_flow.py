@@ -175,12 +175,14 @@ def test_a_triaged_outside_issue_goes_to_backlog_unless_it_is_in_waiting():
     assert where(issue(author="someone-else", commenters=[OWNER]), now="ready") == "backlog"
 
 
-def test_an_issue_moved_to_waiting_by_hand_stays_there():
-    """The manager parks a decision with no pull request there, whoever opened the issue.
-    The sync cannot tell a parked issue from one it put there, so only a hand move takes it out."""
+def test_an_outside_issue_leaves_waiting_once_the_owner_has_labelled_or_answered_it():
+    """An answered outside issue no longer counts as waiting on the owner (#477). The sync puts
+    only outside issues in waiting, so the owner's own issue there was parked by hand and stays."""
+    assert where(issue(author="someone-else", labels=1), now="waiting") == "backlog"
+    assert where(issue(author="someone-else", commenters=[OWNER]), now="waiting") == "backlog"
     assert where(issue(), now="waiting") == "waiting"
-    assert where(issue(author="someone-else", labels=1), now="waiting") == "waiting"
-    assert where(issue(author="someone-else", commenters=[OWNER]), now="waiting") == "waiting"
+    assert where(issue(labels=1, commenters=[OWNER]), now="waiting") == "waiting"
+    assert where(issue(author="someone-else"), now="waiting") == "waiting"  # not answered yet
 
 
 # --- Stalled ----------------------------------------------------------------------------
