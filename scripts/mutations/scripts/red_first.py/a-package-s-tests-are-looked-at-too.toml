@@ -1,0 +1,5 @@
+[[rule]]
+name = "a package's tests are looked at too"
+file = "scripts/red_first.py"
+find = '^\s*return sorted\(n for n in names if is_test_file\(n\)\)$'
+replace = 'return sorted(n for n in names if is_test_file(n) and not n.startswith("packages/"))'
