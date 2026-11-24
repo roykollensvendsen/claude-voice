@@ -1,0 +1,5 @@
+[[rule]]
+name = "only a status tool the listing marks read-only is called"
+file = "src/claude_voice/plugin_status.py"
+find = '^    if tool not in getattr\(plugin, "looks", set\(\)\):$'
+replace = '    if False:'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "every plugin is asked at once and a slow one is named without holding up the answer"
+file = "src/claude_voice/plugin_status.py"
+find = '^        await asyncio\.wait\(jobs\.values\(\), timeout=seconds\)$'
+replace = '        await asyncio.wait(jobs.values())'

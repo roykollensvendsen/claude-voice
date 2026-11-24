@@ -272,6 +272,7 @@ async def test_status_tools_are_marked_read_only_so_clients_need_no_confirmation
         "session_tree",
         "org_chart",
         "health",
+        "plugins_status",
         "get_active_session",
         "check_dependencies",
         "digest_session",
