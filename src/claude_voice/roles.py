@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import shlex
 import sys
 import tomllib
@@ -42,7 +43,15 @@ def denies_merges(role: dict[str, Any]) -> bool:
     if role.get("deny_merges") is True:
         return True
     # RULE: merges are denied by default only on an upstream that merges in batches
-    return str(role.get("upstream") or "") in BATCHED and role.get("merges") is not True
+    return _repository(str(role.get("upstream") or "")) in BATCHED and role.get("merges") is not True
+
+
+def _repository(upstream: str) -> str:
+    """`owner/name` from an upstream however it is written: any case, as a URL or an ssh address,
+    with or without `.git` and a trailing slash."""
+    # RULE: an upstream is compared as owner and name whatever its spelling
+    name = re.sub(r"^(?:[a-z+]+://[^/]+/|[^@/]+@[^:/]+:)", "", upstream.strip(), flags=re.IGNORECASE)
+    return name.rstrip("/").removesuffix(".git").lower()
 
 
 def load(user_file: Path | None, defaults: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
