@@ -1,0 +1,5 @@
+[[rule]]
+name = "a time limit on a step counts too"
+file = "src/voice_checks/ci_limits.py"
+find = 'LIMIT = re\.compile\(r"\^\\s\*\(\?:-\\s\+\)\?timeout-minutes\\s\*:"\)'
+replace = 'LIMIT = re.compile(r"^ {4}timeout-minutes\s*:")'

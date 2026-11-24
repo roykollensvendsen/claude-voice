@@ -1,0 +1,5 @@
+[[rule]]
+name = "a job that runs tests with a time limit is refused"
+file = "src/voice_checks/ci_limits.py"
+find = 'found\.append\(f"\{shown\}:\{number\}: the \{name\} job runs tests and has timeout-minutes"\)'
+replace = 'pass'
