@@ -6,7 +6,8 @@ stays. The check looks near each rule's `# RULE:` marker: when no line there mat
 pattern any more, but one is the row's replacement, the run never put the line back.
 
 The replacement on its own proves nothing, since `return None` or `pass` stand in many files on
-purpose. Only the first marker with a rule's name is read. Rows are read from the shared table,
+purpose. Only the first marker with a rule's name is read. Two markers with one name are not
+refused here, so don't lean on a second marker. Rows are read from the shared table,
 scripts/mutations.toml, and from one file per row under scripts/mutations/.
 """
 
