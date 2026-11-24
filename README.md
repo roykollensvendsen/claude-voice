@@ -105,6 +105,7 @@ the bridge says which are missing, with the exact fix, through its
 | `check_dependencies` | which dependencies are missing for full use of the bridge, and the exact fix for each |
 | `update_bridge` | update claude-voice: pull, install, test, restart, and roll back if anything fails |
 | `update_changes` | what an update would bring: the new commits on GitHub, grouped by kind |
+| `update_status` | how the latest update is going or how it ended: its step, whether it was rolled back, and why |
 | `health` | the bridge's own state: uptime, version, memory, calls and errors per tool, courier and watcher, and whether developer mode is on |
 | `plugin_restart` | start one plugin again with its new code, without restarting the bridge; its tools come back only if they take what was approved |
 | `developer_mode_request`, `developer_mode_confirm`, `developer_mode_off` | switch developer mode on by voice with a question and your yes (only from the Claude app; it ends by itself after eight hours), or off at once |
