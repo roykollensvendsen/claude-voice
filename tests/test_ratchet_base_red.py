@@ -58,7 +58,8 @@ def test_the_check_names_mains_red_suite_and_not_the_pull_request(monkeypatch, t
     assert code == ratchet.BASE_UNMEASURED and code not in (0, 1)
     assert "base 177e495 can't be measured" in said
     assert "tests/test_ci.py::test_the_gate_waits_for_every_other_job" in said
-    assert "not this pull request's fault" in said
+    assert "not this pull request's fault" in said and "Fix main first" in said
+    assert "merge past" not in said  # the log is public; it never reads as leave to skip the gate
     assert measured_now == []  # nothing is compared with a base that has no levels
 
 
