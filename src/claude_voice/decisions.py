@@ -41,10 +41,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from claude_agent_sdk import project_key_for_directory
-
 from .config import STATE_DIR
 from .store import Store
+from .transcript_files import PROJECTS_DIR, transcript_path
 
 FIRST = "origin: "
 VOICE = "origin: voice"
@@ -56,7 +55,6 @@ COURIERS = "courier:processes"  # the bridge's setting that holds them
 KEPT = 500  # courier processes kept; a courier is replaced every twenty messages
 SHORT = 8  # how much of a sha support's question shows
 FULL_SHA = re.compile(r"[0-9a-f]{40}")
-PROJECTS_DIR = Path("~/.claude/projects").expanduser()
 
 Couriers = set[tuple[int, str]]
 
@@ -227,7 +225,7 @@ def transcript(support: dict[str, Any] | None, projects_dir: Path) -> list[dict[
         return []
     session_id, folder = str(support["id"]), str(support["folder"])
     # RULE: supports transcript is read only from the folder it was started in
-    path = projects_dir / project_key_for_directory(folder) / f"{session_id}.jsonl"
+    path = transcript_path(projects_dir, folder, session_id)
     return read_jsonl(path) if path.is_file() else []
 
 

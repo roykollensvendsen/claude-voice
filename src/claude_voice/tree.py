@@ -21,11 +21,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from claude_agent_sdk import list_subagents, project_key_for_directory
+from claude_agent_sdk import list_subagents
 
 from . import procs, renames
 from .store import Store
-from .transcripts import PROJECTS_DIR
+from .transcript_files import PROJECTS_DIR, project_folder, transcript_path
 
 BRIDGE_NODE = "claude-voice"
 COURIER_PREFIX = "claude-voice-msg-"
@@ -166,7 +166,7 @@ class SessionTree:
         return self.rename(out)
 
     def _transcript(self, sid: str, cwd: str) -> _Transcript:
-        path = self.projects_dir / project_key_for_directory(cwd) / f"{sid}.jsonl"
+        path = transcript_path(self.projects_dir, cwd, sid)
         if path not in self._transcripts:
             self._transcripts[path] = _Transcript(path)
         transcript = self._transcripts[path]
@@ -175,7 +175,7 @@ class SessionTree:
 
     def _recent_subagent(self, sid: str, cwd: str, agent: str) -> bool:
         name = agent if agent.startswith("agent-") else f"agent-{agent}"
-        path = self.projects_dir / project_key_for_directory(cwd) / sid / "subagents" / f"{name}.jsonl"
+        path = project_folder(self.projects_dir, cwd) / sid / "subagents" / f"{name}.jsonl"
         try:
             return path.stat().st_mtime >= self.clock() - SUBAGENT_SECONDS
         except OSError:

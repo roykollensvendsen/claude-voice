@@ -34,10 +34,10 @@ from claude_agent_sdk import (
     ToolResultBlock,
     ToolUseBlock,
     get_session_messages,
-    project_key_for_directory,
 )
 
 from . import held_folder, lineage, procs
+from .transcript_files import PROJECTS_DIR, transcript_path
 
 MESSAGING_TOOLS = frozenset({"ListAgents", "SendMessage", "ToolSearch"})
 
@@ -125,9 +125,6 @@ def clip(text: str, max_chars: int) -> str:
     return cut.rstrip() + "…"
 
 
-PROJECTS_DIR = Path("~/.claude/projects").expanduser()
-
-
 def continued_in(session_id: str, cwd: str, projects_dir: Path = PROJECTS_DIR) -> str | None:
     """The session a conversation was continued in, if that is the last thing it did.
 
@@ -135,7 +132,7 @@ def continued_in(session_id: str, cwd: str, projects_dir: Path = PROJECTS_DIR) -
     process stays alive. The old transcript then ends with a continued-in line,
     and nothing sent to the old process reaches the conversation any more.
     """
-    path = projects_dir / project_key_for_directory(cwd) / f"{session_id}.jsonl"
+    path = transcript_path(projects_dir, cwd, session_id)
     try:
         with path.open("rb") as f:
             f.seek(0, 2)
@@ -174,7 +171,7 @@ def open_question(
     # RULE: a session waiting on a permission prompt has no open question
     if waiting_for in PERMISSION_WAITS:
         return None
-    path = projects_dir / project_key_for_directory(cwd) / f"{session_id}.jsonl"
+    path = transcript_path(projects_dir, cwd, session_id)
     try:
         with path.open("rb") as f:
             f.seek(0, 2)
@@ -232,7 +229,7 @@ def _first_question(asked: dict[str, Any]) -> dict[str, Any]:
 def pending_tool(session_id: str, cwd: str, projects_dir: Path = PROJECTS_DIR) -> str | None:
     """The tool a session asked to use and has had no result for yet, if any: when the session
     waits, that is a permission prompt for it (an AskUserQuestion is a question instead)."""
-    path = projects_dir / project_key_for_directory(cwd) / f"{session_id}.jsonl"
+    path = transcript_path(projects_dir, cwd, session_id)
     try:
         with path.open("rb") as f:
             f.seek(0, 2)
@@ -284,7 +281,7 @@ def doing_line(session_id: str, cwd: str, projects_dir: Path = PROJECTS_DIR) -> 
     question = open_question(session_id, cwd, projects_dir)
     if question:
         return clip("waiting on a choice: " + question["text"], 160)
-    path = projects_dir / project_key_for_directory(cwd) / f"{session_id}.jsonl"
+    path = transcript_path(projects_dir, cwd, session_id)
     try:
         with path.open("rb") as f:
             f.seek(0, 2)
@@ -317,7 +314,7 @@ def read_raw_transcript(session_id: str, cwd: str, projects_dir: Path = PROJECTS
     voice's questions, so they are kept here. Other meta entries and helper
     agents' lines are left out.
     """
-    path = projects_dir / project_key_for_directory(cwd) / f"{session_id}.jsonl"
+    path = transcript_path(projects_dir, cwd, session_id)
     try:
         size = path.stat().st_size
     except OSError:

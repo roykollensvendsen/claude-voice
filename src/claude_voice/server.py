@@ -23,7 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
 
-from claude_agent_sdk import SDKSessionInfo, project_key_for_directory
+from claude_agent_sdk import SDKSessionInfo
 from claude_agent_sdk import list_sessions as list_claude_sessions
 from mcp.server import MCPServer
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
@@ -88,7 +88,8 @@ from .presence import Presence
 from .sessions import SessionBusy, SessionClosed, SessionManager
 from .store import SessionNotFound, Store
 from .terminals import NOT_LOCAL, Terminals
-from .tree import PROJECTS_DIR, SessionTree
+from .transcript_files import PROJECTS_DIR, project_folder, transcript_path
+from .tree import SessionTree
 
 MIN_TOKEN_CHARS = 32
 READ_ONLY = ToolAnnotations(read_only_hint=True)
@@ -1007,7 +1008,7 @@ def build_server(
                 continue
             if query and query.lower() not in p.name.lower():
                 continue
-            used = [f.stat().st_mtime for f in (projects_dir / project_key_for_directory(str(p))).glob("*.jsonl")]
+            used = [f.stat().st_mtime for f in project_folder(projects_dir, p).glob("*.jsonl")]
             newest = max(used, default=None)
             if not query and (newest is None or newest < time.time() - 30 * 24 * 3600):
                 continue
@@ -1794,7 +1795,7 @@ def build_server(
         so a quiet session costs one look at its size."""
         for d in live_sessions():
             sid, cwd = str(d.get("sessionId")), str(d.get("cwd"))
-            path = projects_dir / project_key_for_directory(cwd) / f"{sid}.jsonl"
+            path = transcript_path(projects_dir, cwd, sid)
             try:
                 stat = path.stat()
             except OSError:
@@ -2879,7 +2880,7 @@ def build_server(
         assert live is not None
         sid, cwd = str(live.get("sessionId")), str(live.get("cwd"))
         numbers = local_numbers()  # every session here at once, so no other number moves
-        entries = detail.read(projects_dir / project_key_for_directory(cwd) / f"{sid}.jsonl")
+        entries = detail.read(transcript_path(projects_dir, cwd, sid))
         return {
             "session": sid,
             "number": numbers.get(sid),

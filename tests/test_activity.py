@@ -18,6 +18,7 @@ from claude_voice import activity
 from claude_voice.config import ConfigError
 from claude_voice.config import load as load_config
 from claude_voice.store import Store
+from claude_voice.transcript_files import transcript_path
 
 T0 = datetime(2026, 11, 18, 17, 0, tzinfo=UTC).timestamp()
 PLANTED = ("sk-ant-PLANTED-SECRET", "/home/someone/very/secret/path", "hunter2-password")
@@ -63,7 +64,7 @@ class Machine:
         if org:
             self.places[name] = (org, role)
         self.process(pid, 1, "claude", cpu=100)
-        path = self.projects / activity.project_key_for_directory(cwd) / f"{sid}.jsonl"
+        path = transcript_path(self.projects, cwd, sid)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch()
         return path

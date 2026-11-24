@@ -27,14 +27,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import IO, Any, Concatenate
 
-from claude_agent_sdk import project_key_for_directory
+from .transcript_files import PROJECTS_DIR, transcript_path
 
-__all__ = ["Activity", "ProcTree", "kind_of", "local_iso", "program_of", "project_key_for_directory"]
+__all__ = ["Activity", "ProcTree", "kind_of", "local_iso", "program_of"]
 
 FILE = "activity.db"
 SETTING = "activity"  # in the bridge's own store: when the switch turns itself off
 PLAIN_ID = re.compile(r"[A-Za-z0-9_-]+")  # a session id names its transcript file
-PROJECTS_DIR = Path("~/.claude/projects").expanduser()
 INTERVAL = 10.0  # seconds between looks while on
 FLUSH_SECONDS = 600.0  # minute rows go to disk this often, and whenever they are asked for
 KEEP_SECONDS = 7 * 86400
@@ -610,7 +609,7 @@ class Activity:
     def _look(self, live: Live, row: dict[str, Any], seen: Seen | None, now: float) -> None:
         since = self.since or now
         sid, cwd = str(row.get("sessionId")), str(row.get("cwd") or "")
-        main = self.projects_dir / project_key_for_directory(cwd) / f"{sid}.jsonl"
+        main = transcript_path(self.projects_dir, cwd, sid)
         read_transcript(main, live, self.minutes, since)
         for helper in sorted((main.parent / sid / "subagents").glob("*.jsonl")):
             read_transcript(helper, live, self.minutes, since, helper=True)

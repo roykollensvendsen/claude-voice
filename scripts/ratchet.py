@@ -82,6 +82,7 @@ LAYERS = {
             "org_rules",
             "access",
             "redact",
+            "transcript_files",
         ),
         0,
     ),
