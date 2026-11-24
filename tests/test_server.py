@@ -269,6 +269,7 @@ async def test_status_tools_are_marked_read_only_so_clients_need_no_confirmation
         "whats_new",
         "list_replies",
         "update_changes",
+        "update_status",
         "session_tree",
         "org_chart",
         "health",

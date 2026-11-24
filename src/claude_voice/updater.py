@@ -95,6 +95,63 @@ class Log:
         return {"result": result, "detail": detail}
 
 
+#: How each finished update is said, by its result.
+ENDINGS = {
+    "updated": "The update started at {at} worked. {detail}",
+    "up_to_date": "The update started at {at} found nothing new. {detail}",
+    "rolled_back": "The update started at {at} was rolled back at the {failed} step: {problem}. {detail}",
+    "stopped": "The update started at {at} stopped at the {failed} step. {detail}",
+}
+
+
+def _clock(at: object) -> str:
+    """An ISO time as the hour and minute on this machine's clock."""
+    try:
+        return datetime.fromisoformat(str(at)).astimezone().strftime("%H:%M")
+    except ValueError:
+        return "an unknown time"
+
+
+def _one_line(detail: str) -> str:
+    """The first line of a step's detail that says something, short enough to read out."""
+    return next((line.strip() for line in detail.splitlines() if line.strip()), "")[:200]
+
+
+def status(body: dict[str, Any] | None, running: bool) -> dict[str, Any]:
+    """What the latest update is doing, or how it ended, from its log: short enough to say."""
+    if not body or not (body.get("started_at") or body.get("steps")):
+        return {"state": "none", "say": "No update has run on this bridge yet."}
+    steps = body.get("steps") or []
+    at, last = _clock(body.get("started_at")), (steps[-1]["step"] if steps else "first")
+    keep = ("started_at", "finished_at", "from", "to", "detail")
+    out: dict[str, Any] = {key: body[key] for key in keep if body.get(key)} | {"step": last}
+    if running:
+        return out | {"state": "running", "say": f"An update has run since {at}; it is at the {last} step."}
+    # RULE: an update whose process died is said to have stopped without finishing
+    if body.get("running"):
+        said = f"The update started at {at} stopped at the {last} step without finishing."
+        return out | {"state": "interrupted", "say": said}
+    result = str(body.get("result") or "stopped")
+    out |= {"state": result, "rolled_back": result == "rolled_back"}
+    failed = next((s for s in steps if not s.get("ok")), None)
+    # RULE: a rolled back update names the step that failed and why in one line
+    if failed is not None:
+        out |= {"failed_step": failed["step"], "problem": _one_line(str(failed.get("detail") or ""))}
+    words = ENDINGS.get(result, "The update started at {at} ended. {detail}")
+    fill = {"at": at, "failed": out.get("failed_step", last), "problem": out.get("problem", ""), "detail": ""}
+    fill["detail"] = out.get("detail", "")
+    return out | {"say": words.format(**fill).strip()}
+
+
+def read(path: Path = LOG) -> dict[str, Any] | None:
+    """The latest update's log, or None when there is none to read."""
+    try:
+        body = json.loads(path.expanduser().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return body if isinstance(body, dict) else None
+
+
 def running(path: Path = LOG) -> bool:
     """Whether an update is under way: its log says so and its process is alive."""
     try:
