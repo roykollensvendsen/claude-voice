@@ -1,0 +1,5 @@
+[[rule]]
+name = "the health page shows the latest reading of the temporary disk"
+file = "src/claude_voice/server.py"
+find = '"temp_disk": temp_watch\.last,'
+replace = '"temp_disk": None,'

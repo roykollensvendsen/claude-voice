@@ -502,6 +502,39 @@ the question.
 The bridge looks every 30 seconds. It reads a pane only once a session has waited
 past the limit, and once per prompt.
 
+## The shared temporary disk
+
+Every session on the machine writes scratch files, worktrees and test output to
+one temporary disk. It is often small and held in memory. When it fills, every
+session stops at once. The bridge watches it, so nobody has to remember to look.
+
+Every ten minutes the bridge measures how full the disk is. From 80 % up, it also
+sizes each folder in the sessions' own part of it, `claude-<user number>`. Below
+that nobody is told, so the folders are not walked. It only reads: nothing is
+ever deleted. A session that made something removes it itself.
+
+- `health` shows the latest reading under `temp_disk`: the share used, the size
+  of the disk, and from 80 % the five largest folders in megabytes. It is empty
+  until the first measure, a few seconds after start.
+- At 80 % full, the voice gets one `whats_new` item of kind `temp_disk`: "The
+  shared temporary disk is 82 % full; the largest folders are …", with up to five
+  folders and their sizes.
+- At 90 %, the item adds that sessions stop when it fills.
+- At each level, the running manager of each programme is sent its own sessions'
+  largest folders, up to five, and asked to have them tidied. A folder belongs
+  to a programme when a running session of that programme works in it; the
+  folder's name is that session's working folder, with every character other
+  than a letter or digit made a `-`. A folder no running session works in goes
+  to no manager. A message that doesn't arrive is logged, not sent again.
+
+Each level is said once. When the disk falls back below it, it is said again the
+next time the disk passes it.
+
+A folder's name is the path of the project its session works in. It can name
+other programmes and the owner's own folders. So the reading stays with the
+owner's voice, `health` and each manager's own folders, and is never written to
+a public page or GitHub.
+
 ## Roles
 
 A role is a background session started for a set purpose. The built-in one,

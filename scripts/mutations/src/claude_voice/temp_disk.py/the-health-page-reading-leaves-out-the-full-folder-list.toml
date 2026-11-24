@@ -1,0 +1,5 @@
+[[rule]]
+name = "the health page reading leaves out the full folder list"
+file = "src/claude_voice/temp_disk.py"
+find = '^\s*self\.folders = self\.last\.pop\("folders", \[\]\)$'
+replace = 'self.folders = self.last.get("folders", [])'

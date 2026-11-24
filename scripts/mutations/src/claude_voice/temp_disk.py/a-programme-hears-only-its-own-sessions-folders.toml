@@ -1,0 +1,5 @@
+[[rule]]
+name = "a programme hears only its own sessions folders"
+file = "src/claude_voice/temp_disk.py"
+find = '^\s*if \(programme := owner\.get\(f\["folder"\]\)\) is not None and len\(held\.setdefault\(programme, \[\]\)\) < TOP:$'
+replace = 'if (programme := owner.get(f["folder"], "acme")) is not None and len(held.setdefault(programme, [])) < TOP:'
