@@ -16,12 +16,11 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import sys
 import threading
 import time
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager, suppress
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -29,8 +28,8 @@ from typing import Any, Protocol
 
 #: Tools a client calls over and over to stay current: counted in the totals, never written.
 POLLING = frozenset({"whats_new", "get_active_session", "list_pending_approvals", "wait_for_session"})
-#: A phone's own tools the voice calls over and over, after the phone's machine name.
-PHONE_POLLING = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*_(?:sms_since|sms_send_outcomes)")
+#: A phone's own tools the voice calls over and over, offered after the phone's machine name.
+PHONE_POLLING = frozenset({"sms_since", "sms_send_outcomes"})
 #: The upper bound of each duration bucket in milliseconds; the last bucket is everything above.
 BOUNDS = (50, 100, 200, 500, 1_000, 2_000, 5_000, 10_000, 20_000, 30_000, 60_000)
 OUTCOMES = ("ok", "error", "refused", "timeout", "cancelled")
@@ -98,11 +97,17 @@ def classify(
     return "ok", None
 
 
-def polling(tool: str) -> bool:
+def polling(tool: str, machines: frozenset[str] = frozenset()) -> bool:
     """Whether a client calls `tool` over and over to stay current: one of the bridge's own, or a
-    phone's `sms_since` or `sms_send_outcomes` after its machine name."""
+    phone's `sms_since` or `sms_send_outcomes` after the name of one of `machines`. A machine's
+    name has no underscore, so the first one ends it."""
+    if tool in POLLING:
+        return True
+    machine, _, name = tool.partition("_")
+    # RULE: only a machine the bridge knows has its text checks counted as polling
+    known = machine in machines
     # RULE: a phones sms_since and sms_send_outcomes count as polling
-    return tool in POLLING or PHONE_POLLING.fullmatch(tool) is not None
+    return known and name in PHONE_POLLING
 
 
 def caller_of(params: dict[str, Any]) -> str | None:
@@ -122,12 +127,14 @@ class CallLog:
         *,
         max_lines: int = MAX_LINES,
         prune_every: int = PRUNE_EVERY,
+        machines: Iterable[str] = (),
     ) -> None:
         self.path = path.expanduser()
         self.totals = totals
         self.clock = clock
         self.max_lines = max_lines
         self.prune_every = prune_every
+        self.machines = frozenset(machines)
         self._lock = threading.Lock()
         self._running: dict[str, dict[str, Any]] = {}
         self._counts: dict[tuple[str, str], list[Any]] = {}
@@ -158,7 +165,7 @@ class CallLog:
             row = {**row, "ended_at": _iso(now), "outcome": outcome, "error_class": error_class, "ms": round(ms)}
             self._count(row, now)
         # RULE: a polling tool is counted but never written line by line
-        if not polling(row["tool"]):
+        if not polling(row["tool"], self.machines):
             self._append(row)
         if now - self._flushed >= FLUSH_SECONDS:
             self.flush()

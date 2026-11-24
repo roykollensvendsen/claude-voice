@@ -1,0 +1,5 @@
+[[rule]]
+name = "the folders are sized only once the temporary disk is past the first level"
+file = "src/claude_voice/temp_disk.py"
+find = '"largest": largest\(root\) if percent >= WARN else \[\],'
+replace = '"largest": largest(root),'

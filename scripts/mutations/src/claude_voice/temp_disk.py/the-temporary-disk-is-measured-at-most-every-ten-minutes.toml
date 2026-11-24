@@ -1,0 +1,5 @@
+[[rule]]
+name = "the temporary disk is measured at most every ten minutes"
+file = "src/claude_voice/temp_disk.py"
+find = 'if now < self\._due:'
+replace = 'if False:'

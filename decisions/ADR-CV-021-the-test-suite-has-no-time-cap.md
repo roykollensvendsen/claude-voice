@@ -35,6 +35,8 @@ The health page still shows the time, and reads the file's history from git so
 its older trend stays. A repository that still sets a budget in its own
 `quality.json` is judged against it on the page, as before.
 
+CI jobs that run tests or mutation carry no `timeout-minutes`.
+
 ## Consequences
 
 - A change can no longer go red because the machine was busy.

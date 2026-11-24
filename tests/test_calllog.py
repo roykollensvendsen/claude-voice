@@ -123,10 +123,18 @@ def test_a_polling_tool_is_counted_but_never_written_line_by_line(tmp_path, stor
 
 @pytest.mark.parametrize("name", ["sms_since", "sms_send_outcomes"])
 def test_a_phones_sms_since_and_sms_send_outcomes_count_as_polling(tmp_path, store, clock, name):
-    log = opened(tmp_path, store, clock)
+    log = opened(tmp_path, store, clock, machines=["phone-a"])
     call(log, clock, tool=f"phone-a_{name}")
     assert lines(log) == []
     assert {row["tool"]: row["calls"] for row in log.today_rows()} == {f"phone-a_{name}": 1}
+
+
+@pytest.mark.parametrize("tool", ["garage_sms_since", "phone-b_sms_send_outcomes"])
+def test_only_a_machine_the_bridge_knows_has_its_text_checks_counted_as_polling(tmp_path, store, clock, tool):
+    """A plugin's own tool may end in the same words; only a machine in the settings is a phone."""
+    log = opened(tmp_path, store, clock, machines=["phone-a"])
+    call(log, clock, tool=tool)
+    assert [line["tool"] for line in lines(log)] == [tool]
 
 
 @pytest.mark.parametrize("tool", ["sms_since_report", "phone-a_sms_since_all", "phone-a_old_sms_send_outcomes_x"])

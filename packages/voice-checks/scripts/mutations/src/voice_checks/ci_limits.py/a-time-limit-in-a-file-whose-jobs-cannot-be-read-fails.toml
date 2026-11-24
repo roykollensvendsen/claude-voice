@@ -1,0 +1,5 @@
+[[rule]]
+name = "a time limit in a file whose jobs cannot be read fails"
+file = "src/voice_checks/ci_limits.py"
+find = 'found\.append\(f"\{shown\}: has timeout-minutes, but its jobs could not be read"\)'
+replace = 'pass'
