@@ -1,0 +1,5 @@
+[[rule]]
+name = "every plugin is asked for its status at once"
+file = "src/claude_voice/plugins.py"
+find = '^\s*return list\(await asyncio\.gather\(\*\(ask_status\(p, limit\) for p in running\)\)\)$'
+replace = 'return [await ask_status(p, limit) for p in running]'

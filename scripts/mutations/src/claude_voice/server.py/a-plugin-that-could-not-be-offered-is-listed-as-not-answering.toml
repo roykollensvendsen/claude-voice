@@ -1,0 +1,5 @@
+[[rule]]
+name = "a plugin that could not be offered is listed as not answering"
+file = "src/claude_voice/server.py"
+find = '^\s*found \+= \[\{"name": f\["name"\], "answered": False, "line": f\["state"\]\} for f in plugin_failures\]$'
+replace = 'pass'

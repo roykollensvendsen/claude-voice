@@ -260,6 +260,75 @@ async def test_a_plugin_call_that_runs_too_long_is_cut_off(tmp_path):
     assert out.is_error and "took longer than" in out.content[0].text
 
 
+SLOW = config.PluginSpec(**{**GARAGE.__dict__, "name": "slow", "args": ["--slow"], "timeout": 30.0})
+DUMB = config.PluginSpec(**{**GARAGE.__dict__, "name": "dumb", "args": ["--dumb"], "tools": ["garage_request"]})
+
+
+def by_args(params):
+    """A stand-in per plugin: a slow one for --slow, the usual garage for the rest."""
+    return Client(stand_in(slow="--slow" in params.args)[0])
+
+
+def test_every_plugin_is_asked_for_its_status_at_once():
+    class Takes:
+        def __init__(self, name):
+            self.spec = config.PluginSpec(**{**GARAGE.__dict__, "name": name})
+
+        async def call(self, tool, arguments):
+            await asyncio.sleep(0.4)
+            return type("Answer", (), {"content": [], "is_error": False, "structured_content": {"say": "fine"}})()
+
+    async def round_of(n):
+        started = asyncio.get_running_loop().time()
+        found = await plugins.statuses([Takes(f"p{i}") for i in range(n)], 5)
+        return found, asyncio.get_running_loop().time() - started
+
+    found, took = asyncio.run(round_of(4))
+    assert [f["line"] for f in found] == ["fine"] * 4 and took < 1.2  # one after another would take 1.6 s
+
+
+async def test_one_call_says_which_plugins_answered_and_which_did_not(tmp_path, monkeypatch):
+    monkeypatch.setattr(plugins, "STATUS_SECONDS", 1.0)
+    server = bridge(tmp_path, [GARAGE, SLOW, DUMB], factory=by_args)
+    async with Client(server) as c:
+        took = asyncio.get_running_loop().time()
+        out = (await c.call_tool("plugins_status", {})).structured_content
+        took = asyncio.get_running_loop().time() - took
+    found = {p["name"]: p for p in out["plugins"]}
+    assert took < 8  # the slow one sleeps 10 s, is cut at 1 s, and never holds up the garage
+    assert found["garage"] == {"name": "garage", "answered": True, "line": '{"door": "closed"}'}
+    assert found["slow"] == {"name": "slow", "answered": False, "line": "no answer within 1 s"}
+    assert out["say"] == "1 of 2 plugins answered. No answer from slow."
+
+
+def test_a_status_that_does_not_come_in_time_is_reported_as_no_answer():
+    class Hangs:
+        spec = SLOW
+
+        async def call(self, tool, arguments):
+            await asyncio.sleep(10)
+
+    assert asyncio.run(plugins.ask_status(Hangs(), 0.05)) == {
+        "name": "slow",
+        "answered": False,
+        "line": "no answer within 0.05 s",
+    }
+
+
+def test_a_plugins_status_tool_is_its_first_allowed_tool_ending_in_status_or_now():
+    assert plugins.status_tool(GARAGE) == "garage_status"
+    assert plugins.status_tool(config.PluginSpec(**{**GARAGE.__dict__, "tools": ["ams_price", "ams_now"]})) == "ams_now"
+    assert plugins.status_tool(DUMB) is None
+
+
+def test_a_status_line_is_one_short_line_with_no_control_or_format_characters():
+    # a line separator, a right-to-left override and a zero-width space, written by number
+    hidden = "".join(map(chr, (0x2028, 0x202E, 0x200B)))
+    said = plugins._said({"say": "Door\nclosed" + hidden[0] + "now" + hidden[1:] + "\x1b[2J" + "x" * 300})
+    assert said.startswith("Door closed now [2J") and len(said) == plugins.LINE and said.endswith("…")
+    assert plugins._said({"text": "plain words"}) == "plain words"
+
+
 async def test_the_health_report_shows_each_plugin_and_its_tools(tmp_path):
     fake, _ = stand_in()
     server = bridge(tmp_path, [GARAGE], factory=lambda params: Client(fake))

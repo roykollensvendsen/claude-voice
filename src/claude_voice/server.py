@@ -2666,6 +2666,17 @@ def build_server(
         return {**built, "nodes": [{**n, "number": numbers.get(str(n["id"]))} for n in built["nodes"]]}
 
     @tool(annotations=READ_ONLY)
+    async def plugins_status() -> dict[str, Any]:
+        """Ask every home plugin how it stands, all at once, a few seconds each.
+        For each plugin: whether it answered in time and one line saying how it stands, from its
+        own status tool. `say` is a short sentence for the voice, naming those that did not answer.
+        Use it to find which plugin hangs; a slow one never holds up the others."""
+        found = await plugins.statuses(list(active_plugins))
+        # RULE: a plugin that could not be offered is listed as not answering
+        found += [{"name": f["name"], "answered": False, "line": f["state"]} for f in plugin_failures]
+        return {"plugins": found, "say": plugins.status_summary(found)}
+
+    @tool(annotations=READ_ONLY)
     def health() -> dict[str, Any]:
         """The bridge's own state: version, memory, calls and errors per tool.
         Also since when it runs, its last restart and why, the latency per tool since start, the latest
