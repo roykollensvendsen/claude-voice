@@ -69,7 +69,7 @@ _WORK = """
       }
       ... on Issue {
         __typename id state updatedAt repository { nameWithOwner } author { login }
-        labels(first: 20) { totalCount nodes { name } } comments(last: 50) { nodes { author { login } } }
+        labels(first: 1) { totalCount } comments(last: 50) { nodes { author { login } } }
         assignees(first: 1) { totalCount } closedByPullRequestsReferences(first: 1) { totalCount }
       }"""
 

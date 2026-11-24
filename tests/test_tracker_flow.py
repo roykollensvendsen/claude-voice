@@ -32,12 +32,12 @@ def pr(*, state="OPEN", draft=False, checks="SUCCESS", head=HEAD, checked=HEAD, 
     }
 
 
-def issue(*, state="OPEN", author=OWNER, labels=0, named=(), commenters=(), assignees=0, linked=0, quiet=0):
+def issue(*, state="OPEN", author=OWNER, labels=0, commenters=(), assignees=0, linked=0, quiet=0):
     return {
         "__typename": "Issue",
         "state": state,
         "author": {"login": author},
-        "labels": {"totalCount": labels + len(named), "nodes": [{"name": n} for n in named]},
+        "labels": {"totalCount": labels},
         "comments": {"nodes": [{"author": {"login": who}} for who in commenters]},
         "assignees": {"totalCount": assignees},
         "closedByPullRequestsReferences": {"totalCount": linked},
@@ -175,15 +175,14 @@ def test_a_triaged_outside_issue_goes_to_backlog_unless_it_is_in_waiting():
     assert where(issue(author="someone-else", commenters=[OWNER]), now="ready") == "backlog"
 
 
-def test_only_a_parked_issue_stays_in_waiting_once_the_owner_has_answered_it():
-    """An outside issue the owner has labelled or answered no longer waits on the owner (#477).
-    The manager keeps a decision there with the parked label, whoever opened the issue."""
+def test_an_outside_issue_leaves_waiting_once_the_owner_has_labelled_or_answered_it():
+    """An answered outside issue no longer counts as waiting on the owner (#477). The sync puts
+    only outside issues in waiting, so the owner's own issue there was parked by hand and stays."""
     assert where(issue(author="someone-else", labels=1), now="waiting") == "backlog"
     assert where(issue(author="someone-else", commenters=[OWNER]), now="waiting") == "backlog"
-    assert where(issue(), now="waiting") == "backlog"
-    assert where(issue(named=["parked"]), now="waiting") == "waiting"
-    assert where(issue(author="someone-else", named=["parked"], commenters=[OWNER])) == "waiting"
-    assert where(issue(named=["bug"]), now="waiting") == "backlog"
+    assert where(issue(), now="waiting") == "waiting"
+    assert where(issue(labels=1, commenters=[OWNER]), now="waiting") == "waiting"
+    assert where(issue(author="someone-else"), now="waiting") == "waiting"  # not answered yet
 
 
 # --- Stalled ----------------------------------------------------------------------------

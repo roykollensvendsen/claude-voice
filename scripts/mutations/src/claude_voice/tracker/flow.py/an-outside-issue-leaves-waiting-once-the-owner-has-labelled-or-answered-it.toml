@@ -1,0 +1,5 @@
+[[rule]]
+name = "an outside issue leaves waiting once the owner has labelled or answered it"
+file = "src/claude_voice/tracker/flow.py"
+find = '^\s*if now == "waiting" and author == owner:$'
+replace = '    if now == "waiting":'

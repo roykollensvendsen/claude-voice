@@ -1,5 +1,0 @@
-[[rule]]
-name = "only a parked issue stays in waiting once the owner has answered it"
-file = "src/claude_voice/tracker/flow.py"
-find = '^\s*if PARKED in \{label\.get\("name"\) for label in work\["labels"\]\.get\("nodes"\) or \[\]\}:$'
-replace = '    if True:'
