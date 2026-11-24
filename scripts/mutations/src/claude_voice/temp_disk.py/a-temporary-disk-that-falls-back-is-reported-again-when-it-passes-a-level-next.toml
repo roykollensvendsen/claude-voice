@@ -1,0 +1,5 @@
+[[rule]]
+name = "a temporary disk that falls back is reported again when it passes a level next"
+file = "src/claude_voice/temp_disk.py"
+find = 'if level < self\._told:'
+replace = 'if False:'
