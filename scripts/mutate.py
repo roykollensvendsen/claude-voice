@@ -159,6 +159,9 @@ def left_behind(text: str, rule: dict[str, object]) -> int | None:
     the marker matches the row's pattern any more, but one is the row's replacement, the
     run swapped the line in and never put it back. The replacement on its own proves
     nothing: `return None` or `pass` stand in many files on purpose.
+
+    Only the first marker with the rule's name in the file is read. Two rows for one rule
+    are refused, but two markers with one name are not, so don't lean on a second marker.
     """
     lines = text.splitlines()
     marks = [i for i, line in enumerate(lines) if (m := MARKER.search(line)) and m.group(1) == rule["name"]]
