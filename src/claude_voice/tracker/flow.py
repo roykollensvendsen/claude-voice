@@ -24,6 +24,8 @@ PENDING = {"PENDING", "EXPECTED"}
 QUIET_PR = 30 * 60
 QUIET_ISSUE = 120 * 60
 QUIET_REVIEW = 120 * 60
+#: The label the manager puts on an issue to keep it in Waiting on owner.
+PARKED = "parked"
 
 
 def checks(work: dict[str, Any]) -> str:
@@ -89,10 +91,9 @@ def issue_column(work: dict[str, Any], now: str | None, owner: str) -> str:
     answered = any((c.get("author") or {}).get("login") == owner for c in work["comments"]["nodes"])
     if author != owner and not work["labels"]["totalCount"] and not answered:
         return "waiting"
-    # RULE: an issue moved to waiting by hand stays there
-    # The sync cannot tell an issue the manager parked from one it put there itself.
-    if now in ("backlog", "waiting"):
-        return now
+    # RULE: only a parked issue stays in waiting once the owner has answered it
+    if PARKED in {label.get("name") for label in work["labels"].get("nodes") or []}:
+        return "waiting"
     return "backlog"
 
 
