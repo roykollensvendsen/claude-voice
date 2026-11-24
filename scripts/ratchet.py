@@ -135,6 +135,7 @@ LAYERS = {
             "approvals",
             "machines",
             "plugin_desk",
+            "plugin_status",
             "org",
             "answers",
             "approver",
