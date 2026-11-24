@@ -1,5 +1,0 @@
-[[rule]]
-name = "the approvers process is taken from its window not a session file"
-file = "src/claude_voice/server.py"
-find = 'return d.get\("name"\) == name and d.get\("cwd"\) == str\(folder\) and pid in \(None, d.get\("pid"\)\)'
-replace = 'return d.get("name") == name and d.get("cwd") == str(folder)'

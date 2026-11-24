@@ -1,5 +1,0 @@
-[[rule]]
-name = "the approver reaches only the bridge"
-file = "src/claude_voice/boxed.py"
-find = 'server = \{$'
-replace = 'server = {"type": "stdio", "command": "other"} or {'

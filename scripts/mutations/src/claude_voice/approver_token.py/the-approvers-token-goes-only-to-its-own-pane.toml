@@ -1,5 +1,0 @@
-[[rule]]
-name = "the approvers token goes only to its own pane"
-file = "src/claude_voice/approver_token.py"
-find = 'if token is None or peer != pid or not self._alive\(\):'
-replace = 'if token is None:'

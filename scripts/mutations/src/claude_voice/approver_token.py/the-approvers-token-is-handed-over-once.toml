@@ -1,5 +1,0 @@
-[[rule]]
-name = "the approvers token is handed over once"
-file = "src/claude_voice/approver_token.py"
-find = 'self._waiting = None$'
-replace = 'pass'

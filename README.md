@@ -111,7 +111,6 @@ the bridge says which are missing, with the exact fix, through its
 | `plugin_approve_request`, `plugin_approve_confirm` | in developer mode, approve a plugin whose tools changed: the voice names each changed tool and approves on your yes |
 | `list_pending_approvals`, `approve`, `deny` | answer Claude's requests to edit files, run commands and so on |
 | `answer_question` | answer a session's choice box by voice, by an option's number or label or in your own words, while the phone hook waits on it; `list_pending_approvals` lists these questions, and `whats_new` reports each as `needs_answer` |
-| `approver_boxes`, `approver_answer` | for the approver role only, and only once `[approver] on = true`: list the boxes other sessions wait on, and answer the routine ones, each answer counting once and logged |
 | `cancel`, `close_session` | stop a turn, retire a session |
 | `list_sessions` | the sessions this bridge started, and every one running on the computer |
 | `session_tree` | the sessions as a tree, including which ones have been messaging each other |

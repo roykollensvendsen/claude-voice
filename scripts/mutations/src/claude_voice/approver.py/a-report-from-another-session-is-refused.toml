@@ -1,5 +1,0 @@
-[[rule]]
-name = "a report from another session is refused"
-file = "src/claude_voice/approver.py"
-find = 'mine = \[r for r in matches if r in self.reports and self.approver\(r\[1\]\)\]'
-replace = 'mine = [r for r in matches if r in self.reports]'

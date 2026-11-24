@@ -121,8 +121,6 @@ class OAuthProvider:
         self._failures: list[float] = []
         self._locked_until = 0.0
         self._lockout = 0.0
-        # A token the bridge keeps elsewhere, such as the approver's own: the client it names.
-        self.kept_elsewhere: Callable[[str], str | None] = lambda token: None
 
     # -- clients -------------------------------------------------------------
 
@@ -305,8 +303,6 @@ class OAuthProvider:
     async def load_access_token(self, token: str) -> AccessToken | None:
         if self.static_token and hmac.compare_digest(token.encode(), self.static_token.encode()):
             return AccessToken(token=token, client_id="static-token", scopes=[SCOPE], subject="owner")
-        if client := self.kept_elsewhere(token):
-            return AccessToken(token=token, client_id=client, scopes=[SCOPE], subject=client)
         row = self._load(token, "access")
         if row is None:
             log.info("oauth access refused: unknown or expired access token")

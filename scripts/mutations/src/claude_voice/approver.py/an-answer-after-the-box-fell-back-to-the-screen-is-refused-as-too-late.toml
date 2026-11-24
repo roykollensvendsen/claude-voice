@@ -1,5 +1,0 @@
-[[rule]]
-name = "an answer after the box fell back to the screen is refused as too late"
-file = "src/claude_voice/approver.py"
-find = 'if prompt is None or prompt.get\("answer"\) is not None or not book.hook_waits\(prompt\):'
-replace = 'if prompt is None:'

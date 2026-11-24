@@ -1,5 +1,0 @@
-[[rule]]
-name = "the approver sees only its two tools"
-file = "src/claude_voice/boxed.py"
-find = 'return _narrowed\(result\) if ctx.method == "tools/list" else result'
-replace = 'return result'

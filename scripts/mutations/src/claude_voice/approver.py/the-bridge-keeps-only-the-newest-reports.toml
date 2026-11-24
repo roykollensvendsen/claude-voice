@@ -1,5 +1,0 @@
-[[rule]]
-name = "the bridge keeps only the newest reports"
-file = "src/claude_voice/approver.py"
-find = 'del self.reports\[:-MAX_REPORTS\]'
-replace = 'pass'

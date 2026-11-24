@@ -1,5 +1,5 @@
 [[rule]]
 name = "a question waits for the phone only while the owner is away from the laptop"
 file = "src/claude_voice/api.py"
-find = 'wait = self.duty.covers\(prompt\) or await self._away\(\)'
-replace = 'wait = self.duty.covers(prompt) or HUB.listening()'
+find = '^        wait = await self._away\(\)$'
+replace = '        wait = HUB.listening()'

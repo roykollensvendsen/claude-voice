@@ -1,5 +1,0 @@
-[[rule]]
-name = "the approver never answers a box the owner holds"
-file = "src/claude_voice/approver.py"
-find = 'if why := judge\(prompt\):'
-replace = 'if False:'

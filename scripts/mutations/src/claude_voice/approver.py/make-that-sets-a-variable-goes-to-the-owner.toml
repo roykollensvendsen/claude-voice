@@ -1,5 +1,0 @@
-[[rule]]
-name = "make that sets a variable goes to the owner"
-file = "src/claude_voice/approver.py"
-find = 'if program == "make" and'
-replace = 'if False:'

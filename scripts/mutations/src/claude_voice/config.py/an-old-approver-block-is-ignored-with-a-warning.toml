@@ -1,0 +1,5 @@
+[[rule]]
+name = "an old approver block is ignored with a warning"
+file = "src/claude_voice/config.py"
+find = '^        log.warning\("%s: \[approver\] is no longer read, since the approver is retired; remove the block", file\)$'
+replace = '        pass'

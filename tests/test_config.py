@@ -32,6 +32,15 @@ def test_without_a_file_the_defaults_follow_the_clone_the_bridge_runs_from(tmp_p
     assert out.paths.contribute == here
 
 
+@pytest.mark.parametrize("block", ["[approver]\non = true\n", "[approver]\non = 'maybe'\n", "[approver]\n"])
+def test_an_old_approver_block_is_ignored_with_a_warning(tmp_path, caplog, block):
+    file = tmp_path / "config.toml"
+    file.write_text(block, encoding="utf-8")
+    out = config.load(file, own_clone=tmp_path, env={})
+    assert not hasattr(out, "approver_on")
+    assert "[approver] is no longer read" in caplog.text
+
+
 def test_a_file_names_other_repositories_and_folders(tmp_path):
     file = tmp_path / "config.toml"
     file.write_text(

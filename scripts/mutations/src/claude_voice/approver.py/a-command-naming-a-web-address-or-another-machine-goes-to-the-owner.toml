@@ -1,5 +1,0 @@
-[[rule]]
-name = "a command naming a web address or another machine goes to the owner"
-file = "src/claude_voice/approver.py"
-find = 'if ":" in word:'
-replace = 'if False:'
