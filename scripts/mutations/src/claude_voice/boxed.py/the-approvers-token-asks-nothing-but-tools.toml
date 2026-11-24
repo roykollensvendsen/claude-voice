@@ -1,5 +1,0 @@
-[[rule]]
-name = "the approvers token asks nothing but tools"
-file = "src/claude_voice/boxed.py"
-find = 'if ctx.method not in OPEN and not ctx.method.startswith\("notifications/"\):'
-replace = 'if False:'

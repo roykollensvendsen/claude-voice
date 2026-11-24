@@ -8,8 +8,6 @@
 
 [titles]
 approve = "Approve a pending tool call"
-approver_answer = "Answer a routine approval box as the approver"
-approver_boxes = "List the approval boxes the approver may answer"
 ask_active_session = "Ask an open session and wait"
 ask_forked_session = "Ask the side session and wait"
 attach_conversation = "Continue an earlier conversation"

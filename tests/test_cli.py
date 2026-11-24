@@ -33,7 +33,17 @@ def test_the_command_has_these_verbs_in_this_order():
         "set",
         "tracker",
         "decisions",
+        "boxes",
     )
+
+
+def test_the_nightly_report_is_one_command(tmp_path, monkeypatch, capsys):
+    from claude_voice import boxes
+
+    monkeypatch.setattr(boxes, "LOG", tmp_path / "boxes.jsonl")
+    assert main(["boxes", "--day", "2026-11-24"]) == 0
+    assert capsys.readouterr().out == "No boxes reached the owner on 2026-11-24.\n"
+    assert main(["boxes", "--day", "yesterday"]) == 2
 
 
 class Systemctl:

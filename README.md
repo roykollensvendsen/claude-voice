@@ -112,7 +112,6 @@ the bridge says which are missing, with the exact fix, through its
 | `plugin_approve_request`, `plugin_approve_confirm` | in developer mode, approve a plugin whose tools changed: the voice names each changed tool and approves on your yes |
 | `list_pending_approvals`, `approve`, `deny` | answer Claude's requests to edit files, run commands and so on |
 | `answer_question` | answer a session's choice box by voice, by an option's number or label or in your own words, while the phone hook waits on it; `list_pending_approvals` lists these questions, and `whats_new` reports each as `needs_answer` |
-| `approver_boxes`, `approver_answer` | for the approver role only, and only once `[approver] on = true`: list the boxes other sessions wait on, and answer the routine ones, each answer counting once and logged |
 | `cancel`, `close_session` | stop a turn, retire a session |
 | `list_sessions` | the sessions this bridge started, and every one running on the computer |
 | `session_tree` | the sessions as a tree, including which ones have been messaging each other |
@@ -413,6 +412,20 @@ counts once. Support's transcript is read only from the folder the bridge starte
 support session started before the bridge recorded that folder is refused until it is started
 again with `start_role`. Every check is logged to `decision-checks.jsonl` beside it, for you to read after.
 The reasons are in `src/claude_voice/decisions.py`.
+
+### Why the day's boxes came
+
+The bridge logs why each permission box reached you, one line per box in
+`~/.local/state/claude-voice/boxes.jsonl`. Each night the manager reads the day's boxes,
+grouped with counts, and one proposal for each group to make it go away:
+
+```console
+$ claude-voice boxes --day 1999-01-01
+No boxes reached the owner on 1999-01-01.
+```
+
+The report only proposes, and writes nothing. Without `--day` it reports yesterday, in local
+time. The causes are in docs/permissions.md, "Why a box came".
 
 ## Answer questions and approvals from the phone
 

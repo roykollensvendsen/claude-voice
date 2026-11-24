@@ -1,0 +1,5 @@
+[[rule]]
+name = "a chain is split as the shell splits it"
+file = "src/claude_voice/boxes.py"
+find = '^\s*if token and set\(token\) <= JOINERS:$'
+replace = 'if token in {"&&", "||", ";", "|"}:'

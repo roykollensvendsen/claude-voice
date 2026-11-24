@@ -20,12 +20,9 @@ It uses the standard library only, so it needs none of the bridge's packages.
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import json
 import os
-import re
 import shlex
-import socket
 import sys
 import urllib.error
 import urllib.request
@@ -34,36 +31,18 @@ from typing import Any, Protocol
 
 TIMEOUT = 300  # seconds the hook waits for the phone before the box shows at the screen
 ENV_FILE = Path("~/.config/claude-voice/env")
-#: The approver's own tools, whichever connector name Claude Code gives the bridge.
-APPROVER_TOOLS = r"mcp__.+__approver_[a-z_]+"
-#: Where the bridge hears reports of approver calls. A Unix socket, so the kernel tells the
-#: bridge which process sent each one; a token would say only that the env file was read.
-REPORT_SOCKET = Path("~/.local/state/claude-voice/approver/report.sock")
 
 
 class Bridge(Protocol):
     def open(self, body: dict[str, Any]) -> dict[str, Any]: ...
     def wait_for(self, prompt_id: str, seconds: float) -> dict[str, Any] | None: ...
     def close(self, prompt_id: str, how: str) -> None: ...
-    def report(self, body: dict[str, Any]) -> None: ...
-
-
-def args_digest(args: Any) -> str:
-    """A hash of a tool call's arguments, the same whichever order its keys come in. The hook
-    and the bridge each work it out, and an approver call is taken only when both agree."""
-    text = json.dumps(args, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return hashlib.sha256(text.encode()).hexdigest()
 
 
 def handle(hook_input: dict[str, Any], bridge: Bridge, timeout: float = TIMEOUT, spoken_to: str = "") -> dict[str, Any]:
     """Claude Code's hook answer: the phone's answer, or nothing so the box shows.
 
     ``spoken_to`` is the session the voice is talking to, if any (see ``spoken_to()``)."""
-    tool = str(hook_input.get("tool_name") or "")
-    # RULE: the hook reports each approver call with a hash of its arguments
-    if hook_input.get("hook_event_name") == "PreToolUse" and re.fullmatch(APPROVER_TOOLS, tool):
-        _report(hook_input, bridge)
-        return {}  # it only vouches for the caller; the bridge decides
     body = _prompt(hook_input, spoken_to)
     if body is None:
         return {}
@@ -73,19 +52,6 @@ def handle(hook_input: dict[str, Any], bridge: Bridge, timeout: float = TIMEOUT,
     if body["kind"] == "question":
         return _question_answer(hook_input.get("tool_input") or {}, answer)
     return _approval_answer(answer)
-
-
-def _report(hook_input: dict[str, Any], bridge: Bridge) -> None:
-    """Tell the bridge that this session is about to call an approver tool, and with what. The
-    bridge trusts no claim in it: it takes the report only from under the approver's own claude
-    process, which runs this hook. A call the bridge hears no such report for is refused."""
-    body = {
-        "session_id": str(hook_input.get("session_id") or ""),
-        "tool": str(hook_input.get("tool_name") or ""),
-        "args_sha256": args_digest(hook_input.get("tool_input") or {}),
-    }
-    with contextlib.suppress(Exception):
-        bridge.report(body)  # a bridge that is down refuses the call itself; the session goes on
 
 
 def _prompt(hook_input: dict[str, Any], spoken_to: str) -> dict[str, Any] | None:
@@ -98,13 +64,15 @@ def _prompt(hook_input: dict[str, Any], spoken_to: str) -> dict[str, Any] | None
         return _question(session, tool_input, spoken_to)
     # RULE: a question never opens a second prompt as an approval
     if event == "PermissionRequest" and tool != "AskUserQuestion":
-        # The folder the session works in, so the bridge can sort the prompt.
+        # The folder the session works in and its permission mode, so the bridge can sort the
+        # prompt and say why it came.
         return {
             "session_id": session,
             "kind": "approval",
             "tool": tool,
             "input": tool_input,
             "cwd": hook_input.get("cwd"),
+            "mode": hook_input.get("permission_mode"),
         }
     return None
 
@@ -214,21 +182,6 @@ class HttpBridge:
         except (OSError, urllib.error.URLError):
             pass
 
-    def report(self, body: dict[str, Any]) -> None:
-        send_report(body)
-
-
-def send_report(body: dict[str, Any], path: Path = REPORT_SOCKET) -> None:
-    """One report over the bridge's report socket, waiting until the bridge has taken it.
-    Windows has no such socket, so there the report fails and the approver's call is refused."""
-    if sys.platform == "win32":
-        raise OSError("no report socket on Windows")
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as line:
-        line.settimeout(2)
-        line.connect(str(path.expanduser()))
-        line.sendall(json.dumps(body).encode() + b"\n")
-        line.recv(16)  # the bridge answers once the report is in, before the tool call can be
-
 
 def spoken_to() -> str:
     """The session the voice is talking to, or nothing: the file the box-refusing hook reads too."""
@@ -264,8 +217,6 @@ def settings_entries(python: str = "python3") -> dict[str, list[dict[str, Any]]]
     return {
         "PreToolUse": [
             {"matcher": "AskUserQuestion", "hooks": [hook]},
-            # RULE: the hook runs before every approver tool
-            {"matcher": APPROVER_TOOLS, "hooks": [dict(hook)]},
         ],
         "PermissionRequest": [{"matcher": "*", "hooks": [dict(hook)]}],
     }

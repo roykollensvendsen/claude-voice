@@ -1,5 +1,0 @@
-[[rule]]
-name = "any other tool goes to the owner"
-file = "src/claude_voice/approver.py"
-find = 'return f"\{tool\} is not on the approver'
-replace = 'return None'

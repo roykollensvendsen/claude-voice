@@ -1,5 +1,0 @@
-[[rule]]
-name = "the approver is off unless the config says true"
-file = "src/claude_voice/config.py"
-find = 'if not isinstance\(on, bool\):'
-replace = 'if False:'

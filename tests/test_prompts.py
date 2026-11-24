@@ -75,6 +75,15 @@ async def test_a_prompt_waits_for_the_phone_only_while_the_app_is_open(app):
     assert closed["wait"] is False and open_["wait"] is True
 
 
+async def test_an_approval_goes_straight_to_the_owner_with_the_approver_retired(app):
+    """Nothing waits for an approver: at the laptop, with the app closed, the box shows at once."""
+    async with client(app) as c:
+        opened = (await c.post("/api/v1/prompts", json={**APPROVAL, "session_id": "a-role"}, headers=BEARER)).json()
+        listed = (await c.get("/api/v1/prompts", headers=BEARER)).json()["prompts"]
+    assert opened["wait"] is False
+    assert [p["id"] for p in listed] == [opened["id"]]
+
+
 async def test_a_question_waits_for_the_phone_only_while_the_owner_is_away_from_the_laptop(tmp_path):
     locked, _ = bridge(tmp_path, presence.Desktop(locked=True, idle_seconds=0.0))
     async with client(locked) as c:
@@ -405,7 +414,7 @@ def test_the_hook_is_given_to_claude_code_only_for_questions_and_permission_prom
     entries = phone_hook.settings_entries("/usr/bin/python3")
     assert set(entries) == {"PreToolUse", "PermissionRequest"}
     assert entries["PreToolUse"][0]["matcher"] == "AskUserQuestion"
-    assert json.dumps(entries).count("phone_hook.py") == 3  # questions, approver calls, permission prompts
+    assert json.dumps(entries).count("phone_hook.py") == 2  # questions, permission prompts
 
 
 SCRIPT = str(Path(phone_hook.__file__).resolve())
@@ -429,8 +438,8 @@ def test_installing_the_hook_keeps_every_other_setting_and_hook_and_can_run_twic
     pre = after["hooks"]["PreToolUse"]
     commands = [h["command"] for m in pre for h in m["hooks"]]
     assert (
-        other["command"] in commands and commands.count(shlex.join(["/opt/cv/bin/python", "-I", "-S", SCRIPT])) == 2
-    )  # once for questions, once for approver calls
+        other["command"] in commands and commands.count(shlex.join(["/opt/cv/bin/python", "-I", "-S", SCRIPT])) == 1
+    )  # once, for questions
     assert len(after["hooks"]["PermissionRequest"]) == 1
     assert (tmp_path / "settings.json.bak").exists()  # the file as it was, kept beside it
 
@@ -454,8 +463,19 @@ def test_installing_the_hook_again_replaces_an_older_phone_hook_line(tmp_path):
     hooks = json.loads(settings.read_text())["hooks"]
     commands = {event: [h["command"] for m in hooks[event] for h in m["hooks"]] for event in hooks}
     new = shlex.join(["/opt/cv/bin/python", "-I", "-S", SCRIPT])
-    assert commands["PreToolUse"] == [other["command"], new, new]  # questions, then approver calls
+    assert commands["PreToolUse"] == [other["command"], new]  # questions
     assert commands["PermissionRequest"] == [new]
+
+
+def test_installing_the_hook_again_drops_the_retired_approver_entry(tmp_path):
+    settings = tmp_path / "settings.json"
+    hook = {"type": "command", "command": "python3 -I -S /old/claude-voice/src/claude_voice/phone_hook.py"}
+    settings.write_text(
+        json.dumps({"hooks": {"PreToolUse": [{"matcher": r"mcp__.+__approver_[a-z_]+", "hooks": [hook]}]}})
+    )
+    phone_hook.install(settings, "/opt/cv/bin/python")
+    pre = json.loads(settings.read_text())["hooks"]["PreToolUse"]
+    assert [m["matcher"] for m in pre] == ["AskUserQuestion"]
 
 
 # -- prompts nobody waits on any more ----------------------------------------------------

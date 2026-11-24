@@ -38,6 +38,7 @@ COMMANDS: tuple[str, ...] = (
     "set",
     "tracker",
     "decisions",
+    "boxes",
 )
 
 SIGN_IN = (
@@ -231,9 +232,12 @@ def main(
     decisions_cmd.add_argument("action", choices=["check"])
     decisions_cmd.add_argument("uuid", help="the uuid in the decision line")
     decisions_cmd.add_argument("--head", required=True, help="the sha the item is at now")
+    boxes_cmd = sub.add_parser("boxes", help="for the manager each night: why the day's boxes came, with counts")
+    boxes_cmd.add_argument("--day", help="the day, as YYYY-MM-DD in local time (default: yesterday)")
     parsed = parser.parse_args(args)
 
     verbs: dict[str, Callable[[], int]] = {
+        "boxes": lambda: _boxes(parsed.day),
         "decisions": lambda: _decisions(parsed.uuid, parsed.head),
         "tracker": lambda: (
             claim_command(parsed.file, parsed.by, parsed.head, env)
@@ -269,6 +273,20 @@ def _decisions(uuid: str, head: str) -> int:
     from . import decisions
 
     return decisions.run(uuid, head)
+
+
+def _boxes(day: str | None) -> int:
+    from datetime import date, datetime, timedelta
+
+    from . import boxes
+
+    try:
+        wanted = date.fromisoformat(day) if day else datetime.now().astimezone().date() - timedelta(days=1)
+    except ValueError:
+        sys.stderr.write(f"claude-voice: {day!r} is not a day; write it as YYYY-MM-DD\n")
+        return 2
+    sys.stdout.write(boxes.report(boxes.LOG, wanted))
+    return 0
 
 
 def _settings_edit(verb: str, words: list[str | None], env: Mapping[str, str]) -> int:

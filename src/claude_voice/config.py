@@ -39,9 +39,6 @@ runs from, so the file is only needed to change something:
     voice_app = 120
     default = 60
 
-    [approver]
-    on = false                                  # true: the approver session answers routine boxes
-                                                # from started roles (src/claude_voice/approver.py)
     [stalled_prompt]                            # a question left waiting while nobody is at the laptop
     enabled = true                              # whether the bridge says so (docs/event-api.md)
     after_min = 5                               # minutes it waits first
@@ -55,10 +52,12 @@ import subprocess
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from logging import getLogger
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+log = getLogger(__name__)
 FILE = Path("~/.config/claude-voice/config.toml")
 STATE_DIR = Path("~/.local/state/claude-voice")  # what the bridge keeps between runs
 REPO = re.compile(r"[A-Za-z0-9-]+/[A-Za-z0-9._-]+")
@@ -229,7 +228,6 @@ class Config:
     personal_terms_file: Path | None = None  # words an issue a session files must never hold
     activity_orgs: tuple[str, ...] = ()  # the programmes the activity view reads (docs/activity.md)
     activity_phone_orgs: tuple[str, ...] = ()  # of those, the ones served beyond this computer
-    approver_on: bool = False  # whether the approver session may answer routine boxes
     board_url: str | None = None  # [work] board_url: the project board the work page links to
     stalled_prompt: StalledPrompt = field(default_factory=StalledPrompt)
 
@@ -258,6 +256,9 @@ def load(path: Path | None = FILE, own_clone: Path | None = None, env: Mapping[s
     if file is not None and file.is_file():
         with file.open("rb") as f:
             raw = tomllib.load(f)
+    if "approver" in raw:
+        # RULE: an old approver block is ignored with a warning
+        log.warning("%s: [approver] is no longer read, since the approver is retired; remove the block", file)
     return Config(
         _repos(raw.get("repos") or {}),
         _paths(raw.get("paths") or {}, own_clone, env, home),
@@ -271,7 +272,6 @@ def load(path: Path | None = FILE, own_clone: Path | None = None, env: Mapping[s
         _path(raw.get("profile"), home),
         _path(raw.get("personal_terms_file"), home),
         *_activity(raw.get("activity")),
-        _approver(raw.get("approver")),
         _board_url(raw.get("work")),
         _stalled_prompt(raw.get("stalled_prompt")),
     )
@@ -294,15 +294,6 @@ def _codes(raw: dict[str, Any], key: str) -> tuple[str, ...]:
     if not isinstance(value, list) or not all(isinstance(v, str) and v for v in value):
         raise ConfigError(f"[activity] {key} = {value!r} is not a list of programme codes")
     return tuple(value)
-
-
-def _approver(raw: Any) -> bool:
-    """[approver] on: off unless the owner writes true."""
-    on = (raw if isinstance(raw, dict) else {}).get("on", False)
-    # RULE: the approver is off unless the config says true
-    if not isinstance(on, bool):
-        raise ConfigError(f"[approver] on = {on!r} is not true or false")
-    return on
 
 
 def _activity(raw: Any) -> tuple[tuple[str, ...], tuple[str, ...]]:

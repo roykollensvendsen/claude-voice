@@ -1,5 +1,0 @@
-[[rule]]
-name = "the starter gives claude the token in its environment only"
-file = "src/claude_voice/approver_start.py"
-find = 'env = \{\*\*os.environ, boxed.TOKEN_VAR: token\}'
-replace = 'env = dict(os.environ)'

@@ -205,6 +205,16 @@ async def test_a_roles_own_settings_file_reaches_its_session(tmp_path, world):
     assert "--push-mode no-deletes" in sent["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
 
 
+async def test_the_retired_approver_role_never_starts(tmp_path, world):
+    _, clone, live, table = world
+    table.write_text(f"[roles.approver]\nfolder = '{clone}'\nguard = false\n")
+    starter = Starter(live)
+    async with Client(bridge(tmp_path, world, starter)) as c:
+        out = await c.call_tool("start_role", {"role": "approver"})
+    assert out.is_error and "retired" in out.content[0].text
+    assert not starter.calls
+
+
 async def test_a_role_whose_settings_file_is_missing_does_not_start(tmp_path, world):
     _, clone, live, table = world
     gone = Path.home() / ".local/state/claude-voice/roles/gone.json"

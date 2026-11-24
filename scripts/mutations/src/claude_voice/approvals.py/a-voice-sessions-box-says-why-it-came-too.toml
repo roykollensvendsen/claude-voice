@@ -1,0 +1,5 @@
+[[rule]]
+name = "a voice sessions box says why it came too"
+file = "src/claude_voice/approvals.py"
+find = '^\s*return \{"cause": await asyncio\.to_thread\(self\.triage, prompt, session_id, box\)\}$'
+replace = 'return {}'

@@ -11,15 +11,23 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import itertools
+import logging
+import uuid
+from collections.abc import Callable
 from typing import Any
 
 from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny, ToolPermissionContext
 
+from . import boxes
 from .sessions import brief
 from .store import Store
 
 READ_ONLY_TOOLS = frozenset({"Read", "Glob", "Grep", "LS", "NotebookRead", "TodoWrite"})
 DEFAULT_TIMEOUT_SECONDS = 600.0
+#: The mode the bridge starts its own sessions in (sessions.py), so their boxes say it.
+SDK_MODE = "default"
+
+log = logging.getLogger(__name__)
 
 
 class ApprovalNotFound(KeyError):
@@ -32,11 +40,15 @@ class ApprovalBroker:
         store: Store,
         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
         auto_allow: frozenset[str] = READ_ONLY_TOOLS,
+        triage: Callable[[str, str, boxes.Box], str] | None = None,
     ) -> None:
         self.store = store
         self.timeout = timeout_seconds
         self.auto_allow = auto_allow
+        self.triage = triage  # why a box came to the owner, logged: boxes.Triager.label; advice only
         self._ids = itertools.count(1)
+        # The approval ids start at 1 on every start, so the log names each box by its run too.
+        self._run = uuid.uuid4().hex[:8]
         self._pending: dict[str, tuple[dict[str, Any], asyncio.Future]] = {}
 
     def callback(self, session_id: str):
@@ -59,6 +71,7 @@ class ApprovalBroker:
             "input": brief(tool_input),
             "reason": context.decision_reason or context.description or context.title,
         }
+        req.update(await self._cause(req["id"], session_id, tool, tool_input))
         future: asyncio.Future = asyncio.get_running_loop().create_future()
         self._pending[req["id"]] = (req, future)
         self.store.add_event(session_id, "approval_requested", req)
@@ -70,6 +83,21 @@ class ApprovalBroker:
             return PermissionResultDeny(message="Not approved in time; the user did not answer.")
         finally:
             self._pending.pop(req["id"], None)
+
+    async def _cause(self, approval_id: str, session_id: str, tool: str, tool_input: dict[str, Any]) -> dict[str, str]:
+        """Why the box came, read aside, or nothing without a triager. The folder is not known
+        here, so the owner's own rules count."""
+        if self.triage is None:
+            return {}
+        box = boxes.Box(tool, tool_input, "", SDK_MODE)
+        try:
+            # RULE: a voice sessions box says why it came too
+            # RULE: a voice sessions box is named apart from any box before a restart
+            prompt = f"sdk-{self._run}-{approval_id}"
+            return {"cause": await asyncio.to_thread(self.triage, prompt, session_id, box)}
+        except Exception:
+            log.exception("could not label the approval %s", approval_id)
+            return {}
 
     def pending(self, session_id: str | None = None) -> list[dict[str, Any]]:
         return [req for req, _ in self._pending.values() if session_id is None or req["session_id"] == session_id]

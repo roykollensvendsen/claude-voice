@@ -42,7 +42,7 @@ WINDOWS = (
         f"src/claude_voice/{name}.py"
         for name in (
             "agent",
-            "approver_pane",
+            "boxes",
             "cli",
             "config",
             "cpu_watch",

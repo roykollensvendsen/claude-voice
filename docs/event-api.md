@@ -426,7 +426,7 @@ box shows at once rather than after five minutes.
 
 | Call | Answer |
 | --- | --- |
-| `GET /api/v1/prompts` | the open ones: `{"prompts": [{"id", "session", "kind": "question"|"approval", "question": {"text", "header", "options": [{"label", "description"}], "multi"}, "tool", "input", "cut", "asked_at"}]}`. `input` is what an approval would run: the command, the file, or short JSON, at most 300 characters |
+| `GET /api/v1/prompts` | the open ones: `{"prompts": [{"id", "session", "kind": "question"|"approval", "question": {"text", "header", "options": [{"label", "description"}], "multi"}, "tool", "input", "cut", "asked_at", "cause"?}]}`. `input` is what an approval would run: the command, the file, or short JSON, at most 300 characters. `cause` says why an approval came to the owner. It lands a moment after the prompt opens, is advice only, and is never what an answer is read from (docs/permissions.md, "Why a box came") |
 | `POST /api/v1/prompts/{id}` | for a question `{"answer": "<label>"}`, `{"answer": ["<label>", …]}` when `multi`, or `{"answer": {"text": "…"}}`; for an approval `{"decision": "allow"|"deny", "reason"?}`. `200`, `409` when it does not fit the prompt, `404` when it is gone. A change: with the cookie it needs an allowed `Origin` |
 
 While the hook waits, the bridge asks every five seconds whether the owner is still away.

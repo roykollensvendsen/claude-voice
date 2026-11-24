@@ -1,5 +1,0 @@
-[[rule]]
-name = "a box with an owner line goes to the owner"
-file = "src/claude_voice/approver.py"
-find = 'if found := sorted\(lines\):'
-replace = 'if False:'

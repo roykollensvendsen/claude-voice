@@ -1,0 +1,5 @@
+[[rule]]
+name = "a waiting item for a box shows why the box came"
+file = "src/claude_voice/work.py"
+find = '^        return \[\{\*\*item, "cause": known\[item\["prompt"\]\]\} if item\.get\("prompt"\) in known else item for item in items\]$'
+replace = '        return items'

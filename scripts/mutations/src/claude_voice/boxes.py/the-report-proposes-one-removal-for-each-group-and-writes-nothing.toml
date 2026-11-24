@@ -1,0 +1,5 @@
+[[rule]]
+name = "the report proposes one removal for each group and writes nothing"
+file = "src/claude_voice/boxes.py"
+find = '^        out\.append\(f"  proposal: \{_proposal\(cause\)\}"\)$'
+replace = '        pass'

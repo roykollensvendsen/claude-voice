@@ -39,10 +39,7 @@ from . import (
     activity,
     answers,
     api,
-    approver,
-    approver_pane,
-    approver_token,
-    boxed,
+    boxes,
     calllog,
     config,
     decisions,
@@ -61,7 +58,6 @@ from . import (
     mailbox,
     metrics,
     org,
-    phone_hook,
     plugin_desk,
     plugin_venv,
     plugins,
@@ -92,6 +88,8 @@ from .tree import PROJECTS_DIR, SessionTree
 
 MIN_TOKEN_CHARS = 32
 READ_ONLY = ToolAnnotations(read_only_hint=True)
+#: The approver role, retired (approver v4.1): a roles file may still name it, but it never starts.
+RETIRED_ROLE = "approver"
 COURIER_PREFIX = "claude-voice-msg-"
 SENDING_SAY = (
     "The message to {name} is on its way but not yet confirmed. Read the session's output "
@@ -613,21 +611,6 @@ def updater_command(python: str, folder: Path, log: Path, port: int) -> list[str
     return [python, "-I", "-m", "claude_voice.updater", "--repo", str(folder), "--log", str(log), "--port", str(port)]
 
 
-def _approver_id(store: Store) -> str:
-    """The session launched as the approver role, or nothing while there is none."""
-    held = store.get_setting("role:approver")
-    return str(held.get("id") or "") if isinstance(held, dict) else ""
-
-
-def _approver_process(store: Store) -> tuple[str, int, str | None] | None:
-    """The approver's session id, claude pid and start ticks, as fixed when its role was launched.
-    The live files are never read again: any session can write one."""
-    held = store.get_setting("role:approver")
-    if not isinstance(held, dict) or not held.get("id") or not isinstance(held.get("pid"), int):
-        return None
-    return str(held["id"]), held["pid"], held.get("started")
-
-
 def _repos(given: config.Config | None, proof: bool) -> config.Config:
     """The settings a test hands in, or the settings file's; with no plugins on a proof bridge."""
     repos = given or config.load(config.FILE, own_clone=roles.own_clone())
@@ -637,22 +620,6 @@ def _repos(given: config.Config | None, proof: bool) -> config.Config:
         repos = replace(repos, plugins=[])
         log.info("a proof bridge starts no plugins")
     return repos
-
-
-def _duty(given: approver.Duty | None, repos: config.Config, manager: SessionManager) -> approver.Duty:
-    """The approver session's duty: the one given, or one on only once the owner switches it on."""
-
-    def is_approver(session: str) -> bool:
-        # RULE: only the session launched as the approver role is the approver
-        return bool(session) and _approver_id(manager.store) == session
-
-    return given or approver.Duty(
-        on=repos.approver_on,
-        role=manager.store.is_role,
-        approver=is_approver,
-        clock=manager.clock,
-        process=lambda: _approver_process(manager.store),
-    )
 
 
 def _idle_watch(given: idle.Watch | None, clock: Callable[[], float]) -> idle.Watch:
@@ -688,7 +655,6 @@ def build_server(
     machine_http: machines.Http = machines.http_client,
     machine_whois: machines.Whois = tailnet.whois,
     start_seconds: float = 20.0,
-    approver_window: Callable[..., Awaitable[tuple[int, str | None]]] = approver_pane.launch,
     list_prs: Callable[[str], list[dict[str, Any]]] | None = None,
     ui_origins: list[str] | None = None,
     summarize: Callable[[str, str | None, str | None], Awaitable[str]] = transcripts.summarize,
@@ -719,17 +685,18 @@ def build_server(
     terminals: Terminals | None = None,
     org_folders: list[Path] | None = None,
     sessions_file: Path | None = None,
-    duty: approver.Duty | None = None,
     idle_watch: idle.Watch | None = None,
     manager_delivery_seconds: float = 60.0,
     stalled_watch: stalled.Watch | None = None,
     stalled_tmux: Callable[[list[str]], str] | None = None,
     proof: bool = False,  # a bridge for a test or a proof: it starts no plugins, whatever its settings
+    # Why each box came: labelled and logged as it arrives, and read back for the work page.
+    # None for a test unless it gives them, so no test writes the owner's log.
+    triage: Callable[[str, str, boxes.Box], str] | None = None,
+    box_causes: Callable[[], dict[str, str]] | None = None,
 ) -> MCPServer:
     auth = None
-    keeper = approver_token.Keeper()  # the approver's own token, minted when it is launched
     if oauth is not None:
-        oauth.kept_elsewhere = lambda token: boxed.CLIENT if keeper.valid(token) else None
         auth = AuthSettings(
             issuer_url=AnyHttpUrl(oauth.public_url),
             resource_server_url=AnyHttpUrl(f"{oauth.public_url}/mcp"),
@@ -783,7 +750,6 @@ def build_server(
     side_answer = side_answer or transcripts.shared_reader()
     host: doctor.Host = doctor_host or doctor.RealHost()
     repos = _repos(repo_config, proof)
-    duty = _duty(duty, repos, manager)
     start_settings = launch.Settings(manager.store, repos.sessions)
     desktop = os.environ if desktop_env is None else desktop_env
 
@@ -903,8 +869,6 @@ def build_server(
             warming.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
         # The software report is built on a thread of its own, so the bridge listens at once.
         stop_software = software_report.start() if watch_interval else None
-        # The hooks report approver calls here; nothing listens while the approver is off.
-        reports = await approver.serve_reports(duty, phone_hook.REPORT_SOCKET, keeper)
         starting = None
         if plugins_behind and not plugins_started:
             plugins_started.append(True)
@@ -930,8 +894,6 @@ def build_server(
                 _activity_flush(activity_view)
             if stop_software:
                 stop_software()
-            if reports:
-                reports.close()
 
     across = fleet.Fleet()  # the other machines, filled in once they are started below
     across.numbers = manager.store
@@ -943,10 +905,9 @@ def build_server(
         instructions=voice_instructions(repos.voice_instructions_file),
         auth_server_provider=oauth,
         auth=auth,
-        middleware=[log_requests, boxed.gate, fleet.middleware(across)],
+        middleware=[log_requests, fleet.middleware(across)],
         lifespan=lifespan,
     )
-    mcp.approver_token = keeper  # type: ignore[attr-defined]
     tool = titles.titled(mcp, titles.load())  # each tool's display title, from the shared table
     # The tool list changes when a plugin is started again or approved, so say so up front
     # (tools.listChanged), and tell connected clients each time it does.
@@ -1699,14 +1660,12 @@ def build_server(
             wanted = f"{wanted}-{secrets.token_hex(2)}"
         return wanted
 
-    async def appeared(name: str, folder: Path, pid: int | None = None) -> dict[str, Any]:
-        """The started session once Claude Code lists it, recorded so the bridge may stop it.
-        With `pid`, only a row of that process counts: any session can write a row."""
+    async def appeared(name: str, folder: Path) -> dict[str, Any]:
+        """The started session once Claude Code lists it, recorded so the bridge may stop it."""
         deadline = time.monotonic() + start_seconds
 
         def ours(d: dict[str, Any]) -> bool:
-            # RULE: the approvers process is taken from its window not a session file
-            return d.get("name") == name and d.get("cwd") == str(folder) and pid in (None, d.get("pid"))
+            return d.get("name") == name and d.get("cwd") == str(folder)
 
         while time.monotonic() < deadline:
             found = next((d for d in live_sessions() if ours(d)), None)
@@ -1717,6 +1676,9 @@ def build_server(
         raise ToolError(f"{name} was started but did not appear among the running sessions")
 
     async def launch_role(role: str, task: str | None) -> dict[str, Any]:
+        # RULE: the retired approver role never starts
+        if role == RETIRED_ROLE:
+            raise ToolError("The approver is retired, so it does not start; remove it from the roles file.")
         table = role_table()
         if role not in table:
             raise LookupError(f"No role {role!r}; there are: {', '.join(sorted(table))}")
@@ -1729,8 +1691,6 @@ def build_server(
             )
         folder = roles.folder_for(spec)
         name = unused_name(str(spec.get("name") or role))
-        if role == boxed.CLIENT:
-            return await launch_approver(spec, folder, name, task)
         settings = roles.settings_for(spec, role)  # a role whose settings file is refused does not start
         how, _, _ = how_to_start(str(folder), name, None, None)
         try:
@@ -1745,35 +1705,12 @@ def build_server(
             raise ToolError(f"Claude Code could not start a session: {exc}") from None
         found = await appeared(name, folder)
         pid = int(found.get("pid") or 0)
-        # The approver's process is fixed here, once; a session file written later cannot move it.
         # RULE: a launched role keeps the process it started as
         held = {"name": name, "id": str(found.get("sessionId")), "pid": pid, "started": lineage.start_ticks(pid)}
         # RULE: a role folder behind a link is recorded as the real folder
         real = await asyncio.to_thread(os.path.realpath, folder)  # Claude Code keys the transcript by it
         store.set_setting(f"role:{role}", {**held, "folder": real})
         return {"role": role, "name": name, "claude_session_id": found.get("sessionId"), "status": found.get("status")}
-
-    async def launch_approver(spec: dict[str, Any], folder: Path, name: str, task: str | None) -> dict[str, Any]:
-        """The approver in a tmux window of its own, boxed in to its two tools, its process pinned
-        from tmux's answer the moment the window opens (approver-v1, v1.5 and v1.7)."""
-        tmux, cli = find_program("tmux"), find_program("claude")
-        # RULE: the approver cannot start without tmux
-        if not tmux or not cli:
-            raise ToolError("The approver needs tmux and claude on this machine, and cannot start without them.")
-        claude = await asyncio.to_thread(os.path.realpath, cli)
-        hooks = phone_hook.settings_entries(sys.executable)
-        prompt = roles.first_message(spec, folder, task)
-        argv = approver_pane.command(sys.executable, claude, name, bridge_port, hooks, prompt)
-        try:
-            pid, ticks = await approver_window([tmux], keeper, name, str(folder), argv, claude, start_seconds)
-        except (OSError, RuntimeError) as exc:
-            raise ToolError(f"The approver could not start: {exc}") from None
-        found = await appeared(name, folder, pid)
-        real = await asyncio.to_thread(os.path.realpath, folder)  # as for every role, the real folder
-        held = {"name": name, "id": str(found.get("sessionId")), "pid": pid, "started": ticks, "folder": real}
-        store.set_setting(f"role:{boxed.CLIENT}", held)
-        session = found.get("sessionId")
-        return {"role": boxed.CLIENT, "name": name, "claude_session_id": session, "status": found.get("status")}
 
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
     async def start_role(role: str, task: str | None = None) -> dict[str, Any]:
@@ -1902,6 +1839,7 @@ def build_server(
         run=software._gh,
         login_expiry=lambda: work.read_login_expiry(),  # looked up late, so the suite can stand in for it
         board_url=repos.board_url,
+        causes=box_causes,
     )
 
     def software_listed() -> list[tuple[str, str, Path | None, str]]:
@@ -1955,7 +1893,8 @@ def build_server(
         }
 
     def doctor_report() -> dict[str, Any]:
-        report = doctor.examine(host, role_table().get("contribute"), port=bridge_port)
+        table = role_table()
+        report = doctor.examine(host, table.get("contribute"), port=bridge_port, roles=table)
         report["checks"] += [*config.check_paths(repos), launch.check(repos.sessions, find_program, desktop)]
         return report
 
@@ -2756,23 +2695,6 @@ def build_server(
         When answered is false, read 'say' aloud (it is on the screen), or ask again from 'options'."""
         return answers.answer(prompt_book, question_id, choice, own_words)[1]
 
-    @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
-    def approver_boxes() -> Any:
-        """The approval boxes the approver may answer, for the approver role only.
-        Each box says whether the approver may answer it, and why not. Looking is the
-        approver's check-in: a box waits for it only while it looks at least every two minutes."""
-        names = {str(row.get("sessionId")): row.get("name") for row in events.read_live(live_dir)}
-        return approver.boxes(prompt_book, duty, names, phone_hook.args_digest({}))
-
-    @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
-    def approver_answer(id: str, decision: str, reason: str) -> dict[str, Any]:
-        """Answer one routine approval box as the approver, for the approver role only.
-        Give allow or deny and a short reason. The bridge refuses any box that is not
-        answerable. An allow counts for this one call, never for later ones."""
-        settle = lambda prompt, body: answers.settle(prompt, body, "approver", api.HUB.publish)  # noqa: E731
-        digest = phone_hook.args_digest({"id": id, "decision": decision, "reason": reason})
-        return approver.answer(prompt_book, duty, id, decision, reason, settle, digest)
-
     @tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
     def approve(approval_id: str) -> dict[str, Any]:
         """Allow one pending tool call. Only after the user has clearly said yes to it."""
@@ -2977,9 +2899,7 @@ def build_server(
     if oauth is not None:
 
         async def check_token(token: str) -> bool:
-            found = await oauth.load_access_token(token)
-            # RULE: the rest api refuses the approvers token
-            return found is not None and found.client_id != boxed.CLIENT
+            return await oauth.load_access_token(token) is not None
 
         api.EventApi(
             store,
@@ -3023,7 +2943,7 @@ def build_server(
             away=lambda app_open: PRESENCE[0].away(app_open=app_open),
             route=_router(route, across),
             activity=activity_view,
-            duty=duty,
+            triage=triage,
         ).routes(mcp)
 
     mcp.prompt_book = prompt_book  # type: ignore[attr-defined]  # for tests
@@ -3097,11 +3017,23 @@ def configure_logging(log_file: Path) -> logging.Handler:
     return handler
 
 
+def _box_log(proof: bool) -> dict[str, Any]:
+    """How the bridge labels and reads back each box's cause. A proof bridge runs beside the
+    owner's, so it keeps no log of boxes in the owner's state."""
+    if proof:
+        return {}
+    triager = boxes.Triager()
+    return {"triage": triager.label, "box_causes": triager.causes}
+
+
 def serve_forever(cfg: Config) -> None:
     """Run the bridge with a checked configuration until stopped."""
     transcripts.configure_courier(cfg.courier_name)
     store = Store(cfg.db)
-    manager = SessionManager(store, project_root=cfg.root, approvals=ApprovalBroker(store))
+    box_log = _box_log(cfg.proof)
+    manager = SessionManager(
+        store, project_root=cfg.root, approvals=ApprovalBroker(store, triage=box_log.get("triage"))
+    )
     if cfg.transport == "stdio":
         build_server(manager, proof=cfg.proof).run("stdio")
         return
@@ -3124,6 +3056,7 @@ def serve_forever(cfg: Config) -> None:
         activity_file=config.STATE_DIR.expanduser() / activity.FILE,
         plugins_behind=True,
         proof=cfg.proof,
+        **box_log,
     )
     app = build_app(server, cfg.public_hosts, ui_origins=cfg.ui_origins, ui_dir=cfg.ui_dir)
     configure_logging(cfg.db.parent / LOG_FILE)

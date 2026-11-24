@@ -1,5 +1,0 @@
-[[rule]]
-name = "the starter runs claude only by an absolute path"
-file = "src/claude_voice/approver_start.py"
-find = 'if not args or not os.path.isabs\(args\[0\]\):'
-replace = 'if not args:'

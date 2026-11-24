@@ -20,7 +20,7 @@ import json
 import logging
 import secrets
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine
 from datetime import UTC, datetime
 from typing import Any
 
@@ -28,7 +28,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from . import answers, approver, prompts
+from . import answers, boxes, prompts
 
 COOKIE = "cv_ui"
 SIGN_IN_SECONDS = 30 * 24 * 3600
@@ -269,7 +269,7 @@ class EventApi:
         away: Callable[[bool], bool] | None = None,
         route: Callable[[str, Any, str], dict[str, Any]] | None = None,
         activity: Any = None,
-        duty: approver.Duty | None = None,
+        triage: Callable[[str, str, boxes.Box], str] | None = None,
     ) -> None:
         self.store = store
         self.login_secret = login_secret
@@ -305,8 +305,7 @@ class EventApi:
         self.route = route
         self._sorting: set[asyncio.Task[None]] = set()  # kept, so a running sort is not collected
         self.activity = activity  # where sessions wait or get stuck: activity.Activity, off by default
-        # The approver session, when the owner has switched it on: which boxes wait for it.
-        self.duty = duty or approver.Duty(on=False)
+        self.triage = triage  # why a box came to the owner, logged: boxes.Triager.label; advice only
 
     def routes(self, mcp: Any) -> None:
         route = mcp.custom_route
@@ -619,13 +618,29 @@ class EventApi:
         """Fill in what an approval would run, and how it was sorted."""
         prompt["tool"] = str(body.get("tool", ""))
         prompt["input"], prompt["cut"] = self._readable(prompt["tool"], body.get("input"))
-        # What the approver judges: the whole input, and the folder it would run in. Never published.
+        # The whole input, and the folder it would run in, kept for sorting. Never published.
         prompt["raw_input"], prompt["cwd"] = body.get("input"), str(body.get("cwd") or "")
+        # Sorting and labelling read folders, so they run in a thread and land on the prompt later.
         if self.route is not None:
-            # Sorting may walk folders, so it runs in a thread and lands on the prompt later.
-            task = asyncio.get_running_loop().create_task(self._sort(prompt, body))
-            self._sorting.add(task)
-            task.add_done_callback(self._sorting.discard)
+            self._aside(self._sort(prompt, body))
+        if self.triage is not None:
+            self._aside(self._label(prompt, body))
+
+    def _aside(self, work: Coroutine[Any, Any, None]) -> None:
+        task = asyncio.get_running_loop().create_task(work)
+        self._sorting.add(task)
+        task.add_done_callback(self._sorting.discard)
+
+    async def _label(self, prompt: dict[str, Any], body: dict[str, Any]) -> None:
+        assert self.triage is not None
+        box = boxes.Box(prompt["tool"], body.get("input"), str(body.get("cwd") or ""), str(body.get("mode") or ""))
+        try:
+            why = await asyncio.to_thread(self.triage, prompt["id"], prompt["session"], box)
+        except Exception:
+            log.exception("could not label the prompt %s", prompt.get("id"))
+            return
+        # RULE: each box that reaches the owner says why it came
+        prompt["cause"] = why
 
     async def _sort(self, prompt: dict[str, Any], body: dict[str, Any]) -> None:
         assert self.route is not None
@@ -668,7 +683,7 @@ class EventApi:
         self.book.add(prompt)
         HUB.publish("prompt", self._public(prompt))
         # RULE: a question waits for the phone only while the owner is away from the laptop
-        wait = self.duty.covers(prompt) or await self._away()
+        wait = await self._away()
         return JSONResponse({"id": prompt["id"], "wait": wait})
 
     @staticmethod
@@ -737,7 +752,7 @@ class EventApi:
             if prompt["answer"] is not None:
                 return False
             # RULE: a waiting prompt goes back to the screen once the owner is back
-            if step == RECHECK and not self.duty.covers(prompt) and not await self._away():
+            if step == RECHECK and not await self._away():
                 return True
         return False
 
@@ -748,7 +763,6 @@ class EventApi:
         prompt = self.book.close(request.path_params["prompt"], how)
         if prompt is not None:
             log.info("prompt %s for %s left to the %s", prompt["id"], prompt["session"], how)
-            self.duty.closed(prompt, how)
         return Response(status_code=204)
 
     # -- roles -----------------------------------------------------------------------

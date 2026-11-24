@@ -107,6 +107,7 @@ LAYERS = {
             "devmode",
             "terminals",
             "permissions",
+            "boxes",
             "hints",
             "prompts",
             "manifest",
@@ -117,8 +118,6 @@ LAYERS = {
             "routing",
             "calllog",
             "activity",
-            "boxed",
-            "approver_token",
             "decisions",
             "backlog",
             "stalled",
@@ -136,8 +135,6 @@ LAYERS = {
             "plugin_desk",
             "org",
             "answers",
-            "approver",
-            "approver_pane",
             "install",
             "setup",
             "shipped",
@@ -148,7 +145,7 @@ LAYERS = {
     ),
     **dict.fromkeys(("api", "phone_hook", "agent", "fleet"), 3),  # the doors in from outside
     "server": 4,  # where it is all put together
-    **dict.fromkeys(("cli", "cv", "approver_start"), 5),  # the command lines; the last starts the approver
+    **dict.fromkeys(("cli", "cv"), 5),  # the command lines
 }
 EXCEPTION = re.compile(r"^\s*ratchet-exception:\s*([a-z_]+)", re.IGNORECASE | re.MULTILINE)
 

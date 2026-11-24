@@ -1,5 +1,0 @@
-[[rule]]
-name = "only a session started as a role waits for the approver"
-file = "src/claude_voice/store.py"
-find = 'return any\(_role_id\(row\[0\]\) == claude_session_id'
-replace = 'return True'

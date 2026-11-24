@@ -1,24 +1,14 @@
-"""Lineage: which process is on the other end of a socket, whose child it is, and which
-children the bridge itself started.
+"""Lineage: when a process started, and which children the bridge itself started.
 
-Which process sent something over a Unix socket, and whether it runs under another one, is
-read from the kernel. Where the system cannot say (Windows, or no /proc), the answer is no.
-Every session runs as the same Unix user, so this guards against slips and simple stand-ins.
-It is not a wall between users: one user can still look inside its own processes.
+Read from the kernel; where the system cannot say (Windows, or no /proc), the answer is none.
 """
 
 from __future__ import annotations
 
 import contextlib
-import socket
-import struct
 from pathlib import Path
-from typing import Any
 
 import psutil
-
-#: How deep a process tree is walked before giving up; real trees are far shallower.
-MAX_DEPTH = 64
 
 
 def _stat(pid: int) -> list[str] | None:
@@ -46,30 +36,3 @@ def children_in(folder: str) -> list[int]:
             if Path(child.cwd()).resolve() == want:
                 found.append(child.pid)
     return found
-
-
-def descends(pid: int, ancestor: int, started: str | None) -> bool:
-    """Whether process `pid` is `ancestor` or runs under it, where `ancestor` is still the
-    process that started at `started` ticks."""
-    # RULE: a dead or reused approver pid proves nothing
-    if started is None or start_ticks(ancestor) != started:
-        return False
-    for _ in range(MAX_DEPTH):
-        if pid == ancestor:
-            return True
-        fields = _stat(pid)
-        if fields is None:
-            return False
-        pid = int(fields[1])  # the parent
-    return False
-
-
-def peer_pid(sock: Any) -> int | None:
-    """The pid of the process on the other end of a Unix socket, as the kernel names it,
-    or None where the system cannot say."""
-    option = getattr(socket, "SO_PEERCRED", None)
-    # RULE: without the kernels word on the sender no report is taken
-    if option is None or sock is None:
-        return None
-    pid, _uid, _gid = struct.unpack("3i", sock.getsockopt(socket.SOL_SOCKET, option, struct.calcsize("3i")))
-    return pid or None

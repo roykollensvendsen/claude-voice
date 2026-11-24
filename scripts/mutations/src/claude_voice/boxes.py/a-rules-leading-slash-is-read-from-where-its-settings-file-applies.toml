@@ -1,0 +1,5 @@
+[[rule]]
+name = "a rules leading slash is read from where its settings file applies"
+file = "src/claude_voice/boxes.py"
+find = '^\s*bases\.update\(\{r: \(\*bases\.get\(r, \(\)\), str\(base\)\) for r in named\}\)$'
+replace = 'pass'

@@ -1,0 +1,5 @@
+[[rule]]
+name = "a box from a session not in auto mode says so"
+file = "src/claude_voice/boxes.py"
+find = '^    if box\.mode != "auto":$'
+replace = '    if False:'

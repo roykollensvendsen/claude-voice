@@ -1,0 +1,5 @@
+[[rule]]
+name = "a box that a deny rule matches is logged as a warning"
+file = "src/claude_voice/boxes.py"
+find = '^        log\.warning\("a box reached the owner although a deny rule matches: %s", shown\(denied\)\)$'
+replace = '        pass'

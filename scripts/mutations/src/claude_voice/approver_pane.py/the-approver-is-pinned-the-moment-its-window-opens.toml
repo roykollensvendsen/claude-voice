@@ -1,5 +1,0 @@
-[[rule]]
-name = "the approver is pinned the moment its window opens"
-file = "src/claude_voice/approver_pane.py"
-find = '    keeper.mint\(pid\)'
-replace = '    pass'

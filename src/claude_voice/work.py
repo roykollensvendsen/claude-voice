@@ -179,8 +179,10 @@ class Board:
         login_expiry: Callable[[], datetime | None] | None = None,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
         board_url: str | None = None,
+        causes: Callable[[], dict[str, str]] | None = None,
     ) -> None:
         self.repos = repos
+        self.causes = causes  # why each box came, by prompt id: boxes.Triager.causes; none here by default
         self.board_url = board_url  # the project board the page links to, already checked as https
         self.waiting_file = waiting_file
         self.run = run
@@ -194,13 +196,21 @@ class Board:
         if self._prs is None or self.clock() - self._prs[0] >= PR_SECONDS:
             self._prs = (self.clock(), *open_prs(self.repos, self.run))
         body = {
-            "waiting_on_owner": self._sign_in() + waiting(self.waiting_file),
+            "waiting_on_owner": self._with_causes(self._sign_in() + waiting(self.waiting_file)),
             "open_prs": self._prs[1],
             "unreadable": self._prs[2],
             "board_url": self.board_url,
         }
         self._last = body
         return {"as_of": _now(), **body}
+
+    def _with_causes(self, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Each item that answers a box, with why that box came, from the bridge's own log."""
+        if self.causes is None:
+            return items
+        known = self.causes()
+        # RULE: a waiting item for a box shows why the box came
+        return [{**item, "cause": known[item["prompt"]]} if item.get("prompt") in known else item for item in items]
 
     def _sign_in(self) -> list[dict[str, Any]]:
         """The sign-in item when it is due, its date asked of Claude Code at most once an hour."""
