@@ -22,9 +22,10 @@ import logging
 import os
 import re
 import shlex
+from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, tzinfo
 from pathlib import Path
 from typing import Any
 
@@ -238,6 +239,54 @@ def named(box: Box) -> str:
         # RULE: a line names a command by its first words only
         return shown(" ".join(str(given.get("command", "")).split()[:PREFIX_WORDS]))
     return shown(_file(box))
+
+
+#: For each cause, the one removal the report proposes. It only proposes: it writes nothing.
+PROPOSALS = {
+    ASK_RULE: "weigh this ask rule in the ask cuts (deny, remove or keep), with these counts",
+    HOOK_ASKED: "a change in the session's habit, or in the session hook by a pull request",
+    NOT_AUTO: "start this session in auto mode",
+    NO_RULE: "an allow row for the shipped table, by a pull request, if a careful reviewer would just say yes",
+    DENY_RULE: "a bug to report: a deny should never make a box",
+}
+
+
+def _proposal(cause: str) -> str:
+    return next((text for start, text in PROPOSALS.items() if cause.startswith(start)), "none: an unknown cause")
+
+
+def _day_lines(file: Path, day: date, tz: tzinfo | None) -> list[dict[str, Any]]:
+    try:
+        text = file.expanduser().read_text(encoding="utf-8")
+    except OSError:
+        return []
+    found = []
+    for raw in text.splitlines():
+        try:
+            line = json.loads(raw)
+            when = datetime.fromisoformat(str(line["at"])).astimezone(tz).date()
+        except (ValueError, KeyError, TypeError):
+            continue
+        if when == day:
+            found.append(line)
+    return found
+
+
+def report(file: Path, day: date, tz: tzinfo | None = None) -> str:
+    """The day's boxes, grouped by session, tool, what and cause, with counts and one proposal
+    each, the biggest group first. Plain text for the manager; it changes nothing."""
+    groups = Counter(
+        tuple(shown(str(line.get(key, ""))) for key in ("session", "tool", "what", "cause"))
+        for line in _day_lines(file, day, tz)
+    )
+    if not groups:
+        return f"No boxes reached the owner on {day.isoformat()}.\n"
+    out = [f"{sum(groups.values())} boxes reached the owner on {day.isoformat()}, in {len(groups)} groups:"]
+    for (session, tool, what, cause), count in sorted(groups.items(), key=lambda g: (-g[1], g[0])):
+        out.append(f"- {count} × {session} · {tool} · {what or '-'} · {cause}")
+        # RULE: the report proposes one removal for each group and writes nothing
+        out.append(f"  proposal: {_proposal(cause)}")
+    return "\n".join(out) + "\n"
 
 
 class Triager:

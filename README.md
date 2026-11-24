@@ -412,6 +412,20 @@ support session started before the bridge recorded that folder is refused until 
 again with `start_role`. Every check is logged to `decision-checks.jsonl` beside it, for you to read after.
 The reasons are in `src/claude_voice/decisions.py`.
 
+### Why the day's boxes came
+
+The bridge logs why each permission box reached you, one line per box in
+`~/.local/state/claude-voice/boxes.jsonl`. Each night the manager reads the day's boxes,
+grouped with counts, and one proposal for each group to make it go away:
+
+```console
+$ claude-voice boxes --day 1999-01-01
+No boxes reached the owner on 1999-01-01.
+```
+
+The report only proposes, and writes nothing. Without `--day` it reports yesterday, in local
+time. The causes are in docs/permissions.md, "Why a box came".
+
 ## Answer questions and approvals from the phone
 
 With the companion app open, a session's choice box or permission prompt can be

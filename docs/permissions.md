@@ -465,6 +465,12 @@ first two words, and a file by its path. All box text is shown as data: on one
 line, without control characters, and cut at 200 characters. The work page adds
 the cause to a waiting item whose `prompt` names the box.
 
+Each night the manager runs `claude-voice boxes`. It groups the day's lines by
+session, tool, what and cause, with counts, and proposes one removal for each
+group. For an ask rule, that is weighing it in the ask cuts. For no rule, it is
+an allow row by pull request. For a session not in auto mode, it is starting it
+in auto. The report only proposes, and writes nothing.
+
 The matching is the bridge's own reading of Claude Code's rule syntax, from the
 permissions docs. It can be wrong at the edges, such as a chain of commands
 inside quotes. That is one more reason the cause is never what is pressed.
