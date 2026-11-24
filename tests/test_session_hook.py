@@ -134,6 +134,56 @@ def test_any_recursive_remove_asks_however_it_is_spelled(tmp_root, command):
 
 @pytest.mark.parametrize(
     "command",
+    [
+        "/bin/r? -r /home/x/src",
+        "/usr/bin/r[m] -r /home/x/src",
+        "r$'\\155' -r /home/x/src",
+        "$RM -rf /home/x/src",
+        "A=1 sudo -u root /bin/r* -r /home/x/src",
+        "env nice -n 5 /bin/r? -$'\\162' /home/x/src",
+        "ls; /bin/r? -r /home/x/src",
+        "{ /bin/r? -r /home/x/src; }",
+        "if true; then /bin/r? -r /home/x/src; fi",
+        "for f in a; do $RM -rf /home/x/src; done",
+        "! /bin/r? -r /home/x/src",
+        "$RM $FLAGS /home/x/src",
+    ],
+)
+def test_a_remove_whose_command_name_the_shell_builds_asks(tmp_root, command):
+    assert decide(command, tmp_root) == "ask"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "timeout 5 /bin/r? -r /home/x/src",
+        "xargs -n 1 /bin/r? -rf",
+        "stdbuf -o L /bin/r? -r /home/x/src",
+        "setsid /bin/r? -r /home/x/src",
+        "ionice -c 3 /usr/bin/r[m] -R /home/x/src",
+        "flock /tmp/lock $RM --recursive /home/x/src",
+        "sudo --user root /bin/r? -r /home/x/src",
+    ],
+)
+def test_a_built_word_followed_by_a_flag_rm_reads_as_recursive_asks(tmp_root, command):
+    assert decide(command, tmp_root) == "ask"
+
+
+def test_a_built_command_name_without_a_recursive_flag_is_left_alone(tmp_root):
+    for command in (
+        "[ -f notes.txt ]",
+        "$PYTHON -m pytest -q",
+        "/bin/l? notes.txt",
+        "{ ls; }",
+        "find . -name '*.py' -print",
+        "cp $SRC $DST",
+        "timeout 5 $PYTHON -m pytest -rA",
+    ):
+        assert decide(command, tmp_root) is None, command
+
+
+@pytest.mark.parametrize(
+    "command",
     ['"rm" notes.txt', "rm '-r' build", 'rm "-rf" build', "rm $FLAGS build", "rm -$X build", "/bin/r\\m build"],
 )
 def test_a_single_file_rm_is_exempt_only_with_a_plain_command_word_and_plain_flags(tmp_root, command):
