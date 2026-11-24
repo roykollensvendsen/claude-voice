@@ -94,6 +94,70 @@ jobs:
     assert ci_limits.scan(tmp_path) == []
 
 
+def test_a_job_key_with_a_trailing_comment_is_still_a_job(tmp_path):
+    text = """\
+jobs:
+  checks:  # the tests
+    timeout-minutes: 20
+    steps:
+      - run: uv run pytest
+"""
+    workflow(tmp_path, text)
+    assert ci_limits.scan(tmp_path) == [
+        ".github/workflows/checks.yml:3: the checks job runs tests and has timeout-minutes"
+    ]
+
+
+def test_a_quoted_job_key_is_still_a_job(tmp_path):
+    text = """\
+jobs:
+  commits:
+    steps:
+      - run: echo ok
+  "checks":
+    timeout-minutes: 20
+    steps:
+      - run: uv run pytest
+"""
+    workflow(tmp_path, text)
+    assert ci_limits.scan(tmp_path) == [
+        ".github/workflows/checks.yml:6: the checks job runs tests and has timeout-minutes"
+    ]
+
+
+def test_a_job_that_runs_tests_through_a_wrapper_counts_as_running_tests(tmp_path):
+    wrappers = [
+        "make test",
+        "tox -e py312",
+        "nox -s tests",
+        "hatch test",
+        "just test",
+        "./scripts/check.sh",
+        "./gradlew testDebugUnitTest",
+        "npm test",
+    ]
+    for wrapper in wrappers:
+        text = f"jobs:\n  checks:\n    timeout-minutes: 20\n    steps:\n      - run: {wrapper}\n"
+        workflow(tmp_path, text)
+        assert ci_limits.scan(tmp_path), wrapper
+
+
+def test_a_commented_or_quoted_jobs_key_is_still_read(tmp_path):
+    for jobs_line in ("jobs:  # all of them", '"jobs":'):
+        text = f"{jobs_line}\n  checks:\n    timeout-minutes: 20\n    steps:\n      - run: uv run pytest\n"
+        workflow(tmp_path, text)
+        assert ci_limits.scan(tmp_path) == [
+            ".github/workflows/checks.yml:3: the checks job runs tests and has timeout-minutes"
+        ], jobs_line
+
+
+def test_a_time_limit_in_a_file_whose_jobs_cannot_be_read_fails(tmp_path):
+    workflow(tmp_path, "jobs: {checks: {timeout-minutes: 20, steps: [{run: pytest}]}}\n")
+    assert ci_limits.scan(tmp_path) == [
+        ".github/workflows/checks.yml: has timeout-minutes, but its jobs could not be read"
+    ]
+
+
 def test_a_checkout_without_workflows_has_nothing_to_check(tmp_path):
     assert ci_limits.scan(tmp_path) == []
 
