@@ -1,0 +1,5 @@
+[[rule]]
+name = "a command handed to a shell as one word is judged too"
+file = "src/claude_voice/steering.py"
+find = '^\s*level = max\(\[level\] \+ \[_level_of_command\(t, cwd, home\) for t in tokens if " " in t\]\)$'
+replace = 'pass'

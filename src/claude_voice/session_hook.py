@@ -47,9 +47,11 @@ def _beside(name: str) -> ModuleType:
 # Claude Code runs this file with the system's python3, where the bridge's package isn't installed.
 # RULE: the session hook runs with the standard library only
 if __package__:
-    from . import safe_git
+    from . import safe_git, shell_text, steering
 else:
     safe_git = _beside("safe_git")
+    shell_text = _beside("shell_text")
+    steering = _beside("steering")
 
 ALLOW, ASK, DENY = "allow", "ask", "deny"
 
@@ -384,6 +386,8 @@ def decision(hook_input: dict[str, Any], *, tmp_root: Path, repos: Sequence[str]
     session_id = str(hook_input.get("session_id") or "")
     for judge in (
         lambda: _code_setting(command),
+        # RULE: a path spelled in the shell's own quoting is judged as bash reads it
+        lambda: steering.judge(shell_text.unquoted(command), cwd, str(Path.home())),
         lambda: _removal(command, cwd, session_id, tmp_root),
         lambda: _issue(command, cwd, repos, terms, session_id, tmp_root),
     ):
@@ -398,8 +402,10 @@ def decision(hook_input: dict[str, Any], *, tmp_root: Path, repos: Sequence[str]
 
 REASONS = {
     ALLOW: "a routine step the owner allowed: inside this session's own scratchpad, or an issue in its own programme",
-    ASK: "only a remove inside this session's own scratchpad, or a clean issue in its own programme, runs unasked",
-    DENY: "a git setting whose value runs as the owner later; only core.hooksPath .githooks may be set",
+    ASK: "only a remove inside this session's own scratchpad, or a clean issue in its own programme, runs unasked;"
+    " a tracked file that steers the next session (skills, CLAUDE.md, AGENTS.md) is only read unasked",
+    DENY: "a git setting whose value runs as the owner later (only core.hooksPath .githooks may be set),"
+    " or a file that steers the next session, which a session may only read with a plain reader",
 }
 
 

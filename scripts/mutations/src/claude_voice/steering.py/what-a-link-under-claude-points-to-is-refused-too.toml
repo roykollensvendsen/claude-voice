@@ -1,0 +1,5 @@
+[[rule]]
+name = "what a link under claude points to is refused too"
+file = "src/claude_voice/steering.py"
+find = '^\s*if any\(path == target or path\.startswith\(target \+ os\.sep\) for target in _linked_out\(at_home\)\):$'
+replace = 'if False:'

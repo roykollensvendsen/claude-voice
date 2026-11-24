@@ -55,6 +55,10 @@ BLOCK = 6  # lines in a row that count as a copied block
 LAYERS = {
     # below the foundations: how the bridge runs git, which some of them use
     "safe_git": -1,
+    # what steers the next session, judged in the session hook, which loads it by its path
+    "steering": -1,
+    # the shell's own quoting, read the same way by the push guard and the session hook
+    "shell_text": -1,
     # foundations
     **dict.fromkeys(
         (

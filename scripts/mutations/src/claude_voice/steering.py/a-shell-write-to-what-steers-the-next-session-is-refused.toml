@@ -1,0 +1,5 @@
+[[rule]]
+name = "a shell write to what steers the next session is refused"
+file = "src/claude_voice/steering.py"
+find = '^\s*return "deny" if level == LOCKED else "ask"$'
+replace = 'return "ask"'

@@ -70,6 +70,7 @@ WINDOWS = (
             "session_hook",
             "shipped",
             "software",
+            "steering",
             "stalled",
             "tailnet",
             "terminals*",

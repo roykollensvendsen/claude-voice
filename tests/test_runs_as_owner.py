@@ -62,6 +62,11 @@ KINDS = [
     ".claude/hooks/x.sh",
     ".claude/skills/x/SKILL.md",
     ".claude/plugins/x/plugin.json",
+    ".claude/agents/x.md",
+    ".claude/commands/x.md",
+    ".claude/rules/x.md",
+    ".claude/output-styles/x.md",
+    ".claude/CLAUDE.md",
     ".claude.json",
     ".config/claude-voice/config.toml",
     ".config/claude-voice/roles.toml",
@@ -116,7 +121,22 @@ def test_every_writing_command_into_such_a_path_is_refused(rules, name, form, ve
 
 
 @pytest.mark.parametrize(
-    "name", [".git/hooks/pre-commit", ".git/config", ".claude/settings.json", ".claude/settings.local.json"]
+    "name",
+    [
+        ".git/hooks/pre-commit",
+        ".git/config",
+        ".claude/settings.json",
+        ".claude/settings.local.json",
+        # what steers the next session in the clone (approver v4.1 b1, f6)
+        ".claude/hooks/x.sh",
+        ".claude/agents/x.md",
+        ".claude/commands/x.md",
+        ".claude/rules/x.md",
+        ".claude/output-styles/x.md",
+        ".mcp.json",
+        "CLAUDE.local.md",
+        "sub/folder/CLAUDE.local.md",
+    ],
 )
 def test_hooks_and_config_of_any_clone_are_refused(rules, name):
     for where in (f"{REPO}/{name}", f"/tmp/elsewhere/{name}", f"{REPO}/.claude/worktrees/w/{name}"):
@@ -128,8 +148,8 @@ def test_hooks_and_config_of_any_clone_are_refused(rules, name):
     "name",
     # literal_gh.py runs before every shell call of every session, as the owner (gh-literal-deny v1.1);
     # org_rules.py, and the package's __init__.py it imports, run in every role's start hook,
-    # as the owner (org-rules install plan, f2); session_hook.py, the safe_git.py it loads, and
-    # phone_hook.py run in every session's hooks, as the owner
+    # as the owner (org-rules install plan, f2); session_hook.py, the safe_git.py, steering.py and
+    # shell_text.py it loads, and phone_hook.py run in every session's hooks, as the owner
     [
         ".githooks/pre-commit",
         ".npmrc",
@@ -141,6 +161,8 @@ def test_hooks_and_config_of_any_clone_are_refused(rules, name):
         "src/claude_voice/__init__.py",
         "src/claude_voice/session_hook.py",
         "src/claude_voice/safe_git.py",
+        "src/claude_voice/steering.py",
+        "src/claude_voice/shell_text.py",
         "src/claude_voice/phone_hook.py",
     ],
 )
@@ -250,6 +272,16 @@ def test_reads_git_s_own_writes_and_the_stated_carve_outs_are_not_refused(rules,
 )
 def test_memory_voice_text_and_a_repos_own_skills_stay_editable(rules, path):
     assert not any(_covers(rule, f"Edit({path})") for rule in rules.deny), path
+
+
+@posix_rules
+@pytest.mark.parametrize(
+    "name", [".claude/skills/x/SKILL.md", "CLAUDE.md", "sub/CLAUDE.md", ".claude/CLAUDE.md", "AGENTS.md"]
+)
+def test_a_tracked_file_that_steers_the_next_session_is_asked_in_a_clone(rules, name):
+    for tool in ("Edit", "Write"):
+        for where in (f"/{REPO}/{name}", f"{REPO}/{name}"[1:]):
+            assert any(_covers(rule, f"{tool}({where})") for rule in rules.ask), (tool, where)
 
 
 @posix_rules

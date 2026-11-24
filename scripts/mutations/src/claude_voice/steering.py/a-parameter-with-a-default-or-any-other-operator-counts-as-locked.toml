@@ -1,0 +1,5 @@
+[[rule]]
+name = "a parameter with a default or any other operator counts as locked"
+file = "src/claude_voice/steering.py"
+find = '^\s*if PARAMETER\.search\(word\):$'
+replace = 'if False:'

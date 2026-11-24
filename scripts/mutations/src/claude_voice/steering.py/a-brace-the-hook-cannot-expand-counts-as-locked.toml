@@ -1,0 +1,5 @@
+[[rule]]
+name = "a brace the hook cannot expand counts as locked"
+file = "src/claude_voice/steering.py"
+find = '^\s*raise ValueError\("too many words"\)$'
+replace = 'return done'
