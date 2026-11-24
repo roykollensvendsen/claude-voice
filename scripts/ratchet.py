@@ -122,6 +122,7 @@ LAYERS = {
             "decisions",
             "backlog",
             "stalled",
+            "temp_disk",
         ),
         1,
     ),  # parts, each about one thing
