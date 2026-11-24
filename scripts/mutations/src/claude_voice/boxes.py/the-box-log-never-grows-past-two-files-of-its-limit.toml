@@ -1,0 +1,5 @@
+[[rule]]
+name = "the box log never grows past two files of its limit"
+file = "src/claude_voice/boxes.py"
+find = '^\s*if self\.file\.stat\(\)\.st_size > LOG_BYTES:$'
+replace = 'if False:'

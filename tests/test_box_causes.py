@@ -168,6 +168,28 @@ def test_a_box_whose_text_tries_to_instruct_the_triager_is_shown_as_plain_data(t
     assert line["cause"] == "no rule matched (classifier or its pause)"
 
 
+def test_the_box_log_never_grows_past_two_files_of_its_limit(tmp_path, repo, home, monkeypatch):
+    monkeypatch.setattr(boxes, "LOG_BYTES", 600)
+    log = tmp_path / "state" / "boxes.jsonl"
+    triager = boxes.Triager(log, home, now=lambda: datetime(2026, 11, 24, 12, tzinfo=UTC))
+    for n in range(20):
+        triager.label(f"p{n}", "s", bash("make lint", repo))
+    older = log.with_name("boxes.jsonl.1")
+    assert sorted(p.name for p in log.parent.iterdir()) == ["boxes.jsonl", "boxes.jsonl.1"]
+    assert log.stat().st_size <= 600 + 300 and older.stat().st_size <= 600 + 300
+    counted = boxes.report(log, datetime(2026, 11, 24).date(), UTC).splitlines()[1]
+    assert counted.startswith(f"{len(log.read_text().splitlines()) + len(older.read_text().splitlines())} boxes")
+
+
+def test_the_causes_of_waiting_boxes_are_read_from_the_end_of_the_log_only(tmp_path, repo, home, monkeypatch):
+    monkeypatch.setattr(boxes, "RECENT_BYTES", 400)
+    triager = boxes.Triager(tmp_path / "boxes.jsonl", home)
+    for n in range(10):
+        triager.label(f"p{n}", "s", bash("make lint", repo))
+    found = triager.causes()
+    assert "p9" in found and "p0" not in found and 0 < len(found) < 10
+
+
 # -- the nightly report ------------------------------------------------------------------------
 
 

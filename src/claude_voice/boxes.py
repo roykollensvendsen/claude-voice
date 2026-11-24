@@ -17,6 +17,7 @@ text from the box is shown as data, on one line, cut short. The log stays on thi
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -42,6 +43,8 @@ ASK_RULE = "ask rule: "
 DENY_RULE = "a deny matched: "
 SHOWN = 200  # characters of box text a line keeps
 PREFIX_WORDS = 2  # words of a command a line keeps
+LOG_BYTES = 2_000_000  # past this, the log becomes boxes.jsonl.1 and a new one starts: two at most
+RECENT_BYTES = 200_000  # the end of the log read for the causes of boxes still waiting
 EDITORS = frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit"})
 READERS = frozenset({"Read", "Grep", "Glob"})
 BREAKS = ("Zl", "Zp")  # the line and paragraph separators, which start a new line too
@@ -285,11 +288,29 @@ def _code(text: str) -> str:
     return f"{fence}{pad}{text}{pad}{fence}"
 
 
-def _day_lines(file: Path, day: date, tz: tzinfo | None) -> list[dict[str, Any]]:
+def _older(file: Path) -> Path:
+    """Where the log before the latest start of a new one is kept."""
+    return file.with_name(file.name + ".1")
+
+
+def _tail(file: Path, limit: int | None = None) -> str:
+    """The log's text, or its last `limit` bytes from the first whole line in them; nothing
+    when there is no log."""
     try:
-        text = file.expanduser().read_text(encoding="utf-8")
+        with file.open("rb") as log_file:
+            size = log_file.seek(0, os.SEEK_END)
+            start = 0 if limit is None else max(size - limit, 0)
+            log_file.seek(start)
+            raw = log_file.read()
     except OSError:
-        return []
+        return ""
+    text = raw.decode("utf-8", errors="replace")
+    return text.partition("\n")[2] if start else text
+
+
+def _day_lines(file: Path, day: date, tz: tzinfo | None) -> list[dict[str, Any]]:
+    file = file.expanduser()
+    text = _tail(_older(file)) + _tail(file)
     found = []
     for raw in text.splitlines():
         try:
@@ -347,18 +368,20 @@ class Triager:
             "cause": why,
         }
         self.file.parent.mkdir(parents=True, exist_ok=True)
+        with contextlib.suppress(OSError):
+            # RULE: the box log never grows past two files of its limit
+            if self.file.stat().st_size > LOG_BYTES:
+                os.replace(self.file, _older(self.file))
         with os.fdopen(os.open(self.file, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600), "a", encoding="utf-8") as out:
             out.write(json.dumps(line, ensure_ascii=False) + "\n")
         return why
 
     def causes(self) -> dict[str, str]:
-        """Each logged box's cause, by its prompt id."""
-        try:
-            text = self.file.read_text(encoding="utf-8")
-        except OSError:
-            return {}
+        """Each recent box's cause, by its prompt id. Only the end of the log is read: a box
+        still waiting was logged moments ago."""
         found = {}
-        for raw in text.splitlines():
+        # RULE: the causes of waiting boxes are read from the end of the log only
+        for raw in _tail(self.file, RECENT_BYTES).splitlines():
             try:
                 line = json.loads(raw)
             except ValueError:

@@ -1,0 +1,5 @@
+[[rule]]
+name = "the causes of waiting boxes are read from the end of the log only"
+file = "src/claude_voice/boxes.py"
+find = '^\s*for raw in _tail\(self\.file, RECENT_BYTES\)\.splitlines\(\):$'
+replace = 'for raw in _tail(self.file).splitlines():'

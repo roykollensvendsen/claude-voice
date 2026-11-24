@@ -459,7 +459,8 @@ folder is not known there, so only the owner's own rules count.
 
 The cause is advice. An answer is always read from the box itself, never from
 this line. Each box also gets one line in `~/.local/state/claude-voice/boxes.jsonl`,
-on this computer only. The line holds the time, the prompt, the session, the
+on this computer only. Past 2 MB the log moves to `boxes.jsonl.1` and a new one
+starts, so at most two are kept. The line holds the time, the prompt, the session, the
 tool, the mode, the cause, and what the box is about. A command is named by its
 first two words, and a file by its path. All box text is shown as data: on one
 line, without control characters, and cut at 200 characters. The work page adds
