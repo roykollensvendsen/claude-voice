@@ -118,6 +118,18 @@ def test_the_folders_rules_come_from_home_and_the_project(repo, home):
     assert found.ask == ("Bash(a *)", "Bash(b *)") and found.deny == ("Bash(c *)",) and found.allow == ("Bash(d *)",)
 
 
+def test_a_rules_leading_slash_is_read_from_where_its_settings_file_applies(repo, home):
+    settings(home, ask=["Edit(/agents/**)"])
+    settings(repo, ask=["Edit(/docs/**)"])
+    rules = boxes.rules_for(str(repo), home)
+    at_home = Box("Edit", {"file_path": str(home / ".claude" / "agents" / "a.md")}, str(repo), "auto")
+    in_repo = Box("Edit", {"file_path": "docs/a.md"}, str(repo), "auto")
+    not_home = Box("Edit", {"file_path": "agents/a.md"}, str(repo), "auto")
+    assert boxes.cause(at_home, rules, home) == "ask rule: Edit(/agents/**)"
+    assert boxes.cause(in_repo, rules, home) == "ask rule: Edit(/docs/**)"
+    assert boxes.cause(not_home, rules, home) == boxes.NO_RULE  # the owner's rule is not the project's
+
+
 def test_box_text_is_shown_on_one_line_and_cut_short():
     assert boxes.shown("a\nb\x1b[31m") == "a b [31m"
     assert len(boxes.shown("x" * 500)) == boxes.SHOWN

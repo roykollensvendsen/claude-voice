@@ -473,8 +473,10 @@ an allow row by pull request. For a session not in auto mode, it is starting it
 in auto. The report only proposes, and writes nothing.
 
 The matching is the bridge's own reading of Claude Code's rule syntax, from the
-permissions docs. It can be wrong at the edges, such as a chain of commands
-inside quotes. That is one more reason the cause is never what is pressed.
+permissions docs. A path rule's leading `/` is read from where its settings file
+applies: `~/.claude` for the owner's own rules, the project for a project's. It
+can be wrong at the edges, such as a chain of commands inside quotes. That is
+one more reason the cause is never what is pressed.
 
 ## What later runs as the owner
 

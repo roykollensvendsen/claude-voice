@@ -25,8 +25,8 @@ import re
 import shlex
 import unicodedata
 from collections import Counter
-from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, tzinfo
 from pathlib import Path
 from typing import Any
@@ -76,6 +76,8 @@ class Rules:
     ask: tuple[str, ...] = ()
     deny: tuple[str, ...] = ()
     hook: str | None = None
+    #: For each rule, the folder its leading `/` is read from: where its settings file applies.
+    bases: Mapping[str, str] = field(default_factory=dict)
 
 
 def _read(file: Path) -> dict[str, Any]:
@@ -103,17 +105,24 @@ def rules_for(cwd: str, home: Path) -> Rules:
     """The rules Claude Code reads for a session in `cwd`: the owner's own settings, then the
     project's shared and local ones, with the session hook from whichever names it."""
     root = project_root(cwd, home)
-    files = [home / ".claude" / "settings.json"]
+    # Each file with the folder a rule's leading `/` is read from: the owner's own rules from
+    # ~/.claude, a project's from the project.
+    files = [(home / ".claude" / "settings.json", home / ".claude")]
     if root is not None:
-        files += [root / ".claude" / "settings.json", root / ".claude" / "settings.local.json"]
+        files += [(root / ".claude" / name, root) for name in ("settings.json", "settings.local.json")]
     found: dict[str, list[str]] = {"allow": [], "ask": [], "deny": []}
+    bases: dict[str, str] = {}
     hook = None
-    for settings in map(_read, files):
+    for file, base in files:
+        settings = _read(file)
         permissions = settings.get("permissions") or {}
         for key, rules in found.items():
-            rules += [str(r) for r in permissions.get(key) or [] if isinstance(r, str)]
+            named = [str(r) for r in permissions.get(key) or [] if isinstance(r, str)]
+            rules += named
+            # RULE: a rules leading slash is read from where its settings file applies
+            bases.update({r: str(base) for r in named if r not in bases})
         hook = _hook(settings) or hook
-    return Rules(tuple(found["allow"]), tuple(found["ask"]), tuple(found["deny"]), hook)
+    return Rules(tuple(found["allow"]), tuple(found["ask"]), tuple(found["deny"]), hook, bases)
 
 
 def _hook(settings: dict[str, Any]) -> str | None:
@@ -142,8 +151,9 @@ def _bash_matches(spec: str, command: str) -> bool:
     return any(regex.fullmatch(p) or p == bare for p in pieces if p)
 
 
-def _path_matches(spec: str, path: str, cwd: str, root: Path | None, home: Path) -> bool:
-    """Claude Code's path rule: `//` from the root, `~/` from home, `/` from the project, else from cwd."""
+def _path_matches(spec: str, path: str, cwd: str, root: Path | str | None, home: Path) -> bool:
+    """Claude Code's path rule: `//` from the filesystem's root, `~/` from home, `/` from `root`
+    (where the rule's settings file applies), else from cwd."""
     if not path:
         return False
     if spec.startswith("//"):
@@ -170,8 +180,9 @@ class Box:
     mode: str
 
 
-def matches(rule: str, box: Box, home: Path) -> bool:
-    """Whether one permission rule covers this call."""
+def matches(rule: str, box: Box, home: Path, base: str | None = None) -> bool:
+    """Whether one permission rule covers this call. `base` is where the rule's settings file
+    applies; without it, the session's project."""
     found = RULE.match(rule.strip())
     if found is None:
         return False
@@ -183,13 +194,13 @@ def matches(rule: str, box: Box, home: Path) -> bool:
     if name == "Bash":
         given = box.tool_input if isinstance(box.tool_input, dict) else {}
         return box.tool == "Bash" and _bash_matches(spec, str(given.get("command", "")))
-    return _file_rule_matches(name, spec, box, home)
+    return _file_rule_matches(name, spec, box, home, base)
 
 
-def _file_rule_matches(name: str, spec: str, box: Box, home: Path) -> bool:
+def _file_rule_matches(name: str, spec: str, box: Box, home: Path, base: str | None) -> bool:
     # RULE: an edit rule covers every tool that writes a file
     if (name == "Edit" and box.tool in EDITORS) or (name == "Read" and box.tool in READERS) or name == box.tool:
-        return _path_matches(spec, _file(box), box.cwd, project_root(box.cwd, home), home)
+        return _path_matches(spec, _file(box), box.cwd, base or project_root(box.cwd, home), home)
     return False
 
 
@@ -198,8 +209,8 @@ def _file(box: Box) -> str:
     return str(given.get("file_path") or given.get("notebook_path") or given.get("path") or "")
 
 
-def _first(rules: Iterable[str], box: Box, home: Path) -> str | None:
-    return next((r for r in rules if matches(r, box, home)), None)
+def _first(rules: Iterable[str], box: Box, home: Path, bases: Mapping[str, str]) -> str | None:
+    return next((r for r in rules if matches(r, box, home, bases.get(r))), None)
 
 
 def _hook_asks(box: Box, hook: str | None) -> bool:
@@ -228,12 +239,12 @@ def _after(words: list[str], flag: str) -> str | None:
 
 def cause(box: Box, rules: Rules, home: Path) -> str:
     """Why this box reached the owner, as far as code can tell."""
-    denied = _first(rules.deny, box, home)
+    denied = _first(rules.deny, box, home, rules.bases)
     if denied is not None:
         # RULE: a box that a deny rule matches is logged as a warning
         log.warning("a box reached the owner although a deny rule matches: %s", shown(denied))
         return DENY_RULE + shown(denied)
-    asked = _first(rules.ask, box, home)
+    asked = _first(rules.ask, box, home, rules.bases)
     if asked is not None:
         # RULE: a box an ask rule matches names that rule
         return ASK_RULE + shown(asked)
