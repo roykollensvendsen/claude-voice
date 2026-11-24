@@ -385,3 +385,80 @@ def test_a_tree_s_tests_cannot_import_the_branch_s_scripts_through_the_plugin(tm
     (tmp_path / "tests/test_uses_it.py").write_text("import red_first\n\n\ndef test_uses_it():\n    pass\n")
     got = red_first.outcomes(["tests/test_uses_it.py::test_uses_it"], tmp_path, python=[sys.executable])
     assert got == {"tests/test_uses_it.py::test_uses_it": "failed"}
+
+
+def test_the_check_runs_from_any_folder_given_the_repository(tmp_path, monkeypatch, capsys):
+    """A session whose shell can't stay in a worktree still runs the check on it, by naming it."""
+    test = (
+        "import pathlib\nimport sys\n\n"
+        "sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))\n\n"
+        "from answer import X\n\n\ndef test_x():\n    assert X == 2\n"
+    )
+    repo, base, head = fake_pull_request(
+        tmp_path, {"answer.py": "X = 1\n"}, {"answer.py": "X = 2\n", "tests/test_x.py": test}
+    )
+    real = red_first.run_both
+    monkeypatch.setattr(
+        red_first, "run_both", lambda b, h, cwd=None: real(b, h, cwd=cwd, setup=lambda tree: [sys.executable])
+    )
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    assert red_first.main(["--repo", str(repo), "--base", base, "--head", head]) == 0
+    assert "1 test failed before this change and pass on it: tests/test_x.py::test_x" in capsys.readouterr().out
+
+
+def test_a_package_s_tests_are_looked_at_too(tmp_path):
+    """A package under packages/ has tests of its own, and a fix there needs the same proof."""
+    repo, base, head = fake_pull_request(
+        tmp_path,
+        {"packages/p/pyproject.toml": "", "packages/p/src/p.py": "X = 1\n"},
+        {
+            "packages/p/src/p.py": "X = 2\n",
+            "packages/p/tests/test_p.py": "def test_p():\n    pass\n",
+            "packages/p/tests/data.txt": "not a test\n",
+            "tests/test_root.py": "def test_root():\n    pass\n",
+        },
+    )
+    assert red_first.changed_test_files(base, head, cwd=repo) == ["packages/p/tests/test_p.py", "tests/test_root.py"]
+
+
+def test_the_before_tree_takes_no_package_code_from_a_folder_named_tests(tmp_path):
+    """Only packages/<name>/tests is tests. A folder called tests deeper in a package's code is code."""
+    repo, base, head = fake_pull_request(
+        tmp_path,
+        {"packages/p/src/deep/tests/helper.py": "OLD = 1\n"},
+        {"packages/p/src/deep/tests/helper.py": "NEW = 2\n", "packages/p/tests/test_p.py": "def test_p():\n    pass\n"},
+    )
+    before = tmp_path / "before"
+    red_first.before_tree(base, head, before, cwd=repo)
+    try:
+        assert (before / "packages/p/src/deep/tests/helper.py").read_text() == "OLD = 1\n"
+        assert (before / "packages/p/tests/test_p.py").exists()
+    finally:
+        git(repo, "worktree", "remove", "--force", str(before))
+
+
+def test_a_package_s_tests_run_in_the_package_s_own_folder(tmp_path):
+    """Each package runs with its own project, as its own check does, and is named in each test's id."""
+    test = (
+        "import pathlib\nimport sys\n\n"
+        "sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))\n\n"
+        "from answer import X\n\n\ndef test_x():\n    assert X == 2\n"
+    )
+    repo, base, head = fake_pull_request(
+        tmp_path,
+        {"packages/p/pyproject.toml": "", "packages/p/answer.py": "X = 1\n"},
+        {"packages/p/answer.py": "X = 2\n", "packages/p/tests/test_x.py": test},
+    )
+    set_up = []
+
+    def setup(tree):
+        set_up.append(tree.parts[-2:])
+        return [sys.executable]
+
+    ids = ["packages/p/tests/test_x.py::test_x"]
+    before, after = red_first.run_both(base, head, cwd=repo, setup=setup)(ids)
+    assert before == {ids[0]: "failed"}
+    assert after == {ids[0]: "passed"}
+    assert set_up == [("packages", "p"), ("packages", "p")]

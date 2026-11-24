@@ -1,0 +1,5 @@
+[[rule]]
+name = "a package's tests run in the package's own folder"
+file = "scripts/red_first.py"
+find = '^\s*here = tree / project if project else tree$'
+replace = 'here = tree'

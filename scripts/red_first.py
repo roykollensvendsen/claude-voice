@@ -3,10 +3,12 @@
 
 A test that passes on its first run proves nothing. This runs the tests a pull
 request adds or changes against its merge base, with only the changes under
-tests/ applied, and each must fail there. It runs them again on the branch,
-where each must pass. Run it from the repository root:
+tests/ applied, and each must fail there. A package's tests, under
+packages/<name>/tests, run the same way, in the package's own folder and
+environment. It runs them again on the branch,
+where each must pass. Run it from the repository root, or name the repository with --repo:
 
-    uv run python scripts/red_first.py --base origin/main --head HEAD [--body-file body.md]
+    uv run python scripts/red_first.py --base origin/main --head HEAD [--body-file body.md] [--repo PATH]
 
 The base is narrowed to the merge base of the two. A pull request with no new or
 changed tests passes at once. A test that pins behaviour that already exists is
@@ -181,10 +183,28 @@ def prove(counted: list[str], run: Run, body: str) -> tuple[bool, list[str]]:
 # --- The two trees -----------------------------------------------------------
 
 
+#: Where tests live: the repository's own, and each package's under packages/<name>/tests.
+TEST_PATHS = ("tests", ":(glob)packages/*/tests/**")  # glob: '*' stays within one folder
+
+
+def is_test_file(path: str) -> bool:
+    """Whether a path in the repository is a test file red-first reads."""
+    parts = pathlib.PurePosixPath(path).parts
+    where = parts[:1] == ("tests",) or (parts[:1] == ("packages",) and len(parts) > 3 and parts[2] == "tests")
+    return where and fnmatch.fnmatch(parts[-1], "test_*.py")
+
+
+def project_of(test: str) -> str:
+    """The folder a test's project lives in: a package's, or '' for the repository's own."""
+    parts = pathlib.PurePosixPath(test.split("::", 1)[0]).parts
+    return f"packages/{parts[1]}" if parts[0] == "packages" else ""
+
+
 def changed_test_files(base: str, head: str, cwd: pathlib.Path | str | None = None) -> list[str]:
-    """The test files added, changed or deleted between the two."""
-    names = _git("diff", "--name-only", "--no-renames", base, head, "--", "tests", cwd=cwd).split()
-    return sorted(n for n in names if fnmatch.fnmatch(pathlib.PurePosixPath(n).name, "test_*.py"))
+    """The test files added, changed or deleted between the two, the packages' included."""
+    names = _git("diff", "--name-only", "--no-renames", base, head, "--", *TEST_PATHS, cwd=cwd).split()
+    # RULE: a package's tests are looked at too
+    return sorted(n for n in names if is_test_file(n))
 
 
 def _show(rev: str, path: str, cwd: pathlib.Path | str | None) -> str | None:
@@ -197,7 +217,7 @@ def _show(rev: str, path: str, cwd: pathlib.Path | str | None) -> str | None:
 def before_tree(base: str, head: str, dest: pathlib.Path, cwd: pathlib.Path | str | None = None) -> None:
     """A checkout of the base with every change under tests/ from the branch, and none of the code."""
     _git("worktree", "add", "--detach", "--quiet", str(dest), base, cwd=cwd)
-    patch = _git("diff", "--binary", "--no-renames", base, head, "--", "tests", cwd=cwd)
+    patch = _git("diff", "--binary", "--no-renames", base, head, "--", *TEST_PATHS, cwd=cwd)
     if not patch:
         return
     try:
@@ -232,6 +252,7 @@ def outcomes(ids: list[str], tree: pathlib.Path, python: list[str]) -> dict[str,
         shutil.copyfile(__file__, pathlib.Path(scratch, f"{PLUGIN}.py"))
         env["PYTHONPATH"] = os.pathsep.join(filter(None, [scratch, env.get("PYTHONPATH")]))
         cmd = [*python, "-m", "pytest", "-q", "--tb=short", "-p", "no:cacheprovider", "-p", PLUGIN]
+        cmd += ["--rootdir", str(tree)]  # a package's ids are its own, whatever config it has
         args = [*cmd, "--continue-on-collection-errors", *files]
         code = subprocess.run(args, cwd=tree, env=env, check=False).returncode  # noqa: S603
         # Exit codes 3 and 4 are pytest's own internal and usage errors.
@@ -272,6 +293,24 @@ def _branch(ids: list[str], tree: pathlib.Path, python: list[str]) -> dict[str, 
         raise SystemExit(msg) from stopped
 
 
+def _each_project(
+    ids: list[str],
+    tree: pathlib.Path,
+    setup: Callable[[pathlib.Path], list[str]],
+    judge: Callable[[list[str], pathlib.Path, list[str]], dict[str, Outcome]],
+) -> dict[str, Outcome]:
+    """Run each project's tests in its own folder of the tree, with its own environment."""
+    got: dict[str, Outcome] = {}
+    for project in sorted({project_of(i) for i in ids}):
+        mine = [i for i in ids if project_of(i) == project]
+        cut = len(project) + 1 if project else 0
+        # RULE: a package's tests run in the package's own folder
+        here = tree / project if project else tree
+        said = judge([i[cut:] for i in mine], here, setup(here))
+        got |= {i: said[i[cut:]] for i in mine}
+    return got
+
+
 def run_both(
     base: str,
     head: str,
@@ -289,7 +328,7 @@ def run_both(
         try:
             before_tree(base, head, trees[0], cwd=cwd)
             _git("worktree", "add", "--detach", "--quiet", str(trees[1]), head, cwd=cwd)
-            return _before(ids, trees[0], setup(trees[0])), _branch(ids, trees[1], setup(trees[1]))
+            return _each_project(ids, trees[0], setup, _before), _each_project(ids, trees[1], setup, _branch)
         finally:
             for tree in trees:
                 with contextlib.suppress(subprocess.CalledProcessError):
@@ -358,17 +397,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--base", default="origin/main", help="the branch merged into; its merge base is used")
     parser.add_argument("--head", default="HEAD", help="the pull request's last commit")
     parser.add_argument("--body-file", type=pathlib.Path, help="a file holding the pull request body")
+    parser.add_argument("--repo", type=pathlib.Path, default=pathlib.Path(), help="the repository (default: here)")
     args = parser.parse_args(argv)
-    head = _git("rev-parse", "--verify", f"{args.head}^{{commit}}").strip()
-    base = _git("merge-base", args.base, head).strip()
-    files = changed_test_files(base, head)
-    everywhere = _git("ls-tree", "-r", "--name-only", base, "--", "tests").split()
-    on_base = [_show(base, p, None) for p in everywhere if fnmatch.fnmatch(pathlib.PurePosixPath(p).name, "test_*.py")]
+    repo = args.repo
+    head = _git("rev-parse", "--verify", f"{args.head}^{{commit}}", cwd=repo).strip()
+    base = _git("merge-base", args.base, head, cwd=repo).strip()
+    files = changed_test_files(base, head, cwd=repo)
+    everywhere = _git("ls-tree", "-r", "--name-only", base, "--", "tests", "packages", cwd=repo).split()
+    on_base = [_show(base, p, repo) for p in everywhere if is_test_file(p)]
     counted, removed = count(
-        {p: (_show(base, p, None), _show(head, p, None)) for p in files}, shapes_of(filter(None, on_base))
+        {p: (_show(base, p, repo), _show(head, p, repo)) for p in files}, shapes_of(filter(None, on_base))
     )
     body = args.body_file.read_text(encoding="utf-8") if args.body_file else os.environ.get("RED_FIRST_BODY", "")
-    ok, said = prove(counted, run_both(base, head), body)
+    ok, said = prove(counted, run_both(base, head, cwd=repo), body)
     said.insert(0, f"base {base[:12]}, head {head[:12]}; test files looked at: {', '.join(files) or 'none'}")
     if removed:
         said.append(f"removed, for the reviewer to weigh: {', '.join(removed)}")
