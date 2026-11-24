@@ -1,0 +1,5 @@
+[[rule]]
+name = "a word that sets a value is named without its value"
+file = "src/claude_voice/boxes.py"
+find = '^\s*return shown\(redact\.mask\(" "\.join\(_unset\(w\) for w in words\)\)\)$'
+replace = 'return shown(" ".join(words))'

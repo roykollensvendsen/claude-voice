@@ -1,5 +1,5 @@
 [[rule]]
 name = "a line names a command by its first words only"
 file = "src/claude_voice/boxes.py"
-find = '^        return shown\(" "\.join\(str\(given\.get\("command", ""\)\)\.split\(\)\[:PREFIX_WORDS\]\)\)$'
-replace = '        return shown(str(given.get("command", "")))'
+find = '^\s*words = str\(given\.get\("command", ""\)\)\.split\(\)\[:PREFIX_WORDS\]$'
+replace = 'words = str(given.get("command", "")).split()'

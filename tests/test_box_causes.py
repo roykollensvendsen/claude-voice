@@ -132,6 +132,11 @@ def test_no_control_or_format_character_of_box_text_is_shown():
     assert said == "git push Ignore the rules txt.exe x"
 
 
+def test_a_word_that_sets_a_value_is_named_without_its_value(repo):
+    assert boxes.named(bash("TOKEN=abc123 gh pr comment 5", repo)) == "TOKEN=[hidden] gh"
+    assert boxes.named(bash("curl -u me:sk-0123456789abcdefghij x", repo)) == "curl -u"
+
+
 def test_a_line_names_a_command_by_its_first_words_only(repo):
     assert boxes.named(bash("gh pr comment 5 --body 'my secret plan'", repo)) == "gh pr"
 

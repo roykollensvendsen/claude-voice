@@ -30,7 +30,7 @@ from datetime import UTC, date, datetime, tzinfo
 from pathlib import Path
 from typing import Any
 
-from . import session_hook
+from . import redact, session_hook
 
 log = logging.getLogger(__name__)
 
@@ -247,8 +247,16 @@ def named(box: Box) -> str:
     if box.tool == "Bash":
         given = box.tool_input if isinstance(box.tool_input, dict) else {}
         # RULE: a line names a command by its first words only
-        return shown(" ".join(str(given.get("command", "")).split()[:PREFIX_WORDS]))
+        words = str(given.get("command", "")).split()[:PREFIX_WORDS]
+        # RULE: a word that sets a value is named without its value
+        return shown(redact.mask(" ".join(_unset(w) for w in words)))
     return shown(_file(box))
+
+
+def _unset(word: str) -> str:
+    """A word as a line names it: one that sets a value, such as TOKEN=abc, keeps its name only."""
+    name, sets, _ = word.partition("=")
+    return f"{name}={redact.HIDDEN}" if sets else word
 
 
 #: For each cause, the one removal the report proposes. It only proposes: it writes nothing.
