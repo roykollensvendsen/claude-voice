@@ -140,8 +140,18 @@ GH_FIELDS_JOINED = ("-f", "-F", "--raw-field=", "--field=", "--input=")
 #: The main branch's ref belongs here too: moving it is a merge by another name.
 GH_PATH = re.compile(
     r"^/?repos/[^/]+/[^/]+/"
-    r"(?:statuses/|pulls/[^/]+/merge/?$|merges/?$|check-runs|check-suites|git/refs/heads/main/?$)"
+    r"(?:statuses/|pulls/[^/]+/merge/?$|merges/?$|check-runs|check-suites|git/refs/heads/main/?$)",
+    re.IGNORECASE,
 )
+#: API paths that set the repository's protection or its own settings, which could take the
+#: protection on `main` down: branch protection, rulesets, a branch's rename, the repository
+#: itself, its Actions permissions and its webhooks.
+GH_ADMIN = re.compile(
+    r"^/?repos/[^/]+/[^/]+(?:/?$|/(?:branches/.+/(?:protection|rename)|rulesets|actions/permissions|hooks)(?:/|$))",
+    re.IGNORECASE,
+)
+#: The GraphQL endpoint, on github.com and on GitHub Enterprise Server.
+GH_GRAPHQL = ("graphql", "api/graphql")
 #: What comes before an API path in a full address: the scheme, the host and any `/api/v3`.
 GH_HOST = re.compile(r"^[a-z]+://[^/]+(?:/api/v3)?(?=/)", re.IGNORECASE)
 #: `gh api` field values that read a file or stdin, where a GraphQL query could hide.
@@ -288,8 +298,9 @@ def _gh_method(words: list[str]) -> str:
     return (method or ("POST" if fields else "GET")).upper()
 
 
-def _gh_write(words: list[str]) -> str | None:
-    """What a gh call, given the words after gh, does that only the manager may: None for anything else."""
+def _gh_write(words: list[str], substitutes: bool = False) -> str | None:
+    """What a gh call, given the words after gh, does that only the manager may: None for anything
+    else. `substitutes` says the line holds a command substitution, which splitting hides."""
     named = _gh_words(words)
     # RULE: the flags of gh never hide a merge
     if named[:2] == ["pr", "merge"]:
@@ -301,28 +312,36 @@ def _gh_write(words: list[str]) -> str | None:
         return "hands out gh's login, which could make the same calls without gh"
     if named[:1] != ["api"] or len(named) < 2:
         return None
-    if named[1] == "graphql":
+    # RULE: the path of an api call is read without its host, query or fragment
+    path = re.split(r"[?#]", GH_HOST.sub("", named[1]), maxsplit=1)[0]
+    if path.strip("/").lower() in GH_GRAPHQL:
         # RULE: a graphql query from a file or stdin is refused to a role without merges
         if any(GH_FROM_FILE.search(w) or w == "--input" or w.startswith("--input=") for w in words):
             return "sends GitHub's API a query the guard cannot read, from a file or stdin"
+        # RULE: a graphql query in a variable or a substitution is refused
+        if substitutes or any("$" in w for w in words):
+            return "sends GitHub's API a query the guard cannot read, from a variable or a command"
         return "merges or sets a status through GitHub's API" if any(GH_MUTATIONS.search(w) for w in words) else None
-    # RULE: the path of an api call is read without its host, query or fragment
-    path = re.split(r"[?#]", GH_HOST.sub("", named[1]), maxsplit=1)[0]
+    writes = _gh_method(words) not in ("GET", "HEAD")
     # RULE: a writing api call to a merge or a status is refused
-    if GH_PATH.search(path) and _gh_method(words) not in ("GET", "HEAD"):
+    if GH_PATH.search(path) and writes:
         return "merges or sets a status through GitHub's API"
+    # RULE: a write to the repositorys protection or settings is refused
+    if GH_ADMIN.search(path) and writes:
+        return "changes the repository's protection or settings through GitHub's API"
     return None
 
 
 def merge_or_status(command: str) -> str | None:
     """What a command line does through gh that only a role with `merges` may, or None. A gh call
     behind a wrapper, `env`, or a shell's -c or eval is read too."""
+    substitutes = "$(" in command or "`" in command
     for raw in _segments(command):
         words, _ = _without_environment(raw)
         if words[:1] in (["echo"], ["printf"]):
             continue
         for i, word in enumerate(words):
-            found = _gh_write(words[i + 1 :]) if _is_gh(word) else None
+            found = _gh_write(words[i + 1 :], substitutes) if _is_gh(word) else None
             if found:
                 return found
         for line in _inner(words):

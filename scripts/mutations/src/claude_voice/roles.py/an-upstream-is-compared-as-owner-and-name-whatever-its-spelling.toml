@@ -1,0 +1,5 @@
+[[rule]]
+name = "an upstream is compared as owner and name whatever its spelling"
+file = "src/claude_voice/roles.py"
+find = '^\s*name = re\.sub\(r"\^\(\?:\[a-z\+\]\+://\[\^/\]\+/\|\[\^@/\]\+@\[\^:/\]\+:\)", "", upstream\.strip\(\), flags=re\.IGNORECASE\)$'
+replace = 'name = upstream'
