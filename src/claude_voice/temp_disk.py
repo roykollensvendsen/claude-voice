@@ -68,13 +68,18 @@ def largest(root: Path, top: int = TOP) -> list[dict[str, Any]]:
 
 
 def reading(disk: Path, root: Path) -> dict[str, Any]:
-    """How full `disk` is, and the largest folders under `root`."""
+    """How full `disk` is, and from WARN up the largest folders under `root`.
+
+    Below WARN nobody is told, so the folders are not walked: on a full disk a walk is costly.
+    """
     usage = shutil.disk_usage(disk)
+    percent = round(100 * usage.used / usage.total) if usage.total else 0
     return {
-        "percent": round(100 * usage.used / usage.total) if usage.total else 0,
+        "percent": percent,
         "used_gb": round(usage.used / 1e9, 1),
         "total_gb": round(usage.total / 1e9, 1),
-        "largest": largest(root),
+        # RULE: the folders are sized only once the temporary disk is past the first level
+        "largest": largest(root) if percent >= WARN else [],
         "at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
 
