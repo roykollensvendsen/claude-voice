@@ -265,6 +265,7 @@ class Plugin:
         self.spec, self.client_factory = spec, client_factory
         self.state = "not started"
         self.offered: list[str] = []
+        self.read_only: frozenset[str] = frozenset()  # its tools the plugin marked read-only when offered
         self.unlisted: str | None = None  # why the latest listing got no answer, or None
         self.refused: str | None = None  # why its start was refused, with what fixes it, or None
         self._failure: Exception | None = None
@@ -520,6 +521,7 @@ def offer(server: Any, plugin: Plugin, listing: dict[str, dict[str, Any]]) -> li
         return {}
 
     rules = instructions(listing)
+    plugin.read_only = frozenset(t for t, known in listing.items() if known.get("read_only") is True)
     offered = []
     for tool in plugin.spec.tools:
         name = exposed_name(plugin.spec.name, tool)
@@ -563,10 +565,13 @@ LINE = 160  # the longest line a status gives the voice
 BREAKS = ("Zl", "Zp")  # the line and paragraph separators, which start a new line too
 
 
-def status_tool(spec: PluginSpec) -> str | None:
-    """The plugin's own status tool: its first allowed tool named for a status, or None."""
+def status_tool(spec: PluginSpec, read_only: frozenset[str]) -> str | None:
+    """The plugin's own status tool: its first allowed tool named for a status that the plugin
+    marked read-only, or None. A name alone never makes a tool safe to call."""
     # RULE: a plugins status tool is its first allowed tool ending in status or now
-    return next((t for t in spec.tools if t.rsplit("_", 1)[-1] in STATUS_WORDS), None)
+    named = [t for t in spec.tools if t.rsplit("_", 1)[-1] in STATUS_WORDS]
+    # RULE: a status tool the plugin has not marked read-only is never called
+    return next((t for t in named if t in read_only), None)
 
 
 def _one_line(text: str) -> str:
@@ -596,9 +601,9 @@ def _quietly(call: asyncio.Future[Any]) -> None:
 async def ask_status(plugin: Plugin, seconds: float) -> dict[str, Any]:
     """One plugin's status: whether it answered within `seconds`, and a line saying how it stands."""
     name = plugin.spec.name
-    tool = status_tool(plugin.spec)
+    tool = status_tool(plugin.spec, plugin.read_only)
     if tool is None:
-        return {"name": name, "answered": None, "line": "has no status tool"}
+        return {"name": name, "answered": None, "line": "has no read-only status tool"}
     # The call is left to end on its own: waiting for a cancelled call could hold the answer up.
     call = asyncio.ensure_future(plugin.call(tool, {}))
     done, _ = await asyncio.wait({call}, timeout=seconds)

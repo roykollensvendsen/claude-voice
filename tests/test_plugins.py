@@ -10,6 +10,7 @@ import pytest
 from fakes import FakeClaude
 from mcp.client import Client
 from mcp.server.mcpserver import MCPServer
+from mcp.types import ToolAnnotations
 
 from claude_voice import cli, config, plugins
 from claude_voice.server import build_server
@@ -30,15 +31,18 @@ RULES = "Call garage_confirm only after the owner's own spoken yes."
 LISTING = {"garage_status": {"description": "", "schema": {"type": "object", "properties": {}}}}
 
 
-def stand_in(slow=False, phrase=False, rules=RULES, said="Where the door is."):
+def stand_in(slow=False, phrase=False, rules=RULES, said="Where the door is.", marked=False):
     """A stand-in for garage-door's MCP server, with one tool the voice must never get; with
     `phrase`, garage_request takes one input more than before. `rules` are its instructions
-    and `said` describes garage_status, both read by the voice."""
+    and `said` describes garage_status, both read by the voice. With `marked`, garage_status
+    is marked read-only. The server counts the calls to it in `status_calls`."""
     server = MCPServer("garage", instructions=rules)
+    server.status_calls = 0
     asked = []
 
-    @server.tool(description=said)
+    @server.tool(description=said, annotations=ToolAnnotations(read_only_hint=True) if marked else None)
     async def garage_status() -> dict:
+        server.status_calls += 1
         if slow:
             await asyncio.sleep(10)
         return {"door": "closed"}
@@ -265,16 +269,25 @@ DUMB = config.PluginSpec(**{**GARAGE.__dict__, "name": "dumb", "args": ["--dumb"
 
 
 def by_args(params):
-    """A stand-in per plugin: a slow one for --slow, the usual garage for the rest."""
-    return Client(stand_in(slow="--slow" in params.args)[0])
+    """A stand-in per plugin whose status tool is marked read-only: a slow one for --slow,
+    the usual garage for the rest."""
+    return Client(stand_in(slow="--slow" in params.args, marked=True)[0])
+
+
+STATUS_ONLY = frozenset({"garage_status"})
 
 
 def test_every_plugin_is_asked_for_its_status_at_once():
+    asked = []
+
     class Takes:
+        read_only = STATUS_ONLY
+
         def __init__(self, name):
             self.spec = config.PluginSpec(**{**GARAGE.__dict__, "name": name})
 
         async def call(self, tool, arguments):
+            asked.append((tool, arguments))
             await asyncio.sleep(0.4)
             return type("Answer", (), {"content": [], "is_error": False, "structured_content": {"say": "fine"}})()
 
@@ -285,6 +298,16 @@ def test_every_plugin_is_asked_for_its_status_at_once():
 
     found, took = asyncio.run(round_of(4))
     assert [f["line"] for f in found] == ["fine"] * 4 and took < 1.2  # one after another would take 1.6 s
+    assert asked == [("garage_status", {})] * 4  # the status tool only, and never with an argument
+
+
+async def test_a_status_tool_the_plugin_has_not_marked_read_only_is_never_called(tmp_path):
+    fake, asked = stand_in(marked=False)
+    server = bridge(tmp_path, [GARAGE], factory=lambda params: Client(fake))
+    async with Client(server) as c:
+        out = (await c.call_tool("plugins_status", {})).structured_content
+    assert out["plugins"] == [{"name": "garage", "answered": None, "line": "has no read-only status tool"}]
+    assert fake.status_calls == 0 and asked == [] and out["say"] == "0 of 0 plugins answered."
 
 
 async def test_one_call_says_which_plugins_answered_and_which_did_not(tmp_path, monkeypatch):
@@ -303,7 +326,7 @@ async def test_one_call_says_which_plugins_answered_and_which_did_not(tmp_path, 
 
 def test_a_status_that_does_not_come_in_time_is_reported_as_no_answer():
     class Hangs:
-        spec = SLOW
+        spec, read_only = SLOW, STATUS_ONLY
 
         async def call(self, tool, arguments):
             await asyncio.sleep(10)
@@ -316,9 +339,11 @@ def test_a_status_that_does_not_come_in_time_is_reported_as_no_answer():
 
 
 def test_a_plugins_status_tool_is_its_first_allowed_tool_ending_in_status_or_now():
-    assert plugins.status_tool(GARAGE) == "garage_status"
-    assert plugins.status_tool(config.PluginSpec(**{**GARAGE.__dict__, "tools": ["ams_price", "ams_now"]})) == "ams_now"
-    assert plugins.status_tool(DUMB) is None
+    everything = frozenset({"garage_status", "garage_request", "ams_price", "ams_now"})
+    assert plugins.status_tool(GARAGE, everything) == "garage_status"
+    ams = config.PluginSpec(**{**GARAGE.__dict__, "tools": ["ams_price", "ams_now"]})
+    assert plugins.status_tool(ams, everything) == "ams_now"
+    assert plugins.status_tool(DUMB, everything) is None
 
 
 def test_a_status_line_is_one_short_line_with_no_control_or_format_characters():
