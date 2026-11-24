@@ -148,6 +148,24 @@ def switched_off(text: str, rule: dict[str, object]) -> str:
 MARKER = re.compile(r"^[ \t]*#\s*RULE:\s*(.+?)\s*$")
 
 
+def repeated_markers(path: str, text: str) -> list[str]:
+    """Each rule marked more than once in one file, with the lines of its first two markers.
+
+    The checks read a rule's first marker only, so a second one would never be read.
+    """
+    first: dict[str, int] = {}
+    said = []
+    for number, line in enumerate(text.splitlines(), start=1):
+        if (m := MARKER.search(line)) is None:
+            continue
+        if m.group(1) not in first:
+            first[m.group(1)] = number
+        elif first[m.group(1)] > 0:
+            said.append(f"{path}: {m.group(1)!r} is marked on lines {first[m.group(1)]} and {number}")
+            first[m.group(1)] = 0  # named once, however many more follow
+    return said
+
+
 #: How far from its marker, either way, a rule's own line is looked for.
 NEAR = 8
 
