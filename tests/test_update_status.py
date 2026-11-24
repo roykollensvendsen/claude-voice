@@ -91,6 +91,17 @@ def test_a_problem_is_one_short_line():
     assert len(updater.status(long, running=False)["problem"]) <= 200
 
 
+def test_a_failed_step_s_words_are_said_with_secrets_hidden_and_control_characters_gone():
+    token = "ghp_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+    noisy = f"fatal: auth with {token} failed\x1b[31m red\x07 " + "x" * 400
+    leaky = {**ROLLED_BACK, "steps": [step("fetch", False, noisy)], "detail": f"Kept the old one. {token}\x1b[0m"}
+    out = updater.status(leaky, running=False)
+    for said in (out["problem"], out["detail"], out["say"]):
+        assert token not in said and "[hidden]" in said
+        assert not any(ord(ch) < 32 or ord(ch) == 127 for ch in said)
+    assert len(out["problem"]) <= 200 and len(out["detail"]) <= 200
+
+
 def bridge(tmp_path):
     (tmp_path / "home").mkdir(exist_ok=True)
     store = Store(tmp_path / "b.db")
