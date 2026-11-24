@@ -1,0 +1,5 @@
+[[rule]]
+name = "a plugins status tool is its first allowed tool ending in status or now"
+file = "src/claude_voice/plugins.py"
+find = '^\s*named = \[t for t in spec\.tools if t\.rsplit\("_", 1\)\[-1\] in STATUS_WORDS\]$'
+replace = 'named = list(spec.tools)'

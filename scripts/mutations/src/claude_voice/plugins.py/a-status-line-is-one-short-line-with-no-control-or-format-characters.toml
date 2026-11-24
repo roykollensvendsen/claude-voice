@@ -1,0 +1,5 @@
+[[rule]]
+name = "a status line is one short line with no control or format characters"
+file = "src/claude_voice/plugins.py"
+find = '^\s*plain = "".join\(" " if unicodedata\.category\(c\) in BREAKS or unicodedata\.category\(c\)\[0\] == "C" else c for c in text\)$'
+replace = 'plain = text'

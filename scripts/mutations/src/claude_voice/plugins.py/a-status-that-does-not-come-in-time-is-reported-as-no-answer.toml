@@ -1,0 +1,5 @@
+[[rule]]
+name = "a status that does not come in time is reported as no answer"
+file = "src/claude_voice/plugins.py"
+find = '^\s*if not done:$'
+replace = 'if False:'

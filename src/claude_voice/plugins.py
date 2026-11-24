@@ -22,6 +22,7 @@ import json
 import logging
 import os
 import threading
+import unicodedata
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Any
@@ -264,6 +265,7 @@ class Plugin:
         self.spec, self.client_factory = spec, client_factory
         self.state = "not started"
         self.offered: list[str] = []
+        self.read_only: frozenset[str] = frozenset()  # its tools the plugin marked read-only when offered
         self.unlisted: str | None = None  # why the latest listing got no answer, or None
         self.refused: str | None = None  # why its start was refused, with what fixes it, or None
         self._failure: Exception | None = None
@@ -519,6 +521,7 @@ def offer(server: Any, plugin: Plugin, listing: dict[str, dict[str, Any]]) -> li
         return {}
 
     rules = instructions(listing)
+    plugin.read_only = frozenset(t for t, known in listing.items() if known.get("read_only") is True)
     offered = []
     for tool in plugin.spec.tools:
         name = exposed_name(plugin.spec.name, tool)
@@ -554,6 +557,89 @@ def withdraw(server: Any, plugin: Plugin) -> None:
     for name in plugin.offered:
         server._tool_manager._tools.pop(name, None)
     plugin.offered = []
+
+
+STATUS_SECONDS = 5.0  # how long the round of statuses waits for each plugin
+STATUS_WORDS = ("status", "now")  # the last word of a tool that says how a plugin stands
+LINE = 160  # the longest line a status gives the voice
+BREAKS = ("Zl", "Zp")  # the line and paragraph separators, which start a new line too
+
+
+def status_tool(spec: PluginSpec, read_only: frozenset[str]) -> str | None:
+    """The plugin's own status tool: its first allowed tool named for a status that the plugin
+    marked read-only, or None. A name alone never makes a tool safe to call."""
+    # RULE: a plugins status tool is its first allowed tool ending in status or now
+    named = [t for t in spec.tools if t.rsplit("_", 1)[-1] in STATUS_WORDS]
+    # RULE: a status tool the plugin has not marked read-only is never called
+    return next((t for t in named if t in read_only), None)
+
+
+def _one_line(text: str) -> str:
+    """`text` as one short line of data: every control, format or line-breaking character
+    becomes a space, and a long line is cut."""
+    # RULE: a status line is one short line with no control or format characters
+    plain = "".join(" " if unicodedata.category(c) in BREAKS or unicodedata.category(c)[0] == "C" else c for c in text)
+    plain = " ".join(plain.split())
+    return plain if len(plain) <= LINE else plain[: LINE - 1] + "…"
+
+
+def _said(result: Any) -> str:
+    """What a status answer says, in one line: its own `say` when it has one, else the answer."""
+    if isinstance(result, dict) and isinstance(result.get("say"), str):
+        return _one_line(result["say"])
+    if isinstance(result, dict) and set(result) == {"text"}:
+        return _one_line(str(result["text"]))
+    return _one_line(json.dumps(result, ensure_ascii=False, default=str))
+
+
+def _quietly(call: asyncio.Future[Any]) -> None:
+    """Read a late status call's end, so a failure there is never reported as unread."""
+    if not call.cancelled():
+        call.exception()
+
+
+async def ask_status(plugin: Plugin, seconds: float) -> dict[str, Any]:
+    """One plugin's status: whether it answered within `seconds`, and a line saying how it stands."""
+    name = plugin.spec.name
+    tool = status_tool(plugin.spec, plugin.read_only)
+    if tool is None:
+        return {"name": name, "answered": None, "line": "has no read-only status tool"}
+    # The call is left to end on its own: waiting for a cancelled call could hold the answer up.
+    call = asyncio.ensure_future(plugin.call(tool, {}))
+    done, _ = await asyncio.wait({call}, timeout=seconds)
+    # RULE: a status that does not come in time is reported as no answer
+    if not done:
+        call.add_done_callback(_quietly)
+        call.cancel()
+        return {"name": name, "answered": False, "line": f"no answer within {seconds:g} s"}
+    try:
+        answered, line = _status_of(call.result())
+    except RuntimeError as exc:  # the bridge's own words: it stopped, or took too long
+        answered, line = False, _one_line(str(exc))
+    return {"name": name, "answered": answered, "line": line}
+
+
+def _status_of(answer: Any) -> tuple[bool, str]:
+    """Whether a plugin's status answer came through, and its line."""
+    text = "\n".join(getattr(c, "text", "") for c in answer.content or [] if getattr(c, "text", None))
+    if answer.is_error:
+        return False, _one_line(text or "refused")
+    return True, _said(answer.structured_content if answer.structured_content is not None else as_object(text))
+
+
+async def statuses(running: list[Plugin], seconds: float | None = None) -> list[dict[str, Any]]:
+    """Every plugin's status, all asked at once, so one slow plugin holds up nothing."""
+    limit = STATUS_SECONDS if seconds is None else seconds
+    # RULE: every plugin is asked for its status at once
+    return list(await asyncio.gather(*(ask_status(p, limit) for p in running)))
+
+
+def status_summary(found: list[dict[str, Any]]) -> str:
+    """A short sentence for the voice: how many answered, and which did not."""
+    asked = [f for f in found if f["answered"] is not None]
+    silent = [f["name"] for f in asked if not f["answered"]]
+    said = f"{len(asked) - len(silent)} of {len(asked)} plugins answered."
+    return f"{said} No answer from {', '.join(silent)}." if silent else said
 
 
 Checked = tuple[Plugin | None, dict[str, dict[str, Any]], str]

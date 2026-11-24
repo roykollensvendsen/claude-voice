@@ -107,6 +107,7 @@ the bridge says which are missing, with the exact fix, through its
 | `update_changes` | what an update would bring: the new commits on GitHub, grouped by kind |
 | `update_status` | how the latest update is going or how it ended: its step, whether it was rolled back, and why |
 | `health` | the bridge's own state: uptime, version, memory, calls and errors per tool, courier and watcher, and whether developer mode is on |
+| `plugins_status` | ask every plugin how it stands, all at once, five seconds each. One line per plugin from its own status tool, and a sentence naming any that did not answer. A status tool is the first allowed tool ending in `status` or `now` that the plugin marks read-only, and is called with no arguments |
 | `plugin_restart` | start one plugin again with its new code, without restarting the bridge; its tools come back only if they take what was approved |
 | `developer_mode_request`, `developer_mode_confirm`, `developer_mode_off` | switch developer mode on by voice with a question and your yes (only from the Claude app; it ends by itself after eight hours), or off at once |
 | `plugin_approve_request`, `plugin_approve_confirm` | in developer mode, approve a plugin whose tools changed: the voice names each changed tool and approves on your yes |

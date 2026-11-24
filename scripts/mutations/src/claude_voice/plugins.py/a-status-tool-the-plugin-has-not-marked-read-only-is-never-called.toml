@@ -1,0 +1,5 @@
+[[rule]]
+name = "a status tool the plugin has not marked read-only is never called"
+file = "src/claude_voice/plugins.py"
+find = '^\s*return next\(\(t for t in named if t in read_only\), None\)$'
+replace = 'return next(iter(named), None)'

@@ -139,6 +139,25 @@ async def test_a_plugin_that_cannot_be_offered_never_stops_the_others(tmp_path, 
     assert "garage could not be offered" in caplog.text and "the tool table broke" in caplog.text
 
 
+async def test_a_plugin_that_could_not_be_offered_is_listed_as_not_answering(tmp_path, monkeypatch, caplog):
+    garage, _ = stand_in()
+
+    def breaks(server, plugin, listing, commit):
+        raise RuntimeError("could not log in from /home/x/garage/.env")
+
+    monkeypatch.setattr(plugins, "present", breaks)
+    server = behind_bridge(tmp_path, [(GARAGE, lambda p: Client(garage))], lambda p: Client(garage))
+    with caplog.at_level("INFO", logger="claude_voice"):
+        async with Client(server) as c:
+            deadline = time.monotonic() + 5
+            while "garage could not be offered" not in caplog.text:
+                assert time.monotonic() < deadline
+                await asyncio.sleep(0.05)
+            out = (await c.call_tool("plugins_status", {})).structured_content
+    assert out["plugins"] == [{"name": "garage", "answered": False, "line": "could not be offered"}]
+    assert out["say"] == "0 of 1 plugins answered. No answer from garage."
+
+
 def garage_and_tv(tmp_path, garage, tv):
     """A bridge whose garage and tv plugins start behind it, in that order."""
     fakes = {GARAGE.cwd: garage, TV.cwd: tv}
