@@ -5,6 +5,7 @@ ten minutes, read-only. Past 80 % it names the largest folders; past 90 % it say
 """
 
 import os
+import shutil
 
 from fakes import FakeClaude
 from mcp.client import Client
@@ -116,11 +117,23 @@ def test_a_measure_that_fails_is_tried_again_next_time():
     assert "85 %" in w.look()
 
 
-def test_a_reading_has_the_share_used_and_the_largest_folders(tmp_path):
+def full(monkeypatch, used, total=100):
+    usage = shutil._ntuple_diskusage(total * 10**9, used * 10**9, (total - used) * 10**9)
+    monkeypatch.setattr(temp_disk.shutil, "disk_usage", lambda path: usage)
+
+
+def test_a_reading_has_the_share_used_and_the_largest_folders(tmp_path, monkeypatch):
     folder_of(tmp_path, "s1", [50_000])
+    full(monkeypatch, used=85)
     out = temp_disk.reading(tmp_path, tmp_path)
-    assert 0 <= out["percent"] <= 100 and out["largest"][0]["folder"] == "s1"
-    assert out["total_gb"] > 0 and "at" in out
+    assert out["percent"] == 85 and out["largest"][0]["folder"] == "s1"
+    assert out["total_gb"] == 100 and "at" in out
+
+
+def test_the_folders_are_sized_only_once_the_temporary_disk_is_past_the_first_level(tmp_path, monkeypatch):
+    folder_of(tmp_path, "s1", [50_000])
+    full(monkeypatch, used=79)
+    assert temp_disk.reading(tmp_path, tmp_path)["largest"] == []
 
 
 def bridge(tmp_path, levels):
