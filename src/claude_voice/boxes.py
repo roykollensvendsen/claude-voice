@@ -23,6 +23,7 @@ import logging
 import os
 import re
 import shlex
+import threading
 import unicodedata
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
@@ -50,8 +51,9 @@ READERS = frozenset({"Read", "Grep", "Glob"})
 BREAKS = ("Zl", "Zp")  # the line and paragraph separators, which start a new line too
 RULE = re.compile(r"^([A-Za-z0-9_-]+)(?:\((.*)\))?$", re.DOTALL)
 JOINS = re.compile(r"\s*(?:&&|\|\||;|\||&|\n)\s*")  # for a line the shell could not parse
-# What ends one simple command in a chain, as the session hook's own check reads them (literal_gh).
-SEPARATORS = frozenset({";", "&", "|", "&&", "||", "|&", ";;", ";&", "\n", "(", ")"})
+# What ends one simple command in a chain. A token made of these alone ends it: `&&`, `|&`, and
+# a run the shell's lexer keeps together, such as `);`.
+JOINERS = frozenset(";&|()\n")
 
 
 def _hidden(c: str) -> bool:
@@ -78,8 +80,9 @@ class Rules:
     ask: tuple[str, ...] = ()
     deny: tuple[str, ...] = ()
     hook: str | None = None
-    #: For each rule, the folder its leading `/` is read from: where its settings file applies.
-    bases: Mapping[str, str] = field(default_factory=dict)
+    #: For each rule, the folders its leading `/` is read from: where each settings file that
+    #: names it applies. The same rule in two files is read from both.
+    bases: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
 
 
 def _read(file: Path) -> dict[str, Any]:
@@ -113,7 +116,7 @@ def rules_for(cwd: str, home: Path) -> Rules:
     if root is not None:
         files += [(root / ".claude" / name, root) for name in ("settings.json", "settings.local.json")]
     found: dict[str, list[str]] = {"allow": [], "ask": [], "deny": []}
-    bases: dict[str, str] = {}
+    bases: dict[str, tuple[str, ...]] = {}
     hook = None
     for file, base in files:
         settings = _read(file)
@@ -122,7 +125,7 @@ def rules_for(cwd: str, home: Path) -> Rules:
             named = [str(r) for r in permissions.get(key) or [] if isinstance(r, str)]
             rules += named
             # RULE: a rules leading slash is read from where its settings file applies
-            bases.update({r: str(base) for r in named if r not in bases})
+            bases.update({r: (*bases.get(r, ()), str(base)) for r in named})
         hook = _hook(settings) or hook
     return Rules(tuple(found["allow"]), tuple(found["ask"]), tuple(found["deny"]), hook, bases)
 
@@ -151,7 +154,7 @@ def _pieces(command: str) -> list[str]:
     try:
         for token in lexer:
             # RULE: a chain is split as the shell splits it
-            if token in SEPARATORS:
+            if token and set(token) <= JOINERS:
                 found.append([])
             else:
                 found[-1].append(token)
@@ -229,8 +232,11 @@ def _file(box: Box) -> str:
     return str(given.get("file_path") or given.get("notebook_path") or given.get("path") or "")
 
 
-def _first(rules: Iterable[str], box: Box, home: Path, bases: Mapping[str, str]) -> str | None:
-    return next((r for r in rules if matches(r, box, home, bases.get(r))), None)
+def _first(rules: Iterable[str], box: Box, home: Path, bases: Mapping[str, tuple[str, ...]]) -> str | None:
+    def covers(rule: str) -> bool:
+        return any(matches(rule, box, home, base) for base in bases.get(rule) or (None,))
+
+    return next((r for r in rules if covers(r)), None)
 
 
 def _hook_asks(box: Box, hook: str | None) -> bool:
@@ -385,6 +391,7 @@ class Triager:
         self.file = file.expanduser()
         self.home = home or Path.home()
         self.now = now
+        self._lock = threading.Lock()  # labels run in threads of their own
 
     def label(self, prompt: str, session: str, box: Box) -> str:
         """The box's cause, with its line written to the log."""
@@ -398,14 +405,22 @@ class Triager:
             "mode": shown(box.mode),
             "cause": why,
         }
-        self.file.parent.mkdir(parents=True, exist_ok=True)
-        with contextlib.suppress(OSError):
-            # RULE: the box log never grows past two files of its limit
-            if self.file.stat().st_size > LOG_BYTES:
-                os.replace(self.file, _older(self.file))
-        with os.fdopen(os.open(self.file, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600), "a", encoding="utf-8") as out:
-            out.write(json.dumps(line, ensure_ascii=False) + "\n")
+        self._write(json.dumps(line, ensure_ascii=False) + "\n")
         return why
+
+    def _write(self, text: str) -> None:
+        """Add one line to the log, starting a new one first when it is full. One box at a time,
+        so two labels at once never both move the log, and a fresh one never lands on the older."""
+        # RULE: two boxes labelled at once move the log once
+        with self._lock:
+            self.file.parent.mkdir(parents=True, exist_ok=True)
+            with contextlib.suppress(OSError):
+                # RULE: the box log never grows past two files of its limit
+                if self.file.stat().st_size > LOG_BYTES:
+                    os.replace(self.file, _older(self.file))
+            flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND
+            with os.fdopen(os.open(self.file, flags, 0o600), "a", encoding="utf-8") as out:
+                out.write(text)
 
     def causes(self) -> dict[str, str]:
         """Each recent box's cause, by its prompt id. Only the end of the log is read: a box

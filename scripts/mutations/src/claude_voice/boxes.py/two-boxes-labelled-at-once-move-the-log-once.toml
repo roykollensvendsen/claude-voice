@@ -1,0 +1,5 @@
+[[rule]]
+name = "two boxes labelled at once move the log once"
+file = "src/claude_voice/boxes.py"
+find = '^\s*with self\._lock:$'
+replace = 'with contextlib.nullcontext():'

@@ -73,6 +73,7 @@ def test_a_bash_rule_matches_the_whole_command_or_any_part_of_a_chain(repo, home
         ("make & git push", True),
         ("(git push)", True),
         ("make |& git push", True),
+        ("(make);git push", True),  # the lexer keeps `);` together
         ("echo 'a && git push'", False),  # inside quotes it is one word, not a command
         ("echo 'unclosed && git push", True),  # one the shell cannot parse is split on its joins
     ],
@@ -143,6 +144,43 @@ def test_a_rules_leading_slash_is_read_from_where_its_settings_file_applies(repo
     assert boxes.cause(at_home, rules, home) == "ask rule: Edit(/agents/**)"
     assert boxes.cause(in_repo, rules, home) == "ask rule: Edit(/docs/**)"
     assert boxes.cause(not_home, rules, home) == boxes.NO_RULE  # the owner's rule is not the project's
+
+
+def test_the_same_rule_in_two_settings_files_is_read_from_both(repo, home):
+    settings(home, ask=["Edit(/x/**)"])
+    settings(repo, ask=["Edit(/x/**)"])
+    rules = boxes.rules_for(str(repo), home)
+    for path in (str(home / ".claude" / "x" / "a"), "x/a"):
+        assert boxes.cause(Box("Edit", {"file_path": path}, str(repo), "auto"), rules, home) == "ask rule: Edit(/x/**)"
+
+
+def test_two_boxes_labelled_at_once_move_the_log_once(tmp_path, repo, home, monkeypatch):
+    import os
+    import threading
+    import time
+
+    monkeypatch.setattr(boxes, "LOG_BYTES", 300)  # the old log is past it; one new line is not
+    log = tmp_path / "state" / "boxes.jsonl"
+    log.parent.mkdir()
+    log.write_text('{"old": 1}\n' * 40, encoding="utf-8")
+    replace, moves = os.replace, []
+
+    def first_one_slow(src, dst):  # the second label comes while the first is still moving the log
+        moves.append(src)
+        time.sleep(0.3 if len(moves) == 1 else 0)
+        replace(src, dst)
+
+    monkeypatch.setattr(boxes.os, "replace", first_one_slow)
+    triager = boxes.Triager(log, home)
+    both = [threading.Thread(target=triager.label, args=(f"p{n}", "s", bash("make", repo))) for n in range(2)]
+    both[0].start()
+    time.sleep(0.1)
+    both[1].start()
+    for t in both:
+        t.join()
+    older = log.with_name("boxes.jsonl.1").read_text(encoding="utf-8")
+    assert older.count('"old"') == 40 and len(moves) == 1  # moved once; the old log is never overwritten
+    assert len(log.read_text(encoding="utf-8").splitlines()) == 2
 
 
 def test_box_text_is_shown_on_one_line_and_cut_short():
