@@ -47,9 +47,10 @@ def _beside(name: str) -> ModuleType:
 # Claude Code runs this file with the system's python3, where the bridge's package isn't installed.
 # RULE: the session hook runs with the standard library only
 if __package__:
-    from . import safe_git, steering
+    from . import safe_git, shell_text, steering
 else:
     safe_git = _beside("safe_git")
+    shell_text = _beside("shell_text")
     steering = _beside("steering")
 
 ALLOW, ASK, DENY = "allow", "ask", "deny"
@@ -385,7 +386,8 @@ def decision(hook_input: dict[str, Any], *, tmp_root: Path, repos: Sequence[str]
     session_id = str(hook_input.get("session_id") or "")
     for judge in (
         lambda: _code_setting(command),
-        lambda: steering.judge(command, cwd, str(Path.home())),
+        # RULE: a path spelled in the shell's own quoting is judged as bash reads it
+        lambda: steering.judge(shell_text.unquoted(command), cwd, str(Path.home())),
         lambda: _removal(command, cwd, session_id, tmp_root),
         lambda: _issue(command, cwd, repos, terms, session_id, tmp_root),
     ):

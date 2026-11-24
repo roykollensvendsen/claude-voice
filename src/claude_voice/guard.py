@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from claude_voice import safe_git
+from claude_voice.shell_text import unquoted as _unquoted
 
 #: Where one command ends and the next begins: the shell's joiners, a new line, a lone `&`, and
 #: the marks of a subshell or a command substitution. They are kept in the split, so the guard
@@ -168,24 +169,6 @@ GH_MUTATIONS = re.compile(
 )
 #: Options before git's subcommand that take the next word as their value.
 GIT_VALUES = ("-C", "-c", "--config-env", "--git-dir", "--work-tree")
-#: The shell's own quoting, `$'...'` with escapes and `$"..."`, which bash turns into plain text.
-ANSI_C = re.compile(r"\$'((?:[^'\\]|\\.)*)'", re.DOTALL)
-ESCAPE = re.compile(r"\\(x[0-9A-Fa-f]{1,2}|u[0-9A-Fa-f]{1,4}|U[0-9A-Fa-f]{1,8}|[0-7]{1,3}|c.|.)", re.DOTALL)
-SIMPLE_ESCAPES = {
-    "a": "\a",
-    "b": "\b",
-    "e": "\x1b",
-    "E": "\x1b",
-    "f": "\f",
-    "n": "\n",
-    "r": "\r",
-    "t": "\t",
-    "v": "\v",
-    "\\": "\\",
-    "'": "'",
-    '"': '"',
-    "?": "?",
-}
 
 
 @dataclass
@@ -204,26 +187,6 @@ Reader = tuple[Callable[[str], "str | None"], Callable[[], str]]
 #: What a git alias runs, by its name and the folder git runs in (None for the session's own), or
 #: None when there is no such alias.
 Alias = Callable[[str, "str | None"], "str | None"]
-
-
-def _escape(match: re.Match[str]) -> str:
-    """The character one escape in `$'...'` stands for."""
-    code = match.group(1)
-    if code[0] in "xuU" and len(code) > 1:
-        number = int(code[1:], 16)
-        return chr(number) if number <= sys.maxunicode else ""
-    if code[0] in "01234567":
-        return chr(int(code, 8) & 0xFF)
-    if code[0] == "c" and len(code) > 1:
-        return chr(ord(code[1]) & 0x1F)
-    # bash keeps the backslash of an escape it does not know, such as `\x` with no digits
-    return SIMPLE_ESCAPES.get(code, "\\" + code)
-
-
-def _unquoted(command: str) -> str:
-    """The command with the shell's own quoting turned into plain quoting, as bash reads it."""
-    plain = ANSI_C.sub(lambda match: shlex.quote(ESCAPE.sub(_escape, match.group(1))), command)
-    return plain.replace('$"', '"')
 
 
 def _without_environment(words: list[str]) -> tuple[list[str], bool]:

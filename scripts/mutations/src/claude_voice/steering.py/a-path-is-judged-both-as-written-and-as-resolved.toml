@@ -1,0 +1,5 @@
+[[rule]]
+name = "a path is judged both as written and as resolved"
+file = "src/claude_voice/steering.py"
+find = '^\s*return max\(_level_of_path\(written, home\), _level_of_path\(resolved, home\)\)$'
+replace = 'return _level_of_path(resolved, home)'

@@ -57,6 +57,8 @@ LAYERS = {
     "safe_git": -1,
     # what steers the next session, judged in the session hook, which loads it by its path
     "steering": -1,
+    # the shell's own quoting, read the same way by the push guard and the session hook
+    "shell_text": -1,
     # foundations
     **dict.fromkeys(
         (

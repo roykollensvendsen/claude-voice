@@ -1,0 +1,5 @@
+[[rule]]
+name = "a path spelled in the shell's own quoting is judged as bash reads it"
+file = "src/claude_voice/session_hook.py"
+find = '^\s*lambda: steering\.judge\(shell_text\.unquoted\(command\), cwd, str\(Path\.home\(\)\)\),$'
+replace = 'lambda: steering.judge(command, cwd, str(Path.home())),'

@@ -537,10 +537,22 @@ A word it can't resolve counts as locked. Only a plain read passes:
 Anything else that names such a path is refused, or asked for the tracked ones.
 That covers `find .claude -delete` and `sed`.
 
-Two edges stay open. A program that builds a path itself, such as `python -c`,
-is not seen, and neither is a variable other than `HOME`. Sessions running as
-their own user close both. The memory folder under `~/.claude/projects` stays
-writable on purpose, since sessions keep their notes there.
+Each word is read as bash reads it. `$'...'` escapes are decoded, braces are
+expanded (`.{c,}laude` is `.claude`), and globs are matched. A path is judged
+both as written and as resolved, so a steering folder linked elsewhere is still
+locked. Where a skill or hook under `~/.claude` is a link, what it points to is
+locked too. A brace too big to expand, and a parameter such as `${X:-.cla}ude`,
+count as locked.
+
+Some edges stay open, and sessions running as their own user close them:
+
+- a program that builds a path itself, such as `python -c`;
+- a command that writes what a file or a commit says: `git apply`, `am`,
+  `checkout`, `merge`, `pull` and `stash`, `patch`, `tar x` and `unzip`;
+- a plain variable other than `HOME`.
+
+The memory folder under `~/.claude/projects` stays writable on purpose, since
+sessions keep their notes there.
 
 Some of the bridge's own files run as the owner from the owner's checkout, in
 every session's hooks. They are the session hook, the git helper it loads, the

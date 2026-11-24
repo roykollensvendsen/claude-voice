@@ -15,14 +15,16 @@ word that names a path is resolved, `..` and links followed, and judged.
   wrapper, and none of the reader's options that write or run.
 
 What a text rule cannot see stays open: a program that builds a path itself, such as
-`python -c`, and a variable other than HOME. The lane users close that edge. The memory
-folder under ~/.claude/projects stays writable on purpose.
+`python -c`, one that writes what a file or a commit says (git apply, am, checkout, merge,
+pull and stash, patch, tar x and unzip), and a plain variable other than HOME. The lane
+users close that edge. The memory folder under ~/.claude/projects stays writable on purpose.
 
 It runs inside the session hook, so it uses the standard library only.
 """
 
 from __future__ import annotations
 
+import functools
 import glob
 import os
 import re
@@ -41,6 +43,15 @@ ASKED_NAMES = frozenset({"CLAUDE.md", "AGENTS.md"})
 MARKERS: tuple[tuple[str, int], ...] = ((".claude", LOCKED), (".mcp.json", LOCKED), ("CLAUDE.local.md", LOCKED))
 MARKERS += (("CLAUDE.md", ASKED), ("AGENTS.md", ASKED))
 EXPANDS = re.compile(r"[*?\[\]{}$`]")
+#: `${X:-default}` and the like, whose value the hook can't know: `${X:-.cla}ude` is `.claude`.
+PARAMETER = re.compile(r"\$\{[^}]*[:#%/^,@!+=?-]")
+#: Bash's brace expansion: `{a,b}`, and `{1..9}` or `{a..z}` with an optional step.
+BRACE = re.compile(r"\{([^{}]*)\}")
+SEQUENCE = re.compile(r"(-?\d+)\.\.(-?\d+)(?:\.\.(-?\d+))?|([A-Za-z])\.\.([A-Za-z])(?:\.\.(-?\d+))?")
+#: The most words one brace may make before the word counts as locked.
+BRACE_LIMIT = 256
+#: The folders under ~/.claude whose links point to where the steering file really lives.
+STEERING_FOLDERS = ("skills", "hooks", "agents", "commands", "rules", "output-styles", "plugins")
 #: Programs that only read the files they are given.
 READERS = frozenset({"cat", "head", "tail", "wc", "grep", "rg", "ls", "stat"})
 GIT_READS = frozenset({"diff", "log", "show", "status", "blame"})
@@ -65,6 +76,7 @@ def judge(command: str, cwd: str, home: str) -> str | None:
 def _tokens(command: str) -> list[str]:
     lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
+    lexer.commenters = ""  # a `#` inside a word, as in `${#X}`, is no comment to bash
     return [piece for token in lexer for piece in token.split("`") if piece]
 
 
@@ -84,17 +96,70 @@ def _level_of_word(word: str, cwd: str, home: str) -> int:
 
 def _level_of_text(word: str, cwd: str, home: str) -> int:
     word = _home_spelled_out(word, home)
+    if PARAMETER.search(word):
+        # RULE: a parameter with a default or any other operator counts as locked
+        return LOCKED
+    try:
+        spellings = _braces(word)
+    except ValueError:
+        # RULE: a brace the hook cannot expand counts as locked
+        return LOCKED
+    return max(_level_of_spelling(w, cwd, home) for w in spellings)
+
+
+def _level_of_spelling(word: str, cwd: str, home: str) -> int:
     if EXPANDS.search(word):
+        # A glob that matches nothing is safe: bash leaves it as written, and that is judged by its names.
         # RULE: a word the shell would change is judged by every name it can reach
         found = glob.glob(os.path.join(cwd, word))
         named = max((level for marker, level in MARKERS if marker in word), default=NONE)
         return max([named] + [_level_of_path(p, home) for p in found])
     try:
-        path = os.path.realpath(os.path.join(cwd, word))
+        written = os.path.normpath(os.path.join(cwd, word))
+        resolved = os.path.realpath(os.path.join(cwd, word))
     except (OSError, ValueError):
         # RULE: a word that cannot be resolved counts as locked
         return LOCKED  # fail closed
-    return _level_of_path(path, home)
+    # RULE: a path is judged both as written and as resolved
+    return max(_level_of_path(written, home), _level_of_path(resolved, home))
+
+
+def _braces(word: str) -> list[str]:
+    """Every word bash's brace expansion makes of `word`. Raises ValueError past BRACE_LIMIT."""
+    done, todo = [], [word]
+    while todo:
+        text = todo.pop()
+        match = next((m for m in BRACE.finditer(text) if _expands(m.group(1))), None)
+        if match is None:
+            done.append(text)
+            continue
+        todo += [text[: match.start()] + part + text[match.end() :] for part in _alternatives(match.group(1))]
+        if len(done) + len(todo) > BRACE_LIMIT:
+            raise ValueError("too many words")
+    return done
+
+
+def _expands(inner: str) -> bool:
+    return "," in inner or SEQUENCE.fullmatch(inner) is not None
+
+
+def _alternatives(inner: str) -> list[str]:
+    found = SEQUENCE.fullmatch(inner)
+    if found is None:
+        return inner.split(",")
+    first, last, step = found.group(1, 2, 3)
+    if first is None:
+        first, last, step = found.group(4, 5, 6)
+        return [chr(n) for n in _steps(ord(first), ord(last), step)]
+    return [str(n) for n in _steps(int(first), int(last), step)]
+
+
+def _steps(first: int, last: int, step: str | None) -> range:
+    size = abs(int(step or 1)) or 1
+    if abs(last - first) // size > BRACE_LIMIT:
+        raise ValueError("too long a sequence")
+    way = 1 if last >= first else -1
+    return range(first, last + way, size * way)
 
 
 def _home_spelled_out(word: str, home: str) -> str:
@@ -126,8 +191,26 @@ def _at_home(path: str, home: str) -> bool:
     at_home = os.path.join(os.path.realpath(home), ".claude")
     if path in (at_home, at_home + ".json"):
         return True
+    if any(path == target or path.startswith(target + os.sep) for target in _linked_out(at_home)):
+        # RULE: what a link under claude points to is refused too
+        return True
     # RULE: every steering file at home is refused
     return path.startswith(at_home + os.sep) and _parts(path[len(at_home) :])[0] in LOCKED_AT_HOME
+
+
+@functools.lru_cache(maxsize=8)
+def _linked_out(at_home: str) -> tuple[str, ...]:
+    """Where each steering folder under ~/.claude, and each link right inside one, really is.
+    A skill linked in from elsewhere steers from there, so writing there steers too."""
+    found = []
+    for name in STEERING_FOLDERS:
+        folder = os.path.join(at_home, name)
+        found.append(os.path.realpath(folder))
+        try:
+            found += [os.path.realpath(e.path) for e in os.scandir(folder) if e.is_symlink()]
+        except OSError:  # no such folder
+            continue
+    return tuple(found)
 
 
 def _parts(path: str) -> list[str]:

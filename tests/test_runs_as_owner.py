@@ -148,8 +148,8 @@ def test_hooks_and_config_of_any_clone_are_refused(rules, name):
     "name",
     # literal_gh.py runs before every shell call of every session, as the owner (gh-literal-deny v1.1);
     # org_rules.py, and the package's __init__.py it imports, run in every role's start hook,
-    # as the owner (org-rules install plan, f2); session_hook.py, the safe_git.py and steering.py
-    # it loads, and phone_hook.py run in every session's hooks, as the owner
+    # as the owner (org-rules install plan, f2); session_hook.py, the safe_git.py, steering.py and
+    # shell_text.py it loads, and phone_hook.py run in every session's hooks, as the owner
     [
         ".githooks/pre-commit",
         ".npmrc",
@@ -162,6 +162,7 @@ def test_hooks_and_config_of_any_clone_are_refused(rules, name):
         "src/claude_voice/session_hook.py",
         "src/claude_voice/safe_git.py",
         "src/claude_voice/steering.py",
+        "src/claude_voice/shell_text.py",
         "src/claude_voice/phone_hook.py",
     ],
 )

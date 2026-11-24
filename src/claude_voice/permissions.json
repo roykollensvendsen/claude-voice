@@ -333,7 +333,7 @@
       ".githooks/**", ".npmrc", "uv.toml", "pip.conf", ".envrc", "src/claude_voice/literal_gh.py",
       "src/claude_voice/org_rules.py", "src/claude_voice/__init__.py",
       "src/claude_voice/session_hook.py", "src/claude_voice/safe_git.py", "src/claude_voice/steering.py",
-      "src/claude_voice/phone_hook.py"
+      "src/claude_voice/shell_text.py", "src/claude_voice/phone_hook.py"
     ],
     "writers": [
       "tee {path}", "tee * {path}", "cp * {path}", "mv * {path}", "install * {path}", "ln * {path}",

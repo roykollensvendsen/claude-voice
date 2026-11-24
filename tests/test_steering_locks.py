@@ -190,11 +190,66 @@ def test_a_command_handed_to_a_shell_as_one_word_is_judged_too(repo, home, shell
         ("$X/CLAUDE.md", "ask"),
         ("$X/.mcp.json", "deny"),
         ("x/*", None),
+        # brace expansion: each word bash makes is judged
+        (".{c,}laude/hooks/a.sh", "deny"),
+        (".{c{l,x},z}aude/hooks/a.sh", "deny"),
+        (".cl{a..a}ude/hooks/a.sh", "deny"),
+        ("{.,}mcp.json", "deny"),
+        ("{CLAUDE,README}.md", "ask"),
+        ("{a,b}.txt", None),
     ],
 )
 def test_a_word_the_shell_would_change_is_judged_by_every_name_it_can_reach(repo, home, word, said):
     (repo / "CLAUDE.md").write_text("x", encoding="utf-8")
     assert judge(f"cp y {word}", repo, home) == said
+
+
+def test_a_plain_read_of_braces_in_a_plain_folder_passes(repo, home):
+    assert judge("ls {a,b}.txt", repo, home) is None
+
+
+@pytest.mark.parametrize("word", ["{1..100000}", "x{a..z}{a..z}", "{0..9}{0..9}{0..9}"])
+def test_a_brace_the_hook_cannot_expand_counts_as_locked(repo, home, word):
+    assert judge(f"cp y {word}", repo, home) == "deny"
+
+
+@pytest.mark.parametrize("word", ["${X:-.cla}ude/hooks/a.sh", "${X:=.claude}/hooks/a", "${X/y/.claude}", "${#X}"])
+def test_a_parameter_with_a_default_or_any_other_operator_counts_as_locked(repo, home, word):
+    assert judge(f"cp y {word}", repo, home) == "deny"
+
+
+@pytest.mark.parametrize("word", ["$'.cl\\x61ude/hooks/a'", "$'.cl\\141ude/hooks/a'", "$'.cl\\u0061ude/hooks/a'"])
+def test_a_path_spelled_in_the_shell_s_own_quoting_is_judged_as_bash_reads_it(repo, word):
+    given = {"tool_name": "Bash", "tool_input": {"command": f"cp y {word}"}, "cwd": str(repo), "session_id": "s"}
+    assert session_hook.decision(given, tmp_root=Path("/nonexistent"), repos=[], terms=None) == "deny"
+
+
+@posix_only
+def test_a_path_is_judged_both_as_written_and_as_resolved(repo, home, tmp_path):
+    elsewhere = tmp_path / "elsewhere" / "s"
+    elsewhere.mkdir(parents=True)
+    (home / ".claude" / "skills").mkdir()
+    os.symlink(elsewhere, home / ".claude" / "skills" / "s")
+    assert judge("cp x ~/.claude/skills/s/SKILL.md", repo, home) == "deny"
+    # in a clone, a steering folder linked out to a plain folder: only the path as written is locked
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    os.symlink(plain, repo / ".claude" / "commands")
+    assert judge("cp y .claude/commands/a.md", repo, home) == "deny"
+
+
+@posix_only
+def test_what_a_link_under_claude_points_to_is_refused_too(repo, home, tmp_path):
+    elsewhere = tmp_path / "elsewhere"
+    (elsewhere / "s").mkdir(parents=True)
+    (elsewhere / "hooks").mkdir()
+    (home / ".claude" / "skills").mkdir()
+    os.symlink(elsewhere / "s", home / ".claude" / "skills" / "s")
+    os.symlink(elsewhere / "hooks", home / ".claude" / "hooks")
+    assert judge(f"cp x {elsewhere}/s/SKILL.md", repo, home) == "deny"
+    assert judge(f"cd {elsewhere}/s", repo, home) == "deny"
+    assert judge(f"tee {elsewhere}/hooks/a.sh", repo, home) == "deny"
+    assert judge(f"tee {elsewhere}/other.md", repo, home) is None
 
 
 def test_a_path_is_judged_after_its_dot_dots_are_resolved(repo, home):
