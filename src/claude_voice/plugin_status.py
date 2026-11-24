@@ -3,12 +3,15 @@
 Once one plugin's status call hung for minutes while the others answered, and finding which
 one took a lot of back and forth. Each plugin's status tool is called in parallel. Whatever
 has not answered when the limit is up is named as too slow, and the answer goes back at once.
-Read-only: only a plugin's status tool is ever called, and with no arguments.
+
+Only a status tool the plugin's own listing marks read-only is called, and with no arguments.
+These plugins drive real devices, so a name alone never decides what is called.
 """
 
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 from typing import Any
 
@@ -18,16 +21,24 @@ from .plugins import as_object
 SECONDS = 4.0
 #: The longest one-line state the voice is given, in characters.
 LINE = 120
-#: Calls that were still running when the answer went back. Each is left to finish, since
-#: cutting one off midway can leave the plugin's connection half used; it is let go then.
-LEFT_RUNNING: set[asyncio.Future[Any]] = set()
+#: Each plugin's status call that was still running when an answer went back, by plugin name.
+#: It is left to finish, since cutting one off midway can leave the plugin's connection half
+#: used. Until it finishes the plugin is not asked again, so calls never pile up on its lock
+#: in front of the owner's own commands.
+RUNNING: dict[str, asyncio.Future[Any]] = {}
+NOT_READ_ONLY = "its status tool is not marked read-only"
+NO_TOOL = "it has no status tool"
 
 
 def status_tool(tools: list[str]) -> str | None:
-    """The plugin's own status tool: one named `status`, else the first ending in `_status`."""
+    """The plugin's own status tool: one named `status`, else the shortest name ending in
+    `_status`, so `vacuum_status` wins over `vacuum_full_status` in any order. Between two
+    of the same length, the first in the plugin's settings wins."""
     if "status" in tools:
         return "status"
-    return next((t for t in tools if t.endswith("_status")), None)
+    named = [t for t in tools if t.endswith("_status")]
+    # RULE: the shortest status tool name is picked whatever the order
+    return min(named, key=len) if named else None
 
 
 def one_line(answer: Any) -> str:
@@ -51,25 +62,48 @@ async def _ask(plugin: Any, tool: str) -> str:
     return one_line(plugin.shown(found))
 
 
-def _let_go(job: asyncio.Future[Any]) -> None:
-    LEFT_RUNNING.discard(job)
+def _let_go(name: str, job: asyncio.Future[Any]) -> None:
+    if RUNNING.get(name) is job:
+        del RUNNING[name]
     if not job.cancelled():
         job.exception()  # read, so a late failure is not reported as never retrieved
+
+
+def _why_not(plugin: Any) -> tuple[str | None, str | None]:
+    """The status tool to call, or None and the reason it is not called."""
+    tool = status_tool(list(plugin.spec.tools))
+    if tool is None:
+        return None, NO_TOOL
+    # RULE: only a status tool the listing marks read-only is called
+    if tool not in getattr(plugin, "looks", set()):
+        return None, NOT_READ_ONLY
+    return tool, None
 
 
 async def check(plugins: list[Any], seconds: float = SECONDS) -> dict[str, Any]:
     """Who answered and how each is, who failed and why, and who was too slow."""
     if not plugins:
-        return {"answered": [], "failed": [], "too_slow": [], "no_status_tool": [], "say": "No plugins are running."}
+        return {
+            "answered": [],
+            "failed": [],
+            "too_slow": [],
+            "still_busy": [],
+            "no_status_tool": [],
+            "say": "No plugins are running.",
+        }
     jobs: dict[str, asyncio.Future[str]] = {}
-    no_status = []
+    skipped, busy = [], []
     for plugin in plugins:
-        tool = status_tool(list(plugin.spec.tools))
-        # RULE: a plugin without a status tool is named and not called
+        name = plugin.spec.name
+        tool, why = _why_not(plugin)
+        # RULE: a plugin without a read-only status tool is named and not called
         if tool is None:
-            no_status.append(plugin.spec.name)
-            continue
-        jobs[plugin.spec.name] = asyncio.ensure_future(_ask(plugin, tool))
+            skipped.append({"plugin": name, "why": why})
+        # RULE: a plugin still busy from an earlier check is not asked again
+        elif name in RUNNING:
+            busy.append(name)
+        else:
+            jobs[name] = asyncio.ensure_future(_ask(plugin, tool))
     # RULE: every plugin is asked at once and a slow one is named without holding up the answer
     if jobs:
         await asyncio.wait(jobs.values(), timeout=seconds)
@@ -78,8 +112,8 @@ async def check(plugins: list[Any], seconds: float = SECONDS) -> dict[str, Any]:
         if not job.done():
             slow.append(name)
             # RULE: a slow plugins call is left to finish and never cut off
-            LEFT_RUNNING.add(job)
-            job.add_done_callback(_let_go)
+            RUNNING[name] = job
+            job.add_done_callback(functools.partial(_let_go, name))
         elif job.exception() is not None:
             # RULE: a plugin that fails is named with its reason
             failed.append({"plugin": name, "problem": str(job.exception())})
@@ -88,9 +122,10 @@ async def check(plugins: list[Any], seconds: float = SECONDS) -> dict[str, Any]:
     return {
         "answered": answered,
         "failed": failed,
-        "too_slow": slow,
-        "no_status_tool": no_status,
-        "say": _say(len(jobs), answered, failed, slow),
+        "too_slow": slow + busy,
+        "still_busy": busy,
+        "no_status_tool": skipped,
+        "say": _say(len(jobs) + len(busy), answered, failed, slow + busy),
     }
 
 

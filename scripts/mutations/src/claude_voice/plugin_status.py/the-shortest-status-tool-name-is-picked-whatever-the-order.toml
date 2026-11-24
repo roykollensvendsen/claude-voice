@@ -1,0 +1,5 @@
+[[rule]]
+name = "the shortest status tool name is picked whatever the order"
+file = "src/claude_voice/plugin_status.py"
+find = '^    return min\(named, key=len\) if named else None$'
+replace = '    return named[0] if named else None'
