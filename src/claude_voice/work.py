@@ -65,19 +65,10 @@ def waiting(path: Path | None = None) -> list[dict[str, Any]]:
     return items
 
 
-def _claude() -> str | None:
-    """Claude Code's command line: the owner's own first, since the copy bundled with the SDK
-    may be too old to say when the sign-in runs out. Both share the one sign-in."""
-    import claude_agent_sdk
-
-    bundled = Path(claude_agent_sdk.__file__).parent / "_bundled" / "claude"
-    return procs.find("claude") or (str(bundled) if bundled.exists() else None)
-
-
 def read_login_expiry() -> datetime | None:
     """When Claude Code's sign-in runs out, as `claude auth status` says; None when it cannot say.
     The date comes from Claude Code itself, so no file holding a secret is opened."""
-    cli = _claude()
+    cli = procs.claude()
     if not cli:
         return None
     try:

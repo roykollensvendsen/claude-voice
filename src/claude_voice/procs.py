@@ -28,3 +28,20 @@ def find(name: str) -> str | None:
     """Where tool `name` is: on the search path, or in one of the user's own tool folders."""
     extra = os.pathsep.join(str(Path(p).expanduser()) for p in USER_BINS)
     return shutil.which(name, path=os.pathsep.join(filter(None, [os.environ.get("PATH", ""), extra])))
+
+
+def claude() -> str | None:
+    """Claude Code's command line: the owner's own first, then the copy bundled with the SDK,
+    only when it is there. The owner's copy is the one kept up to date; both share one sign-in."""
+    import claude_agent_sdk
+
+    bundled = Path(claude_agent_sdk.__file__).parent / "_bundled" / "claude"
+    return find("claude") or (str(bundled) if bundled.exists() else None)
+
+
+def claude_or_fail() -> str:
+    """Claude Code's command line, or a plain error saying it is missing."""
+    cli = claude()
+    if cli is None:
+        raise RuntimeError("Claude Code was not found; install it with: curl -fsSL https://claude.ai/install.sh | bash")
+    return cli

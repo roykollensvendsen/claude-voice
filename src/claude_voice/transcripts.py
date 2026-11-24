@@ -907,11 +907,7 @@ async def start_background(
     It runs under the owner's own Claude Code and settings, and appears in the running
     sessions like any other session.
     """
-
-    import claude_agent_sdk
-
-    bundled = Path(claude_agent_sdk.__file__).parent / "_bundled" / "claude"
-    cli = procs.find("claude") or str(bundled)
+    cli = procs.claude_or_fail()
     shell = login_shell() if terminal else None
     command = background_command(cli, name, model, effort, prompt, settings, remote_control, terminal, shell)
     if terminal:
@@ -996,11 +992,7 @@ def stop_window(pid: int) -> None:
 
 async def stop_background(session_id: str) -> None:
     """Stop a background session, as `claude stop <id>` does from a terminal."""
-
-    import claude_agent_sdk
-
-    bundled = Path(claude_agent_sdk.__file__).parent / "_bundled" / "claude"
-    cli = procs.find("claude") or str(bundled)
+    cli = procs.claude_or_fail()
     # `claude stop` takes the background job's short id, which `claude agents` maps to the session.
     listing = await asyncio.create_subprocess_exec(
         cli, "agents", "--json", stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE
