@@ -64,6 +64,25 @@ WRITES = [
     "bash -c 'gh api -X POST repos/owner/name/statuses/abc'",
     "gh api -X PATCH repos/owner/name/git/refs/heads/main -f sha=abc",
     "gh api -X DELETE repos/owner/name/git/refs/heads/main",
+    "gh api -X PUT REPOS/Owner/Name/Pulls/5/Merge",
+]
+
+#: Writes that could take down the protection on main, or the repository's own settings.
+ADMIN = [
+    "gh api -X DELETE repos/owner/name/branches/main/protection",
+    "gh api -X PUT repos/owner/name/branches/main/protection --input rules.json",
+    "gh api -X DELETE repos/owner/name/branches/main/protection/enforce_admins",
+    "gh api -X DELETE repos/owner/name/branches/feat/x/protection",
+    "gh api -X POST repos/owner/name/rulesets --input ruleset.json",
+    "gh api -X DELETE repos/owner/name/rulesets/7",
+    "gh api repos/owner/name/branches/main/rename -f new_name=old",
+    "gh api -X PATCH repos/owner/name -f default_branch=feat",
+    "gh api -X PATCH repos/owner/name/ -F allow_merge_commit=true",
+    "gh api -X PUT repos/owner/name/actions/permissions -F enabled=false",
+    "gh api -X PUT repos/owner/name/actions/permissions/workflow -f default_workflow_permissions=write",
+    "gh api repos/owner/name/hooks -f name=web",
+    "gh api -X DELETE repos/owner/name/hooks/3",
+    "gh api -X DELETE https://api.github.com/repos/Owner/Name/branches/main/protection?x=1",
 ]
 
 #: The same writes, spelled with a host, a query or a fragment around the path.
@@ -75,6 +94,9 @@ SPELLED = [
     "gh api -X POST http://api.github.com/repos/owner/name/statuses/abc",
     "gh api -X PUT https://ghe.example/api/v3/repos/owner/name/pulls/5/merge",
     "gh api -X PATCH https://api.github.com/repos/owner/name/git/refs/heads/main?force=1 -F force=true",
+    "gh api https://api.github.com/graphql -f query='mutation { mergePullRequest(input: {}) { clientMutationId } }'",
+    "gh api /graphql -f query='mutation { mergePullRequest(input: {}) { clientMutationId } }'",
+    "gh api https://ghe.example/api/graphql -f query='mutation { createCheckRun(input: {}) { clientMutationId } }'",
 ]
 
 #: GraphQL calls whose query the guard cannot see: it comes from a file or from stdin.
@@ -86,6 +108,8 @@ UNSEEN = [
     "gh api graphql --input body.json",
     "gh api graphql --input -",
     "gh api graphql --input=-",
+    "gh api https://api.github.com/graphql --input body.json",
+    "gh api https://ghe.example/api/graphql -F query=@q.graphql",
 ]
 
 #: Ways to get gh's login out, for the same calls made with another program.
@@ -112,13 +136,18 @@ READS = [
     "gh api repos/owner/name/git/refs/heads/main",
     "gh api -X PATCH repos/owner/name/git/refs/heads/feat/x -f sha=abc",
     "gh api -X PATCH repos/owner/name/git/refs/heads/main-old -f sha=abc",
+    "gh api repos/owner/name/branches/main/protection",
+    "gh api repos/owner/name/rulesets",
+    "gh api repos/owner/name",
+    "gh api -X POST repos/owner/name/issues -f title=x",
+    "gh api -X POST repos/owner/name/pulls/5/reviews -f event=COMMENT",
     "gh api graphql -F owner=o -f query='{ viewer { login } }'",
     "gh auth status",
     "gh auth login --with-token",
 ]
 
 
-@pytest.mark.parametrize("command", MERGES + WRITES + SPELLED + UNSEEN + TOKENS)
+@pytest.mark.parametrize("command", MERGES + WRITES + SPELLED + UNSEEN + TOKENS + ADMIN)
 def test_a_merge_or_a_status_write_through_gh_is_refused_to_a_role_without_merges(command):
     verdict, reason = decide(command)
     assert verdict == "deny" and "manager" in reason
@@ -138,6 +167,20 @@ def test_a_writing_api_call_to_a_merge_or_a_status_is_refused(command):
 @pytest.mark.parametrize("command", SPELLED)
 def test_the_path_of_an_api_call_is_read_without_its_host_query_or_fragment(command):
     assert guard.merge_or_status(command) == "merges or sets a status through GitHub's API"
+
+
+@pytest.mark.parametrize("command", ADMIN)
+def test_a_write_to_the_repositorys_protection_or_settings_is_refused(command):
+    assert guard.merge_or_status(command) == "changes the repository's protection or settings through GitHub's API"
+
+
+@pytest.mark.parametrize(
+    "command",
+    ['gh api graphql -f query="$Q"', 'gh api graphql -f query="$(cat q.graphql)"', "gh api graphql -f query=`cat q`"],
+)
+def test_a_graphql_query_in_a_variable_or_a_substitution_is_refused(command):
+    assert "from a variable or a command" in guard.merge_or_status(command)
+    assert decide(command)[0] == "deny"
 
 
 @pytest.mark.parametrize("command", UNSEEN)
@@ -197,6 +240,22 @@ ELSEWHERE = "someone/else"
 )
 def test_merges_are_denied_by_default_only_on_an_upstream_that_merges_in_batches(role, denied):
     assert roles.denies_merges(role) is denied
+
+
+@pytest.mark.parametrize(
+    "upstream",
+    [
+        "RoyKollenSvendsen/Claude-Voice",
+        "https://github.com/roykollensvendsen/claude-voice",
+        "https://github.com/roykollensvendsen/claude-voice.git",
+        "git@github.com:roykollensvendsen/claude-voice.git",
+        "ssh://git@github.com/roykollensvendsen/claude-voice/",
+        " roykollensvendsen/claude-voice/ ",
+    ],
+)
+def test_an_upstream_is_compared_as_owner_and_name_whatever_its_spelling(upstream):
+    assert roles.denies_merges({"upstream": upstream})
+    assert not roles.denies_merges({"upstream": upstream.lower().replace("claude-voice", "claude-voice-ui")})
 
 
 def test_the_batched_upstream_is_the_bridges_own():
