@@ -99,7 +99,7 @@ class Log:
 ENDINGS = {
     "updated": "The update started at {at} worked. {detail}",
     "up_to_date": "The update started at {at} found nothing new. {detail}",
-    "rolled_back": "The update started at {at} was rolled back at the {failed} step: {problem}. {detail}",
+    "rolled_back": "The update started at {at} was rolled back at the {failed} step{problem}. {detail}",
     "stopped": "The update started at {at} stopped at the {failed} step. {detail}",
 }
 
@@ -138,8 +138,10 @@ def status(body: dict[str, Any] | None, running: bool) -> dict[str, Any]:
     if failed is not None:
         out |= {"failed_step": failed["step"], "problem": _one_line(str(failed.get("detail") or ""))}
     words = ENDINGS.get(result, "The update started at {at} ended. {detail}")
-    fill = {"at": at, "failed": out.get("failed_step", last), "problem": out.get("problem", ""), "detail": ""}
-    fill["detail"] = out.get("detail", "")
+    problem = out.get("problem", "")
+    # RULE: a failed step with nothing to say is named without an empty reason
+    reason = f": {problem}" if problem else ""
+    fill = {"at": at, "failed": out.get("failed_step", last), "problem": reason, "detail": out.get("detail", "")}
     return out | {"say": words.format(**fill).strip()}
 
 
