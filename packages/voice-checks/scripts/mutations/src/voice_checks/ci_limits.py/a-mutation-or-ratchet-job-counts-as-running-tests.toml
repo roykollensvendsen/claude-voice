@@ -1,0 +1,5 @@
+[[rule]]
+name = "a mutation or ratchet job counts as running tests"
+file = "src/voice_checks/ci_limits.py"
+find = 'RUNS_TESTS = re\.compile\(r"\\bpytest\\b\|\\bmutat\\w\*\|\\bratchet\\b"\)'
+replace = 'RUNS_TESTS = re.compile(r"\bpytest\b")'
